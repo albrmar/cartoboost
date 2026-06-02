@@ -1,5 +1,6 @@
 use super::{sse, Node, Split, Tree};
 use crate::data::Dataset;
+use crate::predictors::LinearLeafPredictor;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone)]
@@ -8,6 +9,11 @@ pub struct TreeBuilder {
     pub min_samples_leaf: usize,
     pub min_gain: f64,
     pub splitters: Vec<SplitterKind>,
+    pub leaf_predictor: LeafPredictorKind,
+    pub linear_leaf_features: Vec<usize>,
+    pub linear_lambda_l2: f64,
+    pub fuzzy: bool,
+    pub fuzzy_bandwidth: f64,
 }
 
 #[derive(Debug, Clone)]
@@ -27,6 +33,14 @@ pub enum SplitterKind {
     Periodic {
         period: f64,
     },
+    SparseSet,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub enum LeafPredictorKind {
+    #[default]
+    Constant,
+    Linear,
 }
 
 impl TreeBuilder {
@@ -56,10 +70,43 @@ impl TreeBuilder {
                     .sum::<f64>()
                     / weight_sum
             };
-            Node::Leaf {
-                value,
-                sample_weight_sum: weight_sum,
-                training_loss: sse(target, weights, indices),
+            let training_loss = sse(target, weights, indices);
+            match self.leaf_predictor {
+                LeafPredictorKind::Constant => Node::Leaf {
+                    value,
+                    sample_weight_sum: weight_sum,
+                    training_loss,
+                },
+                LeafPredictorKind::Linear => {
+                    let features = if self.linear_leaf_features.is_empty() {
+                        (0..x.n_cols()).collect()
+                    } else {
+                        self.linear_leaf_features.clone()
+                    };
+                    let rows = indices
+                        .iter()
+                        .map(|&idx| (0..x.n_cols()).map(|col| x.get(idx, col)).collect())
+                        .collect::<Vec<Vec<f64>>>();
+                    let leaf_targets = indices.iter().map(|&idx| target[idx]).collect::<Vec<_>>();
+                    let leaf_weights = indices.iter().map(|&idx| weights[idx]).collect::<Vec<_>>();
+                    LinearLeafPredictor::fit_ridge(
+                        &rows,
+                        &leaf_targets,
+                        &leaf_weights,
+                        features,
+                        self.linear_lambda_l2,
+                    )
+                    .map(|model| Node::LinearLeaf {
+                        model,
+                        sample_weight_sum: weight_sum,
+                        training_loss,
+                    })
+                    .unwrap_or(Node::Leaf {
+                        value,
+                        sample_weight_sum: weight_sum,
+                        training_loss,
+                    })
+                }
             }
         };
 
@@ -75,8 +122,17 @@ impl TreeBuilder {
         }
 
         let sample_weight_sum = indices.iter().map(|&idx| weights[idx]).sum();
+        let split = if self.fuzzy && self.fuzzy_bandwidth > 0.0 {
+            Split::Fuzzy {
+                base: Box::new(best.split),
+                bandwidth: self.fuzzy_bandwidth,
+                kernel: super::FuzzyKernel::Linear,
+            }
+        } else {
+            best.split
+        };
         Node::Branch {
-            split: best.split,
+            split,
             left: Box::new(self.build_node(x, target, weights, &best.left, depth + 1)),
             right: Box::new(self.build_node(x, target, weights, &best.right, depth + 1)),
             gain: best.gain,
@@ -113,6 +169,9 @@ impl TreeBuilder {
                 SplitterKind::Periodic { period } => self.periodic_candidates(
                     x, target, weights, indices, parent_sse, period, &mut best,
                 ),
+                SplitterKind::SparseSet => {
+                    self.sparse_set_candidates(x, target, weights, indices, parent_sse, &mut best)
+                }
             }
         }
 
@@ -315,6 +374,37 @@ impl TreeBuilder {
         }
     }
 
+    fn sparse_set_candidates(
+        &self,
+        x: &Dataset,
+        target: &[f64],
+        weights: &[f64],
+        indices: &[usize],
+        parent_sse: f64,
+        best: &mut Option<BestSplit>,
+    ) {
+        for feature in 0..x.n_cols() {
+            let mut ids = indices
+                .iter()
+                .filter_map(|&idx| {
+                    let value = x.get(idx, feature);
+                    let id = value as u64;
+                    (value.is_finite() && value >= 0.0 && value == id as f64).then_some(id)
+                })
+                .collect::<Vec<_>>();
+            ids.sort_unstable();
+            ids.dedup();
+            for id in ids {
+                let split = Split::SparseSetContainsAny {
+                    feature,
+                    ids: vec![id],
+                    missing_goes_left: false,
+                };
+                self.consider_split(split, x, target, weights, indices, parent_sse, best);
+            }
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn consider_split(
         &self,
@@ -374,6 +464,11 @@ mod tests {
             min_samples_leaf: 1,
             min_gain: 0.0,
             splitters: vec![SplitterKind::Axis],
+            leaf_predictor: LeafPredictorKind::Constant,
+            linear_leaf_features: Vec::new(),
+            linear_lambda_l2: 1.0,
+            fuzzy: false,
+            fuzzy_bandwidth: 0.0,
         };
 
         let tree = builder.fit(&x, &y, &weights);

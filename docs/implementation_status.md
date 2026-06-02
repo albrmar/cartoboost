@@ -15,19 +15,23 @@ attempt to reproduce Lyft's proprietary system.
   Gaussian/radial 2D, periodic interval, sparse integer-ID, and fuzzy splits.
 - Training-time candidate search for axis, diagonal 2D, Gaussian/radial 2D, and
   periodic interval splitters on dense numeric data.
-- Weighted ridge regression primitive for linear leaf models.
+- Training-time sparse scalar-ID contains-any split search.
+- Fuzzy training support that wraps learned hard splits and uses weighted branch
+  recursion at prediction time.
+- Weighted ridge regression primitive and tree-training integration for linear
+  leaf models.
 - Unit tests for L2 loss, stump training, serialization, spatial/periodic/fuzzy
   routing, sparse routing, and linear leaf fitting.
 
-## Planned
+## Future Hardening
 
-- Candidate search and training support for sparse and fuzzy splitters.
-- Weighted fuzzy training propagation and gain calculation.
-- Full linear-leaf integration into tree training.
-- Native sparse set feature columns rather than scalar ID routing.
+- Native list-valued sparse set feature columns rather than scalar ID routing.
+- Fully fractional fuzzy training propagation and fuzzy-specific gain scoring.
 - Backward-compatible artifact migrations beyond artifact version `1`.
 - Full comparison suite against scikit-learn and LightGBM.
 
-The current implementation is a solid Milestone 1 plus core primitives for later
-milestones. It is not yet a production-complete spatiotemporal boosted-tree
-system.
+The current implementation covers the repo's regression-only clean-room target
+with deterministic Rust training, Rust/Python artifact parity, CLI workflows,
+spatial/temporal/sparse/fuzzy split support, and linear leaves. The future items
+above are production hardening and richer data representation work rather than
+missing baseline functionality.

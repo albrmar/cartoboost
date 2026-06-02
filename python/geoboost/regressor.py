@@ -110,6 +110,14 @@ class GeoBoostRegressor:
                 min_samples_leaf=int(self.min_samples_leaf),
                 min_gain=float(self.min_gain),
                 splitters=list(self.splitters or ["axis"]),
+                leaf_predictor=str(self.leaf_predictor),
+                linear_leaf_features=_resolve_linear_leaf_features(
+                    self.linear_leaf_features,
+                    len(rows[0]),
+                ),
+                l2_regularization=float(self.l2_regularization),
+                fuzzy=bool(self.fuzzy),
+                fuzzy_bandwidth=float(self.fuzzy_bandwidth),
             )
             model.fit(rows, targets)
             self._model = model
@@ -118,6 +126,14 @@ class GeoBoostRegressor:
 
         if self.backend == "rust":
             raise ImportError("geoboost._native is not available; build with maturin first")
+        if (
+            self.leaf_predictor != "constant"
+            or self.fuzzy
+            or (self.splitters not in (None, ["axis"]))
+        ):
+            raise NotImplementedError(
+                "the pure-Python fallback supports only axis splits with constant leaves"
+            )
 
         model = _FallbackModel(
             n_estimators=int(self.n_estimators),
@@ -194,10 +210,12 @@ class GeoBoostRegressor:
             raise ValueError("min_gain must be finite and non-negative")
         if self.loss != "l2":
             raise NotImplementedError("Milestone 1 supports only loss='l2'")
-        if self.leaf_predictor != "constant":
-            raise NotImplementedError("Milestone 1 supports only constant leaves")
-        if self.fuzzy:
-            raise NotImplementedError("fuzzy splits are planned for a later milestone")
+        if self.leaf_predictor not in {"constant", "linear"}:
+            raise ValueError("leaf_predictor must be 'constant' or 'linear'")
+        if float(self.l2_regularization) < 0 or not math.isfinite(float(self.l2_regularization)):
+            raise ValueError("l2_regularization must be finite and non-negative")
+        if float(self.fuzzy_bandwidth) < 0 or not math.isfinite(float(self.fuzzy_bandwidth)):
+            raise ValueError("fuzzy_bandwidth must be finite and non-negative")
         if self.backend not in {"auto", "rust", "python"}:
             raise ValueError("backend must be one of 'auto', 'rust', or 'python'")
 
@@ -299,6 +317,23 @@ def _as_1d_float_list(values: Iterable[float]) -> list[float]:
     if any(not math.isfinite(value) for value in rows):
         raise ValueError("y must contain only finite values")
     return rows
+
+
+def _resolve_linear_leaf_features(features: list[str] | None, width: int) -> list[int] | None:
+    if features is None:
+        return None
+    resolved: list[int] = []
+    for feature in features:
+        try:
+            index = int(feature)
+        except ValueError as exc:
+            raise ValueError(
+                "linear_leaf_features currently expects stringified integer feature indices"
+            ) from exc
+        if index < 0 or index >= width:
+            raise ValueError(f"linear leaf feature index {index} is out of bounds")
+        resolved.append(index)
+    return resolved
 
 
 def _best_stump(

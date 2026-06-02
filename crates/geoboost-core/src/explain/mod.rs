@@ -5,6 +5,10 @@ pub fn dump_tree(tree: &Tree) -> String {
         let indent = "  ".repeat(depth);
         match node {
             Node::Leaf { value, .. } => out.push_str(&format!("{indent}leaf value={value:.6}\n")),
+            Node::LinearLeaf { model, .. } => out.push_str(&format!(
+                "{indent}linear_leaf intercept={:.6} coefficients={:?}\n",
+                model.intercept, model.coefficients
+            )),
             Node::Branch {
                 split,
                 left,

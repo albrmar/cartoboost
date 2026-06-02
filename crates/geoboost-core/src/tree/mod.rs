@@ -5,7 +5,7 @@ mod node;
 #[cfg(test)]
 mod routing_tests;
 
-pub use builder::{SplitterKind, TreeBuilder};
+pub use builder::{LeafPredictorKind, SplitterKind, TreeBuilder};
 pub use gain::sse;
 pub use node::{
     fuzzy_weights, normalize_periodic, periodic_contains, BranchWeights, FuzzyKernel, Model, Node,

@@ -1,4 +1,5 @@
 use crate::data::Dataset;
+use crate::predictors::LinearLeafModel;
 use crate::Result;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
@@ -24,6 +25,11 @@ pub struct Tree {
 pub enum Node {
     Leaf {
         value: f64,
+        sample_weight_sum: f64,
+        training_loss: f64,
+    },
+    LinearLeaf {
+        model: LinearLeafModel,
         sample_weight_sum: f64,
         training_loss: f64,
     },
@@ -136,6 +142,7 @@ impl Node {
     pub fn predict_one(&self, row: &[f64]) -> f64 {
         match self {
             Node::Leaf { value, .. } => *value,
+            Node::LinearLeaf { model, .. } => model.predict(row).unwrap_or(model.intercept),
             Node::Branch {
                 split, left, right, ..
             } => {

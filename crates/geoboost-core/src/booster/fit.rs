@@ -1,6 +1,6 @@
 use crate::data::{validate_weights, Dataset};
 use crate::loss::{L2Loss, Loss};
-use crate::tree::{Model, SplitterKind, TreeBuilder, MODEL_ARTIFACT_VERSION};
+use crate::tree::{LeafPredictorKind, Model, SplitterKind, TreeBuilder, MODEL_ARTIFACT_VERSION};
 use crate::{GeoBoostError, Result};
 use serde::{Deserialize, Serialize};
 
@@ -12,6 +12,11 @@ pub struct BoosterConfig {
     pub min_samples_leaf: usize,
     pub min_gain: f64,
     pub splitters: Vec<SplitterKind>,
+    pub leaf_predictor: LeafPredictorKind,
+    pub linear_leaf_features: Vec<usize>,
+    pub linear_lambda_l2: f64,
+    pub fuzzy: bool,
+    pub fuzzy_bandwidth: f64,
 }
 
 #[derive(Debug, Clone)]
@@ -28,6 +33,11 @@ impl Default for BoosterConfig {
             min_samples_leaf: 20,
             min_gain: 1e-8,
             splitters: vec![SplitterKind::Axis],
+            leaf_predictor: LeafPredictorKind::Constant,
+            linear_leaf_features: Vec::new(),
+            linear_lambda_l2: 1.0,
+            fuzzy: false,
+            fuzzy_bandwidth: 0.0,
         }
     }
 }
@@ -63,9 +73,16 @@ impl Booster {
             min_samples_leaf: self.config.min_samples_leaf,
             min_gain: self.config.min_gain,
             splitters: self.config.splitters.clone(),
+            leaf_predictor: self.config.leaf_predictor.clone(),
+            linear_leaf_features: self.config.linear_leaf_features.clone(),
+            linear_lambda_l2: self.config.linear_lambda_l2,
+            fuzzy: self.config.fuzzy,
+            fuzzy_bandwidth: self.config.fuzzy_bandwidth,
         };
 
         for _ in 0..self.config.n_estimators {
+            // For L2, the negative gradient is the residual. Each tree fits this
+            // target, then shrinkage applies learning_rate to the fitted update.
             let residuals = y
                 .iter()
                 .zip(&pred)
@@ -108,6 +125,7 @@ mod tests {
             min_samples_leaf: 1,
             min_gain: 0.0,
             splitters: vec![SplitterKind::Axis],
+            ..BoosterConfig::default()
         });
 
         let model = booster.fit(&x, &y, None).unwrap();
@@ -127,6 +145,7 @@ mod tests {
             min_samples_leaf: 1,
             min_gain: 0.0,
             splitters: vec![SplitterKind::Axis],
+            ..BoosterConfig::default()
         });
 
         let model = booster.fit(&x, &y, None).unwrap();
@@ -162,6 +181,7 @@ mod tests {
             min_samples_leaf: 1,
             min_gain: 0.0,
             splitters: vec![SplitterKind::Diagonal2D],
+            ..BoosterConfig::default()
         });
 
         let model = booster.fit(&x, &y, None).unwrap();
@@ -193,6 +213,7 @@ mod tests {
             min_samples_leaf: 1,
             min_gain: 0.0,
             splitters: vec![SplitterKind::Gaussian2D],
+            ..BoosterConfig::default()
         });
 
         let model = booster.fit(&x, &y, None).unwrap();
@@ -218,6 +239,7 @@ mod tests {
             min_samples_leaf: 1,
             min_gain: 0.0,
             splitters: vec![SplitterKind::Periodic { period: 24.0 }],
+            ..BoosterConfig::default()
         });
 
         let model = booster.fit(&x, &y, None).unwrap();
@@ -230,5 +252,93 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn sparse_set_splitter_finds_integer_id_membership() {
+        let x = Dataset::from_rows(vec![vec![7.0], vec![7.0], vec![3.0], vec![4.0]]).unwrap();
+        let y = vec![25.0, 25.0, -5.0, -5.0];
+        let booster = Booster::new(BoosterConfig {
+            n_estimators: 1,
+            learning_rate: 1.0,
+            max_depth: 1,
+            min_samples_leaf: 1,
+            min_gain: 0.0,
+            splitters: vec![SplitterKind::SparseSet],
+            ..BoosterConfig::default()
+        });
+
+        let model = booster.fit(&x, &y, None).unwrap();
+
+        assert_eq!(model.predict(&x), y);
+        assert!(matches!(
+            model.trees[0].root,
+            crate::tree::Node::Branch {
+                split: Split::SparseSetContainsAny { .. },
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn linear_leaf_fits_gradient_residuals_with_learning_rate_shrinkage() {
+        let x = Dataset::from_rows(vec![vec![0.0], vec![1.0], vec![2.0], vec![3.0]]).unwrap();
+        let y = vec![3.0, 5.0, 7.0, 9.0];
+        let booster = Booster::new(BoosterConfig {
+            n_estimators: 1,
+            learning_rate: 0.5,
+            max_depth: 0,
+            min_samples_leaf: 1,
+            min_gain: 0.0,
+            leaf_predictor: LeafPredictorKind::Linear,
+            linear_leaf_features: vec![0],
+            linear_lambda_l2: 0.0,
+            ..BoosterConfig::default()
+        });
+
+        let model = booster.fit(&x, &y, None).unwrap();
+        let pred = model.predict(&x);
+
+        assert_eq!(model.init_prediction, 6.0);
+        for (actual, expected) in pred.iter().zip([4.5, 5.5, 6.5, 7.5]) {
+            assert!(
+                (actual - expected).abs() < 1e-12,
+                "expected {expected}, got {actual}"
+            );
+        }
+        assert!(matches!(
+            model.trees[0].root,
+            crate::tree::Node::LinearLeaf { .. }
+        ));
+    }
+
+    #[test]
+    fn fuzzy_training_wraps_learned_split_and_preserves_shrinkage() {
+        let x = Dataset::from_rows(vec![vec![0.0], vec![1.0], vec![2.0], vec![3.0]]).unwrap();
+        let y = vec![0.0, 0.0, 10.0, 10.0];
+        let booster = Booster::new(BoosterConfig {
+            n_estimators: 1,
+            learning_rate: 1.0,
+            max_depth: 1,
+            min_samples_leaf: 1,
+            min_gain: 0.0,
+            fuzzy: true,
+            fuzzy_bandwidth: 1.0,
+            splitters: vec![SplitterKind::Axis],
+            ..BoosterConfig::default()
+        });
+
+        let model = booster.fit(&x, &y, None).unwrap();
+
+        assert!(matches!(
+            model.trees[0].root,
+            crate::tree::Node::Branch {
+                split: Split::Fuzzy { .. },
+                ..
+            }
+        ));
+        assert_eq!(model.predict_one(&[0.0]), 0.0);
+        assert_eq!(model.predict_one(&[3.0]), 10.0);
+        assert_eq!(model.predict_one(&[1.5]), 5.0);
     }
 }

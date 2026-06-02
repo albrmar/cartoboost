@@ -1,4 +1,4 @@
-use geoboost_core::tree::SplitterKind;
+use geoboost_core::tree::{LeafPredictorKind, SplitterKind};
 use geoboost_core::{Booster, BoosterConfig, Dataset, Model as CoreModel};
 use std::collections::BTreeMap;
 use std::env;
@@ -309,6 +309,10 @@ struct Config {
     min_samples_leaf: Option<usize>,
     min_gain: Option<f64>,
     splitter: Option<String>,
+    leaf_predictor: Option<String>,
+    fuzzy: Option<bool>,
+    fuzzy_bandwidth: Option<f64>,
+    l2_regularization: Option<f64>,
 }
 
 impl Config {
@@ -332,6 +336,15 @@ impl Config {
                 .as_deref()
                 .map(cli_splitters)
                 .unwrap_or(defaults.splitters),
+            leaf_predictor: self
+                .leaf_predictor
+                .as_deref()
+                .map(cli_leaf_predictor)
+                .unwrap_or(defaults.leaf_predictor),
+            linear_leaf_features: defaults.linear_leaf_features,
+            linear_lambda_l2: self.l2_regularization.unwrap_or(defaults.linear_lambda_l2),
+            fuzzy: self.fuzzy.unwrap_or(defaults.fuzzy),
+            fuzzy_bandwidth: self.fuzzy_bandwidth.unwrap_or(defaults.fuzzy_bandwidth),
         }
     }
 }
@@ -355,6 +368,12 @@ fn read_config(path: &str) -> CliResult<Config> {
                 }
                 "min_gain" => config.min_gain = trim_toml_string(value).parse().ok(),
                 "splitter" | "splitters" => config.splitter = Some(trim_toml_string(value)),
+                "leaf_predictor" => config.leaf_predictor = Some(trim_toml_string(value)),
+                "fuzzy" => config.fuzzy = trim_toml_string(value).parse().ok(),
+                "fuzzy_bandwidth" => config.fuzzy_bandwidth = trim_toml_string(value).parse().ok(),
+                "l2_regularization" => {
+                    config.l2_regularization = trim_toml_string(value).parse().ok()
+                }
                 _ => {}
             }
         }
@@ -371,6 +390,7 @@ fn cli_splitters(value: &str) -> Vec<SplitterKind> {
             "diagonal_2d" | "diagonal2d" => Some(SplitterKind::Diagonal2D),
             "gaussian_2d" | "gaussian2d" | "radial" => Some(SplitterKind::Gaussian2D),
             "periodic_time" | "periodic_24" => Some(SplitterKind::Periodic { period: 24.0 }),
+            "sparse_set" | "sparse" => Some(SplitterKind::SparseSet),
             _ => None,
         })
         .collect::<Vec<_>>();
@@ -378,6 +398,13 @@ fn cli_splitters(value: &str) -> Vec<SplitterKind> {
         vec![SplitterKind::Axis]
     } else {
         splitters
+    }
+}
+
+fn cli_leaf_predictor(value: &str) -> LeafPredictorKind {
+    match value {
+        "linear" => LeafPredictorKind::Linear,
+        _ => LeafPredictorKind::Constant,
     }
 }
 
