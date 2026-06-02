@@ -37,18 +37,15 @@ The estimator is compatible with sklearn-style workflows such as `Pipeline`,
 
 - Stable Rust, installed automatically by `rust-toolchain.toml` when using rustup.
 - Python 3.10 or newer.
-- maturin 1.7 or newer.
+- uv 0.7 or newer.
 
 ## Development
 
 Create a virtual environment, install development tooling, and build the extension in editable mode:
 
 ```sh
-python -m venv .venv
-. .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install -e ".[dev]"
-maturin develop
+uv sync --group dev
+uv run --group dev maturin develop
 ```
 
 Common commands are available through either `make` or `just`:

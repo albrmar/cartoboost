@@ -31,7 +31,7 @@ dependencies = [
     "scikit-learn>=1.2",
 ]
 
-[project.optional-dependencies]
+[dependency-groups]
 dev = [
     "maturin>=1.7,<2",
     "matplotlib>=3.7",
