@@ -1,0 +1,9 @@
+# Numeric-target example for `geoboost train --config configs/regression.toml`.
+target = "target"
+
+[model]
+kind = "constant_baseline"
+objective = "regression"
+
+[train]
+max_rounds = 10

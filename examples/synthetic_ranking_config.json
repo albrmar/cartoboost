@@ -1,0 +1,10 @@
+{
+  "kind": "ranking",
+  "rows": 1200,
+  "features": 10,
+  "groups": 120,
+  "seed": 42,
+  "noise": 0.1,
+  "missing_rate": 0.01,
+  "output": "examples/data/ranking.csv"
+}

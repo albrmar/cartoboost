@@ -1,0 +1,38 @@
+[workspace]
+members = [
+    "crates/geoboost-core",
+    "crates/geoboost-cli",
+    "crates/geoboost-py",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+license = "MIT"
+repository = "https://github.com/theculliganman/geoboost"
+homepage = "https://github.com/theculliganman/geoboost"
+description = "Clean-room GeoBoost-inspired regression package."
+readme = "README.md"
+authors = ["Ryan Culligan"]
+
+[workspace.lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+unused_lifetimes = "deny"
+unused_qualifications = "warn"
+
+[workspace.lints.clippy]
+dbg_macro = "deny"
+todo = "deny"
+unwrap_used = "warn"
+
+[workspace.dependencies]
+anyhow = "1"
+thiserror = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+pyo3 = { version = "0.23", features = ["extension-module"] }
+clap = { version = "4", features = ["derive"] }
+toml = "0.8"
+criterion = "0.5"

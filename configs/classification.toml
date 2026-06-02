@@ -1,0 +1,9 @@
+# Text-target example for `geoboost train --config configs/classification.toml`.
+target = "label"
+
+[model]
+kind = "constant_baseline"
+objective = "classification"
+
+[train]
+max_rounds = 10

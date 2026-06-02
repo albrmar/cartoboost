@@ -1,0 +1,60 @@
+[build-system]
+requires = ["maturin>=1.7,<2"]
+build-backend = "maturin"
+
+[project]
+name = "geoboost"
+version = "0.1.0"
+description = "Clean-room GeoBoost-inspired regression package."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+authors = [
+    { name = "Ryan Culligan" },
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Rust",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+keywords = ["boosting", "gradient-boosting", "machine-learning", "python", "rust"]
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "maturin>=1.7,<2",
+    "pytest>=8",
+    "ruff>=0.6",
+]
+
+[project.urls]
+Homepage = "https://github.com/theculliganman/geoboost"
+Repository = "https://github.com/theculliganman/geoboost"
+Issues = "https://github.com/theculliganman/geoboost/issues"
+
+[tool.maturin]
+manifest-path = "crates/geoboost-py/Cargo.toml"
+module-name = "geoboost._native"
+python-source = "python"
+features = ["pyo3/extension-module"]
+bindings = "pyo3"
+strip = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["python"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]

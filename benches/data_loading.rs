@@ -1,0 +1,58 @@
+use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+
+fn synthetic_csv(rows: usize, cols: usize) -> String {
+    let mut csv = String::new();
+    for col in 0..cols {
+        csv.push_str(&format!("f{col},"));
+    }
+    csv.push_str("target\n");
+
+    for row in 0..rows {
+        for col in 0..cols {
+            let value = ((row * 31 + col * 17) as f32 * 0.001).sin();
+            csv.push_str(&format!("{value:.6},"));
+        }
+        csv.push_str(&format!("{:.6}\n", (row as f32 * 0.01).cos()));
+    }
+
+    csv
+}
+
+fn parse_csv_placeholder(input: &str, cols: usize) -> (Vec<f32>, Vec<f32>) {
+    let mut values = Vec::new();
+    let mut target = Vec::new();
+
+    for line in input.lines().skip(1) {
+        if line.is_empty() {
+            continue;
+        }
+        for (index, raw) in line.split(',').enumerate() {
+            let value = raw.parse::<f32>().unwrap_or(0.0);
+            if index < cols {
+                values.push(value);
+            } else {
+                target.push(value);
+            }
+        }
+    }
+
+    (values, target)
+}
+
+fn bench_data_loading(c: &mut Criterion) {
+    let mut group = c.benchmark_group("data_loading");
+    for &(rows, cols) in &[(1_000, 16), (25_000, 32)] {
+        let input = synthetic_csv(rows, cols);
+        group.bench_with_input(
+            BenchmarkId::new("csv_parse_placeholder", format!("{rows}x{cols}")),
+            &input,
+            |bench, input| {
+                bench.iter(|| parse_csv_placeholder(black_box(input), black_box(cols)));
+            },
+        );
+    }
+    group.finish();
+}
+
+criterion_group!(data_loading_benches, bench_data_loading);
+criterion_main!(data_loading_benches);

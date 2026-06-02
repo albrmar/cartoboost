@@ -1,0 +1,9 @@
+{
+  "kind": "binary",
+  "rows": 1000,
+  "features": 12,
+  "seed": 2026,
+  "noise": 0.2,
+  "missing_rate": 0.02,
+  "output": "examples/data/binary.csv"
+}

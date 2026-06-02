@@ -1,0 +1,8 @@
+# Minimal CLI smoke-test configuration.
+target = "target"
+
+[model]
+kind = "constant_baseline"
+
+[io]
+default_output = "json"
