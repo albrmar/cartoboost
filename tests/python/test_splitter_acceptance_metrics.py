@@ -42,11 +42,16 @@ def test_splitter_acceptance_metrics_are_generated(tmp_path: Path):
         assert phase_metrics["future_checks"]
         assert phase_metrics["models"]
         assert phase_metrics["inspection_metrics"]
+        assert phase_metrics["acceptance_gates"]
         for model_metrics in phase_metrics["models"].values():
             for value in model_metrics.values():
                 assert math.isfinite(value)
         for value in phase_metrics["inspection_metrics"].values():
             assert math.isfinite(value)
+        for check in phase_metrics["acceptance_gates"]:
+            assert check["passed"], check
+            assert math.isfinite(check["actual"])
+            assert math.isfinite(check["threshold"])
 
     assert metrics["axis_threshold"]["models"]["axis"]["train_rmse"] <= 1e-12
     assert (
