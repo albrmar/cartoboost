@@ -275,8 +275,8 @@ def phase_sparse_set() -> None:
     x = np.array([[7.0], [7.0], [3.0], [4.0], [9.0], [9.0], [8.0], [8.0]])
     y = np.array([30.0, 30.0, -5.0, -5.0, -5.0, -5.0, -5.0, -5.0])
     model = fit_model(x, y, splitters=["sparse_set"], min_samples_leaf=2)
-    labels = ["cell 3", "cell 4", "cell 7", "cell 8", "cell 9"]
-    probe = np.array([[3.0], [4.0], [7.0], [8.0], [9.0]])
+    labels = ["cell 3", "cell 4", "cell 7", "cell 8", "cell 9", "cell 11"]
+    probe = np.array([[3.0], [4.0], [7.0], [8.0], [9.0], [11.0]])
     save_bar_plot(
         PHASE_OUT / "phase_7_sparse_set.png",
         "Sparse set contains-any routing",
