@@ -222,10 +222,13 @@ Validation currently covers:
 - Dataset validation.
 - Golden one-stump behavior.
 - Serialization round trips.
+- Committed parity fixture generation and saved artifact prediction identity.
 - Diagonal, radial, periodic, fuzzy, sparse, and linear-leaf behavior.
 - Python estimator API behavior.
+- sklearn clone, Pipeline, and GridSearchCV compatibility.
 - Native backend smoke tests for special splitters.
 - CLI train/predict/eval smoke behavior.
+- Generated PNG proof images for diagonal and radial segmentation.
 
 ## Acceptance Criteria
 

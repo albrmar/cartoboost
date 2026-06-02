@@ -15,6 +15,8 @@ a small command-line interface.
 
 The full clean-room repository plan is tracked in
 [`docs/repo_plan.md`](docs/repo_plan.md).
+Generated proof images for spatial segmentation are committed under
+[`docs/assets`](docs/assets).
 
 ## Python API
 
@@ -27,6 +29,9 @@ model = GeoBoostRegressor(n_estimators=100, learning_rate=0.1)
 model.fit(X, y)
 predictions = model.predict(X)
 ```
+
+The estimator is compatible with sklearn-style workflows such as `Pipeline`,
+`GridSearchCV`, `clone`, and NumPy-array predictions.
 
 ## Requirements
 

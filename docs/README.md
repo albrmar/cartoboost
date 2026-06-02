@@ -16,6 +16,8 @@ repo.
   expectations without weakening the test suite.
 - [Implementation Status](implementation_status.md) states what is implemented
   and what remains planned.
+- [Segmentation Proofs](assets/) contains generated PNGs showing learned
+  spatial segmentation boundaries on deterministic synthetic datasets.
 
 ## Current Scope
 

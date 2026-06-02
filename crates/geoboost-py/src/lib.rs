@@ -152,6 +152,14 @@ impl NativeGeoBoostRegressor {
     fn is_fitted(&self) -> bool {
         self.model.is_some()
     }
+
+    #[getter]
+    fn feature_count(&self) -> usize {
+        self.model
+            .as_ref()
+            .map(|model| model.feature_count)
+            .unwrap_or(0)
+    }
 }
 
 fn parse_splitters(names: &[String]) -> Vec<SplitterKind> {

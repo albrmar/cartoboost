@@ -10,6 +10,8 @@ attempt to reproduce Lyft's proprietary system.
 - Constant leaf values.
 - Versioned JSON model artifact with Rust/Python save/load.
 - PyO3-backed `GeoBoostRegressor` with a pure-Python fallback.
+- sklearn-compatible estimator behavior for clone, Pipeline, GridSearchCV, and
+  NumPy prediction outputs.
 - CLI train/predict/eval for numeric CSV regression using the Rust core model.
 - Split artifact variants and prediction routing for axis, diagonal 2D,
   Gaussian/radial 2D, periodic interval, sparse integer-ID, and fuzzy splits.
@@ -22,6 +24,7 @@ attempt to reproduce Lyft's proprietary system.
   leaf models.
 - Unit tests for L2 loss, stump training, serialization, spatial/periodic/fuzzy
   routing, sparse routing, and linear leaf fitting.
+- Committed parity fixtures and generated spatial segmentation proof images.
 
 ## Future Hardening
 

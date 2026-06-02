@@ -1,0 +1,354 @@
+{
+  "artifact_version": 1,
+  "init_prediction": 205.0,
+  "learning_rate": 0.25,
+  "feature_count": 5,
+  "target_name": null,
+  "trees": [
+    {
+      "root": {
+        "Branch": {
+          "split": {
+            "Axis": {
+              "feature": 0,
+              "threshold": 0.475,
+              "missing_goes_left": true
+            }
+          },
+          "left": {
+            "Branch": {
+              "split": {
+                "Axis": {
+                  "feature": 0,
+                  "threshold": 0.175,
+                  "missing_goes_left": true
+                }
+              },
+              "left": {
+                "Leaf": {
+                  "value": -62.5,
+                  "sample_weight_sum": 2.0,
+                  "training_loss": 12.5
+                }
+              },
+              "right": {
+                "Leaf": {
+                  "value": -50.0,
+                  "sample_weight_sum": 1.0,
+                  "training_loss": 0.0
+                }
+              },
+              "gain": 104.16666666666667,
+              "sample_weight_sum": 3.0
+            }
+          },
+          "right": {
+            "Branch": {
+              "split": {
+                "Axis": {
+                  "feature": 0,
+                  "threshold": 0.775,
+                  "missing_goes_left": true
+                }
+              },
+              "left": {
+                "Leaf": {
+                  "value": 45.0,
+                  "sample_weight_sum": 1.0,
+                  "training_loss": 0.0
+                }
+              },
+              "right": {
+                "Leaf": {
+                  "value": 65.0,
+                  "sample_weight_sum": 2.0,
+                  "training_loss": 50.0
+                }
+              },
+              "gain": 266.66666666666663,
+              "sample_weight_sum": 3.0
+            }
+          },
+          "gain": 20416.666666666664,
+          "sample_weight_sum": 6.0
+        }
+      }
+    },
+    {
+      "root": {
+        "Branch": {
+          "split": {
+            "Axis": {
+              "feature": 0,
+              "threshold": 0.475,
+              "missing_goes_left": true
+            }
+          },
+          "left": {
+            "Branch": {
+              "split": {
+                "Axis": {
+                  "feature": 0,
+                  "threshold": 0.175,
+                  "missing_goes_left": true
+                }
+              },
+              "left": {
+                "Leaf": {
+                  "value": -46.875,
+                  "sample_weight_sum": 2.0,
+                  "training_loss": 12.5
+                }
+              },
+              "right": {
+                "Leaf": {
+                  "value": -37.5,
+                  "sample_weight_sum": 1.0,
+                  "training_loss": 0.0
+                }
+              },
+              "gain": 58.59375,
+              "sample_weight_sum": 3.0
+            }
+          },
+          "right": {
+            "Branch": {
+              "split": {
+                "Axis": {
+                  "feature": 0,
+                  "threshold": 0.775,
+                  "missing_goes_left": true
+                }
+              },
+              "left": {
+                "Leaf": {
+                  "value": 33.75,
+                  "sample_weight_sum": 1.0,
+                  "training_loss": 0.0
+                }
+              },
+              "right": {
+                "Leaf": {
+                  "value": 48.75,
+                  "sample_weight_sum": 2.0,
+                  "training_loss": 50.0
+                }
+              },
+              "gain": 150.0,
+              "sample_weight_sum": 3.0
+            }
+          },
+          "gain": 11484.375,
+          "sample_weight_sum": 6.0
+        }
+      }
+    },
+    {
+      "root": {
+        "Branch": {
+          "split": {
+            "Axis": {
+              "feature": 0,
+              "threshold": 0.475,
+              "missing_goes_left": true
+            }
+          },
+          "left": {
+            "Branch": {
+              "split": {
+                "Axis": {
+                  "feature": 0,
+                  "threshold": 0.125,
+                  "missing_goes_left": true
+                }
+              },
+              "left": {
+                "Leaf": {
+                  "value": -37.65625,
+                  "sample_weight_sum": 1.0,
+                  "training_loss": 0.0
+                }
+              },
+              "right": {
+                "Leaf": {
+                  "value": -30.390625,
+                  "sample_weight_sum": 2.0,
+                  "training_loss": 10.26611328125
+                }
+              },
+              "gain": 35.19287109375,
+              "sample_weight_sum": 3.0
+            }
+          },
+          "right": {
+            "Branch": {
+              "split": {
+                "Axis": {
+                  "feature": 0,
+                  "threshold": 0.825,
+                  "missing_goes_left": true
+                }
+              },
+              "left": {
+                "Leaf": {
+                  "value": 28.4375,
+                  "sample_weight_sum": 2.0,
+                  "training_loss": 19.53125
+                }
+              },
+              "right": {
+                "Leaf": {
+                  "value": 41.5625,
+                  "sample_weight_sum": 1.0,
+                  "training_loss": 0.0
+                }
+              },
+              "gain": 114.84375,
+              "sample_weight_sum": 3.0
+            }
+          },
+          "gain": 6459.9609375,
+          "sample_weight_sum": 6.0
+        }
+      }
+    },
+    {
+      "root": {
+        "Branch": {
+          "split": {
+            "Axis": {
+              "feature": 0,
+              "threshold": 0.475,
+              "missing_goes_left": true
+            }
+          },
+          "left": {
+            "Branch": {
+              "split": {
+                "Axis": {
+                  "feature": 0,
+                  "threshold": 0.175,
+                  "missing_goes_left": true
+                }
+              },
+              "left": {
+                "Leaf": {
+                  "value": -26.650390625,
+                  "sample_weight_sum": 2.0,
+                  "training_loss": 5.067634582519531
+                }
+              },
+              "right": {
+                "Leaf": {
+                  "value": -20.52734375,
+                  "sample_weight_sum": 1.0,
+                  "training_loss": 0.0
+                }
+              },
+              "gain": 24.994468688964844,
+              "sample_weight_sum": 3.0
+            }
+          },
+          "right": {
+            "Branch": {
+              "split": {
+                "Axis": {
+                  "feature": 0,
+                  "threshold": 0.825,
+                  "missing_goes_left": true
+                }
+              },
+              "left": {
+                "Leaf": {
+                  "value": 21.328125,
+                  "sample_weight_sum": 2.0,
+                  "training_loss": 19.53125
+                }
+              },
+              "right": {
+                "Leaf": {
+                  "value": 31.171875,
+                  "sample_weight_sum": 1.0,
+                  "training_loss": 0.0
+                }
+              },
+              "gain": 64.599609375,
+              "sample_weight_sum": 3.0
+            }
+          },
+          "gain": 3633.72802734375,
+          "sample_weight_sum": 6.0
+        }
+      }
+    },
+    {
+      "root": {
+        "Branch": {
+          "split": {
+            "Axis": {
+              "feature": 0,
+              "threshold": 0.475,
+              "missing_goes_left": true
+            }
+          },
+          "left": {
+            "Branch": {
+              "split": {
+                "Axis": {
+                  "feature": 0,
+                  "threshold": 0.125,
+                  "missing_goes_left": true
+                }
+              },
+              "left": {
+                "Leaf": {
+                  "value": -21.57958984375,
+                  "sample_weight_sum": 1.0,
+                  "training_loss": 0.0
+                }
+              },
+              "right": {
+                "Leaf": {
+                  "value": -16.895751953125,
+                  "sample_weight_sum": 2.0,
+                  "training_loss": 4.5014649629592896
+                }
+              },
+              "gain": 14.625558257102966,
+              "sample_weight_sum": 3.0
+            }
+          },
+          "right": {
+            "Branch": {
+              "split": {
+                "Axis": {
+                  "feature": 0,
+                  "threshold": 0.775,
+                  "missing_goes_left": true
+                }
+              },
+              "left": {
+                "Leaf": {
+                  "value": 12.87109375,
+                  "sample_weight_sum": 1.0,
+                  "training_loss": 0.0
+                }
+              },
+              "right": {
+                "Leaf": {
+                  "value": 21.25,
+                  "sample_weight_sum": 2.0,
+                  "training_loss": 9.064483642578125
+                }
+              },
+              "gain": 46.804046630859375,
+              "sample_weight_sum": 3.0
+            }
+          },
+          "gain": 2043.9720153808594,
+          "sample_weight_sum": 6.0
+        }
+      }
+    }
+  ]
+}

@@ -6,6 +6,9 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+from sklearn.base import BaseEstimator, RegressorMixin
+
 try:
     from ._native import GeoBoostRegressor as _NativeGeoBoostRegressor
 except ImportError:  # pragma: no cover - exercised when extension is unavailable
@@ -15,7 +18,7 @@ except ImportError:  # pragma: no cover - exercised when extension is unavailabl
         _NativeGeoBoostRegressor = None
 
 
-class GeoBoostRegressor:
+class GeoBoostRegressor(RegressorMixin, BaseEstimator):
     """Small sklearn-style gradient boosted stump regressor."""
 
     def __init__(
@@ -53,7 +56,6 @@ class GeoBoostRegressor:
         self.backend = backend
         self._model: Any | None = None
         self._backend_used: str | None = None
-        self._validate_params()
 
     def get_params(self, deep: bool = True) -> dict[str, Any]:
         return {
@@ -94,12 +96,17 @@ class GeoBoostRegressor:
         eval_set: Any | None = None,
     ) -> GeoBoostRegressor:
         del feature_schema, eval_set
+        self._validate_params()
         if sample_weight is not None:
             raise NotImplementedError("sample_weight is planned but not implemented in Milestone 1")
+        feature_names = _feature_names(X)
         rows = _as_2d_float_list(X)
         targets = _as_1d_float_list(y)
         if len(rows) != len(targets):
             raise ValueError("X and y must contain the same number of rows")
+        self.n_features_in_ = len(rows[0])
+        if feature_names is not None:
+            self.feature_names_in_ = np.asarray(feature_names, dtype=object)
 
         native_cls = _NativeGeoBoostRegressor
         if self.backend in {"auto", "rust"} and native_cls is not None:
@@ -122,6 +129,7 @@ class GeoBoostRegressor:
             model.fit(rows, targets)
             self._model = model
             self._backend_used = "rust"
+            self.is_fitted_ = True
             return self
 
         if self.backend == "rust":
@@ -145,12 +153,19 @@ class GeoBoostRegressor:
         model.fit(rows, targets)
         self._model = model
         self._backend_used = "python"
+        self.is_fitted_ = True
         return self
 
-    def predict(self, X: Iterable[Iterable[float]]) -> list[float]:
+    def predict(self, X: Iterable[Iterable[float]]) -> np.ndarray:
         if self._model is None:
             raise RuntimeError("GeoBoostRegressor is not fitted")
-        return list(self._model.predict(_as_2d_float_list(X)))
+        rows = _as_2d_float_list(X)
+        if hasattr(self, "n_features_in_") and len(rows[0]) != self.n_features_in_:
+            raise ValueError(
+                f"X has {len(rows[0])} features, but GeoBoostRegressor was fitted with "
+                f"{self.n_features_in_} features"
+            )
+        return np.asarray(list(self._model.predict(rows)), dtype=float)
 
     def save(self, path: str | Path) -> None:
         if self._model is None:
@@ -187,12 +202,16 @@ class GeoBoostRegressor:
                 )
                 estimator._model = native_model
                 estimator._backend_used = "rust"
+                estimator.n_features_in_ = native_model.feature_count
+                estimator.is_fitted_ = True
                 return estimator
 
         payload = json.loads(path.read_text(encoding="utf-8"))
         estimator = cls(**payload["params"])
         estimator._model = _FallbackModel.from_dict(payload["model"])
         estimator._backend_used = "python"
+        estimator.n_features_in_ = payload["model"].get("feature_count", 0) or 1
+        estimator.is_fitted_ = True
         return estimator
 
     def _validate_params(self) -> None:
@@ -235,9 +254,11 @@ class _FallbackModel:
         self.min_samples_leaf = min_samples_leaf
         self.min_gain = min_gain
         self.init_value = 0.0
+        self.feature_count = 0
         self.stumps: list[dict[str, float | int]] = []
 
     def fit(self, X: list[list[float]], y: list[float]) -> None:
+        self.feature_count = len(X[0])
         self.init_value = sum(y) / len(y)
         prediction = [self.init_value for _ in y]
         self.stumps = []
@@ -278,6 +299,7 @@ class _FallbackModel:
             "max_depth": self.max_depth,
             "min_samples_leaf": self.min_samples_leaf,
             "min_gain": self.min_gain,
+            "feature_count": self.feature_count,
             "init_value": self.init_value,
             "stumps": self.stumps,
         }
@@ -292,11 +314,14 @@ class _FallbackModel:
             min_gain=float(payload.get("min_gain", 0.0)),
         )
         model.init_value = float(payload["init_value"])
+        model.feature_count = int(payload.get("feature_count", 0))
         model.stumps = list(payload["stumps"])
         return model
 
 
 def _as_2d_float_list(values: Iterable[Iterable[float]]) -> list[list[float]]:
+    if hasattr(values, "to_numpy"):
+        values = values.to_numpy()
     rows = [[float(value) for value in row] for row in values]
     if not rows:
         raise ValueError("X must not be empty")
@@ -308,6 +333,13 @@ def _as_2d_float_list(values: Iterable[Iterable[float]]) -> list[list[float]]:
     if any(not math.isfinite(value) for row in rows for value in row):
         raise ValueError("X must contain only finite values")
     return rows
+
+
+def _feature_names(values: Any) -> list[str] | None:
+    columns = getattr(values, "columns", None)
+    if columns is None:
+        return None
+    return [str(column) for column in columns]
 
 
 def _as_1d_float_list(values: Iterable[float]) -> list[float]:
