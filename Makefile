@@ -32,6 +32,7 @@ validate:
 	uv run --group dev ruff format --check python tests scripts
 	uv run --group dev ruff check python tests scripts
 	uv run --group dev pytest
+	uv run --group dev python scripts/run_full_validation.py
 	cargo bench --workspace --no-run
 
 clean:
