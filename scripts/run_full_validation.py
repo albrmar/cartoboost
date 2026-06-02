@@ -11,6 +11,18 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 VALIDATION_DIR = ROOT / "target" / "validation"
 SPLITTER_DIR = VALIDATION_DIR / "splitter_tests"
+PROOF_IMAGES = [
+    "docs/assets/segmentation_diagonal_2d.png",
+    "docs/assets/segmentation_gaussian_2d.png",
+    "docs/assets/splitter_tests/phase_1_axis_threshold.png",
+    "docs/assets/splitter_tests/phase_2_diagonal_2d.png",
+    "docs/assets/splitter_tests/phase_3_gaussian_2d.png",
+    "docs/assets/splitter_tests/phase_4_periodic_wraparound.png",
+    "docs/assets/splitter_tests/phase_5_fuzzy_boundary.png",
+    "docs/assets/splitter_tests/phase_6_linear_leaf.png",
+    "docs/assets/splitter_tests/phase_7_sparse_set.png",
+    "docs/assets/splitter_tests/phase_8_learning_rate_shrinkage.png",
+]
 
 
 def run(command: list[str]) -> None:
@@ -34,10 +46,7 @@ def main() -> None:
         "artifact_version": 1,
         "splitter_phase_count": len(metrics),
         "splitter_phases": sorted(metrics),
-        "proof_images": [
-            "docs/assets/segmentation_diagonal_2d.png",
-            "docs/assets/segmentation_gaussian_2d.png",
-        ],
+        "proof_images": PROOF_IMAGES,
     }
     (VALIDATION_DIR / "metrics.json").write_text(json.dumps(summary, indent=2) + "\n")
 

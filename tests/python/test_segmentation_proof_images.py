@@ -7,6 +7,19 @@ from pathlib import Path
 import matplotlib.image as mpimg
 import numpy as np
 
+EXPECTED_PROOF_IMAGES = {
+    "segmentation_diagonal_2d.png",
+    "segmentation_gaussian_2d.png",
+    "splitter_tests/phase_1_axis_threshold.png",
+    "splitter_tests/phase_2_diagonal_2d.png",
+    "splitter_tests/phase_3_gaussian_2d.png",
+    "splitter_tests/phase_4_periodic_wraparound.png",
+    "splitter_tests/phase_5_fuzzy_boundary.png",
+    "splitter_tests/phase_6_linear_leaf.png",
+    "splitter_tests/phase_7_sparse_set.png",
+    "splitter_tests/phase_8_learning_rate_shrinkage.png",
+}
+
 
 def _assert_nonblank_segmentation(path: Path) -> None:
     assert path.exists()
@@ -31,5 +44,11 @@ def test_segmentation_proof_images_are_generated_and_nonblank():
     subprocess.run([sys.executable, str(script)], check=True, cwd=repo_root)
 
     asset_dir = repo_root / "docs" / "assets"
-    _assert_nonblank_segmentation(asset_dir / "segmentation_diagonal_2d.png")
-    _assert_nonblank_segmentation(asset_dir / "segmentation_gaussian_2d.png")
+    actual = {
+        path.relative_to(asset_dir).as_posix()
+        for path in asset_dir.glob("**/*.png")
+        if path.relative_to(asset_dir).as_posix() in EXPECTED_PROOF_IMAGES
+    }
+    assert actual == EXPECTED_PROOF_IMAGES
+    for relative_path in sorted(EXPECTED_PROOF_IMAGES):
+        _assert_nonblank_segmentation(asset_dir / relative_path)

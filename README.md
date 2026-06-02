@@ -17,6 +17,9 @@ The full clean-room repository plan is tracked in
 [`docs/repo_plan.md`](docs/repo_plan.md).
 Generated proof images for spatial segmentation are committed under
 [`docs/assets`](docs/assets).
+Additional phase-style proof images for axis, diagonal, gaussian, periodic,
+fuzzy, linear-leaf, sparse-set, and learning-rate fixtures are committed under
+[`docs/assets/splitter_tests`](docs/assets/splitter_tests).
 Generated acceptance metrics and smoke-test reports are written under
 `target/validation/` by `uv run --group dev python scripts/run_full_validation.py`.
 They cover axis, diagonal, gaussian, periodic, fuzzy, linear-leaf, sparse-set,
