@@ -13,6 +13,9 @@ a small command-line interface.
 - `docs`: Project and contract documentation.
 - `tests`: Python tests.
 
+The full clean-room repository plan is tracked in
+[`docs/repo_plan.md`](docs/repo_plan.md).
+
 ## Python API
 
 The Python package exposes `GeoBoostRegressor`:
@@ -28,7 +31,7 @@ predictions = model.predict(X)
 ## Requirements
 
 - Stable Rust, installed automatically by `rust-toolchain.toml` when using rustup.
-- Python 3.9 or newer.
+- Python 3.10 or newer.
 - maturin 1.7 or newer.
 
 ## Development
@@ -59,7 +62,7 @@ The `test` target runs both the Rust workspace tests and the Python test suite.
 The GitHub Actions workflow checks:
 
 - Rust formatting, clippy, and workspace tests.
-- Python linting and tests across Python 3.9 through 3.13.
+- Python linting and tests across Python 3.10 through 3.13.
 - Release wheel builds with maturin.
 
 ## License
