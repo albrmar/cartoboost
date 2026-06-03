@@ -27,3 +27,8 @@ harness = false
 name = "serialize"
 path = "../../benches/serialize.rs"
 harness = false
+
+[[bench]]
+name = "data_loading"
+path = "../../benches/data_loading.rs"
+harness = false
