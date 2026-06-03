@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run NYC TLC taxi model-quality benchmarks for GeoBoost and GBDT baselines."""
+"""Run NYC TLC taxi quality and speed benchmarks for GeoBoost and GBDT baselines."""
 
 from __future__ import annotations
 
@@ -362,14 +362,22 @@ def fit_predict_model(
     test_x = task.features[test_indices]
     train_y = task.target[train_indices]
     test_y = task.target[test_indices]
-    started = time.perf_counter()
 
     if model_name == "mean":
-        prediction = np.full(len(test_indices), float(np.mean(train_y)))
+        train_started = time.perf_counter()
+        mean_value = float(np.mean(train_y))
+        train_seconds = time.perf_counter() - train_started
+        predict_started = time.perf_counter()
+        prediction = np.full(len(test_indices), mean_value)
+        predict_seconds = time.perf_counter() - predict_started
         return {
             "status": "ok",
             "metrics": metric_summary(test_y, prediction),
-            "fit_predict_seconds": time.perf_counter() - started,
+            "timing": timing_summary(
+                train_seconds=train_seconds,
+                predict_seconds=predict_seconds,
+                prediction_rows=len(test_indices),
+            ),
             "predictions": prediction,
         }
 
@@ -391,19 +399,27 @@ def fit_predict_model(
         train_sparse = sparse_subset(task.sparse_sets, train_indices)
         test_sparse = sparse_subset(task.sparse_sets, test_indices)
         try:
+            train_started = time.perf_counter()
             model.fit(
                 train_x,
                 train_y,
                 sparse_sets=train_sparse,
                 feature_schema=geoboost_schema(task),
             )
+            train_seconds = time.perf_counter() - train_started
+            predict_started = time.perf_counter()
             prediction = model.predict(test_x, sparse_sets=test_sparse)
+            predict_seconds = time.perf_counter() - predict_started
         except Exception as exc:  # noqa: BLE001
             return skipped(f"geoboost run failed: {exc}")
         return {
             "status": "ok",
             "metrics": metric_summary(test_y, prediction),
-            "fit_predict_seconds": time.perf_counter() - started,
+            "timing": timing_summary(
+                train_seconds=train_seconds,
+                predict_seconds=predict_seconds,
+                prediction_rows=len(test_indices),
+            ),
             "backend": getattr(model, "_backend_used", None),
             "predictions": np.asarray(prediction, dtype=float),
         }
@@ -422,12 +438,20 @@ def fit_predict_model(
             n_jobs=args.n_threads or -1,
             verbose=-1,
         )
+        train_started = time.perf_counter()
         model.fit(train_x, train_y)
+        train_seconds = time.perf_counter() - train_started
+        predict_started = time.perf_counter()
         prediction = model.predict(test_x)
+        predict_seconds = time.perf_counter() - predict_started
         return {
             "status": "ok",
             "metrics": metric_summary(test_y, prediction),
-            "fit_predict_seconds": time.perf_counter() - started,
+            "timing": timing_summary(
+                train_seconds=train_seconds,
+                predict_seconds=predict_seconds,
+                prediction_rows=len(test_indices),
+            ),
             "predictions": np.asarray(prediction, dtype=float),
         }
 
@@ -445,16 +469,43 @@ def fit_predict_model(
             random_state=args.seed,
             n_jobs=args.n_threads or 0,
         )
+        train_started = time.perf_counter()
         model.fit(train_x, train_y)
+        train_seconds = time.perf_counter() - train_started
+        predict_started = time.perf_counter()
         prediction = model.predict(test_x)
+        predict_seconds = time.perf_counter() - predict_started
         return {
             "status": "ok",
             "metrics": metric_summary(test_y, prediction),
-            "fit_predict_seconds": time.perf_counter() - started,
+            "timing": timing_summary(
+                train_seconds=train_seconds,
+                predict_seconds=predict_seconds,
+                prediction_rows=len(test_indices),
+            ),
             "predictions": np.asarray(prediction, dtype=float),
         }
 
     raise ValueError(f"unknown model {model_name!r}")
+
+
+def timing_summary(
+    *,
+    train_seconds: float,
+    predict_seconds: float,
+    prediction_rows: int,
+) -> dict[str, float]:
+    total_seconds = train_seconds + predict_seconds
+    predict_rows_per_second = (
+        float(prediction_rows) / predict_seconds if predict_seconds > 0.0 else float("inf")
+    )
+    return {
+        "train_seconds": float(train_seconds),
+        "predict_seconds": float(predict_seconds),
+        "fit_predict_seconds": float(total_seconds),
+        "prediction_rows": float(prediction_rows),
+        "predict_rows_per_second": predict_rows_per_second,
+    }
 
 
 def sparse_subset(
@@ -613,12 +664,60 @@ def write_metric_plot(results: dict[str, Any], output_dir: Path) -> None:
     plt.close(fig)
 
 
+def write_speed_plots(results: dict[str, Any], output_dir: Path) -> None:
+    rows = []
+    for task_name, task in results["tasks"].items():
+        for split_name, split in task["splits"].items():
+            for model_name, model in split["models"].items():
+                if model["status"] == "ok":
+                    timing = model["timing"]
+                    label = f"{task_name}\n{split_name}\n{model_name}"
+                    rows.append(
+                        (
+                            label,
+                            float(timing["train_seconds"]),
+                            float(timing["predict_seconds"]),
+                            float(timing["predict_rows_per_second"]),
+                        )
+                    )
+    if not rows:
+        return
+
+    labels = [row[0] for row in rows]
+    train_values = [row[1] for row in rows]
+    predict_values = [row[2] for row in rows]
+    fig, axis = plt.subplots(figsize=(max(8.0, len(rows) * 0.65), 4.8))
+    positions = np.arange(len(rows))
+    axis.bar(positions, train_values, label="train", color="#2f6f73")
+    axis.bar(positions, predict_values, bottom=train_values, label="predict", color="#9b6a32")
+    axis.set_xticks(positions, labels)
+    axis.set_ylabel("seconds")
+    axis.set_title("NYC taxi benchmark speed")
+    axis.tick_params(axis="x", labelrotation=55, labelsize=8)
+    axis.grid(axis="y", alpha=0.2)
+    axis.legend()
+    fig.tight_layout()
+    fig.savefig(output_dir / "speed_summary.png")
+    plt.close(fig)
+
+    throughput_values = [row[3] for row in rows]
+    fig, axis = plt.subplots(figsize=(max(8.0, len(rows) * 0.65), 4.8))
+    axis.bar(labels, throughput_values, color="#6a7f2f")
+    axis.set_ylabel("prediction rows / second")
+    axis.set_title("NYC taxi prediction throughput")
+    axis.tick_params(axis="x", labelrotation=55, labelsize=8)
+    axis.grid(axis="y", alpha=0.2)
+    fig.tight_layout()
+    fig.savefig(output_dir / "prediction_throughput.png")
+    plt.close(fig)
+
+
 def write_markdown(results: dict[str, Any], output_dir: Path) -> None:
     lines = [
         "# NYC Taxi Model Quality Benchmarks",
         "",
-        "These artifacts compare predictive quality on NYC TLC taxi-derived tasks.",
-        "Metrics are computed on transformed regression targets and are not runtime claims.",
+        "These artifacts compare predictive quality and speed on NYC TLC taxi-derived tasks.",
+        "Quality metrics are computed on transformed regression targets.",
         "",
         f"- dataset source: {results['dataset']['source']}",
         f"- models requested: {', '.join(results['models_requested'])}",
@@ -627,17 +726,31 @@ def write_markdown(results: dict[str, Any], output_dir: Path) -> None:
     for task in results["tasks"].values():
         lines.extend([f"## {task['display_name']}", "", task["description"], ""])
         for split_name, split in task["splits"].items():
-            lines.extend([f"### {split_name}", "", "| model | status | RMSE | MAE | R2 | note |"])
-            lines.append("| --- | --- | ---: | ---: | ---: | --- |")
+            lines.extend(
+                [
+                    f"### {split_name}",
+                    "",
+                    (
+                        "| model | status | RMSE | MAE | R2 | train sec | predict sec | "
+                        "predict rows/sec | note |"
+                    ),
+                ]
+            )
+            lines.append("| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |")
             for model_name, model in split["models"].items():
                 if model["status"] == "ok":
                     metrics = model["metrics"]
+                    timing = model["timing"]
                     lines.append(
                         f"| {model_name} | ok | {metrics['rmse']:.6f} | "
-                        f"{metrics['mae']:.6f} | {metrics['r2']:.6f} |  |"
+                        f"{metrics['mae']:.6f} | {metrics['r2']:.6f} | "
+                        f"{timing['train_seconds']:.6f} | {timing['predict_seconds']:.6f} | "
+                        f"{timing['predict_rows_per_second']:.2f} |  |"
                     )
                 else:
-                    lines.append(f"| {model_name} | skipped |  |  |  | {model['reason']} |")
+                    lines.append(
+                        f"| {model_name} | skipped |  |  |  |  |  |  | {model['reason']} |"
+                    )
             lines.append("")
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "results.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -648,6 +761,7 @@ def write_outputs(results: dict[str, Any], output_dir: Path) -> None:
     (output_dir / "results.json").write_text(json.dumps(results, indent=2) + "\n", encoding="utf-8")
     write_markdown(results, output_dir)
     write_metric_plot(results, output_dir)
+    write_speed_plots(results, output_dir)
 
 
 def main() -> None:

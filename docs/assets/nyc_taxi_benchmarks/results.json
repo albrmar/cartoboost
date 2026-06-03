@@ -124,7 +124,13 @@
                 "mae": 0.2545792293194849,
                 "r2": 0.7745393403041315
               },
-              "fit_predict_seconds": 49.38026951500797,
+              "timing": {
+                "train_seconds": 46.89785228099208,
+                "predict_seconds": 0.01229487598175183,
+                "fit_predict_seconds": 46.910147156973835,
+                "prediction_rows": 1000.0,
+                "predict_rows_per_second": 81334.69597287597
+              },
               "backend": "rust"
             },
             "lightgbm": {
@@ -134,7 +140,13 @@
                 "mae": 0.26022817771999346,
                 "r2": 0.7639944762270082
               },
-              "fit_predict_seconds": 2.376929277990712
+              "timing": {
+                "train_seconds": 0.010757365002064034,
+                "predict_seconds": 0.0030482390138786286,
+                "fit_predict_seconds": 0.013805604015942663,
+                "prediction_rows": 1000.0,
+                "predict_rows_per_second": 328058.26427881845
+              }
             },
             "xgboost": {
               "status": "ok",
@@ -143,7 +155,13 @@
                 "mae": 0.2646875113936866,
                 "r2": 0.7575998193615523
               },
-              "fit_predict_seconds": 0.1650331339915283
+              "timing": {
+                "train_seconds": 0.013855480996426195,
+                "predict_seconds": 0.0010356050042901188,
+                "fit_predict_seconds": 0.014891086000716314,
+                "prediction_rows": 1000.0,
+                "predict_rows_per_second": 965619.1268460264
+              }
             },
             "mean": {
               "status": "ok",
@@ -152,7 +170,13 @@
                 "mae": 0.5527041926452514,
                 "r2": -2.7012535989356934e-05
               },
-              "fit_predict_seconds": 9.892400703392923e-05
+              "timing": {
+                "train_seconds": 4.0710001485422254e-05,
+                "predict_seconds": 9.058014256879687e-06,
+                "fit_predict_seconds": 4.976801574230194e-05,
+                "prediction_rows": 1000.0,
+                "predict_rows_per_second": 110399472.95738535
+              }
             }
           }
         },
@@ -193,7 +217,13 @@
                 "mae": 0.2685144760396525,
                 "r2": 0.7996815098458256
               },
-              "fit_predict_seconds": 45.304285318998154,
+              "timing": {
+                "train_seconds": 44.81005153499427,
+                "predict_seconds": 0.013151779014151543,
+                "fit_predict_seconds": 44.823203314008424,
+                "prediction_rows": 1084.0,
+                "predict_rows_per_second": 82422.30947110632
+              },
               "backend": "rust"
             },
             "lightgbm": {
@@ -203,7 +233,13 @@
                 "mae": 0.2728411927062729,
                 "r2": 0.7943133805346138
               },
-              "fit_predict_seconds": 0.012107062007999048
+              "timing": {
+                "train_seconds": 0.0669676199904643,
+                "predict_seconds": 0.0009241960069630295,
+                "fit_predict_seconds": 0.06789181599742733,
+                "prediction_rows": 1084.0,
+                "predict_rows_per_second": 1172911.3649409688
+              }
             },
             "xgboost": {
               "status": "ok",
@@ -212,7 +248,13 @@
                 "mae": 0.281228410318992,
                 "r2": 0.7823005941386943
               },
-              "fit_predict_seconds": 0.01693595200777054
+              "timing": {
+                "train_seconds": 0.015407080005388707,
+                "predict_seconds": 0.0007857129967305809,
+                "fit_predict_seconds": 0.016192793002119288,
+                "prediction_rows": 1084.0,
+                "predict_rows_per_second": 1379638.6269676292
+              }
             },
             "mean": {
               "status": "ok",
@@ -221,7 +263,13 @@
                 "mae": 0.7028862445358416,
                 "r2": -0.19312831302950428
               },
-              "fit_predict_seconds": 9.831300121732056e-05
+              "timing": {
+                "train_seconds": 4.0318991523236036e-05,
+                "predict_seconds": 9.447976481169462e-06,
+                "fit_predict_seconds": 4.97669680044055e-05,
+                "prediction_rows": 1084.0,
+                "predict_rows_per_second": 114733562.48933247
+              }
             }
           }
         }
@@ -329,7 +377,13 @@
                 "mae": 0.12542116488403302,
                 "r2": 0.9050623685202988
               },
-              "fit_predict_seconds": 49.292361032014014,
+              "timing": {
+                "train_seconds": 46.84952976499335,
+                "predict_seconds": 0.011530994990607724,
+                "fit_predict_seconds": 46.86106075998396,
+                "prediction_rows": 1000.0,
+                "predict_rows_per_second": 86722.78505146559
+              },
               "backend": "rust"
             },
             "lightgbm": {
@@ -339,7 +393,13 @@
                 "mae": 0.1300960706982266,
                 "r2": 0.8992967970669543
               },
-              "fit_predict_seconds": 8.557391055015614
+              "timing": {
+                "train_seconds": 0.07412816802388988,
+                "predict_seconds": 0.0014102699933573604,
+                "fit_predict_seconds": 0.07553843801724724,
+                "prediction_rows": 1000.0,
+                "predict_rows_per_second": 709084.0794388237
+              }
             },
             "xgboost": {
               "status": "ok",
@@ -348,7 +408,13 @@
                 "mae": 0.13395229784922955,
                 "r2": 0.8943800197169798
               },
-              "fit_predict_seconds": 7.218199530994752
+              "timing": {
+                "train_seconds": 0.010820808995049447,
+                "predict_seconds": 0.000741215975722298,
+                "fit_predict_seconds": 0.011562024970771745,
+                "prediction_rows": 1000.0,
+                "predict_rows_per_second": 1349134.4395613207
+              }
             },
             "mean": {
               "status": "ok",
@@ -357,7 +423,13 @@
                 "mae": 0.40626309053186926,
                 "r2": -1.4775980858861004e-06
               },
-              "fit_predict_seconds": 0.00010529701830819249
+              "timing": {
+                "train_seconds": 4.9286987632513046e-05,
+                "predict_seconds": 9.167997632175684e-06,
+                "fit_predict_seconds": 5.845498526468873e-05,
+                "prediction_rows": 1000.0,
+                "predict_rows_per_second": 109075071.80089521
+              }
             }
           }
         },
@@ -398,7 +470,13 @@
                 "mae": 0.15798548018865446,
                 "r2": 0.9151611280400456
               },
-              "fit_predict_seconds": 50.501800856000045,
+              "timing": {
+                "train_seconds": 44.20113398900139,
+                "predict_seconds": 0.013067413994576782,
+                "fit_predict_seconds": 44.21420140299597,
+                "prediction_rows": 1084.0,
+                "predict_rows_per_second": 82954.43922185981
+              },
               "backend": "rust"
             },
             "lightgbm": {
@@ -408,7 +486,13 @@
                 "mae": 0.1615766243989279,
                 "r2": 0.9121391110289738
               },
-              "fit_predict_seconds": 0.010793400026159361
+              "timing": {
+                "train_seconds": 0.08499888601363637,
+                "predict_seconds": 0.000990216009085998,
+                "fit_predict_seconds": 0.08598910202272236,
+                "prediction_rows": 1084.0,
+                "predict_rows_per_second": 1094710.6389448983
+              }
             },
             "xgboost": {
               "status": "ok",
@@ -417,7 +501,13 @@
                 "mae": 0.18434149634760086,
                 "r2": 0.8888052594121838
               },
-              "fit_predict_seconds": 0.09150220500305295
+              "timing": {
+                "train_seconds": 0.011213391000637785,
+                "predict_seconds": 0.0007504050154238939,
+                "fit_predict_seconds": 0.011963796016061679,
+                "prediction_rows": 1084.0,
+                "predict_rows_per_second": 1444553.2448735868
+              }
             },
             "mean": {
               "status": "ok",
@@ -426,7 +516,13 @@
                 "mae": 0.6186366828877364,
                 "r2": -0.3199685935356913
               },
-              "fit_predict_seconds": 9.968498488888144e-05
+              "timing": {
+                "train_seconds": 5.4557021940127015e-05,
+                "predict_seconds": 1.034099841490388e-05,
+                "fit_predict_seconds": 6.48980203550309e-05,
+                "prediction_rows": 1084.0,
+                "predict_rows_per_second": 104825468.15186568
+              }
             }
           }
         }
@@ -523,7 +619,13 @@
                 "mae": 0.23805167602484753,
                 "r2": 0.07946970528205122
               },
-              "fit_predict_seconds": 20.536782812996535,
+              "timing": {
+                "train_seconds": 19.824429971980862,
+                "predict_seconds": 0.00596796500030905,
+                "fit_predict_seconds": 19.83039793698117,
+                "prediction_rows": 619.0,
+                "predict_rows_per_second": 103720.44741682385
+              },
               "backend": "rust"
             },
             "lightgbm": {
@@ -533,7 +635,13 @@
                 "mae": 0.23698127065251468,
                 "r2": 0.07489626936151494
               },
-              "fit_predict_seconds": 0.05761972098844126
+              "timing": {
+                "train_seconds": 0.008833736006636173,
+                "predict_seconds": 0.0009632330038584769,
+                "fit_predict_seconds": 0.00979696901049465,
+                "prediction_rows": 619.0,
+                "predict_rows_per_second": 642627.4821568994
+              }
             },
             "xgboost": {
               "status": "ok",
@@ -542,7 +650,13 @@
                 "mae": 0.23775053221831716,
                 "r2": 0.07430260365072461
               },
-              "fit_predict_seconds": 0.03518616600194946
+              "timing": {
+                "train_seconds": 0.009389507991727442,
+                "predict_seconds": 0.0007173289777711034,
+                "fit_predict_seconds": 0.010106836969498545,
+                "prediction_rows": 619.0,
+                "predict_rows_per_second": 862923.4551814249
+              }
             },
             "mean": {
               "status": "ok",
@@ -551,7 +665,13 @@
                 "mae": 0.25600754653913416,
                 "r2": -0.005124130835963303
               },
-              "fit_predict_seconds": 9.29730013012886e-05
+              "timing": {
+                "train_seconds": 3.907602513208985e-05,
+                "predict_seconds": 8.295988664031029e-06,
+                "fit_predict_seconds": 4.737201379612088e-05,
+                "prediction_rows": 619.0,
+                "predict_rows_per_second": 74614373.89419326
+              }
             }
           }
         },
@@ -592,7 +712,13 @@
                 "mae": 0.26854580966478575,
                 "r2": -0.049927338455941106
               },
-              "fit_predict_seconds": 18.85104956498253,
+              "timing": {
+                "train_seconds": 18.545814012992196,
+                "predict_seconds": 0.006190412008436397,
+                "fit_predict_seconds": 18.552004425000632,
+                "prediction_rows": 630.0,
+                "predict_rows_per_second": 101770.28591011802
+              },
               "backend": "rust"
             },
             "lightgbm": {
@@ -602,7 +728,13 @@
                 "mae": 0.26480505258411813,
                 "r2": -0.024560123283043467
               },
-              "fit_predict_seconds": 0.17893573400215246
+              "timing": {
+                "train_seconds": 0.008210221014451236,
+                "predict_seconds": 0.0009416609827894717,
+                "fit_predict_seconds": 0.009151881997240707,
+                "prediction_rows": 630.0,
+                "predict_rows_per_second": 669030.5869249866
+              }
             },
             "xgboost": {
               "status": "ok",
@@ -611,7 +743,13 @@
                 "mae": 0.2632677843286272,
                 "r2": -0.016660832380194668
               },
-              "fit_predict_seconds": 0.009801411011721939
+              "timing": {
+                "train_seconds": 0.009565743996063247,
+                "predict_seconds": 0.000785273005021736,
+                "fit_predict_seconds": 0.010351017001084983,
+                "prediction_rows": 630.0,
+                "predict_rows_per_second": 802268.7599996665
+              }
             },
             "mean": {
               "status": "ok",
@@ -620,7 +758,13 @@
                 "mae": 0.27608440635343695,
                 "r2": -0.018787275311146878
               },
-              "fit_predict_seconds": 9.643999510444701e-05
+              "timing": {
+                "train_seconds": 4.029899719171226e-05,
+                "predict_seconds": 2.2494001314044e-05,
+                "fit_predict_seconds": 6.279299850575626e-05,
+                "prediction_rows": 630.0,
+                "predict_rows_per_second": 28007467.02218174
+              }
             }
           }
         }

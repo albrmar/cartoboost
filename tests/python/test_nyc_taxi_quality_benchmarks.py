@@ -41,6 +41,11 @@ def test_nyc_taxi_quality_benchmark_synthetic_smoke(tmp_path: Path):
             assert np.isfinite(model["metrics"]["rmse"])
             assert np.isfinite(model["metrics"]["mae"])
             assert np.isfinite(model["metrics"]["r2"])
+            assert model["timing"]["train_seconds"] >= 0.0
+            assert model["timing"]["predict_seconds"] >= 0.0
+            assert model["timing"]["fit_predict_seconds"] >= 0.0
+            assert model["timing"]["prediction_rows"] > 0.0
+            assert model["timing"]["predict_rows_per_second"] > 0.0
 
     markdown = (output_dir / "results.md").read_text(encoding="utf-8")
     assert "NYC Taxi Model Quality Benchmarks" in markdown
@@ -51,6 +56,16 @@ def test_nyc_taxi_quality_benchmark_synthetic_smoke(tmp_path: Path):
     assert summary.shape[0] >= 300
     assert summary.shape[1] >= 500
     assert float(np.std(summary[..., :3])) > 0.01
+
+    speed_summary = mpimg.imread(output_dir / "speed_summary.png")
+    assert speed_summary.shape[0] >= 300
+    assert speed_summary.shape[1] >= 500
+    assert float(np.std(speed_summary[..., :3])) > 0.01
+
+    throughput = mpimg.imread(output_dir / "prediction_throughput.png")
+    assert throughput.shape[0] >= 300
+    assert throughput.shape[1] >= 500
+    assert float(np.std(throughput[..., :3])) > 0.01
 
 
 def test_nyc_taxi_quality_benchmark_skips_missing_optional_models(tmp_path: Path):

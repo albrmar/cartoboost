@@ -1,9 +1,9 @@
 # NYC Taxi Quality Benchmarks
 
-`scripts/run_nyc_taxi_quality_benchmarks.py` runs model-quality benchmarks on
-NYC TLC yellow taxi trip-record Parquet files. It compares GeoBoost with
-LightGBM and XGBoost when those packages are installed, and always supports a
-mean-prediction baseline.
+`scripts/run_nyc_taxi_quality_benchmarks.py` runs model-quality and speed
+benchmarks on NYC TLC yellow taxi trip-record Parquet files. It compares
+GeoBoost with LightGBM and XGBoost when those packages are installed, and always
+supports a mean-prediction baseline.
 
 The benchmark writes results and plots to
 `docs/assets/nyc_taxi_benchmarks/` by default.
@@ -61,9 +61,11 @@ uv run --group dev --group bench python scripts/run_nyc_taxi_quality_benchmarks.
 ## Outputs
 
 - `results.json`: machine-readable task, split, metric, parameter, skip, and
-  dataset metadata.
-- `results.md`: human-readable benchmark tables.
+  timing metadata.
+- `results.md`: human-readable quality and speed benchmark tables.
 - `metric_summary.png`: RMSE summary across tasks, splits, and models.
+- `speed_summary.png`: stacked train/predict time summary.
+- `prediction_throughput.png`: prediction rows-per-second summary.
 - `plots/*_predicted_actual.png`: predicted-vs-actual plots.
 - `plots/*_zone_residuals.png`: pickup-zone residual summaries.
 
