@@ -42,7 +42,8 @@ validate:
     cargo bench --workspace --no-run
 
 nyc-quality-benchmark:
-    uv run --group dev --group bench python scripts/run_nyc_taxi_quality_benchmarks.py
+    uv run --group dev maturin develop --release
+    PYTHONPATH=python uv run --group dev --group bench python scripts/run_nyc_taxi_quality_benchmarks.py
 
 clean:
     cargo clean

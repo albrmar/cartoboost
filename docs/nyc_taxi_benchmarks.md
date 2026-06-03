@@ -23,10 +23,12 @@ than only random-row interpolation.
 
 ## Running
 
-Install the native GeoBoost extension first:
+Install the native GeoBoost extension in release mode first. Benchmark timings
+should not use a debug Rust extension when comparing against optimized
+LightGBM/XGBoost wheels:
 
 ```sh
-uv run --group dev maturin develop
+uv run --group dev maturin develop --release
 ```
 
 Sync the optional benchmark dependency group:
