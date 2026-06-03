@@ -216,12 +216,22 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
                     max_depth=native_model.max_depth,
                     min_samples_leaf=native_model.min_samples_leaf,
                     min_gain=native_model.min_gain,
+                    splitters=list(getattr(native_model, "splitters", ["axis"])),
+                    leaf_predictor=str(getattr(native_model, "leaf_predictor", "constant")),
+                    linear_leaf_features=[
+                        str(feature)
+                        for feature in getattr(native_model, "linear_leaf_features", [])
+                    ],
+                    fuzzy=bool(getattr(native_model, "fuzzy", False)),
+                    fuzzy_bandwidth=float(getattr(native_model, "fuzzy_bandwidth", 0.0)),
+                    l2_regularization=float(getattr(native_model, "l2_regularization", 1.0)),
                     backend="auto",
                 )
                 estimator._model = native_model
                 estimator._backend_used = "rust"
                 estimator.n_features_in_ = native_model.feature_count
-                estimator.feature_schema_ = None
+                estimator.feature_schema_ = _json_attr(native_model, "feature_schema_json")
+                estimator.metadata_ = _json_attr(native_model, "metadata_json")
                 estimator.is_fitted_ = True
                 return estimator
 
@@ -268,7 +278,7 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
             splitters = list(self.splitters)
         except TypeError as exc:
             raise ValueError("splitters must be a list of splitter names") from exc
-        unknown = [splitter for splitter in splitters if splitter not in _VALID_SPLITTERS]
+        unknown = [splitter for splitter in splitters if not _is_valid_splitter_name(splitter)]
         if unknown:
             raise ValueError(f"unknown splitter(s): {unknown}")
 
@@ -428,6 +438,27 @@ def _feature_schema_metadata(feature_schema: Any | None) -> Any | None:
         "type": type(feature_schema).__name__,
         "repr": repr(feature_schema),
     }
+
+
+def _json_attr(model: Any, attr: str) -> Any | None:
+    payload = getattr(model, attr, None)
+    if payload is None:
+        return None
+    return json.loads(payload)
+
+
+def _is_valid_splitter_name(splitter: Any) -> bool:
+    if not isinstance(splitter, str):
+        return False
+    if splitter in _VALID_SPLITTERS:
+        return True
+    if not splitter.startswith("periodic:"):
+        return False
+    try:
+        period = float(splitter.removeprefix("periodic:"))
+    except ValueError:
+        return False
+    return math.isfinite(period) and period > 0.0
 
 
 def _fit_native(

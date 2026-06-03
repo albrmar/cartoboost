@@ -93,10 +93,7 @@ impl Booster {
                 .collect::<Vec<_>>();
             let tree = builder.fit(x, &residuals, &weights);
             for (row, prediction) in pred.iter_mut().enumerate() {
-                let values = (0..x.n_cols())
-                    .map(|col| x.get(row, col))
-                    .collect::<Vec<_>>();
-                *prediction += self.config.learning_rate * tree.predict_one(&values);
+                *prediction += self.config.learning_rate * tree.predict_dataset_row(x, row);
             }
             trees.push(tree);
         }
@@ -344,6 +341,41 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn sparse_list_boosting_updates_residuals_with_dataset_aware_prediction() {
+        let dense = Dataset::from_rows(vec![vec![0.0], vec![0.0], vec![0.0], vec![0.0]]).unwrap();
+        let x = dense
+            .with_sparse_sets(vec![crate::data::SparseSetColumn::new(vec![
+                vec![7, 11],
+                vec![11],
+                vec![3],
+                vec![],
+            ])])
+            .unwrap();
+        let y = vec![10.0, 10.0, 0.0, 0.0];
+        let booster = Booster::new(BoosterConfig {
+            n_estimators: 2,
+            learning_rate: 0.5,
+            max_depth: 1,
+            min_samples_leaf: 1,
+            min_gain: 0.0,
+            splitters: vec![SplitterKind::SparseSet],
+            ..BoosterConfig::default()
+        });
+
+        let model = booster.fit(&x, &y, None).unwrap();
+        let predictions = model.predict(&x);
+
+        assert_predictions_close(&predictions, &[8.75, 8.75, 1.25, 1.25]);
+        assert!(model.trees.iter().all(|tree| matches!(
+            tree.root,
+            crate::tree::Node::Branch {
+                split: Split::SparseListContainsAny { .. },
+                ..
+            }
+        )));
     }
 
     #[test]

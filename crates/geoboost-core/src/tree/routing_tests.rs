@@ -1,4 +1,8 @@
-use super::{fuzzy_weights, periodic_contains, periodic_signed_distance, FuzzyKernel, Node, Split};
+use super::{
+    fuzzy_weights, periodic_contains, periodic_signed_distance, FuzzyKernel, Model, Node, Split,
+    Tree, MODEL_ARTIFACT_VERSION,
+};
+use crate::data::{Dataset, SparseSetColumn};
 
 fn assert_close(actual: f64, expected: f64) {
     assert!(
@@ -139,4 +143,113 @@ fn sparse_set_split_routes_integer_id_membership() {
     assert!(split.goes_left(&[11.0]));
     assert!(!split.goes_left(&[12.0]));
     assert!(!split.goes_left(&[11.5]));
+}
+
+#[test]
+fn sparse_list_contains_any_routes_dataset_rows() {
+    let x = Dataset::from_rows(vec![vec![0.0], vec![0.0], vec![0.0]])
+        .unwrap()
+        .with_sparse_sets(vec![SparseSetColumn::new(vec![
+            vec![3, 7],
+            vec![11],
+            vec![],
+        ])])
+        .unwrap();
+    let split = Split::SparseListContainsAny {
+        sparse_feature: 0,
+        ids: vec![7, 13],
+        missing_goes_left: false,
+    };
+
+    assert_close(split.branch_weights_dataset_row(&x, 0).left, 1.0);
+    assert_close(split.branch_weights_dataset_row(&x, 1).right, 1.0);
+    assert_close(split.branch_weights_dataset_row(&x, 2).right, 1.0);
+}
+
+#[test]
+fn sparse_list_duplicate_ids_do_not_change_routing() {
+    let x = Dataset::from_rows(vec![vec![0.0]])
+        .unwrap()
+        .with_sparse_sets(vec![SparseSetColumn::new(vec![vec![7, 7, 3]])])
+        .unwrap();
+    let split = Split::SparseListContainsAny {
+        sparse_feature: 0,
+        ids: vec![7],
+        missing_goes_left: false,
+    };
+
+    assert_eq!(x.sparse_set_row(0, 0), Some(&[3, 7][..]));
+    assert_close(split.branch_weights_dataset_row(&x, 0).left, 1.0);
+}
+
+#[test]
+fn sparse_list_dense_predict_one_path_uses_missing_policy_only() {
+    let node = Node::Branch {
+        split: Split::SparseListContainsAny {
+            sparse_feature: 0,
+            ids: vec![7],
+            missing_goes_left: false,
+        },
+        left: Box::new(Node::Leaf {
+            value: 10.0,
+            sample_weight_sum: 1.0,
+            training_loss: 0.0,
+        }),
+        right: Box::new(Node::Leaf {
+            value: -1.0,
+            sample_weight_sum: 1.0,
+            training_loss: 0.0,
+        }),
+        gain: 0.0,
+        sample_weight_sum: 2.0,
+    };
+
+    assert_close(node.predict_one(&[7.0]), -1.0);
+}
+
+#[test]
+fn sparse_list_save_load_prediction_identity() {
+    let x = Dataset::from_rows(vec![vec![0.0], vec![0.0]])
+        .unwrap()
+        .with_sparse_sets(vec![SparseSetColumn::new(vec![vec![7], vec![]])])
+        .unwrap();
+    let model = Model {
+        artifact_version: MODEL_ARTIFACT_VERSION,
+        metadata: None,
+        init_prediction: 1.0,
+        learning_rate: 1.0,
+        feature_count: 1,
+        feature_schema: Some(x.feature_schema_or_default()),
+        target_name: None,
+        training_config: None,
+        trees: vec![Tree {
+            root: Node::Branch {
+                split: Split::SparseListContainsAny {
+                    sparse_feature: 0,
+                    ids: vec![7],
+                    missing_goes_left: false,
+                },
+                left: Box::new(Node::Leaf {
+                    value: 4.0,
+                    sample_weight_sum: 1.0,
+                    training_loss: 0.0,
+                }),
+                right: Box::new(Node::Leaf {
+                    value: -2.0,
+                    sample_weight_sum: 1.0,
+                    training_loss: 0.0,
+                }),
+                gain: 0.0,
+                sample_weight_sum: 2.0,
+            },
+        }],
+    };
+    let temp_dir = tempfile::tempdir().unwrap();
+    let path = temp_dir.path().join("sparse-list-model.json");
+    let predictions = model.predict(&x);
+
+    model.save(&path).unwrap();
+    let loaded = Model::load(&path).unwrap();
+
+    assert_eq!(loaded.predict(&x), predictions);
 }

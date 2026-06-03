@@ -197,6 +197,36 @@ impl NativeGeoBoostRegressor {
     }
 
     #[getter]
+    fn splitters(&self) -> Vec<String> {
+        self.splitters.clone()
+    }
+
+    #[getter]
+    fn leaf_predictor(&self) -> String {
+        self.leaf_predictor.clone()
+    }
+
+    #[getter]
+    fn linear_leaf_features(&self) -> Vec<usize> {
+        self.linear_leaf_features.clone()
+    }
+
+    #[getter]
+    fn l2_regularization(&self) -> f64 {
+        self.l2_regularization
+    }
+
+    #[getter]
+    fn fuzzy(&self) -> bool {
+        self.fuzzy
+    }
+
+    #[getter]
+    fn fuzzy_bandwidth(&self) -> f64 {
+        self.fuzzy_bandwidth
+    }
+
+    #[getter]
     fn is_fitted(&self) -> bool {
         self.model.is_some()
     }
@@ -207,6 +237,26 @@ impl NativeGeoBoostRegressor {
             .as_ref()
             .map(|model| model.feature_count)
             .unwrap_or(0)
+    }
+
+    #[getter]
+    fn feature_schema_json(&self) -> PyResult<Option<String>> {
+        self.model
+            .as_ref()
+            .and_then(|model| model.feature_schema.as_ref())
+            .map(serde_json::to_string)
+            .transpose()
+            .map_err(|err| PyValueError::new_err(err.to_string()))
+    }
+
+    #[getter]
+    fn metadata_json(&self) -> PyResult<Option<String>> {
+        self.model
+            .as_ref()
+            .and_then(|model| model.metadata.as_ref())
+            .map(serde_json::to_string)
+            .transpose()
+            .map_err(|err| PyValueError::new_err(err.to_string()))
     }
 }
 
