@@ -84,7 +84,13 @@ jobs:
         uses: PyO3/maturin-action@v1
         with:
           command: build
-          args: --release --out dist
+          args: >-
+            --release
+            --out dist
+            --interpreter python3.10
+            --interpreter python3.11
+            --interpreter python3.12
+            --interpreter python3.13
           manylinux: auto
 
       - name: Upload wheels
