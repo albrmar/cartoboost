@@ -109,6 +109,11 @@ pub enum Split {
         ids: Vec<u64>,
         missing_goes_left: bool,
     },
+    SparseListContainsAny {
+        sparse_feature: usize,
+        ids: Vec<u64>,
+        missing_goes_left: bool,
+    },
     Fuzzy {
         base: Box<Split>,
         bandwidth: f64,
@@ -151,14 +156,18 @@ impl Model {
                 .sum::<f64>()
     }
 
+    pub fn predict_dataset_row(&self, x: &Dataset, row: usize) -> f64 {
+        self.init_prediction
+            + self
+                .trees
+                .iter()
+                .map(|tree| self.learning_rate * tree.predict_dataset_row(x, row))
+                .sum::<f64>()
+    }
+
     pub fn predict(&self, x: &Dataset) -> Vec<f64> {
         (0..x.n_rows())
-            .map(|row| {
-                let values = (0..x.n_cols())
-                    .map(|col| x.get(row, col))
-                    .collect::<Vec<_>>();
-                self.predict_one(&values)
-            })
+            .map(|row| self.predict_dataset_row(x, row))
             .collect()
     }
 
@@ -182,6 +191,10 @@ impl Tree {
     pub fn predict_one(&self, row: &[f64]) -> f64 {
         self.root.predict_one(row)
     }
+
+    pub fn predict_dataset_row(&self, x: &Dataset, row: usize) -> f64 {
+        self.root.predict_dataset_row(x, row)
+    }
 }
 
 impl Node {
@@ -194,6 +207,23 @@ impl Node {
             } => {
                 let weights = split.branch_weights(row);
                 weights.left * left.predict_one(row) + weights.right * right.predict_one(row)
+            }
+        }
+    }
+
+    pub fn predict_dataset_row(&self, x: &Dataset, row: usize) -> f64 {
+        match self {
+            Node::Leaf { value, .. } => *value,
+            Node::LinearLeaf { model, .. } => {
+                let dense = dense_row(x, row);
+                model.predict(&dense).unwrap_or(model.intercept)
+            }
+            Node::Branch {
+                split, left, right, ..
+            } => {
+                let weights = split.branch_weights_dataset_row(x, row);
+                weights.left * left.predict_dataset_row(x, row)
+                    + weights.right * right.predict_dataset_row(x, row)
             }
         }
     }
@@ -214,6 +244,19 @@ impl Split {
                 .map(|distance| fuzzy_weights(distance, *bandwidth))
                 .unwrap_or_else(|| base.hard_branch_weights(row)),
             _ => self.hard_branch_weights(row),
+        }
+    }
+
+    pub fn branch_weights_dataset_row(&self, x: &Dataset, row: usize) -> BranchWeights {
+        let dense = dense_row(x, row);
+        match self {
+            Split::Fuzzy {
+                base, bandwidth, ..
+            } => base
+                .signed_distance_dataset_row(x, row, &dense)
+                .map(|distance| fuzzy_weights(distance, *bandwidth))
+                .unwrap_or_else(|| base.hard_branch_weights_dataset_row(x, row, &dense)),
+            _ => self.hard_branch_weights_dataset_row(x, row, &dense),
         }
     }
 
@@ -276,7 +319,57 @@ impl Split {
                     .is_finite()
                     .then_some(periodic_signed_distance(value, *period, *start, *end))
             }
-            Split::SparseSetContainsAny { .. } | Split::Fuzzy { .. } => None,
+            Split::SparseSetContainsAny { .. }
+            | Split::SparseListContainsAny { .. }
+            | Split::Fuzzy { .. } => None,
+        }
+    }
+
+    fn signed_distance_dataset_row(
+        &self,
+        x: &Dataset,
+        row_index: usize,
+        dense_row: &[f64],
+    ) -> Option<f64> {
+        match self {
+            Split::SparseListContainsAny { .. } => None,
+            _ => {
+                let _ = (x, row_index);
+                self.signed_distance(dense_row)
+            }
+        }
+    }
+
+    fn hard_branch_weights_dataset_row(
+        &self,
+        x: &Dataset,
+        row_index: usize,
+        dense_row: &[f64],
+    ) -> BranchWeights {
+        let goes_left = match self {
+            Split::SparseListContainsAny {
+                sparse_feature,
+                ids,
+                missing_goes_left,
+            } => {
+                if ids.is_empty() {
+                    *missing_goes_left
+                } else {
+                    x.sparse_set_contains_any(row_index, *sparse_feature, ids)
+                }
+            }
+            _ => self.hard_goes_left(dense_row),
+        };
+        if goes_left {
+            BranchWeights {
+                left: 1.0,
+                right: 0.0,
+            }
+        } else {
+            BranchWeights {
+                left: 0.0,
+                right: 1.0,
+            }
         }
     }
 
@@ -314,9 +407,16 @@ impl Split {
                 .filter(|value| value.is_finite())
                 .map(|value| sparse_set_value_contains_any(*value, ids))
                 .unwrap_or(*missing_goes_left),
+            Split::SparseListContainsAny {
+                missing_goes_left, ..
+            } => *missing_goes_left,
             Split::Fuzzy { base, .. } => base.hard_goes_left(row),
         }
     }
+}
+
+fn dense_row(x: &Dataset, row: usize) -> Vec<f64> {
+    (0..x.n_cols()).map(|col| x.get(row, col)).collect()
 }
 
 pub fn sparse_set_value_contains_any(value: f64, ids: &[u64]) -> bool {

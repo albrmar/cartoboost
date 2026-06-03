@@ -1,3 +1,4 @@
+use super::{FeatureKind, FeatureSchema, SparseSetColumn};
 use crate::{GeoBoostError, Result};
 use serde::{Deserialize, Serialize};
 
@@ -6,6 +7,10 @@ pub struct Dataset {
     rows: usize,
     cols: usize,
     values: Vec<f64>,
+    #[serde(default)]
+    sparse_sets: Vec<SparseSetColumn>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    schema: Option<FeatureSchema>,
 }
 
 #[derive(Debug, Copy, Clone)]
@@ -64,7 +69,52 @@ impl Dataset {
                 "dataset values must be finite".to_string(),
             ));
         }
-        Ok(Self { rows, cols, values })
+        Ok(Self {
+            rows,
+            cols,
+            values,
+            sparse_sets: Vec::new(),
+            schema: None,
+        })
+    }
+
+    pub fn with_sparse_sets(mut self, sparse_sets: Vec<SparseSetColumn>) -> Result<Self> {
+        for (idx, column) in sparse_sets.iter().enumerate() {
+            if column.len() != self.rows {
+                return Err(GeoBoostError::InvalidInput(format!(
+                    "sparse set column {idx} has {} rows but dense matrix has {} rows",
+                    column.len(),
+                    self.rows
+                )));
+            }
+        }
+        self.sparse_sets = sparse_sets;
+        Ok(self)
+    }
+
+    pub fn with_schema(mut self, schema: FeatureSchema) -> Result<Self> {
+        schema.validate()?;
+        let expected = self.cols + self.sparse_sets.len();
+        if !schema.is_empty() && schema.len() != expected {
+            return Err(GeoBoostError::InvalidInput(format!(
+                "feature schema length {} does not match dataset feature count {expected}",
+                schema.len()
+            )));
+        }
+        self.schema = Some(schema);
+        Ok(self)
+    }
+
+    pub fn mixed(
+        dense_rows: Vec<Vec<f64>>,
+        sparse_sets: Vec<SparseSetColumn>,
+        schema: Option<FeatureSchema>,
+    ) -> Result<Self> {
+        let dataset = Self::from_rows(dense_rows)?.with_sparse_sets(sparse_sets)?;
+        match schema {
+            Some(schema) => dataset.with_schema(schema),
+            None => Ok(dataset),
+        }
     }
 
     pub fn n_rows(&self) -> usize {
@@ -75,8 +125,40 @@ impl Dataset {
         self.cols
     }
 
+    pub fn n_sparse_sets(&self) -> usize {
+        self.sparse_sets.len()
+    }
+
+    pub fn feature_schema(&self) -> Option<&FeatureSchema> {
+        self.schema.as_ref()
+    }
+
+    pub fn feature_schema_or_default(&self) -> FeatureSchema {
+        self.schema.clone().unwrap_or_else(|| {
+            let mut names = (0..self.cols)
+                .map(|idx| format!("feature_{idx}"))
+                .collect::<Vec<_>>();
+            let mut kinds = vec![FeatureKind::Numeric; self.cols];
+            names.extend((0..self.sparse_sets.len()).map(|idx| format!("sparse_set_{idx}")));
+            kinds.extend(vec![FeatureKind::SparseSet; self.sparse_sets.len()]);
+            FeatureSchema { names, kinds }
+        })
+    }
+
     pub fn get(&self, row: usize, col: usize) -> f64 {
         self.values[row * self.cols + col]
+    }
+
+    pub fn sparse_set_row(&self, row: usize, sparse_col: usize) -> Option<&[u64]> {
+        self.sparse_sets
+            .get(sparse_col)
+            .and_then(|column| column.row(row))
+    }
+
+    pub fn sparse_set_contains_any(&self, row: usize, sparse_col: usize, ids: &[u64]) -> bool {
+        self.sparse_sets
+            .get(sparse_col)
+            .is_some_and(|column| column.contains_any(row, ids.iter().copied()))
     }
 
     pub fn row(&self, row: usize) -> SampleRef<'_> {

@@ -73,9 +73,10 @@ These contracts are the ten highest-priority boundaries for alpha hardening:
 5. Artifact version `1` JSON round trips must preserve predictions across Rust,
    Python, and CLI loaders.
 6. Split artifacts must retain stable routing semantics for axis, diagonal 2D,
-   gaussian/radial 2D, periodic interval, sparse scalar-ID, and fuzzy splits.
-7. Fuzzy prediction must conserve branch mass by keeping left and right weights
-   normalized for every routed sample.
+   gaussian/radial 2D, periodic interval, sparse scalar-ID, list-valued
+   sparse-set, and fuzzy splits.
+7. Fuzzy training and prediction must conserve branch mass by keeping left and
+   right weights normalized for every routed sample.
 8. Linear leaves must use weighted ridge fitting and fall back safely only when
    the fitting path cannot produce a valid model.
 9. Validation artifacts under `target/validation/` must be generated from the
@@ -83,3 +84,11 @@ These contracts are the ten highest-priority boundaries for alpha hardening:
 10. CI must keep routine lint/unit checks separate from native-extension
     validation so matrix tests and rust-backed artifact generation fail at the
     correct boundary.
+
+Additional hardening artifacts now live in:
+
+- `fuzz/` for cargo-fuzz harnesses covering model deserialization, prediction,
+  and small-dataset training.
+- `benches/` for Criterion train/predict/serialize benches.
+- `scripts/compare_baselines.py` for deterministic GeoBoost-vs-sklearn
+  comparison reports.

@@ -67,6 +67,10 @@ make build
 The `test` target runs both the Rust workspace tests and the Python test suite.
 `just validate` additionally installs the PyO3 extension with `maturin develop`
 before running validation scripts that require `GeoBoostRegressor(backend="rust")`.
+Baseline comparison reports can be generated with
+`uv run --group dev python scripts/compare_baselines.py`. Fuzz harnesses for
+model deserialization, prediction, and small-dataset training live under
+`fuzz/` and can be run with `cargo fuzz` when that tool is installed.
 
 ## Continuous Integration
 

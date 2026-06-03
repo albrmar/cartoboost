@@ -79,21 +79,19 @@ Implemented scope:
 5. Diagonal 2D split candidates.
 6. Gaussian/radial 2D split candidates.
 7. Periodic interval split candidates with wraparound handling.
-8. Fuzzy split wrapping and weighted prediction recursion.
+8. Fractional fuzzy split training and weighted prediction recursion.
 9. Weighted ridge linear leaves.
-10. Sparse scalar-ID contains-any split candidates.
+10. Sparse scalar-ID and list-valued contains-any split candidates.
 11. Versioned JSON model serialization.
 12. Rust/Python/CLI prediction workflows.
 13. Validation through `just validate`.
 
 Future hardening:
 
-1. Native list-valued sparse set features for route-cell arrays.
-2. Fully fractional fuzzy training propagation and fuzzy-specific gain scoring.
-3. Artifact migrations beyond artifact version `1`.
-4. scikit-learn and LightGBM comparison reports.
-5. Long-running property and fuzz suites.
-6. Parquet input support for CLI workflows.
+1. Artifact migrations beyond artifact version `1`.
+2. Larger scikit-learn and LightGBM comparison reports.
+3. Long-running property and fuzz suites.
+4. Parquet input support for CLI workflows.
 
 ## Rust Design
 
@@ -155,20 +153,20 @@ Periodic:
 
 - Supports modulo normalization.
 - Supports wraparound intervals such as `22..2`.
-- Current candidate grid targets common day/hour intervals.
+- Uses schema-declared periods when available and observed-value candidates
+  otherwise.
 
 Sparse set:
 
-- Current implementation supports scalar integer-ID columns.
+- Current implementation supports scalar integer-ID columns and native
+  list-valued sparse-set columns.
 - Candidate split is `contains any ID from selected set`, with one ID per
   candidate.
-- Native list/set-valued columns are a future hardening item.
 
 Fuzzy:
 
-- Wraps a learned hard split.
+- Scores fuzzy splits with fractional child weights.
 - Prediction conserves branch mass with left/right weights summing to `1`.
-- Full fractional training propagation is a future hardening item.
 
 ## Leaf Predictor Plan
 
@@ -325,7 +323,7 @@ Milestone 7: sparse high-cardinality splitter
 
 - Contains-any splitter.
 - Candidate ID mining.
-- Scalar-ID support now, native list-valued support later.
+- Scalar-ID and native list-valued route-cell support.
 
 Milestone 8: artifact and CLI
 
@@ -335,8 +333,8 @@ Milestone 8: artifact and CLI
 
 Milestone 9: comparison suite
 
-- scikit-learn comparison.
-- LightGBM comparison.
+- Deterministic scikit-learn comparison script.
+- LightGBM comparison remains future hardening.
 - Synthetic benchmark report.
 - Latency and artifact-size tracking.
 

@@ -220,10 +220,18 @@ fn parse_splitters(names: &[String]) -> PyResult<Vec<SplitterKind>> {
             "periodic_time" | "periodic_24" => SplitterKind::Periodic { period: 24.0 },
             "sparse_set" | "sparse" => SplitterKind::SparseSet,
             _ => {
-                return Err(PyValueError::new_err(format!(
-                    "unknown splitter {name:?}; expected one of 'axis', 'diagonal_2d', \
-                     'gaussian_2d', 'periodic_time', or 'sparse_set'"
-                )));
+                if let Some(period) = name
+                    .strip_prefix("periodic:")
+                    .and_then(|period| period.parse::<f64>().ok())
+                    .filter(|period| period.is_finite() && *period > 0.0)
+                {
+                    SplitterKind::Periodic { period }
+                } else {
+                    return Err(PyValueError::new_err(format!(
+                        "unknown splitter {name:?}; expected one of 'axis', 'diagonal_2d', \
+                         'gaussian_2d', 'periodic_time', or 'sparse_set'"
+                    )));
+                }
             }
         };
         splitters.push(splitter);

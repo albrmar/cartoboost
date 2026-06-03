@@ -1,4 +1,4 @@
-use crate::data::{validate_weights, Dataset, FeatureSchema};
+use crate::data::{validate_weights, Dataset};
 use crate::loss::{L2Loss, Loss};
 use crate::tree::{
     LeafPredictorKind, Model, SplitterKind, TrainingConfigMetadata, TreeBuilder,
@@ -107,7 +107,7 @@ impl Booster {
             init_prediction,
             learning_rate: self.config.learning_rate,
             feature_count: x.n_cols(),
-            feature_schema: Some(FeatureSchema::unnamed_numeric(x.n_cols())),
+            feature_schema: Some(x.feature_schema_or_default()),
             target_name: None,
             training_config: Some(TrainingConfigMetadata {
                 n_estimators: self.config.n_estimators,

@@ -1,5 +1,5 @@
 use super::{sse, Node, Split, Tree};
-use crate::data::Dataset;
+use crate::data::{Dataset, FeatureKind};
 use crate::predictors::LinearLeafPredictor;
 use serde::{Deserialize, Serialize};
 
@@ -187,6 +187,9 @@ impl TreeBuilder {
         best: &mut Option<BestSplit>,
     ) {
         for feature in 0..x.n_cols() {
+            if !dense_feature_allows_axis(x, feature) {
+                continue;
+            }
             let mut pairs = indices
                 .iter()
                 .filter_map(|&idx| {
@@ -227,7 +230,13 @@ impl TreeBuilder {
         }
         let normals = [(1.0, 1.0), (1.0, -1.0), (-1.0, 1.0)];
         for x_feature in 0..x.n_cols() {
+            if !dense_feature_allows_spatial(x, x_feature) {
+                continue;
+            }
             for y_feature in (x_feature + 1)..x.n_cols() {
+                if !dense_feature_allows_spatial(x, y_feature) {
+                    continue;
+                }
                 for (normal_x, normal_y) in normals {
                     let mut pairs = indices
                         .iter()
@@ -272,7 +281,13 @@ impl TreeBuilder {
             return;
         }
         for x_feature in 0..x.n_cols() {
+            if !dense_feature_allows_spatial(x, x_feature) {
+                continue;
+            }
             for y_feature in (x_feature + 1)..x.n_cols() {
+                if !dense_feature_allows_spatial(x, y_feature) {
+                    continue;
+                }
                 for (center_x, center_y) in
                     self.gaussian_centers(x, target, weights, indices, x_feature, y_feature)
                 {
@@ -400,16 +415,17 @@ impl TreeBuilder {
             return;
         }
         for feature in 0..x.n_cols() {
-            if !looks_like_periodic_feature(x, indices, feature, period) {
+            let Some(feature_period) = periodic_period_for_feature(x, indices, feature, period)
+            else {
                 continue;
-            }
+            };
             let mut values = indices
                 .iter()
                 .filter_map(|&idx| {
                     let value = x.get(idx, feature);
                     value
                         .is_finite()
-                        .then_some(super::normalize_periodic(value, period))
+                        .then_some(super::normalize_periodic(value, feature_period))
                 })
                 .collect::<Vec<_>>();
             values.sort_by(f64::total_cmp);
@@ -422,8 +438,11 @@ impl TreeBuilder {
             for idx in 0..values.len() {
                 let current = values[idx];
                 let next = values[(idx + 1) % values.len()];
-                let gap = (next - current).rem_euclid(period);
-                boundaries.push(super::normalize_periodic(current + gap / 2.0, period));
+                let gap = (next - current).rem_euclid(feature_period);
+                boundaries.push(super::normalize_periodic(
+                    current + gap / 2.0,
+                    feature_period,
+                ));
             }
 
             for start_idx in 0..boundaries.len() {
@@ -433,7 +452,7 @@ impl TreeBuilder {
                     }
                     let split = Split::PeriodicInterval {
                         feature,
-                        period,
+                        period: feature_period,
                         start: boundaries[start_idx],
                         end: boundaries[end_idx],
                         missing_goes_left: true,
@@ -453,7 +472,32 @@ impl TreeBuilder {
         parent_sse: f64,
         best: &mut Option<BestSplit>,
     ) {
+        for sparse_feature in 0..x.n_sparse_sets() {
+            if !sparse_feature_allows_sparse_set(x, sparse_feature) {
+                continue;
+            }
+            let mut ids = Vec::new();
+            for &idx in indices {
+                if let Some(row_ids) = x.sparse_set_row(idx, sparse_feature) {
+                    ids.extend_from_slice(row_ids);
+                }
+            }
+            ids.sort_unstable();
+            ids.dedup();
+            for id in ids {
+                let split = Split::SparseListContainsAny {
+                    sparse_feature,
+                    ids: vec![id],
+                    missing_goes_left: false,
+                };
+                self.consider_split(split, x, target, weights, indices, parent_sse, best);
+            }
+        }
+
         for feature in 0..x.n_cols() {
+            if !dense_feature_allows_sparse_set(x, feature) {
+                continue;
+            }
             let mut ids = indices
                 .iter()
                 .filter_map(|&idx| {
@@ -500,10 +544,7 @@ impl TreeBuilder {
         let mut left_weights = vec![0.0; weights.len()];
         let mut right_weights = vec![0.0; weights.len()];
         for &idx in indices {
-            let row = (0..x.n_cols())
-                .map(|col| x.get(idx, col))
-                .collect::<Vec<_>>();
-            let branch_weights = scoring_split.branch_weights(&row);
+            let branch_weights = scoring_split.branch_weights_dataset_row(x, idx);
             if branch_weights.left > 0.0 {
                 left.push(idx);
                 left_weights[idx] = weights[idx] * branch_weights.left;
@@ -556,6 +597,60 @@ fn looks_like_periodic_feature(
         count += 1;
     }
     count >= 2 && min <= period * 0.25 && max >= period * 0.75
+}
+
+fn dense_feature_kind(x: &Dataset, feature: usize) -> Option<&FeatureKind> {
+    x.feature_schema()
+        .and_then(|schema| schema.kinds.get(feature))
+}
+
+fn sparse_feature_kind(x: &Dataset, sparse_feature: usize) -> Option<&FeatureKind> {
+    x.feature_schema()
+        .and_then(|schema| schema.kinds.get(x.n_cols() + sparse_feature))
+}
+
+fn dense_feature_allows_axis(x: &Dataset, feature: usize) -> bool {
+    !matches!(dense_feature_kind(x, feature), Some(FeatureKind::SparseSet))
+}
+
+fn dense_feature_allows_spatial(x: &Dataset, feature: usize) -> bool {
+    matches!(
+        dense_feature_kind(x, feature),
+        None | Some(FeatureKind::Numeric)
+    )
+}
+
+fn dense_feature_allows_sparse_set(x: &Dataset, feature: usize) -> bool {
+    match x.feature_schema() {
+        Some(_) => matches!(dense_feature_kind(x, feature), Some(FeatureKind::SparseSet)),
+        None => true,
+    }
+}
+
+fn sparse_feature_allows_sparse_set(x: &Dataset, sparse_feature: usize) -> bool {
+    match x.feature_schema() {
+        Some(_) => matches!(
+            sparse_feature_kind(x, sparse_feature),
+            Some(FeatureKind::SparseSet)
+        ),
+        None => true,
+    }
+}
+
+fn periodic_period_for_feature(
+    x: &Dataset,
+    indices: &[usize],
+    feature: usize,
+    requested_period: f64,
+) -> Option<f64> {
+    match x.feature_schema() {
+        Some(_) => match dense_feature_kind(x, feature) {
+            Some(FeatureKind::Periodic { period }) => Some(*period as f64),
+            _ => None,
+        },
+        None => looks_like_periodic_feature(x, indices, feature, requested_period)
+            .then_some(requested_period),
+    }
 }
 
 fn is_better_split(gain: f64, split: &Split, old: &BestSplit) -> bool {
@@ -669,5 +764,87 @@ mod tests {
             }
             other => panic!("expected branch root, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn sparse_set_splitter_trains_on_list_valued_rows() {
+        let dense = Dataset::from_rows(vec![vec![0.0], vec![0.0], vec![0.0], vec![0.0]]).unwrap();
+        let x = dense
+            .with_sparse_sets(vec![crate::data::SparseSetColumn::new(vec![
+                vec![10, 20],
+                vec![20, 30],
+                vec![40],
+                vec![],
+            ])])
+            .unwrap();
+        let y = vec![7.0, 7.0, -2.0, -2.0];
+        let weights = vec![1.0; y.len()];
+        let builder = TreeBuilder {
+            max_depth: 1,
+            min_samples_leaf: 1,
+            min_gain: 0.0,
+            splitters: vec![SplitterKind::SparseSet],
+            leaf_predictor: LeafPredictorKind::Constant,
+            linear_leaf_features: Vec::new(),
+            linear_lambda_l2: 1.0,
+            fuzzy: false,
+            fuzzy_bandwidth: 0.0,
+        };
+
+        let tree = builder.fit(&x, &y, &weights);
+
+        assert_eq!(
+            (0..x.n_rows())
+                .map(|row| tree.predict_dataset_row(&x, row))
+                .collect::<Vec<_>>(),
+            y
+        );
+        assert!(matches!(
+            tree.root,
+            Node::Branch {
+                split: Split::SparseListContainsAny { .. },
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn schema_declared_periodic_feature_does_not_need_full_observed_cycle() {
+        let x = Dataset::from_rows(vec![vec![7.0], vec![8.0], vec![9.0], vec![10.0]])
+            .unwrap()
+            .with_schema(crate::data::FeatureSchema {
+                names: vec!["hour".to_string()],
+                kinds: vec![FeatureKind::Periodic { period: 24 }],
+            })
+            .unwrap();
+        let y = vec![3.0, 3.0, -1.0, -1.0];
+        let weights = vec![1.0; y.len()];
+        let builder = TreeBuilder {
+            max_depth: 1,
+            min_samples_leaf: 1,
+            min_gain: 0.0,
+            splitters: vec![SplitterKind::Periodic { period: 24.0 }],
+            leaf_predictor: LeafPredictorKind::Constant,
+            linear_leaf_features: Vec::new(),
+            linear_lambda_l2: 1.0,
+            fuzzy: false,
+            fuzzy_bandwidth: 0.0,
+        };
+
+        let tree = builder.fit(&x, &y, &weights);
+
+        assert_eq!(
+            (0..x.n_rows())
+                .map(|row| tree.predict_dataset_row(&x, row))
+                .collect::<Vec<_>>(),
+            y
+        );
+        assert!(matches!(
+            tree.root,
+            Node::Branch {
+                split: Split::PeriodicInterval { .. },
+                ..
+            }
+        ));
     }
 }
