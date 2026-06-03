@@ -23,6 +23,9 @@ except ImportError:  # pragma: no cover - exercised when extension is unavailabl
 
 _VALID_SPLITTERS = {
     "axis",
+    "axis_histogram",
+    "axis_hist",
+    "histogram",
     "diagonal_2d",
     "diagonal2d",
     "gaussian_2d",
@@ -818,6 +821,12 @@ def _is_valid_splitter_name(splitter: Any) -> bool:
         return False
     if splitter in _VALID_SPLITTERS:
         return True
+    if splitter.startswith("axis_histogram:") or splitter.startswith("axis_hist:"):
+        try:
+            bins = int(splitter.split(":", 1)[1])
+        except ValueError:
+            return False
+        return bins >= 2
     if not splitter.startswith("periodic:"):
         return False
     try:

@@ -386,12 +386,22 @@ fn parse_splitters(names: &[String]) -> PyResult<Vec<SplitterKind>> {
     for name in names {
         let splitter = match name.as_str() {
             "axis" => SplitterKind::Axis,
+            "axis_histogram" | "axis_hist" | "histogram" => {
+                SplitterKind::AxisHistogram { bins: 64 }
+            }
             "diagonal_2d" | "diagonal2d" => SplitterKind::Diagonal2D,
             "gaussian_2d" | "gaussian2d" | "radial" => SplitterKind::Gaussian2D,
             "periodic_time" | "periodic_24" => SplitterKind::Periodic { period: 24.0 },
             "sparse_set" | "sparse" => SplitterKind::SparseSet,
             _ => {
-                if let Some(period) = name
+                if let Some(bins) = name
+                    .strip_prefix("axis_histogram:")
+                    .or_else(|| name.strip_prefix("axis_hist:"))
+                    .and_then(|bins| bins.parse::<usize>().ok())
+                    .filter(|bins| *bins >= 2)
+                {
+                    SplitterKind::AxisHistogram { bins }
+                } else if let Some(period) = name
                     .strip_prefix("periodic:")
                     .and_then(|period| period.parse::<f64>().ok())
                     .filter(|period| period.is_finite() && *period > 0.0)
@@ -399,8 +409,8 @@ fn parse_splitters(names: &[String]) -> PyResult<Vec<SplitterKind>> {
                     SplitterKind::Periodic { period }
                 } else {
                     return Err(PyValueError::new_err(format!(
-                        "unknown splitter {name:?}; expected one of 'axis', 'diagonal_2d', \
-                         'gaussian_2d', 'periodic_time', or 'sparse_set'"
+                        "unknown splitter {name:?}; expected one of 'axis', 'axis_histogram', \
+                         'diagonal_2d', 'gaussian_2d', 'periodic_time', or 'sparse_set'"
                     )));
                 }
             }
@@ -429,6 +439,7 @@ fn splitter_names(splitters: &[SplitterKind]) -> Vec<String> {
         .iter()
         .map(|splitter| match splitter {
             SplitterKind::Axis => "axis".to_string(),
+            SplitterKind::AxisHistogram { bins } => format!("axis_histogram:{bins}"),
             SplitterKind::Diagonal2D => "diagonal_2d".to_string(),
             SplitterKind::Gaussian2D => "gaussian_2d".to_string(),
             SplitterKind::Periodic { period } if (*period - 24.0).abs() < 1e-12 => {

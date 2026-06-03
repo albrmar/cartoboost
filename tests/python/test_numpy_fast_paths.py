@@ -174,3 +174,24 @@ def test_native_numpy_fast_paths_match_native_list_paths_exactly():
         array_model.predict_arrays(np.asarray(x, dtype=np.float64), sparse_offsets, sparse_ids)
     )
     assert fast_predictions == pytest.approx(list_model.predict(x, sparse_sets))
+
+
+def test_axis_histogram_splitter_is_accepted_by_python_api():
+    model = GeoBoostRegressor(
+        n_estimators=2,
+        learning_rate=0.5,
+        max_depth=1,
+        min_samples_leaf=1,
+        min_gain=0.0,
+        splitters=["axis_histogram:8"],
+        backend="rust",
+    )
+
+    _fit_or_skip(
+        model,
+        np.asarray([[0.0], [1.0], [2.0], [3.0]], dtype=np.float64),
+        np.asarray([0.0, 0.0, 2.0, 2.0], dtype=np.float64),
+    )
+
+    predictions = model.predict(np.asarray([[0.0], [3.0]], dtype=np.float64))
+    assert predictions[0] < predictions[1]

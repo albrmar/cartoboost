@@ -10,271 +10,271 @@
       "runs": [
         {
           "run": 1.0,
-          "geoboost_train_seconds": 2.0401738330256194,
-          "geoboost_predict_rows_per_second": 901469.3897126447,
-          "train_ratio_vs_fastest": 42.619455846914555,
-          "predict_rps_ratio_vs_fastest": 0.47888307616860415
+          "geoboost_train_seconds": 0.8399879580247216,
+          "geoboost_predict_rows_per_second": 856659.4562450821,
+          "train_ratio_vs_fastest": 18.54887134493853,
+          "predict_rps_ratio_vs_fastest": 0.4409510711685585
         },
         {
           "run": 2.0,
-          "geoboost_train_seconds": 2.043366791040171,
-          "geoboost_predict_rows_per_second": 879314.1363025701,
-          "train_ratio_vs_fastest": 58.8673537133328,
-          "predict_rps_ratio_vs_fastest": 0.32084713789412034
+          "geoboost_train_seconds": 0.8172970000305213,
+          "geoboost_predict_rows_per_second": 888928.3985903331,
+          "train_ratio_vs_fastest": 22.951414466981195,
+          "predict_rps_ratio_vs_fastest": 0.3388445657949607
         },
         {
           "run": 3.0,
-          "geoboost_train_seconds": 2.106596041994635,
-          "geoboost_predict_rows_per_second": 872346.7146177337,
-          "train_ratio_vs_fastest": 58.662466550412006,
-          "predict_rps_ratio_vs_fastest": 0.32484010849597833
+          "geoboost_train_seconds": 0.8202189999865368,
+          "geoboost_predict_rows_per_second": 812424.6371813043,
+          "train_ratio_vs_fastest": 22.342696520539462,
+          "predict_rps_ratio_vs_fastest": 0.3014298527129122
         },
         {
           "run": 4.0,
-          "geoboost_train_seconds": 2.030116167035885,
-          "geoboost_predict_rows_per_second": 924926.672030349,
-          "train_ratio_vs_fastest": 59.020652974977736,
-          "predict_rps_ratio_vs_fastest": 0.32641439485431056
+          "geoboost_train_seconds": 0.8543952920008451,
+          "geoboost_predict_rows_per_second": 799957.3804792876,
+          "train_ratio_vs_fastest": 22.220967561440023,
+          "predict_rps_ratio_vs_fastest": 0.32588263746149965
         },
         {
           "run": 5.0,
-          "geoboost_train_seconds": 2.085251957993023,
-          "geoboost_predict_rows_per_second": 864696.6002145793,
-          "train_ratio_vs_fastest": 59.65390381374805,
-          "predict_rps_ratio_vs_fastest": 0.3180354052366545
+          "geoboost_train_seconds": 0.8228854999761097,
+          "geoboost_predict_rows_per_second": 873273.5159124609,
+          "train_ratio_vs_fastest": 21.93698367888188,
+          "predict_rps_ratio_vs_fastest": 0.3518710718849159
         }
       ],
-      "median_train_ratio_vs_fastest": 58.8673537133328,
-      "min_train_ratio_vs_fastest": 42.619455846914555,
-      "max_train_ratio_vs_fastest": 59.65390381374805,
-      "median_predict_rps_ratio_vs_fastest": 0.32484010849597833,
-      "min_predict_rps_ratio_vs_fastest": 0.3180354052366545,
-      "max_predict_rps_ratio_vs_fastest": 0.47888307616860415
+      "median_train_ratio_vs_fastest": 22.220967561440023,
+      "min_train_ratio_vs_fastest": 18.54887134493853,
+      "max_train_ratio_vs_fastest": 22.951414466981195,
+      "median_predict_rps_ratio_vs_fastest": 0.3388445657949607,
+      "min_predict_rps_ratio_vs_fastest": 0.3014298527129122,
+      "max_predict_rps_ratio_vs_fastest": 0.4409510711685585
     },
     "duration/spatial_holdout": {
       "runs": [
         {
           "run": 1.0,
-          "geoboost_train_seconds": 1.929224207997322,
-          "geoboost_predict_rows_per_second": 973413.4607561916,
-          "train_ratio_vs_fastest": 58.57679272180447,
-          "predict_rps_ratio_vs_fastest": 0.34481214423771056
+          "geoboost_train_seconds": 0.7877350829658099,
+          "geoboost_predict_rows_per_second": 940214.7194718908,
+          "train_ratio_vs_fastest": 24.048328578533,
+          "predict_rps_ratio_vs_fastest": 0.32605687642953324
         },
         {
           "run": 2.0,
-          "geoboost_train_seconds": 1.939439499983564,
-          "geoboost_predict_rows_per_second": 958071.5533740835,
-          "train_ratio_vs_fastest": 59.03835554127337,
-          "predict_rps_ratio_vs_fastest": 0.3264650572917366
+          "geoboost_train_seconds": 0.7822184579563327,
+          "geoboost_predict_rows_per_second": 958561.0255103433,
+          "train_ratio_vs_fastest": 23.674206364373592,
+          "predict_rps_ratio_vs_fastest": 0.33344760381393973
         },
         {
           "run": 3.0,
-          "geoboost_train_seconds": 2.037383040995337,
-          "geoboost_predict_rows_per_second": 944136.2789840734,
-          "train_ratio_vs_fastest": 61.941597899532354,
-          "predict_rps_ratio_vs_fastest": 0.3276221181275402
+          "geoboost_train_seconds": 0.7899255839874968,
+          "geoboost_predict_rows_per_second": 908047.856369674,
+          "train_ratio_vs_fastest": 23.910873190712568,
+          "predict_rps_ratio_vs_fastest": 0.31579954774436275
         },
         {
           "run": 4.0,
-          "geoboost_train_seconds": 1.9228230419685133,
-          "geoboost_predict_rows_per_second": 1012201.0900728615,
-          "train_ratio_vs_fastest": 58.90377920422715,
-          "predict_rps_ratio_vs_fastest": 0.3426101394341377
+          "geoboost_train_seconds": 0.7940902090049349,
+          "geoboost_predict_rows_per_second": 920360.3272160342,
+          "train_ratio_vs_fastest": 23.99480902710948,
+          "predict_rps_ratio_vs_fastest": 0.31815176885268376
         },
         {
           "run": 5.0,
-          "geoboost_train_seconds": 1.9342830000096,
-          "geoboost_predict_rows_per_second": 835709.6420353831,
-          "train_ratio_vs_fastest": 58.87959459132674,
-          "predict_rps_ratio_vs_fastest": 0.2877469779887301
+          "geoboost_train_seconds": 0.7969970839913003,
+          "geoboost_predict_rows_per_second": 880965.170896483,
+          "train_ratio_vs_fastest": 24.029066397737598,
+          "predict_rps_ratio_vs_fastest": 0.32278210399453394
         }
       ],
-      "median_train_ratio_vs_fastest": 58.90377920422715,
-      "min_train_ratio_vs_fastest": 58.57679272180447,
-      "max_train_ratio_vs_fastest": 61.941597899532354,
-      "median_predict_rps_ratio_vs_fastest": 0.3276221181275402,
-      "min_predict_rps_ratio_vs_fastest": 0.2877469779887301,
-      "max_predict_rps_ratio_vs_fastest": 0.34481214423771056
+      "median_train_ratio_vs_fastest": 23.99480902710948,
+      "min_train_ratio_vs_fastest": 23.674206364373592,
+      "max_train_ratio_vs_fastest": 24.048328578533,
+      "median_predict_rps_ratio_vs_fastest": 0.32278210399453394,
+      "min_predict_rps_ratio_vs_fastest": 0.31579954774436275,
+      "max_predict_rps_ratio_vs_fastest": 0.33344760381393973
     },
     "fare/random": {
       "runs": [
         {
           "run": 1.0,
-          "geoboost_train_seconds": 2.182694041985087,
-          "geoboost_predict_rows_per_second": 924057.7913370397,
-          "train_ratio_vs_fastest": 62.855354281319734,
-          "predict_rps_ratio_vs_fastest": 0.33360797099396006
+          "geoboost_train_seconds": 0.8484404999762774,
+          "geoboost_predict_rows_per_second": 857424.5266526404,
+          "train_ratio_vs_fastest": 24.59731998419633,
+          "predict_rps_ratio_vs_fastest": 0.30706516601791706
         },
         {
           "run": 2.0,
-          "geoboost_train_seconds": 2.2275987089960836,
-          "geoboost_predict_rows_per_second": 871428.1020740826,
-          "train_ratio_vs_fastest": 62.2659667141634,
-          "predict_rps_ratio_vs_fastest": 0.3369087418021349
+          "geoboost_train_seconds": 0.8525288749951869,
+          "geoboost_predict_rows_per_second": 880462.4351019163,
+          "train_ratio_vs_fastest": 24.884421245264726,
+          "predict_rps_ratio_vs_fastest": 0.3107151915520062
         },
         {
           "run": 3.0,
-          "geoboost_train_seconds": 2.195659374992829,
-          "geoboost_predict_rows_per_second": 854183.8149350832,
-          "train_ratio_vs_fastest": 63.796012046534955,
-          "predict_rps_ratio_vs_fastest": 0.31322202388234593
+          "geoboost_train_seconds": 0.9038277500076219,
+          "geoboost_predict_rows_per_second": 794344.273056915,
+          "train_ratio_vs_fastest": 25.712870875323883,
+          "predict_rps_ratio_vs_fastest": 0.30219509972592046
         },
         {
           "run": 4.0,
-          "geoboost_train_seconds": 2.1747601670213044,
-          "geoboost_predict_rows_per_second": 889297.2501177086,
-          "train_ratio_vs_fastest": 63.467229916937505,
-          "predict_rps_ratio_vs_fastest": 0.31125403679579766
+          "geoboost_train_seconds": 0.893046332988888,
+          "geoboost_predict_rows_per_second": 863719.4209323503,
+          "train_ratio_vs_fastest": 25.890466514188553,
+          "predict_rps_ratio_vs_fastest": 0.3079303138223228
         },
         {
           "run": 5.0,
-          "geoboost_train_seconds": 2.251165541994851,
-          "geoboost_predict_rows_per_second": 469584.58318130486,
-          "train_ratio_vs_fastest": 55.09893046607673,
-          "predict_rps_ratio_vs_fastest": 0.21826291435223663
+          "geoboost_train_seconds": 0.8567604579729959,
+          "geoboost_predict_rows_per_second": 825695.6473434919,
+          "train_ratio_vs_fastest": 24.933309710179994,
+          "predict_rps_ratio_vs_fastest": 0.2868397299472133
         }
       ],
-      "median_train_ratio_vs_fastest": 62.855354281319734,
-      "min_train_ratio_vs_fastest": 55.09893046607673,
-      "max_train_ratio_vs_fastest": 63.796012046534955,
-      "median_predict_rps_ratio_vs_fastest": 0.31322202388234593,
-      "min_predict_rps_ratio_vs_fastest": 0.21826291435223663,
-      "max_predict_rps_ratio_vs_fastest": 0.3369087418021349
+      "median_train_ratio_vs_fastest": 24.933309710179994,
+      "min_train_ratio_vs_fastest": 24.59731998419633,
+      "max_train_ratio_vs_fastest": 25.890466514188553,
+      "median_predict_rps_ratio_vs_fastest": 0.30706516601791706,
+      "min_predict_rps_ratio_vs_fastest": 0.2868397299472133,
+      "max_predict_rps_ratio_vs_fastest": 0.3107151915520062
     },
     "fare/spatial_holdout": {
       "runs": [
         {
           "run": 1.0,
-          "geoboost_train_seconds": 2.096950499981176,
-          "geoboost_predict_rows_per_second": 938593.3722028751,
-          "train_ratio_vs_fastest": 63.78322085607103,
-          "predict_rps_ratio_vs_fastest": 0.33381384363028527
+          "geoboost_train_seconds": 0.8089474169537425,
+          "geoboost_predict_rows_per_second": 954806.5712296544,
+          "train_ratio_vs_fastest": 24.81443308695543,
+          "predict_rps_ratio_vs_fastest": 0.3299052708609424
         },
         {
           "run": 2.0,
-          "geoboost_train_seconds": 2.1032864170265384,
-          "geoboost_predict_rows_per_second": 990058.2616269756,
-          "train_ratio_vs_fastest": 64.2373597563807,
-          "predict_rps_ratio_vs_fastest": 0.34010000828840836
+          "geoboost_train_seconds": 0.8052982919616625,
+          "geoboost_predict_rows_per_second": 931092.570053986,
+          "train_ratio_vs_fastest": 24.493127326477822,
+          "predict_rps_ratio_vs_fastest": 0.3220054008828903
         },
         {
           "run": 3.0,
-          "geoboost_train_seconds": 2.143679000029806,
-          "geoboost_predict_rows_per_second": 1002855.1483436872,
-          "train_ratio_vs_fastest": 65.86612787958396,
-          "predict_rps_ratio_vs_fastest": 0.36636617493228923
+          "geoboost_train_seconds": 0.8202134579769336,
+          "geoboost_predict_rows_per_second": 902793.6509134854,
+          "train_ratio_vs_fastest": 24.987906354100133,
+          "predict_rps_ratio_vs_fastest": 0.314769900240395
         },
         {
           "run": 4.0,
-          "geoboost_train_seconds": 2.097549957979936,
-          "geoboost_predict_rows_per_second": 1021188.8988841474,
-          "train_ratio_vs_fastest": 64.39288581792196,
-          "predict_rps_ratio_vs_fastest": 0.3445997035631858
+          "geoboost_train_seconds": 0.8194935000501573,
+          "geoboost_predict_rows_per_second": 960834.2763175998,
+          "train_ratio_vs_fastest": 24.191838589740772,
+          "predict_rps_ratio_vs_fastest": 0.33619222682540406
         },
         {
           "run": 5.0,
-          "geoboost_train_seconds": 2.1522512499941513,
-          "geoboost_predict_rows_per_second": 991807.3263467619,
-          "train_ratio_vs_fastest": 65.87490665750137,
-          "predict_rps_ratio_vs_fastest": 0.342133459699822
+          "geoboost_train_seconds": 0.8171275409986265,
+          "geoboost_predict_rows_per_second": 903182.5389150026,
+          "train_ratio_vs_fastest": 25.011109119242274,
+          "predict_rps_ratio_vs_fastest": 0.31026949832391126
         }
       ],
-      "median_train_ratio_vs_fastest": 64.39288581792196,
-      "min_train_ratio_vs_fastest": 63.78322085607103,
-      "max_train_ratio_vs_fastest": 65.87490665750137,
-      "median_predict_rps_ratio_vs_fastest": 0.342133459699822,
-      "min_predict_rps_ratio_vs_fastest": 0.33381384363028527,
-      "max_predict_rps_ratio_vs_fastest": 0.36636617493228923
+      "median_train_ratio_vs_fastest": 24.81443308695543,
+      "min_train_ratio_vs_fastest": 24.191838589740772,
+      "max_train_ratio_vs_fastest": 25.011109119242274,
+      "median_predict_rps_ratio_vs_fastest": 0.3220054008828903,
+      "min_predict_rps_ratio_vs_fastest": 0.31026949832391126,
+      "max_predict_rps_ratio_vs_fastest": 0.33619222682540406
     },
     "pickup_demand/random": {
       "runs": [
         {
           "run": 1.0,
-          "geoboost_train_seconds": 0.40001737501006573,
-          "geoboost_predict_rows_per_second": 1029022.6742909468,
-          "train_ratio_vs_fastest": 44.6986341511622,
-          "predict_rps_ratio_vs_fastest": 0.44485053560240156
+          "geoboost_train_seconds": 0.15007966704433784,
+          "geoboost_predict_rows_per_second": 1046691.4177748039,
+          "train_ratio_vs_fastest": 16.950732456189225,
+          "predict_rps_ratio_vs_fastest": 0.4473340786532247
         },
         {
           "run": 2.0,
-          "geoboost_train_seconds": 0.4043307499960065,
-          "geoboost_predict_rows_per_second": 1133864.7752830575,
-          "train_ratio_vs_fastest": 45.6664504182586,
-          "predict_rps_ratio_vs_fastest": 0.4909355883759429
+          "geoboost_train_seconds": 0.14950437500374392,
+          "geoboost_predict_rows_per_second": 1067158.0810803648,
+          "train_ratio_vs_fastest": 16.73923389551713,
+          "predict_rps_ratio_vs_fastest": 0.4771367837144402
         },
         {
           "run": 3.0,
-          "geoboost_train_seconds": 0.3826562080066651,
-          "geoboost_predict_rows_per_second": 1145116.9737629564,
-          "train_ratio_vs_fastest": 43.347582986744676,
-          "predict_rps_ratio_vs_fastest": 0.481599448020272
+          "geoboost_train_seconds": 0.15200800000457093,
+          "geoboost_predict_rows_per_second": 1089503.1425332767,
+          "train_ratio_vs_fastest": 16.073737444004255,
+          "predict_rps_ratio_vs_fastest": 0.6205627632516876
         },
         {
           "run": 4.0,
-          "geoboost_train_seconds": 0.3876957920147106,
-          "geoboost_predict_rows_per_second": 1220465.976780943,
-          "train_ratio_vs_fastest": 41.757692978903265,
-          "predict_rps_ratio_vs_fastest": 0.6833307545043092
+          "geoboost_train_seconds": 0.15299441601382568,
+          "geoboost_predict_rows_per_second": 1017041.5155877382,
+          "train_ratio_vs_fastest": 17.33009556124429,
+          "predict_rps_ratio_vs_fastest": 0.4435729375740364
         },
         {
           "run": 5.0,
-          "geoboost_train_seconds": 0.3951999999699183,
-          "geoboost_predict_rows_per_second": 1035120.1927299555,
-          "train_ratio_vs_fastest": 44.46298592754866,
-          "predict_rps_ratio_vs_fastest": 0.4450373661354124
+          "geoboost_train_seconds": 0.14971199998399243,
+          "geoboost_predict_rows_per_second": 861535.4516178953,
+          "train_ratio_vs_fastest": 16.028835478657562,
+          "predict_rps_ratio_vs_fastest": 0.3828034204836688
         }
       ],
-      "median_train_ratio_vs_fastest": 44.46298592754866,
-      "min_train_ratio_vs_fastest": 41.757692978903265,
-      "max_train_ratio_vs_fastest": 45.6664504182586,
-      "median_predict_rps_ratio_vs_fastest": 0.481599448020272,
-      "min_predict_rps_ratio_vs_fastest": 0.44485053560240156,
-      "max_predict_rps_ratio_vs_fastest": 0.6833307545043092
+      "median_train_ratio_vs_fastest": 16.73923389551713,
+      "min_train_ratio_vs_fastest": 16.028835478657562,
+      "max_train_ratio_vs_fastest": 17.33009556124429,
+      "median_predict_rps_ratio_vs_fastest": 0.4473340786532247,
+      "min_predict_rps_ratio_vs_fastest": 0.3828034204836688,
+      "max_predict_rps_ratio_vs_fastest": 0.6205627632516876
     },
     "pickup_demand/spatial_holdout": {
       "runs": [
         {
           "run": 1.0,
-          "geoboost_train_seconds": 0.36266387498471886,
-          "geoboost_predict_rows_per_second": 1244611.9341586835,
-          "train_ratio_vs_fastest": 45.03509984597325,
-          "predict_rps_ratio_vs_fastest": 0.5146818106139183
+          "geoboost_train_seconds": 0.13969841599464417,
+          "geoboost_predict_rows_per_second": 1173480.6839797765,
+          "train_ratio_vs_fastest": 17.536283179581446,
+          "predict_rps_ratio_vs_fastest": 0.4852670511788349
         },
         {
           "run": 2.0,
-          "geoboost_train_seconds": 0.3626209590001963,
-          "geoboost_predict_rows_per_second": 1170785.5100797382,
-          "train_ratio_vs_fastest": 44.7740117411367,
-          "predict_rps_ratio_vs_fastest": 0.47606802530818887
+          "geoboost_train_seconds": 0.13838675001170486,
+          "geoboost_predict_rows_per_second": 1246316.0052662399,
+          "train_ratio_vs_fastest": 17.34912674786358,
+          "predict_rps_ratio_vs_fastest": 0.508182435951932
         },
         {
           "run": 3.0,
-          "geoboost_train_seconds": 0.3658385830349289,
-          "geoboost_predict_rows_per_second": 1285887.5983120603,
-          "train_ratio_vs_fastest": 46.345593887954735,
-          "predict_rps_ratio_vs_fastest": 0.5159089261381472
+          "geoboost_train_seconds": 0.1609630420571193,
+          "geoboost_predict_rows_per_second": 1050907.3085699524,
+          "train_ratio_vs_fastest": 16.639371602946053,
+          "predict_rps_ratio_vs_fastest": 0.5042329426142488
         },
         {
           "run": 4.0,
-          "geoboost_train_seconds": 0.3622356249834411,
-          "geoboost_predict_rows_per_second": 1252974.1527130962,
-          "train_ratio_vs_fastest": 45.12667644755904,
-          "predict_rps_ratio_vs_fastest": 0.5078493526433592
+          "geoboost_train_seconds": 0.14074479194823653,
+          "geoboost_predict_rows_per_second": 1264829.7733172548,
+          "train_ratio_vs_fastest": 17.54567087022736,
+          "predict_rps_ratio_vs_fastest": 0.52208327610198
         },
         {
           "run": 5.0,
-          "geoboost_train_seconds": 0.3616737499833107,
-          "geoboost_predict_rows_per_second": 1244815.225382002,
-          "train_ratio_vs_fastest": 44.60358560985237,
-          "predict_rps_ratio_vs_fastest": 0.5150588923029003
+          "geoboost_train_seconds": 0.1408385830000043,
+          "geoboost_predict_rows_per_second": 1248921.9995941208,
+          "train_ratio_vs_fastest": 17.350084539042456,
+          "predict_rps_ratio_vs_fastest": 0.5294653296595804
         }
       ],
-      "median_train_ratio_vs_fastest": 45.03509984597325,
-      "min_train_ratio_vs_fastest": 44.60358560985237,
-      "max_train_ratio_vs_fastest": 46.345593887954735,
-      "median_predict_rps_ratio_vs_fastest": 0.5146818106139183,
-      "min_predict_rps_ratio_vs_fastest": 0.47606802530818887,
-      "max_predict_rps_ratio_vs_fastest": 0.5159089261381472
+      "median_train_ratio_vs_fastest": 17.350084539042456,
+      "min_train_ratio_vs_fastest": 16.639371602946053,
+      "max_train_ratio_vs_fastest": 17.54567087022736,
+      "median_predict_rps_ratio_vs_fastest": 0.508182435951932,
+      "min_predict_rps_ratio_vs_fastest": 0.4852670511788349,
+      "max_predict_rps_ratio_vs_fastest": 0.5294653296595804
     }
   }
 }

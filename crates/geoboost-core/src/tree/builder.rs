@@ -78,6 +78,9 @@ impl FitContext {
 pub enum SplitterKind {
     #[default]
     Axis,
+    AxisHistogram {
+        bins: usize,
+    },
     Diagonal2D,
     Gaussian2D,
     Periodic {
@@ -217,6 +220,9 @@ impl TreeBuilder {
             match splitter {
                 SplitterKind::Axis => self
                     .axis_candidates(x, target, weights, indices, parent_sse, context, &mut best),
+                SplitterKind::AxisHistogram { bins } => self.axis_histogram_candidates(
+                    x, target, weights, indices, parent_sse, bins, &mut best,
+                ),
                 SplitterKind::Diagonal2D => {
                     self.diagonal_candidates(x, target, weights, indices, parent_sse, &mut best)
                 }
@@ -233,6 +239,96 @@ impl TreeBuilder {
         }
 
         best
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn axis_histogram_candidates(
+        &self,
+        x: &Dataset,
+        target: &[f64],
+        weights: &[f64],
+        indices: &[usize],
+        parent_sse: f64,
+        bins: usize,
+        best: &mut Option<BestSplit>,
+    ) {
+        let bins = bins.clamp(2, 1024);
+        for feature in 0..x.n_cols() {
+            if !dense_feature_allows_axis(x, feature) {
+                continue;
+            }
+            let mut min_value = f64::INFINITY;
+            let mut max_value = f64::NEG_INFINITY;
+            for &idx in indices {
+                let value = x.get(idx, feature);
+                if value.is_finite() {
+                    min_value = min_value.min(value);
+                    max_value = max_value.max(value);
+                }
+            }
+            if !min_value.is_finite() || min_value >= max_value {
+                continue;
+            }
+
+            let scale = bins as f64 / (max_value - min_value);
+            let mut stats = vec![CandidateStats::default(); bins];
+            for &idx in indices {
+                let value = x.get(idx, feature);
+                if !value.is_finite() {
+                    continue;
+                }
+                let bin = (((value - min_value) * scale) as usize).min(bins - 1);
+                stats[bin].add_row(idx, target, weights);
+            }
+
+            let total = stats
+                .iter()
+                .fold(CandidateStats::default(), |mut total, item| {
+                    total.count += item.count;
+                    total.weight_sum += item.weight_sum;
+                    total.weighted_target_sum += item.weighted_target_sum;
+                    total.weighted_target_square_sum += item.weighted_target_square_sum;
+                    total
+                });
+            if total.count < self.min_samples_leaf * 2 {
+                continue;
+            }
+
+            let mut left_stats = CandidateStats::default();
+            for (split_bin, bin_stats) in stats.iter().enumerate().take(bins - 1) {
+                left_stats.count += bin_stats.count;
+                left_stats.weight_sum += bin_stats.weight_sum;
+                left_stats.weighted_target_sum += bin_stats.weighted_target_sum;
+                left_stats.weighted_target_square_sum += bin_stats.weighted_target_square_sum;
+                let right_stats = total.minus(&left_stats);
+                if left_stats.count < self.min_samples_leaf
+                    || right_stats.count < self.min_samples_leaf
+                {
+                    continue;
+                }
+                let threshold = min_value + ((split_bin + 1) as f64 / scale);
+                if threshold >= max_value {
+                    continue;
+                }
+                let gain = parent_sse - left_stats.sse() - right_stats.sse();
+                let split = Split::Axis {
+                    feature,
+                    threshold,
+                    missing_goes_left: true,
+                };
+                if best
+                    .as_ref()
+                    .is_some_and(|old| !is_better_split(gain, &split, old))
+                {
+                    continue;
+                }
+                materialize_axis_split(feature, threshold, x, weights, indices, best);
+                if let Some(best) = best.as_mut() {
+                    best.split = split;
+                    best.gain = gain;
+                }
+            }
+        }
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1197,6 +1293,41 @@ fn materialize_dense_sparse_split(
     }
 }
 
+fn materialize_axis_split(
+    feature: usize,
+    threshold: f64,
+    x: &Dataset,
+    weights: &[f64],
+    indices: &[usize],
+    best: &mut Option<BestSplit>,
+) {
+    let mut left = Vec::new();
+    let mut right = Vec::new();
+    let mut left_weights = vec![0.0; weights.len()];
+    let mut right_weights = vec![0.0; weights.len()];
+    for &idx in indices {
+        if x.get(idx, feature) <= threshold {
+            left.push(idx);
+            left_weights[idx] = weights[idx];
+        } else {
+            right.push(idx);
+            right_weights[idx] = weights[idx];
+        }
+    }
+    *best = Some(BestSplit {
+        split: Split::Axis {
+            feature,
+            threshold,
+            missing_goes_left: true,
+        },
+        gain: 0.0,
+        left,
+        right,
+        left_weights,
+        right_weights,
+    });
+}
+
 fn sparse_feature_allows_sparse_set(x: &Dataset, sparse_feature: usize) -> bool {
     match x.feature_schema() {
         Some(_) => matches!(
@@ -1306,6 +1437,43 @@ mod tests {
             }
             other => panic!("expected branch root, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn histogram_axis_splitter_fits_monotonic_stump() {
+        let x = Dataset::from_rows(vec![
+            vec![0.0],
+            vec![1.0],
+            vec![2.0],
+            vec![3.0],
+            vec![4.0],
+            vec![5.0],
+        ])
+        .unwrap();
+        let y = vec![0.0, 0.0, 0.0, 5.0, 5.0, 5.0];
+        let weights = vec![1.0; y.len()];
+        let builder = TreeBuilder {
+            max_depth: 1,
+            min_samples_leaf: 1,
+            min_gain: 0.0,
+            splitters: vec![SplitterKind::AxisHistogram { bins: 4 }],
+            leaf_predictor: LeafPredictorKind::Constant,
+            linear_leaf_features: Vec::new(),
+            linear_lambda_l2: 1.0,
+            fuzzy: false,
+            fuzzy_bandwidth: 0.0,
+        };
+
+        let tree = builder.fit(&x, &y, &weights);
+
+        assert!(matches!(
+            tree.root,
+            Node::Branch {
+                split: Split::Axis { .. },
+                ..
+            }
+        ));
+        assert!(tree.predict_dataset_row(&x, 0) < tree.predict_dataset_row(&x, 5));
     }
 
     #[test]

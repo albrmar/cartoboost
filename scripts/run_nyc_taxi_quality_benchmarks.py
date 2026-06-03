@@ -393,7 +393,7 @@ def fit_predict_model(
             max_depth=args.max_depth,
             min_samples_leaf=min_leaf,
             min_gain=0.0,
-            splitters=["axis", "periodic_time", "sparse_set"],
+            splitters=["axis_histogram:64"],
             backend="rust",
         )
         train_sparse = sparse_subset(task.sparse_sets, train_indices)
