@@ -1,3 +1,4 @@
+use geoboost_core::data::{FeatureSchema, SparseSetColumn};
 use geoboost_core::tree::{LeafPredictorKind, SplitterKind};
 use geoboost_core::{Booster, BoosterConfig, Dataset, GeoBoostError, Model};
 use pyo3::exceptions::{PyIOError, PyRuntimeError, PyValueError};
@@ -68,14 +69,16 @@ impl NativeGeoBoostRegressor {
         })
     }
 
-    #[pyo3(signature = (x, y, sample_weight=None))]
+    #[pyo3(signature = (x, y, sample_weight=None, sparse_sets=None, feature_schema_json=None))]
     fn fit(
         &mut self,
         x: Vec<Vec<f64>>,
         y: Vec<f64>,
         sample_weight: Option<Vec<f64>>,
+        sparse_sets: Option<Vec<Vec<Vec<u64>>>>,
+        feature_schema_json: Option<String>,
     ) -> PyResult<()> {
-        let dataset = dataset_from_rows(x)?;
+        let dataset = dataset_from_parts(x, sparse_sets, feature_schema_json)?;
         let splitters = parse_splitters(&self.splitters)?;
         let leaf_predictor = parse_leaf_predictor(&self.leaf_predictor)?;
         let config = BoosterConfig {
@@ -99,13 +102,18 @@ impl NativeGeoBoostRegressor {
         Ok(())
     }
 
-    fn predict(&self, x: Vec<Vec<f64>>) -> PyResult<Vec<f64>> {
+    #[pyo3(signature = (x, sparse_sets=None))]
+    fn predict(
+        &self,
+        x: Vec<Vec<f64>>,
+        sparse_sets: Option<Vec<Vec<Vec<u64>>>>,
+    ) -> PyResult<Vec<f64>> {
         let model = self
             .model
             .as_ref()
             .ok_or_else(|| PyRuntimeError::new_err("GeoBoostRegressor is not fitted"))?;
-        let dataset = dataset_from_rows(x)?;
-        Ok(model.predict(&dataset))
+        let dataset = dataset_from_parts(x, sparse_sets, None)?;
+        model.try_predict(&dataset).map_err(to_py_value_error)
     }
 
     fn save(&self, path: PathBuf) -> PyResult<()> {
@@ -380,6 +388,30 @@ fn dataset_from_rows(rows: Vec<Vec<f64>>) -> PyResult<Dataset> {
         return Err(PyValueError::new_err("X must contain only finite values"));
     }
     Dataset::from_rows(rows).map_err(to_py_value_error)
+}
+
+fn dataset_from_parts(
+    rows: Vec<Vec<f64>>,
+    sparse_sets: Option<Vec<Vec<Vec<u64>>>>,
+    feature_schema_json: Option<String>,
+) -> PyResult<Dataset> {
+    let dataset = dataset_from_rows(rows)?;
+    let sparse_sets = sparse_sets
+        .unwrap_or_default()
+        .into_iter()
+        .map(SparseSetColumn::new)
+        .collect::<Vec<_>>();
+    let schema = feature_schema_json
+        .map(|payload| serde_json::from_str::<FeatureSchema>(&payload))
+        .transpose()
+        .map_err(|err| PyValueError::new_err(format!("invalid feature_schema: {err}")))?;
+    let dataset = dataset
+        .with_sparse_sets(sparse_sets)
+        .map_err(to_py_value_error)?;
+    match schema {
+        Some(schema) => dataset.with_schema(schema).map_err(to_py_value_error),
+        None => Ok(dataset),
+    }
 }
 
 fn to_py_value_error(err: GeoBoostError) -> PyErr {

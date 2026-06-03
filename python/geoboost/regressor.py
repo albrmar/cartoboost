@@ -107,6 +107,7 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
         y: Iterable[float],
         sample_weight: Iterable[float] | None = None,
         feature_schema: Any | None = None,
+        sparse_sets: Any | None = None,
         eval_set: Any | None = None,
     ) -> GeoBoostRegressor:
         del eval_set
@@ -117,8 +118,13 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
         if len(rows) != len(targets):
             raise ValueError("X and y must contain the same number of rows")
         weights = _as_sample_weight_list(sample_weight, len(targets))
+        sparse_columns, sparse_names = _normalize_sparse_sets(sparse_sets, len(targets))
+        schema_json = _rust_feature_schema_json(feature_schema, len(rows[0]), sparse_names)
+        schema_metadata = _feature_schema_metadata(feature_schema)
         self.n_features_in_ = len(rows[0])
-        self.feature_schema_ = _feature_schema_metadata(feature_schema)
+        self.n_sparse_sets_in_ = len(sparse_columns)
+        self.sparse_set_names_ = sparse_names
+        self.feature_schema_ = schema_metadata
         if feature_names is not None:
             self.feature_names_in_ = np.asarray(feature_names, dtype=object)
 
@@ -141,18 +147,23 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
                 fuzzy_bandwidth=float(self.fuzzy_bandwidth),
             )
             try:
-                _fit_native(model, rows, targets, weights)
+                _fit_native(model, rows, targets, weights, sparse_columns, schema_json)
             except NotImplementedError:
                 if self.backend == "rust" or not self._python_fallback_supported():
                     raise
             else:
                 self._model = model
                 self._backend_used = "rust"
+                self.feature_schema_ = (
+                    json.loads(schema_json) if schema_json is not None else schema_metadata
+                )
                 self.is_fitted_ = True
                 return self
 
         if self.backend == "rust":
             raise ImportError("geoboost._native is not available; build with maturin first")
+        if sparse_columns:
+            raise NotImplementedError("the pure-Python fallback does not support sparse_sets")
         if self.leaf_predictor != "constant" or (
             int(self.max_depth) != 0 and (self.fuzzy or not _is_axis_splitters(self.splitters))
         ):
@@ -173,7 +184,7 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
         self.is_fitted_ = True
         return self
 
-    def predict(self, X: Iterable[Iterable[float]]) -> np.ndarray:
+    def predict(self, X: Iterable[Iterable[float]], sparse_sets: Any | None = None) -> np.ndarray:
         if self._model is None:
             raise RuntimeError("GeoBoostRegressor is not fitted")
         rows = _as_2d_float_list(X)
@@ -182,6 +193,11 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
                 f"X has {len(rows[0])} features, but GeoBoostRegressor was fitted with "
                 f"{self.n_features_in_} features"
             )
+        sparse_columns, _ = _normalize_sparse_sets(sparse_sets, len(rows))
+        if self._backend_used == "rust":
+            return np.asarray(list(self._model.predict(rows, sparse_columns)), dtype=float)
+        if sparse_columns:
+            raise NotImplementedError("the pure-Python fallback does not support sparse_sets")
         return np.asarray(list(self._model.predict(rows)), dtype=float)
 
     def save(self, path: str | Path) -> None:
@@ -240,6 +256,8 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
         estimator._model = _FallbackModel.from_dict(payload["model"])
         estimator._backend_used = "python"
         estimator.n_features_in_ = payload["model"].get("feature_count", 0) or 1
+        estimator.n_sparse_sets_in_ = 0
+        estimator.sparse_set_names_ = []
         estimator.feature_schema_ = payload.get("feature_schema")
         estimator.is_fitted_ = True
         return estimator
@@ -440,6 +458,142 @@ def _feature_schema_metadata(feature_schema: Any | None) -> Any | None:
     }
 
 
+def _normalize_sparse_sets(
+    values: Any | None, expected_rows: int
+) -> tuple[list[list[list[int]]], list[str]]:
+    if values is None:
+        return [], []
+    if isinstance(values, dict):
+        items = [(str(name), column) for name, column in values.items()]
+    else:
+        items = [(f"sparse_set_{idx}", column) for idx, column in enumerate(values)]
+    columns: list[list[list[int]]] = []
+    names: list[str] = []
+    for name, column in items:
+        rows = []
+        for row in column:
+            ids = []
+            for value in row:
+                ident = int(value)
+                if ident < 0:
+                    raise ValueError("sparse_sets IDs must be non-negative integers")
+                ids.append(ident)
+            rows.append(ids)
+        if len(rows) != expected_rows:
+            raise ValueError("each sparse_sets column must have the same number of rows as y")
+        columns.append(rows)
+        names.append(name)
+    return columns, names
+
+
+def _rust_feature_schema_json(
+    feature_schema: Any | None,
+    dense_width: int,
+    sparse_names: list[str],
+) -> str | None:
+    if feature_schema is None:
+        if not sparse_names:
+            return None
+        payload = {
+            "names": [f"feature_{idx}" for idx in range(dense_width)] + sparse_names,
+            "kinds": ["Numeric" for _ in range(dense_width)] + ["SparseSet" for _ in sparse_names],
+        }
+        return json.dumps(payload)
+    payload = _rust_feature_schema_payload(feature_schema, dense_width, sparse_names)
+    return json.dumps(payload)
+
+
+def _rust_feature_schema_payload(
+    feature_schema: Any,
+    dense_width: int,
+    sparse_names: list[str],
+) -> dict[str, Any]:
+    if isinstance(feature_schema, dict) and "names" in feature_schema and "kinds" in feature_schema:
+        names = [str(name) for name in feature_schema["names"]]
+        kinds = [_rust_feature_kind(kind) for kind in feature_schema["kinds"]]
+        _validate_schema_length(names, kinds, dense_width, sparse_names)
+        return {"names": names, "kinds": kinds}
+
+    if isinstance(feature_schema, dict) and (
+        "dense" in feature_schema or "sparse_sets" in feature_schema
+    ):
+        dense_entries = list(feature_schema.get("dense", []))
+        sparse_entries = list(feature_schema.get("sparse_sets", []))
+        names = [
+            _schema_entry_name(entry, idx, "feature") for idx, entry in enumerate(dense_entries)
+        ]
+        kinds = [_schema_entry_kind(entry, "numeric") for entry in dense_entries]
+        names.extend(
+            _schema_entry_name(entry, idx, "sparse_set") for idx, entry in enumerate(sparse_entries)
+        )
+        kinds.extend(_schema_entry_kind(entry, "sparse_set") for entry in sparse_entries)
+        _validate_schema_length(names, kinds, dense_width, sparse_names)
+        return {"names": names, "kinds": kinds}
+
+    if isinstance(feature_schema, dict):
+        names = [str(name) for name in feature_schema]
+        kinds = []
+        for value in feature_schema.values():
+            if isinstance(value, dict):
+                kinds.append(_schema_entry_kind(value, "numeric"))
+            else:
+                kinds.append("Numeric")
+        _validate_schema_length(names, kinds, dense_width, sparse_names)
+        return {"names": names, "kinds": kinds}
+
+    raise ValueError(
+        "feature_schema must be a Rust schema {'names','kinds'} mapping or a "
+        "{'dense','sparse_sets'} mapping"
+    )
+
+
+def _schema_entry_name(entry: Any, idx: int, prefix: str) -> str:
+    if isinstance(entry, dict):
+        return str(entry.get("name", f"{prefix}_{idx}"))
+    return str(entry)
+
+
+def _schema_entry_kind(entry: Any, default: str) -> Any:
+    if isinstance(entry, dict):
+        return _rust_feature_kind(entry.get("kind", entry.get("role", default)), entry)
+    if default == "sparse_set":
+        return "SparseSet"
+    return "Numeric"
+
+
+def _rust_feature_kind(kind: Any, entry: dict[str, Any] | None = None) -> Any:
+    if kind in {"Numeric", "numeric"}:
+        return "Numeric"
+    if kind in {"SparseSet", "sparse_set", "sparse"}:
+        return "SparseSet"
+    if kind in {"Periodic", "periodic"}:
+        period = 24 if entry is None else int(entry.get("period", 24))
+        if period <= 0:
+            raise ValueError("periodic feature_schema entries require a positive period")
+        return {"Periodic": {"period": period}}
+    if isinstance(kind, dict) and "Periodic" in kind:
+        period = int(kind["Periodic"]["period"])
+        if period <= 0:
+            raise ValueError("periodic feature_schema entries require a positive period")
+        return {"Periodic": {"period": period}}
+    raise ValueError(f"unknown feature kind {kind!r}")
+
+
+def _validate_schema_length(
+    names: list[str],
+    kinds: list[Any],
+    dense_width: int,
+    sparse_names: list[str],
+) -> None:
+    expected = dense_width + len(sparse_names)
+    if len(names) != len(kinds):
+        raise ValueError("feature_schema names length must match kinds length")
+    if len(names) != expected:
+        raise ValueError(
+            f"feature_schema length {len(names)} does not match dataset feature count {expected}"
+        )
+
+
 def _json_attr(model: Any, attr: str) -> Any | None:
     payload = getattr(model, attr, None)
     if payload is None:
@@ -466,13 +620,28 @@ def _fit_native(
     rows: list[list[float]],
     targets: list[float],
     sample_weight: list[float] | None,
+    sparse_sets: list[list[list[int]]],
+    feature_schema_json: str | None,
 ) -> None:
-    if sample_weight is None:
-        model.fit(rows, targets)
-        return
     try:
-        model.fit(rows, targets, sample_weight)
+        model.fit(rows, targets, sample_weight, sparse_sets, feature_schema_json)
     except TypeError as exc:
+        if sparse_sets or feature_schema_json is not None:
+            raise NotImplementedError(
+                "the native backend does not support sparse_sets or feature_schema in this build"
+            ) from exc
+        if sample_weight is None:
+            try:
+                model.fit(rows, targets)
+                return
+            except TypeError:
+                pass
+        else:
+            try:
+                model.fit(rows, targets, sample_weight)
+                return
+            except TypeError:
+                pass
         raise NotImplementedError(
             "the native backend does not support sample_weight in this build"
         ) from exc

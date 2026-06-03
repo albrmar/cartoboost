@@ -37,6 +37,22 @@ model.fit(X, y)
 predictions = model.predict(X)
 ```
 
+The Rust-backed estimator also accepts list-valued sparse route-cell columns and
+schema metadata:
+
+```python
+model.fit(
+    X_dense,
+    y,
+    sparse_sets={"route_cells": [[7, 11], [11], [3], []]},
+    feature_schema={
+        "dense": [{"name": "hour", "kind": "periodic", "period": 24}],
+        "sparse_sets": [{"name": "route_cells", "kind": "sparse_set"}],
+    },
+)
+predictions = model.predict(X_dense, sparse_sets={"route_cells": route_cells})
+```
+
 The estimator is compatible with sklearn-style workflows such as `Pipeline`,
 `GridSearchCV`, `clone`, and NumPy-array predictions.
 
@@ -69,8 +85,9 @@ The `test` target runs both the Rust workspace tests and the Python test suite.
 before running validation scripts that require `GeoBoostRegressor(backend="rust")`.
 Baseline comparison reports can be generated with
 `uv run --group dev python scripts/compare_baselines.py`. Fuzz harnesses for
-model deserialization, prediction, and small-dataset training live under
-`fuzz/` and can be run with `cargo fuzz` when that tool is installed.
+model deserialization, dense and mixed-dataset prediction, and small-dataset
+training live under `fuzz/` and can be run with `cargo fuzz` when that tool is
+installed.
 
 ## Continuous Integration
 

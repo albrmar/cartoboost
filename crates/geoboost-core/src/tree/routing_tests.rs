@@ -208,6 +208,45 @@ fn sparse_list_dense_predict_one_path_uses_missing_policy_only() {
 }
 
 #[test]
+fn dense_predict_errors_for_sparse_list_model() {
+    let model = Model {
+        artifact_version: MODEL_ARTIFACT_VERSION,
+        metadata: None,
+        init_prediction: 0.0,
+        learning_rate: 1.0,
+        feature_count: 1,
+        feature_schema: None,
+        target_name: None,
+        training_config: None,
+        trees: vec![Tree {
+            root: Node::Branch {
+                split: Split::SparseListContainsAny {
+                    sparse_feature: 0,
+                    ids: vec![7],
+                    missing_goes_left: false,
+                },
+                left: Box::new(Node::Leaf {
+                    value: 10.0,
+                    sample_weight_sum: 1.0,
+                    training_loss: 0.0,
+                }),
+                right: Box::new(Node::Leaf {
+                    value: -1.0,
+                    sample_weight_sum: 1.0,
+                    training_loss: 0.0,
+                }),
+                gain: 0.0,
+                sample_weight_sum: 2.0,
+            },
+        }],
+    };
+    let dense = Dataset::from_rows(vec![vec![7.0]]).unwrap();
+
+    assert!(model.try_predict_one_dense(&[7.0]).is_err());
+    assert!(model.try_predict(&dense).is_err());
+}
+
+#[test]
 fn sparse_list_save_load_prediction_identity() {
     let x = Dataset::from_rows(vec![vec![0.0], vec![0.0]])
         .unwrap()

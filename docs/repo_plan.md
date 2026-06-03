@@ -43,8 +43,13 @@ model = GeoBoostRegressor(
     fuzzy=True,
 )
 
-model.fit(X_train, y_train, feature_schema=schema)
-pred = model.predict(X_test)
+model.fit(
+    X_train_dense,
+    y_train,
+    sparse_sets={"route_cells": route_cells_train},
+    feature_schema=schema,
+)
+pred = model.predict(X_test_dense, sparse_sets={"route_cells": route_cells_test})
 model.save("model.geoboost")
 ```
 
@@ -211,6 +216,9 @@ Supported constructor options include:
 
 The Rust backend handles the implemented advanced options. The pure-Python
 fallback remains intentionally limited to axis splits with constant leaves.
+The Rust backend accepts `sparse_sets=` for list-valued route-cell columns and
+converts supported Python `feature_schema` mappings into Rust feature schemas
+for numeric, periodic, and sparse-set candidate selection.
 
 ## Testing Philosophy
 
@@ -324,6 +332,7 @@ Milestone 7: sparse high-cardinality splitter
 - Contains-any splitter.
 - Candidate ID mining.
 - Scalar-ID and native list-valued route-cell support.
+- Python `sparse_sets=` train/predict support on the native backend.
 
 Milestone 8: artifact and CLI
 
@@ -337,6 +346,7 @@ Milestone 9: comparison suite
 - LightGBM comparison remains future hardening.
 - Synthetic benchmark report.
 - Latency and artifact-size tracking.
+- Mixed-dataset fuzz target for sparse-list and dense split prediction.
 
 ## Definition Of Done
 

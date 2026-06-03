@@ -34,3 +34,10 @@ path = "fuzz_targets/train_small_dataset.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "predict_dataset_row_mixed_dataset"
+path = "fuzz_targets/predict_dataset_row_mixed_dataset.rs"
+test = false
+doc = false
+bench = false

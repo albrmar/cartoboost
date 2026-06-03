@@ -88,7 +88,7 @@ These contracts are the ten highest-priority boundaries for alpha hardening:
 Additional hardening artifacts now live in:
 
 - `fuzz/` for cargo-fuzz harnesses covering model deserialization, prediction,
-  and small-dataset training.
+  mixed-dataset prediction, and small-dataset training.
 - `benches/` for Criterion train/predict/serialize benches.
 - `scripts/compare_baselines.py` for deterministic GeoBoost-vs-sklearn
   comparison reports.

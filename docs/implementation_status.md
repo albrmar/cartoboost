@@ -22,6 +22,10 @@ attempt to reproduce Lyft's proprietary system.
   style rows, with scalar-ID sparse routing retained for dense compatibility.
 - Feature schema metadata for numeric, periodic, and sparse-set features, with
   schema-aware periodic and sparse-set candidate selection in the Rust trainer.
+- Python-to-Rust schema construction for numeric, periodic, and sparse-set
+  feature declarations on the native backend.
+- Python native `sparse_sets=` training and prediction for list-valued route-cell
+  columns.
 - Fractional fuzzy split scoring and child training weights, plus weighted
   branch recursion at prediction time.
 - Weighted ridge regression primitive and tree-training integration for linear
@@ -30,7 +34,8 @@ attempt to reproduce Lyft's proprietary system.
 - Self-describing model artifacts with optional metadata, feature schema, and
   training config fields while preserving v1 JSON load compatibility.
 - Criterion benchmark scaffolding, deterministic property-style tests, cargo-fuzz
-  harnesses, and a small sklearn baseline comparison report script.
+  harnesses for dense and mixed-dataset paths, and a small sklearn baseline
+  comparison report script.
 - Unit tests for L2 loss, stump training, serialization, spatial/periodic/fuzzy
   routing, sparse routing, and linear leaf fitting.
 - Committed parity fixtures and generated spatial segmentation proof images.
@@ -39,8 +44,8 @@ attempt to reproduce Lyft's proprietary system.
 
 - Backward-compatible artifact migrations beyond artifact version `1`.
 - Larger comparison suite against scikit-learn and LightGBM.
-- Richer schema contracts for named spatial pairs and Python-to-Rust schema
-  construction beyond metadata retention.
+- Richer schema contracts for named spatial pairs and validation beyond the
+  current numeric, periodic, and sparse-set declarations.
 
 The current implementation covers the repo's regression-only clean-room target
 with deterministic Rust training, Rust/Python artifact parity, CLI workflows,
@@ -58,7 +63,8 @@ intentionally narrow:
   prediction, sparse scalar-ID and list-valued sparse routing, linear leaves,
   artifacts, and CLI prediction.
 - The pure-Python estimator fallback is an ergonomics and sklearn-compatibility
-  path for axis splits with constant leaves only.
+  path for axis splits with constant leaves only; sparse sets and schema-driven
+  special splitters require the Rust backend.
 - Full validation artifact generation requires the PyO3 extension to be built
   and installed first because the generator trains with `backend="rust"`.
 - The committed proof images and metrics are smoke evidence, not a claim of

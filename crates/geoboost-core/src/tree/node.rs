@@ -2,7 +2,7 @@ use super::{LeafPredictorKind, SplitterKind};
 use crate::data::Dataset;
 use crate::data::FeatureSchema;
 use crate::predictors::LinearLeafModel;
-use crate::Result;
+use crate::{GeoBoostError, Result};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -156,6 +156,16 @@ impl Model {
                 .sum::<f64>()
     }
 
+    pub fn try_predict_one_dense(&self, row: &[f64]) -> Result<f64> {
+        if self.requires_sparse_sets() {
+            return Err(GeoBoostError::InvalidInput(
+                "dense prediction is not available for models with list-valued sparse splits"
+                    .to_string(),
+            ));
+        }
+        Ok(self.predict_one(row))
+    }
+
     pub fn predict_dataset_row(&self, x: &Dataset, row: usize) -> f64 {
         self.init_prediction
             + self
@@ -165,10 +175,30 @@ impl Model {
                 .sum::<f64>()
     }
 
+    pub fn try_predict_dataset_row(&self, x: &Dataset, row: usize) -> Result<f64> {
+        if self.requires_sparse_sets() && x.n_sparse_sets() == 0 {
+            return Err(GeoBoostError::InvalidInput(
+                "prediction requires sparse_sets for a model with list-valued sparse splits"
+                    .to_string(),
+            ));
+        }
+        Ok(self.predict_dataset_row(x, row))
+    }
+
     pub fn predict(&self, x: &Dataset) -> Vec<f64> {
         (0..x.n_rows())
             .map(|row| self.predict_dataset_row(x, row))
             .collect()
+    }
+
+    pub fn try_predict(&self, x: &Dataset) -> Result<Vec<f64>> {
+        (0..x.n_rows())
+            .map(|row| self.try_predict_dataset_row(x, row))
+            .collect()
+    }
+
+    pub fn requires_sparse_sets(&self) -> bool {
+        self.trees.iter().any(Tree::contains_sparse_list_split)
     }
 
     pub fn save(&self, path: impl AsRef<Path>) -> Result<()> {
@@ -194,6 +224,10 @@ impl Tree {
 
     pub fn predict_dataset_row(&self, x: &Dataset, row: usize) -> f64 {
         self.root.predict_dataset_row(x, row)
+    }
+
+    pub fn contains_sparse_list_split(&self) -> bool {
+        self.root.contains_sparse_list_split()
     }
 }
 
@@ -224,6 +258,19 @@ impl Node {
                 let weights = split.branch_weights_dataset_row(x, row);
                 weights.left * left.predict_dataset_row(x, row)
                     + weights.right * right.predict_dataset_row(x, row)
+            }
+        }
+    }
+
+    pub fn contains_sparse_list_split(&self) -> bool {
+        match self {
+            Node::Leaf { .. } | Node::LinearLeaf { .. } => false,
+            Node::Branch {
+                split, left, right, ..
+            } => {
+                split.contains_sparse_list_split()
+                    || left.contains_sparse_list_split()
+                    || right.contains_sparse_list_split()
             }
         }
     }
@@ -411,6 +458,14 @@ impl Split {
                 missing_goes_left, ..
             } => *missing_goes_left,
             Split::Fuzzy { base, .. } => base.hard_goes_left(row),
+        }
+    }
+
+    pub fn contains_sparse_list_split(&self) -> bool {
+        match self {
+            Split::SparseListContainsAny { .. } => true,
+            Split::Fuzzy { base, .. } => base.contains_sparse_list_split(),
+            _ => false,
         }
     }
 }
