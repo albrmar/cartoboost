@@ -33,6 +33,7 @@ def test_splitter_acceptance_metrics_are_generated(tmp_path: Path):
         "gaussian_2d",
         "periodic_wraparound",
         "fuzzy_axis",
+        "fuzzy_periodic_wraparound",
         "linear_leaf",
         "sparse_set",
         "learning_rate_gradient_shrinkage",
@@ -75,6 +76,18 @@ def test_splitter_acceptance_metrics_are_generated(tmp_path: Path):
         < metrics["fuzzy_axis"]["inspection_metrics"]["hard_boundary_jump"]
     )
     assert metrics["fuzzy_axis"]["inspection_metrics"]["fuzzy_midpoint_prediction"] == 5.0
+    assert (
+        metrics["fuzzy_periodic_wraparound"]["inspection_metrics"]["fuzzy_boundary_jump"]
+        < metrics["fuzzy_periodic_wraparound"]["inspection_metrics"]["hard_boundary_jump"]
+    )
+    assert (
+        metrics["fuzzy_periodic_wraparound"]["inspection_metrics"][
+            "inside_near_boundary_prediction"
+        ]
+        > metrics["fuzzy_periodic_wraparound"]["inspection_metrics"][
+            "outside_near_boundary_prediction"
+        ]
+    )
     assert (
         metrics["linear_leaf"]["models"]["linear_leaf"]["train_rmse"]
         < metrics["linear_leaf"]["models"]["constant_leaf"]["train_rmse"]

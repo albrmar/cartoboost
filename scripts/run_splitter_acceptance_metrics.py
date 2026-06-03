@@ -362,6 +362,61 @@ def fuzzy_metrics() -> dict[str, Any]:
     }
 
 
+def fuzzy_periodic_metrics() -> dict[str, Any]:
+    hours = np.array([[float(hour)] for hour in range(24) for _ in range(4)])
+    y = np.array([20.0 if hour[0] >= 22.0 or hour[0] <= 2.0 else 0.0 for hour in hours])
+    hard = fit_model(hours, y, splitters=["periodic_time"], min_samples_leaf=4)
+    fuzzy = fit_model(
+        hours,
+        y,
+        splitters=["periodic_time"],
+        min_samples_leaf=4,
+        fuzzy=True,
+        fuzzy_bandwidth=2.0,
+    )
+    probes = np.linspace(20.0, 24.0, 161).reshape(-1, 1)
+    hard_pred = hard.predict(probes)
+    fuzzy_pred = fuzzy.predict(probes)
+    hard_jump = abs(float(hard.predict([[21.99]])[0] - hard.predict([[22.01]])[0]))
+    fuzzy_jump = abs(float(fuzzy.predict([[21.99]])[0] - fuzzy.predict([[22.01]])[0]))
+    jump_ratio = fuzzy_jump / hard_jump
+    return {
+        "models": {
+            "hard_periodic": {"probe_total_variation": total_variation(hard_pred)},
+            "fuzzy_periodic": {"probe_total_variation": total_variation(fuzzy_pred)},
+        },
+        "inspection_metrics": {
+            "hard_boundary_jump": hard_jump,
+            "fuzzy_boundary_jump": fuzzy_jump,
+            "boundary_jump_ratio": jump_ratio,
+            "outside_near_boundary_prediction": float(fuzzy.predict([[21.0]])[0]),
+            "inside_near_boundary_prediction": float(fuzzy.predict([[23.0]])[0]),
+            "far_outside_prediction": float(fuzzy.predict([[12.0]])[0]),
+        },
+        "acceptance_gates": [
+            gate("fuzzy_periodic_jump_ratio_lt_0_05", jump_ratio < 0.05, jump_ratio, 0.05, "<"),
+            gate(
+                "fuzzy_periodic_inside_gt_outside",
+                float(fuzzy.predict([[23.0]])[0] - fuzzy.predict([[21.0]])[0]) > 5.0,
+                float(fuzzy.predict([[23.0]])[0] - fuzzy.predict([[21.0]])[0]),
+                5.0,
+                ">",
+            ),
+            gate(
+                "fuzzy_periodic_far_outside_lt_1e_12",
+                abs(float(fuzzy.predict([[12.0]])[0])) < 1e-12,
+                abs(float(fuzzy.predict([[12.0]])[0])),
+                1e-12,
+                "<",
+            ),
+        ],
+        "future_checks": [
+            "Fuzzy periodic routing should smooth jumps at wraparound interval boundaries.",
+            "Fuzzy smoothing must not leak uplift to far-outside hours.",
+        ],
+    }
+
+
 def linear_metrics() -> dict[str, Any]:
     x = np.linspace(0.0, 5.0, 30).reshape(-1, 1)
     y = 2.0 * x[:, 0] + 3.0
@@ -526,6 +581,7 @@ def collect_metrics() -> dict[str, Any]:
         "gaussian_2d": gaussian_metrics(),
         "periodic_wraparound": periodic_metrics(),
         "fuzzy_axis": fuzzy_metrics(),
+        "fuzzy_periodic_wraparound": fuzzy_periodic_metrics(),
         "linear_leaf": linear_metrics(),
         "sparse_set": sparse_metrics(),
         "learning_rate_gradient_shrinkage": learning_rate_metrics(),

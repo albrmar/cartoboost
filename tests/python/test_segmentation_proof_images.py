@@ -18,6 +18,7 @@ EXPECTED_PROOF_IMAGES = {
     "splitter_tests/phase_6_linear_leaf.png",
     "splitter_tests/phase_7_sparse_set.png",
     "splitter_tests/phase_8_learning_rate_shrinkage.png",
+    "splitter_tests/phase_9_fuzzy_periodic_wraparound.png",
 }
 
 

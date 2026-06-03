@@ -300,6 +300,33 @@ def phase_learning_rate() -> None:
     )
 
 
+def phase_fuzzy_periodic() -> None:
+    hours = np.array([[float(hour)] for hour in range(24) for _ in range(4)])
+    target = np.array([20.0 if hour[0] >= 22.0 or hour[0] <= 2.0 else 0.0 for hour in hours])
+    hard = fit_model(hours, target, splitters=["periodic_time"], min_samples_leaf=4)
+    fuzzy = fit_model(
+        hours,
+        target,
+        splitters=["periodic_time"],
+        min_samples_leaf=4,
+        fuzzy=True,
+        fuzzy_bandwidth=2.0,
+    )
+    probe = np.linspace(18.0, 24.0, 181).reshape(-1, 1)
+    truth = np.where((probe[:, 0] >= 22.0) | (probe[:, 0] <= 2.0), 20.0, 0.0)
+    save_line_plot(
+        PHASE_OUT / "phase_9_fuzzy_periodic_wraparound.png",
+        "Fuzzy periodic wraparound smoothing",
+        probe[:, 0],
+        [
+            ("truth", truth),
+            ("hard periodic", hard.predict(probe)),
+            ("fuzzy periodic", fuzzy.predict(probe)),
+        ],
+        xlabel="hour of day",
+    )
+
+
 def generate_phase_proofs() -> None:
     PHASE_OUT.mkdir(parents=True, exist_ok=True)
     phase_axis_threshold()
@@ -310,6 +337,7 @@ def generate_phase_proofs() -> None:
     phase_linear_leaf()
     phase_sparse_set()
     phase_learning_rate()
+    phase_fuzzy_periodic()
 
 
 def main() -> None:

@@ -11,6 +11,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 VALIDATION_DIR = ROOT / "target" / "validation"
 SPLITTER_DIR = VALIDATION_DIR / "splitter_tests"
+LANE_DIR = VALIDATION_DIR / "lane_level_tests"
 PROOF_IMAGES = [
     "docs/assets/segmentation_diagonal_2d.png",
     "docs/assets/segmentation_gaussian_2d.png",
@@ -22,6 +23,7 @@ PROOF_IMAGES = [
     "docs/assets/splitter_tests/phase_6_linear_leaf.png",
     "docs/assets/splitter_tests/phase_7_sparse_set.png",
     "docs/assets/splitter_tests/phase_8_learning_rate_shrinkage.png",
+    "docs/assets/splitter_tests/phase_9_fuzzy_periodic_wraparound.png",
 ]
 
 
@@ -40,12 +42,23 @@ def main() -> None:
             str(SPLITTER_DIR),
         ]
     )
+    run(
+        [
+            sys.executable,
+            "scripts/run_lane_level_acceptance_metrics.py",
+            "--output-dir",
+            str(LANE_DIR),
+        ]
+    )
 
     metrics = json.loads((SPLITTER_DIR / "acceptance_metrics.json").read_text(encoding="utf-8"))
+    lane_metrics = json.loads((LANE_DIR / "acceptance_metrics.json").read_text(encoding="utf-8"))
     summary = {
         "artifact_version": 1,
         "splitter_phase_count": len(metrics),
         "splitter_phases": sorted(metrics),
+        "lane_level_phase_count": len(lane_metrics),
+        "lane_level_phases": sorted(lane_metrics),
         "proof_images": PROOF_IMAGES,
     }
     (VALIDATION_DIR / "metrics.json").write_text(json.dumps(summary, indent=2) + "\n")
@@ -54,9 +67,11 @@ def main() -> None:
         "# GeoBoost full validation",
         "",
         f"- splitter phases: {summary['splitter_phase_count']}",
+        f"- lane-level phases: {summary['lane_level_phase_count']}",
         "- proof images regenerated: yes",
         "",
         "See `target/validation/splitter_tests/acceptance_metrics.md` for detailed checks.",
+        "See `target/validation/lane_level_tests/acceptance_metrics.md` for lane-level checks.",
         "",
     ]
     (VALIDATION_DIR / "report.md").write_text("\n".join(lines), encoding="utf-8")

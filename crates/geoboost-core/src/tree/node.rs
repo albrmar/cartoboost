@@ -218,9 +218,19 @@ impl Split {
                 (x.is_finite() && y.is_finite())
                     .then_some(((x - center_x).powi(2) + (y - center_y).powi(2)).sqrt() - radius)
             }
-            Split::PeriodicInterval { .. }
-            | Split::SparseSetContainsAny { .. }
-            | Split::Fuzzy { .. } => None,
+            Split::PeriodicInterval {
+                feature,
+                period,
+                start,
+                end,
+                ..
+            } => {
+                let value = *row.get(*feature)?;
+                value
+                    .is_finite()
+                    .then_some(periodic_signed_distance(value, *period, *start, *end))
+            }
+            Split::SparseSetContainsAny { .. } | Split::Fuzzy { .. } => None,
         }
     }
 
@@ -278,6 +288,28 @@ pub fn periodic_contains(value: f64, period: f64, start: f64, end: f64) -> bool 
     } else {
         value >= start || value <= end
     }
+}
+
+pub fn periodic_signed_distance(value: f64, period: f64, start: f64, end: f64) -> f64 {
+    if period <= 0.0 || !period.is_finite() {
+        return f64::NAN;
+    }
+    let value = normalize_periodic(value, period);
+    let start = normalize_periodic(start, period);
+    let end = normalize_periodic(end, period);
+    let distance_to_start = circular_distance(value, start, period);
+    let distance_to_end = circular_distance(value, end, period);
+    let nearest_boundary = distance_to_start.min(distance_to_end);
+    if periodic_contains(value, period, start, end) {
+        -nearest_boundary
+    } else {
+        nearest_boundary
+    }
+}
+
+fn circular_distance(a: f64, b: f64, period: f64) -> f64 {
+    let direct = (normalize_periodic(a, period) - normalize_periodic(b, period)).abs();
+    direct.min(period - direct)
 }
 
 pub fn normalize_periodic(value: f64, period: f64) -> f64 {

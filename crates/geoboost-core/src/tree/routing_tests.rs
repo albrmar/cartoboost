@@ -1,4 +1,4 @@
-use super::{fuzzy_weights, periodic_contains, FuzzyKernel, Node, Split};
+use super::{fuzzy_weights, periodic_contains, periodic_signed_distance, FuzzyKernel, Node, Split};
 
 fn assert_close(actual: f64, expected: f64) {
     assert!(
@@ -46,6 +46,15 @@ fn periodic_wraparound_interval_contains_expected_values() {
 }
 
 #[test]
+fn periodic_signed_distance_is_negative_inside_and_positive_outside() {
+    assert_close(periodic_signed_distance(23.0, 24.0, 22.0, 2.0), -1.0);
+    assert_close(periodic_signed_distance(1.0, 24.0, 22.0, 2.0), -1.0);
+    assert_close(periodic_signed_distance(22.0, 24.0, 22.0, 2.0), 0.0);
+    assert_close(periodic_signed_distance(3.0, 24.0, 22.0, 2.0), 1.0);
+    assert_close(periodic_signed_distance(21.0, 24.0, 22.0, 2.0), 1.0);
+}
+
+#[test]
 fn fuzzy_weights_conserve_mass_and_interpolate_at_boundary() {
     let weights = fuzzy_weights(0.0, 2.0);
     assert_close(weights.left, 0.5);
@@ -84,6 +93,39 @@ fn fuzzy_branch_prediction_uses_weighted_sum() {
     };
 
     assert_close(node.predict_one(&[10.0]), 5.0);
+}
+
+#[test]
+fn fuzzy_periodic_branch_prediction_blends_near_wraparound_boundary() {
+    let node = Node::Branch {
+        split: Split::Fuzzy {
+            base: Box::new(Split::PeriodicInterval {
+                feature: 0,
+                period: 24.0,
+                start: 22.0,
+                end: 2.0,
+                missing_goes_left: false,
+            }),
+            bandwidth: 2.0,
+            kernel: FuzzyKernel::Linear,
+        },
+        left: Box::new(Node::Leaf {
+            value: 20.0,
+            sample_weight_sum: 1.0,
+            training_loss: 0.0,
+        }),
+        right: Box::new(Node::Leaf {
+            value: 0.0,
+            sample_weight_sum: 1.0,
+            training_loss: 0.0,
+        }),
+        gain: 0.0,
+        sample_weight_sum: 2.0,
+    };
+
+    assert_close(node.predict_one(&[23.0]), 15.0);
+    assert_close(node.predict_one(&[21.0]), 5.0);
+    assert_close(node.predict_one(&[12.0]), 0.0);
 }
 
 #[test]
