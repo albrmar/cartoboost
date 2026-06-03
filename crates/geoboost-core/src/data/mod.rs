@@ -1,6 +1,10 @@
 mod feature_schema;
+#[cfg(test)]
+mod feature_schema_tests;
 mod matrix;
 mod sparse_sets;
+#[cfg(test)]
+mod sparse_sets_tests;
 mod weights;
 
 pub use feature_schema::{FeatureKind, FeatureSchema};

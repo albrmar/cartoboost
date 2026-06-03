@@ -18,6 +18,20 @@ except ImportError:  # pragma: no cover - exercised when extension is unavailabl
         _NativeGeoBoostRegressor = None
 
 
+_VALID_SPLITTERS = {
+    "axis",
+    "diagonal_2d",
+    "diagonal2d",
+    "gaussian_2d",
+    "gaussian2d",
+    "radial",
+    "periodic_time",
+    "periodic_24",
+    "sparse_set",
+    "sparse",
+}
+
+
 class GeoBoostRegressor(RegressorMixin, BaseEstimator):
     """Small sklearn-style gradient boosted stump regressor."""
 
@@ -95,16 +109,16 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
         feature_schema: Any | None = None,
         eval_set: Any | None = None,
     ) -> GeoBoostRegressor:
-        del feature_schema, eval_set
+        del eval_set
         self._validate_params()
-        if sample_weight is not None:
-            raise NotImplementedError("sample_weight is planned but not implemented in Milestone 1")
         feature_names = _feature_names(X)
         rows = _as_2d_float_list(X)
         targets = _as_1d_float_list(y)
         if len(rows) != len(targets):
             raise ValueError("X and y must contain the same number of rows")
+        weights = _as_sample_weight_list(sample_weight, len(targets))
         self.n_features_in_ = len(rows[0])
+        self.feature_schema_ = _feature_schema_metadata(feature_schema)
         if feature_names is not None:
             self.feature_names_in_ = np.asarray(feature_names, dtype=object)
 
@@ -126,18 +140,21 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
                 fuzzy=bool(self.fuzzy),
                 fuzzy_bandwidth=float(self.fuzzy_bandwidth),
             )
-            model.fit(rows, targets)
-            self._model = model
-            self._backend_used = "rust"
-            self.is_fitted_ = True
-            return self
+            try:
+                _fit_native(model, rows, targets, weights)
+            except NotImplementedError:
+                if self.backend == "rust" or not self._python_fallback_supported():
+                    raise
+            else:
+                self._model = model
+                self._backend_used = "rust"
+                self.is_fitted_ = True
+                return self
 
         if self.backend == "rust":
             raise ImportError("geoboost._native is not available; build with maturin first")
-        if (
-            self.leaf_predictor != "constant"
-            or self.fuzzy
-            or (self.splitters not in (None, ["axis"]))
+        if self.leaf_predictor != "constant" or (
+            int(self.max_depth) != 0 and (self.fuzzy or not _is_axis_splitters(self.splitters))
         ):
             raise NotImplementedError(
                 "the pure-Python fallback supports only axis splits with constant leaves"
@@ -150,7 +167,7 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
             min_samples_leaf=int(self.min_samples_leaf),
             min_gain=float(self.min_gain),
         )
-        model.fit(rows, targets)
+        model.fit(rows, targets, weights)
         self._model = model
         self._backend_used = "python"
         self.is_fitted_ = True
@@ -179,6 +196,7 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
             "params": self.get_params(),
             "model": self._model.to_dict(),
             "backend": "python",
+            "feature_schema": getattr(self, "feature_schema_", None),
         }
         path.write_text(json.dumps(payload), encoding="utf-8")
 
@@ -195,7 +213,7 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
                 estimator = cls(
                     n_estimators=native_model.n_estimators,
                     learning_rate=native_model.learning_rate,
-                    max_depth=max(1, native_model.max_depth),
+                    max_depth=native_model.max_depth,
                     min_samples_leaf=native_model.min_samples_leaf,
                     min_gain=native_model.min_gain,
                     backend="auto",
@@ -203,6 +221,7 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
                 estimator._model = native_model
                 estimator._backend_used = "rust"
                 estimator.n_features_in_ = native_model.feature_count
+                estimator.feature_schema_ = None
                 estimator.is_fitted_ = True
                 return estimator
 
@@ -211,6 +230,7 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
         estimator._model = _FallbackModel.from_dict(payload["model"])
         estimator._backend_used = "python"
         estimator.n_features_in_ = payload["model"].get("feature_count", 0) or 1
+        estimator.feature_schema_ = payload.get("feature_schema")
         estimator.is_fitted_ = True
         return estimator
 
@@ -220,8 +240,8 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
         learning_rate = float(self.learning_rate)
         if not math.isfinite(learning_rate) or learning_rate <= 0:
             raise ValueError("learning_rate must be positive and finite")
-        if int(self.max_depth) <= 0:
-            raise ValueError("max_depth must be positive")
+        if int(self.max_depth) < 0:
+            raise ValueError("max_depth must be non-negative")
         if int(self.min_samples_leaf) <= 0:
             raise ValueError("min_samples_leaf must be positive")
         min_gain = float(self.min_gain)
@@ -237,6 +257,27 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
             raise ValueError("fuzzy_bandwidth must be finite and non-negative")
         if self.backend not in {"auto", "rust", "python"}:
             raise ValueError("backend must be one of 'auto', 'rust', or 'python'")
+        self._validate_splitters()
+
+    def _validate_splitters(self) -> None:
+        if self.splitters is None:
+            return
+        if isinstance(self.splitters, str):
+            raise ValueError("splitters must be a list of splitter names")
+        try:
+            splitters = list(self.splitters)
+        except TypeError as exc:
+            raise ValueError("splitters must be a list of splitter names") from exc
+        unknown = [splitter for splitter in splitters if splitter not in _VALID_SPLITTERS]
+        if unknown:
+            raise ValueError(f"unknown splitter(s): {unknown}")
+
+    def _python_fallback_supported(self) -> bool:
+        if self.leaf_predictor != "constant":
+            return False
+        if int(self.max_depth) == 0:
+            return True
+        return not self.fuzzy and _is_axis_splitters(self.splitters)
 
 
 class _FallbackModel:
@@ -257,14 +298,22 @@ class _FallbackModel:
         self.feature_count = 0
         self.stumps: list[dict[str, float | int]] = []
 
-    def fit(self, X: list[list[float]], y: list[float]) -> None:
+    def fit(
+        self,
+        X: list[list[float]],
+        y: list[float],
+        sample_weight: list[float] | None = None,
+    ) -> None:
         self.feature_count = len(X[0])
-        self.init_value = sum(y) / len(y)
+        weights = sample_weight or [1.0 for _ in y]
+        self.init_value = _weighted_mean(y, weights)
         prediction = [self.init_value for _ in y]
         self.stumps = []
+        if self.max_depth == 0:
+            return
         for _ in range(self.n_estimators):
             residuals = [target - pred for target, pred in zip(y, prediction, strict=True)]
-            stump = _best_stump(X, residuals, self.min_samples_leaf)
+            stump = _best_stump(X, residuals, weights, self.min_samples_leaf)
             if stump is None:
                 break
             for row_index, row in enumerate(X):
@@ -351,6 +400,53 @@ def _as_1d_float_list(values: Iterable[float]) -> list[float]:
     return rows
 
 
+def _as_sample_weight_list(values: Iterable[float] | None, expected: int) -> list[float] | None:
+    if values is None:
+        return None
+    weights = [float(value) for value in values]
+    if len(weights) != expected:
+        raise ValueError("sample_weight length must match y")
+    if any(not math.isfinite(value) or value < 0.0 for value in weights):
+        raise ValueError("sample_weight must contain only finite non-negative values")
+    return weights
+
+
+def _is_axis_splitters(splitters: Any) -> bool:
+    return splitters is None or list(splitters) == ["axis"]
+
+
+def _feature_schema_metadata(feature_schema: Any | None) -> Any | None:
+    if feature_schema is None:
+        return None
+    if isinstance(feature_schema, str | int | float | bool):
+        return feature_schema
+    if isinstance(feature_schema, dict):
+        return {str(key): _feature_schema_metadata(value) for key, value in feature_schema.items()}
+    if isinstance(feature_schema, list | tuple):
+        return [_feature_schema_metadata(value) for value in feature_schema]
+    return {
+        "type": type(feature_schema).__name__,
+        "repr": repr(feature_schema),
+    }
+
+
+def _fit_native(
+    model: Any,
+    rows: list[list[float]],
+    targets: list[float],
+    sample_weight: list[float] | None,
+) -> None:
+    if sample_weight is None:
+        model.fit(rows, targets)
+        return
+    try:
+        model.fit(rows, targets, sample_weight)
+    except TypeError as exc:
+        raise NotImplementedError(
+            "the native backend does not support sample_weight in this build"
+        ) from exc
+
+
 def _resolve_linear_leaf_features(features: list[str] | None, width: int) -> list[int] | None:
     if features is None:
         return None
@@ -371,6 +467,7 @@ def _resolve_linear_leaf_features(features: list[str] | None, width: int) -> lis
 def _best_stump(
     X: list[list[float]],
     residuals: list[float],
+    weights: list[float],
     min_samples_leaf: int,
 ) -> dict[str, float | int] | None:
     best_loss: float | None = None
@@ -378,13 +475,21 @@ def _best_stump(
     for feature in range(len(X[0])):
         thresholds = sorted({row[feature] for row in X})
         for threshold in thresholds:
-            left = [res for row, res in zip(X, residuals, strict=True) if row[feature] <= threshold]
-            right = [res for row, res in zip(X, residuals, strict=True) if row[feature] > threshold]
+            left_indices = [idx for idx, row in enumerate(X) if row[feature] <= threshold]
+            right_indices = [idx for idx, row in enumerate(X) if row[feature] > threshold]
+            left = [residuals[idx] for idx in left_indices]
+            right = [residuals[idx] for idx in right_indices]
             if len(left) < min_samples_leaf or len(right) < min_samples_leaf:
                 continue
-            left_value = sum(left) / len(left)
-            right_value = sum(right) / len(right)
-            loss = _squared_error(left, left_value) + _squared_error(right, right_value)
+            left_weights = [weights[idx] for idx in left_indices]
+            right_weights = [weights[idx] for idx in right_indices]
+            left_value = _weighted_mean(left, left_weights)
+            right_value = _weighted_mean(right, right_weights)
+            loss = _squared_error(left, left_weights, left_value) + _squared_error(
+                right,
+                right_weights,
+                right_value,
+            )
             if best_loss is None or loss < best_loss:
                 best_loss = loss
                 best = {
@@ -396,5 +501,14 @@ def _best_stump(
     return best
 
 
-def _squared_error(values: list[float], center: float) -> float:
-    return sum((value - center) ** 2 for value in values)
+def _weighted_mean(values: list[float], weights: list[float]) -> float:
+    weight_sum = sum(weights)
+    if weight_sum <= 0.0:
+        return 0.0
+    return sum(value * weight for value, weight in zip(values, weights, strict=True)) / weight_sum
+
+
+def _squared_error(values: list[float], weights: list[float], center: float) -> float:
+    return sum(
+        weight * (value - center) ** 2 for value, weight in zip(values, weights, strict=True)
+    )

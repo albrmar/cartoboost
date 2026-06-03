@@ -65,13 +65,18 @@ make build
 ```
 
 The `test` target runs both the Rust workspace tests and the Python test suite.
+`just validate` additionally installs the PyO3 extension with `maturin develop`
+before running validation scripts that require `GeoBoostRegressor(backend="rust")`.
 
 ## Continuous Integration
 
 The GitHub Actions workflow checks:
 
 - Rust formatting, clippy, and workspace tests.
-- Python linting and tests across Python 3.10 through 3.13.
+- Python linting and tests across Python 3.10 through 3.13, excluding the
+  generated validation-artifact smoke test from the matrix.
+- Validation artifact generation on Python 3.12 after explicitly installing the
+  native extension with maturin.
 - Release wheel builds with maturin.
 
 ## License

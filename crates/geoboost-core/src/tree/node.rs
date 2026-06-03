@@ -1,4 +1,6 @@
+use super::{LeafPredictorKind, SplitterKind};
 use crate::data::Dataset;
+use crate::data::FeatureSchema;
 use crate::predictors::LinearLeafModel;
 use crate::Result;
 use serde::{Deserialize, Serialize};
@@ -9,11 +11,41 @@ pub const MODEL_ARTIFACT_VERSION: u32 = 1;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Model {
     pub artifact_version: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<ModelMetadata>,
     pub init_prediction: f64,
     pub learning_rate: f64,
     pub feature_count: usize,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub feature_schema: Option<FeatureSchema>,
+    #[serde(default)]
     pub target_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub training_config: Option<TrainingConfigMetadata>,
     pub trees: Vec<Tree>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModelMetadata {
+    pub library_name: String,
+    pub library_version: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TrainingConfigMetadata {
+    pub n_estimators: usize,
+    pub learning_rate: f64,
+    pub max_depth: usize,
+    pub min_samples_leaf: usize,
+    pub min_gain: f64,
+    pub splitters: Vec<SplitterKind>,
+    pub leaf_predictor: LeafPredictorKind,
+    pub linear_leaf_features: Vec<usize>,
+    pub linear_lambda_l2: f64,
+    pub fuzzy: bool,
+    pub fuzzy_bandwidth: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -96,6 +128,20 @@ pub enum FuzzyKernel {
 }
 
 impl Model {
+    pub fn default_metadata() -> ModelMetadata {
+        ModelMetadata {
+            library_name: env!("CARGO_PKG_NAME").to_string(),
+            library_version: env!("CARGO_PKG_VERSION").to_string(),
+            description: None,
+        }
+    }
+
+    pub fn feature_schema_or_default(&self) -> FeatureSchema {
+        self.feature_schema
+            .clone()
+            .unwrap_or_else(|| FeatureSchema::unnamed_numeric(self.feature_count))
+    }
+
     pub fn predict_one(&self, row: &[f64]) -> f64 {
         self.init_prediction
             + self
@@ -266,14 +312,19 @@ impl Split {
             } => row
                 .get(*feature)
                 .filter(|value| value.is_finite())
-                .map(|value| {
-                    let id = *value as u64;
-                    *value >= 0.0 && *value == id as f64 && ids.binary_search(&id).is_ok()
-                })
+                .map(|value| sparse_set_value_contains_any(*value, ids))
                 .unwrap_or(*missing_goes_left),
             Split::Fuzzy { base, .. } => base.hard_goes_left(row),
         }
     }
+}
+
+pub fn sparse_set_value_contains_any(value: f64, ids: &[u64]) -> bool {
+    if value < 0.0 || !value.is_finite() {
+        return false;
+    }
+    let id = value as u64;
+    value == id as f64 && ids.contains(&id)
 }
 
 pub fn periodic_contains(value: f64, period: f64, start: f64, end: f64) -> bool {

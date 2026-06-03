@@ -38,3 +38,20 @@ with deterministic Rust training, Rust/Python artifact parity, CLI workflows,
 spatial/temporal/sparse/fuzzy split support, and linear leaves. The future items
 above are production hardening and richer data representation work rather than
 missing baseline functionality.
+
+## Alpha Hardening Status
+
+The project is still alpha software. The implemented path is credible for fixed
+regression experiments and CI smoke validation, but the production contract is
+intentionally narrow:
+
+- Rust is the authoritative backend for advanced splitters, fuzzy prediction,
+  sparse scalar-ID routing, linear leaves, artifacts, and CLI prediction.
+- The pure-Python estimator fallback is an ergonomics and sklearn-compatibility
+  path for axis splits with constant leaves only.
+- Full validation artifact generation requires the PyO3 extension to be built
+  and installed first because the generator trains with `backend="rust"`.
+- The committed proof images and metrics are smoke evidence, not a claim of
+  superiority over production geospatial boosting systems.
+- Artifact version `1` is supported, but no older-version migration layer exists
+  yet.

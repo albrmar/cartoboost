@@ -90,7 +90,7 @@ fn train(opts: BTreeMap<String, String>) -> CliResult<()> {
         .get("model-out")
         .cloned()
         .unwrap_or_else(|| "geoboost-model.json".to_string());
-    let mut model = Booster::new(cfg.booster_config()).fit(&dataset, &y, None)?;
+    let mut model = Booster::new(cfg.booster_config()?).fit(&dataset, &y, None)?;
     model.target_name = Some(target);
     model.save(&model_path)?;
 
@@ -140,6 +140,7 @@ fn predict(opts: BTreeMap<String, String>) -> CliResult<()> {
     }
 
     let model = read_model(model_path)?;
+    ensure_feature_count(&rows, model.feature_count)?;
     let mut csv = String::from("row,prediction\n");
     for idx in 0..rows.records.len() {
         csv.push_str(&format!(
@@ -323,9 +324,9 @@ impl Config {
         )
     }
 
-    fn booster_config(&self) -> BoosterConfig {
+    fn booster_config(&self) -> CliResult<BoosterConfig> {
         let defaults = BoosterConfig::default();
-        BoosterConfig {
+        Ok(BoosterConfig {
             n_estimators: self.n_estimators.unwrap_or(defaults.n_estimators),
             learning_rate: self.learning_rate.unwrap_or(defaults.learning_rate),
             max_depth: self.max_depth.unwrap_or(defaults.max_depth),
@@ -335,85 +336,169 @@ impl Config {
                 .splitter
                 .as_deref()
                 .map(cli_splitters)
+                .transpose()?
                 .unwrap_or(defaults.splitters),
             leaf_predictor: self
                 .leaf_predictor
                 .as_deref()
                 .map(cli_leaf_predictor)
+                .transpose()?
                 .unwrap_or(defaults.leaf_predictor),
             linear_leaf_features: defaults.linear_leaf_features,
             linear_lambda_l2: self.l2_regularization.unwrap_or(defaults.linear_lambda_l2),
             fuzzy: self.fuzzy.unwrap_or(defaults.fuzzy),
             fuzzy_bandwidth: self.fuzzy_bandwidth.unwrap_or(defaults.fuzzy_bandwidth),
-        }
+        })
     }
 }
 
 fn read_config(path: &str) -> CliResult<Config> {
     let text = fs::read_to_string(path)?;
     let mut config = Config::default();
-    for line in text.lines() {
-        let line = line.trim();
-        if line.starts_with('#') || line.is_empty() {
+    for (line_idx, raw_line) in text.lines().enumerate() {
+        let line_number = line_idx + 1;
+        let line = strip_toml_comment(raw_line).trim();
+        if line.is_empty() {
             continue;
         }
-        if let Some((key, value)) = line.split_once('=') {
-            match key.trim() {
-                "target" | "target_column" => config.target = Some(trim_toml_string(value)),
-                "n_estimators" => config.n_estimators = trim_toml_string(value).parse().ok(),
-                "learning_rate" => config.learning_rate = trim_toml_string(value).parse().ok(),
-                "max_depth" => config.max_depth = trim_toml_string(value).parse().ok(),
-                "min_samples_leaf" => {
-                    config.min_samples_leaf = trim_toml_string(value).parse().ok()
-                }
-                "min_gain" => config.min_gain = trim_toml_string(value).parse().ok(),
-                "splitter" | "splitters" => config.splitter = Some(trim_toml_string(value)),
-                "leaf_predictor" => config.leaf_predictor = Some(trim_toml_string(value)),
-                "fuzzy" => config.fuzzy = trim_toml_string(value).parse().ok(),
-                "fuzzy_bandwidth" => config.fuzzy_bandwidth = trim_toml_string(value).parse().ok(),
-                "l2_regularization" => {
-                    config.l2_regularization = trim_toml_string(value).parse().ok()
-                }
-                _ => {}
+        let Some((key, value)) = line.split_once('=') else {
+            return Err(format!("invalid config line {line_number}: expected key = value").into());
+        };
+        let key = key.trim();
+        let value = value.trim();
+        if key.is_empty() {
+            return Err(format!("invalid config line {line_number}: empty key").into());
+        }
+        if value.is_empty() {
+            return Err(format!(
+                "invalid config value for '{key}' on line {line_number}: empty value"
+            )
+            .into());
+        }
+        match key {
+            "target" | "target_column" => {
+                config.target = Some(parse_config_string(key, value, line_number)?)
             }
+            "n_estimators" => {
+                config.n_estimators = Some(parse_config_value(key, value, line_number)?)
+            }
+            "learning_rate" => {
+                config.learning_rate = Some(parse_config_value(key, value, line_number)?)
+            }
+            "max_depth" => config.max_depth = Some(parse_config_value(key, value, line_number)?),
+            "min_samples_leaf" => {
+                config.min_samples_leaf = Some(parse_config_value(key, value, line_number)?)
+            }
+            "min_gain" => config.min_gain = Some(parse_config_value(key, value, line_number)?),
+            "splitter" | "splitters" => {
+                let splitters = parse_config_string(key, value, line_number)?;
+                cli_splitters(&splitters)?;
+                config.splitter = Some(splitters);
+            }
+            "leaf_predictor" => {
+                let leaf_predictor = parse_config_string(key, value, line_number)?;
+                cli_leaf_predictor(&leaf_predictor)?;
+                config.leaf_predictor = Some(leaf_predictor);
+            }
+            "fuzzy" => config.fuzzy = Some(parse_config_value(key, value, line_number)?),
+            "fuzzy_bandwidth" => {
+                config.fuzzy_bandwidth = Some(parse_config_value(key, value, line_number)?)
+            }
+            "l2_regularization" => {
+                config.l2_regularization = Some(parse_config_value(key, value, line_number)?)
+            }
+            _ => {}
         }
     }
     Ok(config)
 }
 
-fn cli_splitters(value: &str) -> Vec<SplitterKind> {
-    let splitters = value
-        .split(',')
-        .map(str::trim)
-        .filter_map(|name| match name {
-            "axis" => Some(SplitterKind::Axis),
-            "diagonal_2d" | "diagonal2d" => Some(SplitterKind::Diagonal2D),
-            "gaussian_2d" | "gaussian2d" | "radial" => Some(SplitterKind::Gaussian2D),
-            "periodic_time" | "periodic_24" => Some(SplitterKind::Periodic { period: 24.0 }),
-            "sparse_set" | "sparse" => Some(SplitterKind::SparseSet),
-            _ => None,
-        })
-        .collect::<Vec<_>>();
+fn strip_toml_comment(line: &str) -> &str {
+    let mut in_quote = None;
+    let mut escaped = false;
+    for (idx, ch) in line.char_indices() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        match ch {
+            '\\' if in_quote == Some('"') => escaped = true,
+            '"' | '\'' if in_quote == Some(ch) => in_quote = None,
+            '"' | '\'' if in_quote.is_none() => in_quote = Some(ch),
+            '#' if in_quote.is_none() => return &line[..idx],
+            _ => {}
+        }
+    }
+    line
+}
+
+fn parse_config_string(key: &str, value: &str, line_number: usize) -> CliResult<String> {
+    let trimmed = value.trim();
+    if let Some(quote) = trimmed
+        .chars()
+        .next()
+        .filter(|ch| *ch == '"' || *ch == '\'')
+    {
+        if !trimmed.ends_with(quote) || trimmed.len() < 2 {
+            return Err(format!(
+                "invalid config value for '{key}' on line {line_number}: unterminated string"
+            )
+            .into());
+        }
+        return Ok(trimmed[1..trimmed.len() - 1].to_string());
+    }
+    if trimmed.contains(char::is_whitespace) {
+        return Err(format!(
+            "invalid config value for '{key}' on line {line_number}: strings with whitespace must be quoted"
+        )
+        .into());
+    }
+    Ok(trimmed.to_string())
+}
+
+fn parse_config_value<T>(key: &str, value: &str, line_number: usize) -> CliResult<T>
+where
+    T: std::str::FromStr,
+    T::Err: std::fmt::Display,
+{
+    let value = parse_config_string(key, value, line_number)?;
+    value.parse::<T>().map_err(|err| {
+        format!("invalid config value for '{key}' on line {line_number}: {err}").into()
+    })
+}
+
+fn cli_splitters(value: &str) -> CliResult<Vec<SplitterKind>> {
+    let mut splitters = Vec::new();
+    for raw_name in value.split(',') {
+        let name = raw_name.trim();
+        if name.is_empty() {
+            return Err("splitter list contains an empty value".into());
+        }
+        let splitter = match name {
+            "axis" => SplitterKind::Axis,
+            "diagonal_2d" | "diagonal2d" => SplitterKind::Diagonal2D,
+            "gaussian_2d" | "gaussian2d" | "radial" => SplitterKind::Gaussian2D,
+            "periodic_time" | "periodic_24" => SplitterKind::Periodic { period: 24.0 },
+            "sparse_set" | "sparse" => SplitterKind::SparseSet,
+            _ => {
+                return Err(format!("unknown splitter '{name}'").into());
+            }
+        };
+        splitters.push(splitter);
+    }
     if splitters.is_empty() {
-        vec![SplitterKind::Axis]
+        Err("splitter list must not be empty".into())
     } else {
-        splitters
+        Ok(splitters)
     }
 }
 
-fn cli_leaf_predictor(value: &str) -> LeafPredictorKind {
+fn cli_leaf_predictor(value: &str) -> CliResult<LeafPredictorKind> {
     match value {
-        "linear" => LeafPredictorKind::Linear,
-        _ => LeafPredictorKind::Constant,
+        "constant" => Ok(LeafPredictorKind::Constant),
+        "linear" => Ok(LeafPredictorKind::Linear),
+        other => Err(format!("unknown leaf_predictor '{other}'").into()),
     }
-}
-
-fn trim_toml_string(value: &str) -> String {
-    value
-        .trim()
-        .trim_matches('"')
-        .trim_matches('\'')
-        .to_string()
 }
 
 struct CsvData {
@@ -468,20 +553,25 @@ fn numeric_dataset_and_target(
 }
 
 fn numeric_dataset_without_target(rows: &CsvData, feature_count: usize) -> CliResult<Dataset> {
-    let feature_indices = (0..feature_count.min(rows.headers.len())).collect::<Vec<_>>();
-    if feature_indices.len() != feature_count {
-        return Err(format!(
-            "input has {} columns but model expects {feature_count} features",
-            rows.headers.len()
-        )
-        .into());
-    }
+    ensure_feature_count(rows, feature_count)?;
+    let feature_indices = (0..feature_count).collect::<Vec<_>>();
     let x = rows
         .records
         .iter()
         .map(|record| parse_numeric_row(record, &feature_indices))
         .collect::<CliResult<Vec<_>>>()?;
     Ok(Dataset::from_rows(x)?)
+}
+
+fn ensure_feature_count(rows: &CsvData, feature_count: usize) -> CliResult<()> {
+    if rows.headers.len() != feature_count {
+        return Err(format!(
+            "input has {} feature columns but model expects {feature_count}",
+            rows.headers.len()
+        )
+        .into());
+    }
+    Ok(())
 }
 
 fn parse_numeric_row(record: &[String], indices: &[usize]) -> CliResult<Vec<f64>> {

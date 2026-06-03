@@ -1,16 +1,13 @@
 GeoBoost benchmark scaffold
 ===========================
 
-These Criterion files describe the benchmark surface GeoBoost should grow into:
+These Criterion benches cover the current public `geoboost-core` surfaces with
+small deterministic fixtures:
 
-* `training.rs` covers histogram-style training work over synthetic feature
-  matrices.
-* `prediction.rs` covers batch prediction traversal work.
-* `data_loading.rs` covers CSV parsing and matrix materialization work.
+* `training.rs` benchmarks `Booster::fit` on bounded synthetic matrices.
+* `prediction.rs` benchmarks `Model::predict` on lightweight synthetic batches.
+* `serialize.rs` benchmarks in-memory JSON serialization and deserialization.
 
-They currently use local placeholder kernels so the intended workloads are
-documented before the public Rust API is finalized. Once `geoboost-core`
-exports training, prediction, and data loading entry points, replace the local
-kernels with calls into the crate and wire these files through the root
-`Cargo.toml` bench configuration.
-
+They are wired through `crates/geoboost-core/Cargo.toml` with `harness = false`.
+The fixture sizes intentionally stay small so the benches are suitable as
+low-memory scaffolding while the implementation is still evolving.

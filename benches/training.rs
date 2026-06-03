@@ -1,77 +1,61 @@
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
+use geoboost_core::tree::SplitterKind;
+use geoboost_core::{Booster, BoosterConfig, Dataset};
 
-#[derive(Clone)]
-struct SyntheticMatrix {
-    rows: usize,
-    cols: usize,
-    values: Vec<f32>,
-    target: Vec<f32>,
-}
-
-impl SyntheticMatrix {
-    fn new(rows: usize, cols: usize) -> Self {
-        let mut state = 0x5eed_u64;
-        let mut next = || {
-            state = state.wrapping_mul(6364136223846793005).wrapping_add(1);
-            ((state >> 32) as f32 / u32::MAX as f32) - 0.5
-        };
-
-        let values = (0..rows * cols).map(|_| next()).collect::<Vec<_>>();
-        let target = (0..rows)
-            .map(|row| {
-                let offset = row * cols;
-                values[offset] * 1.7 + values[offset + 1] * -0.6 + next() * 0.1
-            })
-            .collect();
-
-        Self {
-            rows,
-            cols,
-            values,
-            target,
-        }
-    }
-
-    fn row(&self, row: usize) -> &[f32] {
-        let start = row * self.cols;
-        &self.values[start..start + self.cols]
-    }
-}
-
-fn histogram_training_placeholder(data: &SyntheticMatrix, bins: usize, rounds: usize) -> f32 {
-    let mut prediction = vec![0.0_f32; data.rows];
-    let mut gain_total = 0.0_f32;
-
-    for _ in 0..rounds {
-        for col in 0..data.cols {
-            let mut histogram = vec![0.0_f32; bins];
-            for row in 0..data.rows {
-                let gradient = data.target[row] - prediction[row];
-                let value = data.row(row)[col];
-                let bin = ((value.abs() * bins as f32) as usize).min(bins - 1);
-                histogram[bin] += gradient;
+fn training_fixture(rows: usize, cols: usize) -> (Dataset, Vec<f64>) {
+    let values = (0..rows * cols)
+        .map(|index| {
+            let row = index / cols;
+            let col = index % cols;
+            (row as f64 * 0.07 + col as f64 * 0.19).sin()
+        })
+        .collect::<Vec<_>>();
+    let target = (0..rows)
+        .map(|row| {
+            let first = values[row * cols];
+            let last = values[row * cols + cols - 1];
+            if first + 0.25 * last > 0.0 {
+                1.0
+            } else {
+                -1.0
             }
-            gain_total += histogram.iter().map(|value| value.abs()).sum::<f32>();
-        }
+        })
+        .collect();
 
-        for row_prediction in &mut prediction {
-            *row_prediction += 0.01 * gain_total.signum();
-        }
+    (
+        Dataset::from_flat(rows, cols, values).expect("synthetic training data is valid"),
+        target,
+    )
+}
+
+fn booster_config(n_estimators: usize, max_depth: usize) -> BoosterConfig {
+    BoosterConfig {
+        n_estimators,
+        learning_rate: 0.2,
+        max_depth,
+        min_samples_leaf: 2,
+        min_gain: 0.0,
+        splitters: vec![SplitterKind::Axis],
+        ..BoosterConfig::default()
     }
-
-    gain_total
 }
 
 fn bench_training(c: &mut Criterion) {
     let mut group = c.benchmark_group("training");
-    for &(rows, cols) in &[(1_000, 16), (10_000, 32)] {
-        let data = SyntheticMatrix::new(rows, cols);
+    for &(rows, cols, estimators, depth) in &[(32, 3, 1, 1), (96, 4, 3, 2)] {
+        let (dataset, target) = training_fixture(rows, cols);
+        let booster = Booster::new(booster_config(estimators, depth));
         group.bench_with_input(
-            BenchmarkId::new("histogram_placeholder", format!("{rows}x{cols}")),
-            &data,
-            |bench, data| {
+            BenchmarkId::new(
+                "booster_fit",
+                format!("{rows}x{cols}_{estimators}trees_depth{depth}"),
+            ),
+            &(booster, dataset, target),
+            |bench, (booster, dataset, target)| {
                 bench.iter(|| {
-                    histogram_training_placeholder(black_box(data), black_box(64), black_box(10))
+                    black_box(booster)
+                        .fit(black_box(dataset), black_box(target), None)
+                        .expect("benchmark fixture trains")
                 });
             },
         );

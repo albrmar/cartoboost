@@ -57,3 +57,29 @@ Expected behavior:
 - Return the parsed GeoJSON mapping without mutating coordinates or properties.
 - Raise a clear exception for malformed JSON or unsupported GeoJSON top-level
   types.
+
+## Priority Contracts
+
+These contracts are the ten highest-priority boundaries for alpha hardening:
+
+1. Rust remains authoritative for training, prediction, serialization, and CLI
+   model behavior.
+2. Python keeps sklearn-compatible estimator ergonomics while delegating
+   advanced behavior to the native backend.
+3. `backend="rust"` must fail clearly when `geoboost._native` is unavailable;
+   validation jobs must install the extension before using it.
+4. `backend="python"` supports only axis splits with constant leaves and must
+   reject native-only options explicitly.
+5. Artifact version `1` JSON round trips must preserve predictions across Rust,
+   Python, and CLI loaders.
+6. Split artifacts must retain stable routing semantics for axis, diagonal 2D,
+   gaussian/radial 2D, periodic interval, sparse scalar-ID, and fuzzy splits.
+7. Fuzzy prediction must conserve branch mass by keeping left and right weights
+   normalized for every routed sample.
+8. Linear leaves must use weighted ridge fitting and fall back safely only when
+   the fitting path cannot produce a valid model.
+9. Validation artifacts under `target/validation/` must be generated from the
+   checked-in scripts and record splitter and lane-level phase coverage.
+10. CI must keep routine lint/unit checks separate from native-extension
+    validation so matrix tests and rust-backed artifact generation fail at the
+    correct boundary.

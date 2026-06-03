@@ -4,6 +4,9 @@ use std::fs::File;
 use std::io::{BufReader, BufWriter};
 use std::path::Path;
 
+#[cfg(test)]
+mod serialize_tests;
+
 pub fn save_json(model: &Model, path: impl AsRef<Path>) -> Result<()> {
     let writer = BufWriter::new(File::create(path)?);
     serde_json::to_writer_pretty(writer, model)?;

@@ -71,7 +71,39 @@ jobs:
           uv run --group dev ruff check python tests scripts
 
       - name: Test Python
-        run: uv run --group dev pytest
+        run: uv run --group dev pytest --ignore=tests/python/test_full_validation_artifacts.py
+
+  validation:
+    name: Validation artifacts
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Sync Python environment
+        run: uv sync --group dev --python 3.12
+
+      - name: Install native extension
+        run: uv run --group dev maturin develop
+
+      - name: Generate validation artifacts
+        run: uv run --group dev python scripts/run_full_validation.py
 
   wheels:
     name: Wheels

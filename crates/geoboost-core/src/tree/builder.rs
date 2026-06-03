@@ -22,6 +22,8 @@ struct BestSplit {
     gain: f64,
     left: Vec<usize>,
     right: Vec<usize>,
+    left_weights: Vec<f64>,
+    right_weights: Vec<f64>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -122,19 +124,16 @@ impl TreeBuilder {
         }
 
         let sample_weight_sum = indices.iter().map(|&idx| weights[idx]).sum();
-        let split = if self.fuzzy && self.fuzzy_bandwidth > 0.0 {
-            Split::Fuzzy {
-                base: Box::new(best.split),
-                bandwidth: self.fuzzy_bandwidth,
-                kernel: super::FuzzyKernel::Linear,
-            }
-        } else {
-            best.split
-        };
         Node::Branch {
-            split,
-            left: Box::new(self.build_node(x, target, weights, &best.left, depth + 1)),
-            right: Box::new(self.build_node(x, target, weights, &best.right, depth + 1)),
+            split: best.split,
+            left: Box::new(self.build_node(x, target, &best.left_weights, &best.left, depth + 1)),
+            right: Box::new(self.build_node(
+                x,
+                target,
+                &best.right_weights,
+                &best.right,
+                depth + 1,
+            )),
             gain: best.gain,
             sample_weight_sum,
         }
@@ -204,43 +203,12 @@ impl TreeBuilder {
                     continue;
                 }
                 let threshold = (a + b) / 2.0;
-                let mut left = Vec::new();
-                let mut right = Vec::new();
-                for &idx in indices {
-                    let value = x.get(idx, feature);
-                    if value.is_nan() || value <= threshold {
-                        left.push(idx);
-                    } else {
-                        right.push(idx);
-                    }
-                }
-                if left.len() < self.min_samples_leaf || right.len() < self.min_samples_leaf {
-                    continue;
-                }
-                let gain = parent_sse - sse(target, weights, &left) - sse(target, weights, &right);
-                let replace = best.as_ref().is_none_or(|old| {
-                    is_better_split(
-                        gain,
-                        &Split::Axis {
-                            feature,
-                            threshold,
-                            missing_goes_left: true,
-                        },
-                        old,
-                    )
-                });
-                if replace {
-                    *best = Some(BestSplit {
-                        split: Split::Axis {
-                            feature,
-                            threshold,
-                            missing_goes_left: true,
-                        },
-                        gain,
-                        left,
-                        right,
-                    });
-                }
+                let split = Split::Axis {
+                    feature,
+                    threshold,
+                    missing_goes_left: true,
+                };
+                self.consider_split(split, x, target, weights, indices, parent_sse, best);
             }
         }
     }
@@ -518,29 +486,47 @@ impl TreeBuilder {
         parent_sse: f64,
         best: &mut Option<BestSplit>,
     ) {
+        let scoring_split = if self.fuzzy && self.fuzzy_bandwidth > 0.0 {
+            Split::Fuzzy {
+                base: Box::new(split),
+                bandwidth: self.fuzzy_bandwidth,
+                kernel: super::FuzzyKernel::Linear,
+            }
+        } else {
+            split
+        };
         let mut left = Vec::new();
         let mut right = Vec::new();
+        let mut left_weights = vec![0.0; weights.len()];
+        let mut right_weights = vec![0.0; weights.len()];
         for &idx in indices {
             let row = (0..x.n_cols())
                 .map(|col| x.get(idx, col))
                 .collect::<Vec<_>>();
-            if split.goes_left(&row) {
+            let branch_weights = scoring_split.branch_weights(&row);
+            if branch_weights.left > 0.0 {
                 left.push(idx);
-            } else {
+                left_weights[idx] = weights[idx] * branch_weights.left;
+            }
+            if branch_weights.right > 0.0 {
                 right.push(idx);
+                right_weights[idx] = weights[idx] * branch_weights.right;
             }
         }
         if left.len() < self.min_samples_leaf || right.len() < self.min_samples_leaf {
             return;
         }
-        let gain = parent_sse - sse(target, weights, &left) - sse(target, weights, &right);
+        let gain =
+            parent_sse - sse(target, &left_weights, &left) - sse(target, &right_weights, &right);
         if best
             .as_ref()
-            .is_none_or(|old| is_better_split(gain, &split, old))
+            .is_none_or(|old| is_better_split(gain, &scoring_split, old))
         {
             *best = Some(BestSplit {
-                split,
+                split: scoring_split,
                 gain,
+                left_weights,
+                right_weights,
                 left,
                 right,
             });
@@ -641,6 +627,42 @@ mod tests {
                     (Node::Leaf { value: left, .. }, Node::Leaf { value: right, .. }) => {
                         assert_close(left, 0.0);
                         assert_close(right, 1.0);
+                    }
+                    other => panic!("expected constant leaves, got {other:?}"),
+                }
+            }
+            other => panic!("expected branch root, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn fuzzy_training_uses_fractional_child_weights() {
+        let x = Dataset::from_rows(vec![vec![0.0], vec![1.0], vec![2.0], vec![3.0]]).unwrap();
+        let y = vec![0.0, 0.0, 10.0, 10.0];
+        let weights = vec![1.0; y.len()];
+        let builder = TreeBuilder {
+            max_depth: 1,
+            min_samples_leaf: 1,
+            min_gain: 0.0,
+            splitters: vec![SplitterKind::Axis],
+            leaf_predictor: LeafPredictorKind::Constant,
+            linear_leaf_features: Vec::new(),
+            linear_lambda_l2: 1.0,
+            fuzzy: true,
+            fuzzy_bandwidth: 2.0,
+        };
+
+        let tree = builder.fit(&x, &y, &weights);
+
+        match tree.root {
+            Node::Branch {
+                split, left, right, ..
+            } => {
+                assert!(matches!(split, Split::Fuzzy { .. }));
+                match (*left, *right) {
+                    (Node::Leaf { value: left, .. }, Node::Leaf { value: right, .. }) => {
+                        assert!(left > 0.0 && left < 5.0, "left leaf was {left}");
+                        assert!(right > 5.0 && right < 10.0, "right leaf was {right}");
                     }
                     other => panic!("expected constant leaves, got {other:?}"),
                 }

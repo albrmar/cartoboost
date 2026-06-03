@@ -1,6 +1,9 @@
-use crate::data::{validate_weights, Dataset};
+use crate::data::{validate_weights, Dataset, FeatureSchema};
 use crate::loss::{L2Loss, Loss};
-use crate::tree::{LeafPredictorKind, Model, SplitterKind, TreeBuilder, MODEL_ARTIFACT_VERSION};
+use crate::tree::{
+    LeafPredictorKind, Model, SplitterKind, TrainingConfigMetadata, TreeBuilder,
+    MODEL_ARTIFACT_VERSION,
+};
 use crate::{GeoBoostError, Result};
 use serde::{Deserialize, Serialize};
 
@@ -100,10 +103,25 @@ impl Booster {
 
         Ok(Model {
             artifact_version: MODEL_ARTIFACT_VERSION,
+            metadata: Some(Model::default_metadata()),
             init_prediction,
             learning_rate: self.config.learning_rate,
             feature_count: x.n_cols(),
+            feature_schema: Some(FeatureSchema::unnamed_numeric(x.n_cols())),
             target_name: None,
+            training_config: Some(TrainingConfigMetadata {
+                n_estimators: self.config.n_estimators,
+                learning_rate: self.config.learning_rate,
+                max_depth: self.config.max_depth,
+                min_samples_leaf: self.config.min_samples_leaf,
+                min_gain: self.config.min_gain,
+                splitters: self.config.splitters.clone(),
+                leaf_predictor: self.config.leaf_predictor.clone(),
+                linear_leaf_features: self.config.linear_leaf_features.clone(),
+                linear_lambda_l2: self.config.linear_lambda_l2,
+                fuzzy: self.config.fuzzy,
+                fuzzy_bandwidth: self.config.fuzzy_bandwidth,
+            }),
             trees,
         })
     }

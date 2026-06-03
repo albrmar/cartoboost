@@ -1,0 +1,59 @@
+import geoboost.regressor as regressor_module
+import pytest
+from geoboost import GeoBoostRegressor
+
+
+def test_python_fallback_uses_weighted_initial_prediction():
+    model = GeoBoostRegressor(max_depth=0, backend="python")
+
+    model.fit([[0.0], [1.0]], [0.0, 10.0], sample_weight=[3.0, 1.0])
+
+    assert model.predict([[0.0], [1.0]]) == pytest.approx([2.5, 2.5])
+
+
+def test_sample_weight_validation():
+    model = GeoBoostRegressor(backend="python")
+
+    with pytest.raises(ValueError, match="length"):
+        model.fit([[0.0], [1.0]], [0.0, 1.0], sample_weight=[1.0])
+    with pytest.raises(ValueError, match="finite non-negative"):
+        model.fit([[0.0], [1.0]], [0.0, 1.0], sample_weight=[1.0, -1.0])
+
+
+def test_sample_weight_is_passed_to_native_when_supported(monkeypatch):
+    calls = {}
+
+    class NativeWithWeights:
+        def __init__(self, **params):
+            calls["params"] = params
+
+        def fit(self, rows, targets, sample_weight=None):
+            calls["fit"] = (rows, targets, sample_weight)
+
+        def predict(self, rows):
+            return [0.0 for _ in rows]
+
+    monkeypatch.setattr(regressor_module, "_NativeGeoBoostRegressor", NativeWithWeights)
+
+    model = GeoBoostRegressor(n_estimators=1, backend="rust")
+    model.fit([[0.0], [1.0]], [0.0, 1.0], sample_weight=[0.25, 0.75])
+
+    assert calls["fit"] == ([[0.0], [1.0]], [0.0, 1.0], [0.25, 0.75])
+    assert model._backend_used == "rust"
+
+
+def test_auto_backend_falls_back_when_native_lacks_sample_weight(monkeypatch):
+    class NativeWithoutWeights:
+        def __init__(self, **params):
+            pass
+
+        def fit(self, rows, targets):
+            pass
+
+    monkeypatch.setattr(regressor_module, "_NativeGeoBoostRegressor", NativeWithoutWeights)
+
+    model = GeoBoostRegressor(max_depth=1, backend="auto")
+    model.fit([[0.0], [1.0]], [0.0, 10.0], sample_weight=[1.0, 3.0])
+
+    assert model._backend_used == "python"
+    assert model.predict([[0.0]]) == pytest.approx([7.5])

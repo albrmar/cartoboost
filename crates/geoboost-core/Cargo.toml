@@ -10,4 +10,20 @@ serde_json.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
+criterion.workspace = true
 tempfile = "3"
+
+[[bench]]
+name = "prediction"
+path = "../../benches/prediction.rs"
+harness = false
+
+[[bench]]
+name = "training"
+path = "../../benches/training.rs"
+harness = false
+
+[[bench]]
+name = "serialize"
+path = "../../benches/serialize.rs"
+harness = false

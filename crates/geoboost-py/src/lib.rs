@@ -48,13 +48,17 @@ impl NativeGeoBoostRegressor {
             l2_regularization,
             fuzzy_bandwidth,
         )?;
+        let splitters = splitters.unwrap_or_else(|| vec!["axis".to_string()]);
+        parse_splitters(&splitters)?;
+        parse_leaf_predictor(leaf_predictor)?;
+
         Ok(Self {
             n_estimators,
             learning_rate,
             max_depth,
             min_samples_leaf,
             min_gain,
-            splitters: splitters.unwrap_or_else(|| vec!["axis".to_string()]),
+            splitters,
             leaf_predictor: leaf_predictor.to_string(),
             linear_leaf_features: linear_leaf_features.unwrap_or_default(),
             l2_regularization,
@@ -64,16 +68,24 @@ impl NativeGeoBoostRegressor {
         })
     }
 
-    fn fit(&mut self, x: Vec<Vec<f64>>, y: Vec<f64>) -> PyResult<()> {
+    #[pyo3(signature = (x, y, sample_weight=None))]
+    fn fit(
+        &mut self,
+        x: Vec<Vec<f64>>,
+        y: Vec<f64>,
+        sample_weight: Option<Vec<f64>>,
+    ) -> PyResult<()> {
         let dataset = dataset_from_rows(x)?;
+        let splitters = parse_splitters(&self.splitters)?;
+        let leaf_predictor = parse_leaf_predictor(&self.leaf_predictor)?;
         let config = BoosterConfig {
             n_estimators: self.n_estimators,
             learning_rate: self.learning_rate,
             max_depth: self.max_depth,
             min_samples_leaf: self.min_samples_leaf,
             min_gain: self.min_gain,
-            splitters: parse_splitters(&self.splitters),
-            leaf_predictor: parse_leaf_predictor(&self.leaf_predictor),
+            splitters,
+            leaf_predictor,
             linear_leaf_features: self.linear_leaf_features.clone(),
             linear_lambda_l2: self.l2_regularization,
             fuzzy: self.fuzzy,
@@ -81,7 +93,7 @@ impl NativeGeoBoostRegressor {
         };
         self.model = Some(
             Booster::new(config)
-                .fit(&dataset, &y, None)
+                .fit(&dataset, &y, sample_weight.as_deref())
                 .map_err(to_py_value_error)?,
         );
         Ok(())
@@ -107,18 +119,54 @@ impl NativeGeoBoostRegressor {
     #[staticmethod]
     fn load(path: PathBuf) -> PyResult<Self> {
         let model = Model::load(path).map_err(to_py_error)?;
+        let training_config = model.training_config.clone();
+        let (
+            max_depth,
+            min_samples_leaf,
+            min_gain,
+            splitters,
+            leaf_predictor,
+            linear_leaf_features,
+            l2_regularization,
+            fuzzy,
+            fuzzy_bandwidth,
+        ) = if let Some(config) = training_config {
+            (
+                config.max_depth,
+                config.min_samples_leaf,
+                config.min_gain,
+                splitter_names(&config.splitters),
+                leaf_predictor_name(&config.leaf_predictor).to_string(),
+                config.linear_leaf_features,
+                config.linear_lambda_l2,
+                config.fuzzy,
+                config.fuzzy_bandwidth,
+            )
+        } else {
+            (
+                1,
+                1,
+                0.0,
+                vec!["axis".to_string()],
+                "constant".to_string(),
+                Vec::new(),
+                1.0,
+                false,
+                0.0,
+            )
+        };
         Ok(Self {
             n_estimators: model.trees.len(),
             learning_rate: model.learning_rate,
-            max_depth: 1,
-            min_samples_leaf: 1,
-            min_gain: 0.0,
-            splitters: vec!["axis".to_string()],
-            leaf_predictor: "constant".to_string(),
-            linear_leaf_features: Vec::new(),
-            l2_regularization: 1.0,
-            fuzzy: false,
-            fuzzy_bandwidth: 0.0,
+            max_depth,
+            min_samples_leaf,
+            min_gain,
+            splitters,
+            leaf_predictor,
+            linear_leaf_features,
+            l2_regularization,
+            fuzzy,
+            fuzzy_bandwidth,
             model: Some(model),
         })
     }
@@ -162,36 +210,68 @@ impl NativeGeoBoostRegressor {
     }
 }
 
-fn parse_splitters(names: &[String]) -> Vec<SplitterKind> {
-    let splitters = names
-        .iter()
-        .filter_map(|name| match name.as_str() {
-            "axis" => Some(SplitterKind::Axis),
-            "diagonal_2d" | "diagonal2d" => Some(SplitterKind::Diagonal2D),
-            "gaussian_2d" | "gaussian2d" | "radial" => Some(SplitterKind::Gaussian2D),
-            "periodic_time" | "periodic_24" => Some(SplitterKind::Periodic { period: 24.0 }),
-            "sparse_set" | "sparse" => Some(SplitterKind::SparseSet),
-            _ => None,
-        })
-        .collect::<Vec<_>>();
+fn parse_splitters(names: &[String]) -> PyResult<Vec<SplitterKind>> {
+    let mut splitters = Vec::with_capacity(names.len());
+    for name in names {
+        let splitter = match name.as_str() {
+            "axis" => SplitterKind::Axis,
+            "diagonal_2d" | "diagonal2d" => SplitterKind::Diagonal2D,
+            "gaussian_2d" | "gaussian2d" | "radial" => SplitterKind::Gaussian2D,
+            "periodic_time" | "periodic_24" => SplitterKind::Periodic { period: 24.0 },
+            "sparse_set" | "sparse" => SplitterKind::SparseSet,
+            _ => {
+                return Err(PyValueError::new_err(format!(
+                    "unknown splitter {name:?}; expected one of 'axis', 'diagonal_2d', \
+                     'gaussian_2d', 'periodic_time', or 'sparse_set'"
+                )));
+            }
+        };
+        splitters.push(splitter);
+    }
     if splitters.is_empty() {
-        vec![SplitterKind::Axis]
+        Ok(vec![SplitterKind::Axis])
     } else {
-        splitters
+        Ok(splitters)
     }
 }
 
-fn parse_leaf_predictor(name: &str) -> LeafPredictorKind {
+fn parse_leaf_predictor(name: &str) -> PyResult<LeafPredictorKind> {
     match name {
-        "linear" => LeafPredictorKind::Linear,
-        _ => LeafPredictorKind::Constant,
+        "constant" => Ok(LeafPredictorKind::Constant),
+        "linear" => Ok(LeafPredictorKind::Linear),
+        _ => Err(PyValueError::new_err(format!(
+            "unknown leaf_predictor {name:?}; expected 'constant' or 'linear'"
+        ))),
+    }
+}
+
+fn splitter_names(splitters: &[SplitterKind]) -> Vec<String> {
+    splitters
+        .iter()
+        .map(|splitter| match splitter {
+            SplitterKind::Axis => "axis".to_string(),
+            SplitterKind::Diagonal2D => "diagonal_2d".to_string(),
+            SplitterKind::Gaussian2D => "gaussian_2d".to_string(),
+            SplitterKind::Periodic { period } if (*period - 24.0).abs() < 1e-12 => {
+                "periodic_time".to_string()
+            }
+            SplitterKind::Periodic { period } => format!("periodic:{period}"),
+            SplitterKind::SparseSet => "sparse_set".to_string(),
+        })
+        .collect()
+}
+
+fn leaf_predictor_name(leaf_predictor: &LeafPredictorKind) -> &'static str {
+    match leaf_predictor {
+        LeafPredictorKind::Constant => "constant",
+        LeafPredictorKind::Linear => "linear",
     }
 }
 
 fn validate_params(
     n_estimators: usize,
     learning_rate: f64,
-    max_depth: usize,
+    _max_depth: usize,
     min_samples_leaf: usize,
     min_gain: f64,
     l2_regularization: f64,
@@ -204,9 +284,6 @@ fn validate_params(
         return Err(PyValueError::new_err(
             "learning_rate must be positive and finite",
         ));
-    }
-    if max_depth == 0 {
-        return Err(PyValueError::new_err("max_depth must be positive"));
     }
     if min_samples_leaf == 0 {
         return Err(PyValueError::new_err("min_samples_leaf must be positive"));

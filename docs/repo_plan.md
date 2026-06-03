@@ -16,6 +16,11 @@ The implementation uses:
 - pytest and ruff for Python validation.
 - Cargo tests, clippy, and bench compile smoke checks for Rust validation.
 
+Validation scripts that train advanced splitter, fuzzy, sparse, or linear-leaf
+fixtures require the PyO3 native extension. CI handles that boundary in a
+dedicated validation-artifacts job by running `maturin develop` before
+`scripts/run_full_validation.py`.
+
 ## Target Product
 
 Python API:
@@ -229,6 +234,8 @@ Validation currently covers:
 - Native backend smoke tests for special splitters.
 - CLI train/predict/eval smoke behavior.
 - Generated PNG proof images for diagonal and radial segmentation.
+- Generated validation artifacts after installing the native extension for
+  `GeoBoostRegressor(backend="rust")` workflows.
 
 ## Acceptance Criteria
 
@@ -244,9 +251,11 @@ Current `just validate` runs:
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
-python3 -m ruff format --check python tests scripts
-python3 -m ruff check python tests scripts
-python3 -m pytest
+uv run --group dev ruff format --check python tests scripts
+uv run --group dev ruff check python tests scripts
+uv run --group dev maturin develop
+uv run --group dev pytest
+uv run --group dev python scripts/run_full_validation.py
 cargo bench --workspace --no-run
 ```
 
