@@ -1,39 +1,82 @@
 # GeoBoost Documentation
 
-This documentation captures the v1 API contract, implementation status, fixture
-contracts, testing strategy, and release checklist for the clean-room
-GeoBoost-inspired repo.
+This documentation explains how to install, train, validate, and extend
+GeoBoost. Start with the API and feature docs when using the package, then use
+the testing and artifact docs when changing behavior.
 
 ## Contents
 
-- [Fixture Contract](fixture-contract.md) describes the committed test data and
-  golden outputs under `tests/`.
-- [v1 API](v1_api.md) describes the supported Python, Rust-backed, and CLI
-  public surfaces.
+- [v1 API](v1_api.md) shows the supported Python estimator, Rust-backed options,
+  and CLI commands.
 - [Sparse Features](sparse_features.md) documents list-valued route-cell-style
-  sparse columns.
+  sparse columns for Python training and prediction.
 - [Feature Schema](feature_schema.md) documents numeric, periodic, and
-  sparse-set schema declarations.
-- [Model Artifact](model_artifact.md) documents native JSON artifact contents
-  and compatibility scope.
-- [Testing Strategy](testing_strategy.md) describes unit, integration,
-  validation, fuzz, and benchmark expectations.
-- [Limitations](limitations.md) states the explicit alpha/v1-candidate limits.
-- [v1 Release Checklist](v1_release_checklist.md) tracks release-candidate gates.
-- [Repository Plan](repo_plan.md) records the target product, architecture,
-  milestone plan, testing philosophy, and definition of done.
-- [Integration Contract](integration-contract.md) records the expected Python API
-  shape that future implementation work should satisfy.
+  sparse-set declarations.
+- [SHAP Support](shap.md) explains how to generate SHAP explanations for dense
+  predictions.
+- [Model Artifact](model_artifact.md) explains native JSON model files,
+  compatibility, metadata, and load/save behavior.
+- [Limitations](limitations.md) states the current alpha limits so callers know
+  which workflows are supported.
+- [Implementation Status](implementation_status.md) lists implemented behavior
+  and remaining hardening work.
+- [Testing Strategy](testing_strategy.md) explains the validation commands and
+  the unit, integration, fuzz, and benchmark coverage.
+- [Fixture Contract](fixture-contract.md) describes committed test data and
+  golden outputs under `tests/`.
 - [Golden Data Workflow](golden-data-workflow.md) explains how to update fixture
-  expectations without weakening the test suite.
-- [Implementation Status](implementation_status.md) states what is implemented
-  and what remains planned.
+  expectations without weakening tests.
+- [Integration Contract](integration-contract.md) records the Python API shape
+  that implementation work should preserve.
+- [Repository Plan](repo_plan.md) records the target product, architecture,
+  milestone plan, and definition of done.
+- [v1 Release Checklist](v1_release_checklist.md) tracks release-candidate gates.
+- [NYC Taxi Quality Benchmarks](nyc_taxi_benchmarks.md) documents optional
+  real-data model-quality comparisons.
 - [Segmentation Proofs](assets/) contains generated PNGs showing learned
   spatial segmentation boundaries on deterministic synthetic datasets.
+
+## Quick Start
+
+Install the development environment and native extension:
+
+```sh
+uv sync --group dev
+uv run --group dev maturin develop
+```
+
+Train and predict from Python:
+
+```python
+from geoboost import GeoBoostRegressor
+
+model = GeoBoostRegressor(
+    n_estimators=50,
+    learning_rate=0.1,
+    max_depth=3,
+    splitters=["axis"],
+    backend="rust",
+)
+model.fit(X_train, y_train)
+predictions = model.predict(X_test)
+```
+
+Train and predict from dense numeric CSV files:
+
+```sh
+geoboost train --data train.csv --config configs/regression.toml --model-out model.json
+geoboost predict --model model.json --input test.csv --predictions-out predictions.csv
+```
+
+Run the full local validation suite:
+
+```sh
+just validate
+```
 
 ## Current Scope
 
 The repository contains a regression implementation with spatial, temporal,
-fuzzy, sparse, schema-aware, and linear-leaf support, plus documented future
-hardening items. It is a clean-room implementation and does not claim
-equivalence to Lyft's proprietary GeoBoost.
+fuzzy, sparse, schema-aware, and linear-leaf support. Advanced splitters,
+sparse features, schema-driven training, fuzzy training, and linear leaves
+require the Rust native extension.

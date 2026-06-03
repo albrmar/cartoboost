@@ -235,6 +235,60 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
             raise NotImplementedError("the pure-Python fallback does not support sparse_sets")
         return np.asarray(list(self._model.predict(rows)), dtype=float)
 
+    def __call__(self, X: Iterable[Iterable[float]]) -> np.ndarray:
+        """Make the estimator directly usable as a SHAP model callable."""
+        return self.predict(X)
+
+    def make_shap_explainer(
+        self,
+        background: Any,
+        *,
+        sparse_sets: Any | None = None,
+        sparse_id_vocabulary: dict[str, list[int]] | None = None,
+        algorithm: str = "auto",
+        feature_names: list[str] | None = None,
+        **kwargs: Any,
+    ) -> Any:
+        """Build a SHAP explainer for dense predictions."""
+        from .explain import make_shap_explainer
+
+        return make_shap_explainer(
+            self,
+            background,
+            sparse_sets=sparse_sets,
+            sparse_id_vocabulary=sparse_id_vocabulary,
+            algorithm=algorithm,
+            feature_names=feature_names,
+            **kwargs,
+        )
+
+    def explain_shap(
+        self,
+        X: Any,
+        *,
+        background: Any,
+        sparse_sets: Any | None = None,
+        background_sparse_sets: Any | None = None,
+        sparse_id_vocabulary: dict[str, list[int]] | None = None,
+        algorithm: str = "auto",
+        feature_names: list[str] | None = None,
+        **kwargs: Any,
+    ) -> Any:
+        """Return a SHAP Explanation for dense predictions."""
+        from .explain import explain_shap
+
+        return explain_shap(
+            self,
+            X,
+            background=background,
+            sparse_sets=sparse_sets,
+            background_sparse_sets=background_sparse_sets,
+            sparse_id_vocabulary=sparse_id_vocabulary,
+            algorithm=algorithm,
+            feature_names=feature_names,
+            **kwargs,
+        )
+
     def save(self, path: str | Path) -> None:
         if self._model is None:
             raise RuntimeError("GeoBoostRegressor is not fitted")

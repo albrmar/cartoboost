@@ -1,0 +1,90 @@
+# SHAP Support
+
+GeoBoost supports the Python `shap` package through the estimator prediction
+API. Install the optional dependency before using SHAP:
+
+```sh
+pip install "geoboost[explain]"
+```
+
+For local development:
+
+```sh
+uv sync --extra explain --group dev
+```
+
+## Basic Usage
+
+```python
+from geoboost import GeoBoostRegressor
+
+model = GeoBoostRegressor(
+    n_estimators=50,
+    learning_rate=0.1,
+    max_depth=3,
+    backend="rust",
+).fit(X_train, y_train)
+
+explainer = shap.Explainer(model, X_train)
+explanation = explainer(X_test)
+```
+
+`explanation` is a `shap.Explanation`, so it works with SHAP plotting helpers:
+
+```python
+import shap
+
+shap.plots.beeswarm(explanation)
+shap.plots.waterfall(explanation[0])
+```
+
+GeoBoost also provides convenience helpers that call SHAP for you:
+
+```python
+explanation = model.explain_shap(X_test, background=X_train)
+explainer = model.make_shap_explainer(X_train)
+```
+
+## Sparse Sets
+
+Models trained with `sparse_sets=` can be explained through the GeoBoost helper.
+Sparse IDs are exposed to SHAP as binary features named `column=id`.
+
+```python
+explanation = model.explain_shap(
+    X_test,
+    background=X_train,
+    sparse_sets={"route_cells": route_cells_test},
+    background_sparse_sets={"route_cells": route_cells_train},
+)
+```
+
+For reusable explainers, pass the background sparse sets when creating the
+explainer:
+
+```python
+explainer = model.make_shap_explainer(
+    X_train,
+    sparse_sets={"route_cells": route_cells_train},
+)
+```
+
+## Additivity
+
+For regression, SHAP values should add back to the model prediction:
+
+```python
+prediction = model.predict(X_test)
+reconstructed = explanation.base_values + explanation.values.sum(axis=1)
+```
+
+The test suite checks this contract for dense and sparse-set models.
+
+## Current Limits
+
+- GeoBoost estimators are callable after fitting, so `shap.Explainer(model,
+  background)` works directly for dense prediction workflows.
+- Dense Python, NumPy, and pandas inputs are supported through the existing
+  estimator input handling.
+- Sparse-set models are supported through the GeoBoost helpers because they need
+  the sparse-ID encoding described above.

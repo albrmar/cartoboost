@@ -41,6 +41,9 @@ validate:
     uv run --group dev python scripts/run_v1_validation.py
     cargo bench --workspace --no-run
 
+nyc-quality-benchmark:
+    uv run --group dev --group bench python scripts/run_nyc_taxi_quality_benchmarks.py
+
 clean:
     cargo clean
     rm -rf build dist target wheels *.egg-info .pytest_cache .ruff_cache .venv

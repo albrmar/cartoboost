@@ -45,3 +45,5 @@ hardening, but it is not positioned as production-grade infrastructure.
 - Validation fixtures are deterministic synthetic checks.
 - They demonstrate intended behavior on narrow fixtures and do not certify
   production accuracy, latency, robustness, or superiority.
+- NYC taxi quality benchmarks are optional real-data comparisons with documented
+  setup and generated artifacts; they are not universal superiority claims.

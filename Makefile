@@ -1,4 +1,4 @@
-.PHONY: fmt lint test build develop sdist wheel validate clean
+.PHONY: fmt lint test build develop sdist wheel validate nyc-quality-benchmark clean
 
 fmt:
 	cargo fmt --all
@@ -34,6 +34,9 @@ validate:
 	uv run --group dev pytest
 	uv run --group dev python scripts/run_full_validation.py
 	cargo bench --workspace --no-run
+
+nyc-quality-benchmark:
+	uv run --group dev --group bench python scripts/run_nyc_taxi_quality_benchmarks.py
 
 clean:
 	cargo clean

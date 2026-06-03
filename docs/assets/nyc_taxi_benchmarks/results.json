@@ -1,0 +1,630 @@
+{
+  "artifact_version": 1,
+  "dataset": {
+    "source": "nyc_tlc_trip_records",
+    "source_url": "https://www.nyc.gov/site/tlc/about/tlc-trip-record-data.page",
+    "taxi_type": "yellow",
+    "year": 2024,
+    "months": [
+      1
+    ],
+    "sample_size": 5000,
+    "task_rows": {
+      "duration": 5000,
+      "fare": 5000,
+      "pickup_demand": 3098
+    }
+  },
+  "models_requested": [
+    "geoboost",
+    "lightgbm",
+    "xgboost",
+    "mean"
+  ],
+  "tasks": {
+    "duration": {
+      "display_name": "Trip duration",
+      "description": "Predict log trip duration from zone, trip, passenger, and time features.",
+      "row_count": 5000,
+      "feature_names": [
+        "trip_distance",
+        "passenger_count",
+        "hour",
+        "dayofweek",
+        "PULocationID",
+        "DOLocationID"
+      ],
+      "splits": {
+        "random": {
+          "train_rows": 4000,
+          "test_rows": 1000,
+          "holdout_pickup_zones": [
+            4,
+            12,
+            13,
+            24,
+            25,
+            33,
+            40,
+            41,
+            42,
+            43,
+            45,
+            48,
+            50,
+            65,
+            68,
+            70,
+            71,
+            74,
+            75,
+            79,
+            86,
+            87,
+            88,
+            90,
+            97,
+            100,
+            107,
+            108,
+            113,
+            114,
+            116,
+            125,
+            129,
+            132,
+            134,
+            137,
+            138,
+            140,
+            141,
+            142,
+            143,
+            144,
+            148,
+            151,
+            152,
+            158,
+            161,
+            162,
+            163,
+            164,
+            166,
+            170,
+            177,
+            186,
+            193,
+            209,
+            211,
+            222,
+            223,
+            224,
+            229,
+            230,
+            231,
+            232,
+            233,
+            234,
+            236,
+            237,
+            238,
+            239,
+            246,
+            249,
+            255,
+            261,
+            262,
+            263
+          ],
+          "models": {
+            "geoboost": {
+              "status": "ok",
+              "metrics": {
+                "rmse": 0.3261227284890152,
+                "mae": 0.2545792293194849,
+                "r2": 0.7745393403041315
+              },
+              "fit_predict_seconds": 49.38026951500797,
+              "backend": "rust"
+            },
+            "lightgbm": {
+              "status": "ok",
+              "metrics": {
+                "rmse": 0.33366201208583113,
+                "mae": 0.26022817771999346,
+                "r2": 0.7639944762270082
+              },
+              "fit_predict_seconds": 2.376929277990712
+            },
+            "xgboost": {
+              "status": "ok",
+              "metrics": {
+                "rmse": 0.3381521476491794,
+                "mae": 0.2646875113936866,
+                "r2": 0.7575998193615523
+              },
+              "fit_predict_seconds": 0.1650331339915283
+            },
+            "mean": {
+              "status": "ok",
+              "metrics": {
+                "rmse": 0.6868336210741501,
+                "mae": 0.5527041926452514,
+                "r2": -2.7012535989356934e-05
+              },
+              "fit_predict_seconds": 9.892400703392923e-05
+            }
+          }
+        },
+        "spatial_holdout": {
+          "train_rows": 3916,
+          "test_rows": 1084,
+          "holdout_pickup_zones": [
+            4,
+            25,
+            42,
+            52,
+            68,
+            75,
+            86,
+            91,
+            106,
+            116,
+            132,
+            138,
+            143,
+            151,
+            162,
+            168,
+            183,
+            197,
+            218,
+            226,
+            233,
+            239,
+            247,
+            259
+          ],
+          "models": {
+            "geoboost": {
+              "status": "ok",
+              "metrics": {
+                "rmse": 0.349664353169897,
+                "mae": 0.2685144760396525,
+                "r2": 0.7996815098458256
+              },
+              "fit_predict_seconds": 45.304285318998154,
+              "backend": "rust"
+            },
+            "lightgbm": {
+              "status": "ok",
+              "metrics": {
+                "rmse": 0.35431852650052775,
+                "mae": 0.2728411927062729,
+                "r2": 0.7943133805346138
+              },
+              "fit_predict_seconds": 0.012107062007999048
+            },
+            "xgboost": {
+              "status": "ok",
+              "metrics": {
+                "rmse": 0.36451840630988114,
+                "mae": 0.281228410318992,
+                "r2": 0.7823005941386943
+              },
+              "fit_predict_seconds": 0.01693595200777054
+            },
+            "mean": {
+              "status": "ok",
+              "metrics": {
+                "rmse": 0.8533641945832435,
+                "mae": 0.7028862445358416,
+                "r2": -0.19312831302950428
+              },
+              "fit_predict_seconds": 9.831300121732056e-05
+            }
+          }
+        }
+      }
+    },
+    "fare": {
+      "display_name": "Fare amount",
+      "description": "Predict log total amount from zone, trip, passenger, and time features.",
+      "row_count": 5000,
+      "feature_names": [
+        "trip_distance",
+        "passenger_count",
+        "hour",
+        "dayofweek",
+        "PULocationID",
+        "DOLocationID"
+      ],
+      "splits": {
+        "random": {
+          "train_rows": 4000,
+          "test_rows": 1000,
+          "holdout_pickup_zones": [
+            4,
+            12,
+            13,
+            24,
+            25,
+            33,
+            40,
+            41,
+            42,
+            43,
+            45,
+            48,
+            50,
+            65,
+            68,
+            70,
+            71,
+            74,
+            75,
+            79,
+            86,
+            87,
+            88,
+            90,
+            97,
+            100,
+            107,
+            108,
+            113,
+            114,
+            116,
+            125,
+            129,
+            132,
+            134,
+            137,
+            138,
+            140,
+            141,
+            142,
+            143,
+            144,
+            148,
+            151,
+            152,
+            158,
+            161,
+            162,
+            163,
+            164,
+            166,
+            170,
+            177,
+            186,
+            193,
+            209,
+            211,
+            222,
+            223,
+            224,
+            229,
+            230,
+            231,
+            232,
+            233,
+            234,
+            236,
+            237,
+            238,
+            239,
+            246,
+            249,
+            255,
+            261,
+            262,
+            263
+          ],
+          "models": {
+            "geoboost": {
+              "status": "ok",
+              "metrics": {
+                "rmse": 0.16287458080771255,
+                "mae": 0.12542116488403302,
+                "r2": 0.9050623685202988
+              },
+              "fit_predict_seconds": 49.292361032014014,
+              "backend": "rust"
+            },
+            "lightgbm": {
+              "status": "ok",
+              "metrics": {
+                "rmse": 0.16774738416112614,
+                "mae": 0.1300960706982266,
+                "r2": 0.8992967970669543
+              },
+              "fit_predict_seconds": 8.557391055015614
+            },
+            "xgboost": {
+              "status": "ok",
+              "metrics": {
+                "rmse": 0.17179366926167586,
+                "mae": 0.13395229784922955,
+                "r2": 0.8943800197169798
+              },
+              "fit_predict_seconds": 7.218199530994752
+            },
+            "mean": {
+              "status": "ok",
+              "metrics": {
+                "rmse": 0.5286088568856282,
+                "mae": 0.40626309053186926,
+                "r2": -1.4775980858861004e-06
+              },
+              "fit_predict_seconds": 0.00010529701830819249
+            }
+          }
+        },
+        "spatial_holdout": {
+          "train_rows": 3916,
+          "test_rows": 1084,
+          "holdout_pickup_zones": [
+            4,
+            25,
+            42,
+            52,
+            68,
+            75,
+            86,
+            91,
+            106,
+            116,
+            132,
+            138,
+            143,
+            151,
+            162,
+            168,
+            183,
+            197,
+            218,
+            226,
+            233,
+            239,
+            247,
+            259
+          ],
+          "models": {
+            "geoboost": {
+              "status": "ok",
+              "metrics": {
+                "rmse": 0.20337348842016315,
+                "mae": 0.15798548018865446,
+                "r2": 0.9151611280400456
+              },
+              "fit_predict_seconds": 50.501800856000045,
+              "backend": "rust"
+            },
+            "lightgbm": {
+              "status": "ok",
+              "metrics": {
+                "rmse": 0.20696394400510518,
+                "mae": 0.1615766243989279,
+                "r2": 0.9121391110289738
+              },
+              "fit_predict_seconds": 0.010793400026159361
+            },
+            "xgboost": {
+              "status": "ok",
+              "metrics": {
+                "rmse": 0.23283004299294163,
+                "mae": 0.18434149634760086,
+                "r2": 0.8888052594121838
+              },
+              "fit_predict_seconds": 0.09150220500305295
+            },
+            "mean": {
+              "status": "ok",
+              "metrics": {
+                "rmse": 0.8021926793164559,
+                "mae": 0.6186366828877364,
+                "r2": -0.3199685935356913
+              },
+              "fit_predict_seconds": 9.968498488888144e-05
+            }
+          }
+        }
+      }
+    },
+    "pickup_demand": {
+      "display_name": "Pickup-zone demand",
+      "description": "Predict log pickup trip count for a pickup zone, hour, and weekday bucket.",
+      "row_count": 3098,
+      "feature_names": [
+        "PULocationID",
+        "hour",
+        "dayofweek"
+      ],
+      "splits": {
+        "random": {
+          "train_rows": 2479,
+          "test_rows": 619,
+          "holdout_pickup_zones": [
+            4,
+            7,
+            13,
+            24,
+            41,
+            42,
+            43,
+            45,
+            48,
+            50,
+            65,
+            68,
+            70,
+            74,
+            75,
+            79,
+            87,
+            88,
+            90,
+            97,
+            100,
+            107,
+            113,
+            114,
+            132,
+            135,
+            137,
+            138,
+            140,
+            141,
+            142,
+            143,
+            144,
+            146,
+            148,
+            150,
+            151,
+            152,
+            158,
+            161,
+            162,
+            163,
+            164,
+            166,
+            170,
+            183,
+            186,
+            197,
+            209,
+            211,
+            219,
+            224,
+            226,
+            229,
+            230,
+            231,
+            232,
+            233,
+            234,
+            236,
+            237,
+            238,
+            239,
+            246,
+            249,
+            261,
+            262,
+            263
+          ],
+          "models": {
+            "geoboost": {
+              "status": "ok",
+              "metrics": {
+                "rmse": 0.27878689794309447,
+                "mae": 0.23805167602484753,
+                "r2": 0.07946970528205122
+              },
+              "fit_predict_seconds": 20.536782812996535,
+              "backend": "rust"
+            },
+            "lightgbm": {
+              "status": "ok",
+              "metrics": {
+                "rmse": 0.2794785831007466,
+                "mae": 0.23698127065251468,
+                "r2": 0.07489626936151494
+              },
+              "fit_predict_seconds": 0.05761972098844126
+            },
+            "xgboost": {
+              "status": "ok",
+              "metrics": {
+                "rmse": 0.2795682434471082,
+                "mae": 0.23775053221831716,
+                "r2": 0.07430260365072461
+              },
+              "fit_predict_seconds": 0.03518616600194946
+            },
+            "mean": {
+              "status": "ok",
+              "metrics": {
+                "rmse": 0.29131521405717764,
+                "mae": 0.25600754653913416,
+                "r2": -0.005124130835963303
+              },
+              "fit_predict_seconds": 9.29730013012886e-05
+            }
+          }
+        },
+        "spatial_holdout": {
+          "train_rows": 2468,
+          "test_rows": 630,
+          "holdout_pickup_zones": [
+            4,
+            25,
+            42,
+            52,
+            68,
+            75,
+            86,
+            91,
+            106,
+            116,
+            132,
+            138,
+            143,
+            151,
+            162,
+            168,
+            183,
+            197,
+            218,
+            226,
+            233,
+            239,
+            247,
+            259
+          ],
+          "models": {
+            "geoboost": {
+              "status": "ok",
+              "metrics": {
+                "rmse": 0.3335802102964308,
+                "mae": 0.26854580966478575,
+                "r2": -0.049927338455941106
+              },
+              "fit_predict_seconds": 18.85104956498253,
+              "backend": "rust"
+            },
+            "lightgbm": {
+              "status": "ok",
+              "metrics": {
+                "rmse": 0.32952576764672364,
+                "mae": 0.26480505258411813,
+                "r2": -0.024560123283043467
+              },
+              "fit_predict_seconds": 0.17893573400215246
+            },
+            "xgboost": {
+              "status": "ok",
+              "metrics": {
+                "rmse": 0.32825299870306024,
+                "mae": 0.2632677843286272,
+                "r2": -0.016660832380194668
+              },
+              "fit_predict_seconds": 0.009801411011721939
+            },
+            "mean": {
+              "status": "ok",
+              "metrics": {
+                "rmse": 0.3285961055870798,
+                "mae": 0.27608440635343695,
+                "r2": -0.018787275311146878
+              },
+              "fit_predict_seconds": 9.643999510444701e-05
+            }
+          }
+        }
+      }
+    }
+  }
+}

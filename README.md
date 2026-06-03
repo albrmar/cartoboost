@@ -1,17 +1,13 @@
 # geoboost
 
-Clean-room GeoBoost-inspired regression tools exposed through Rust, Python, and
-a small command-line interface.
-
-This project is based only on public descriptions of modular spatiotemporal
-boosted trees. It does not reproduce or claim equivalence to Lyft's proprietary
-GeoBoost implementation.
+Regression tools for tabular and spatiotemporal features, exposed through Rust,
+Python, and a small command-line interface.
 
 ## Current Scope
 
-GeoBoost is a regression-only alpha with a v1 release-candidate contract focused
-on deterministic synthetic validation, artifact fidelity, and explicit API
-limits. The Rust backend owns the advanced behavior:
+GeoBoost is a regression-only alpha focused on deterministic training,
+inspectable model artifacts, and explicit API limits. The Rust backend owns the
+advanced behavior:
 
 - L2 gradient boosting with constant or linear leaves.
 - Axis, diagonal 2D, Gaussian/radial 2D, periodic, sparse-set, and fuzzy splits.
@@ -148,6 +144,28 @@ Native artifacts are versioned JSON and include optional metadata, feature
 schema, and training configuration fields. See
 [`docs/model_artifact.md`](docs/model_artifact.md).
 
+## SHAP Explanations
+
+Install the optional SHAP dependency, then explain predictions through the
+Python estimator:
+
+```sh
+pip install "geoboost[explain]"
+```
+
+```python
+import shap
+
+explainer = shap.Explainer(model, X_train)
+explanation = explainer(X_test)
+```
+
+The returned object is a `shap.Explanation` and can be used with SHAP plots.
+`model.explain_shap(X_test, background=X_train)` is also available as a
+convenience helper. Sparse-list models are supported through the helper by
+passing `sparse_sets=` and `background_sparse_sets=`. See
+[`docs/shap.md`](docs/shap.md).
+
 ## CLI Dense CSV Example
 
 The CLI v1 contract is dense numeric CSV train/predict/eval. Python is the v1
@@ -188,14 +206,15 @@ cargo bench --workspace --no-run
 ```
 
 Generated validation artifacts are written under `target/validation/`. They are
-deterministic smoke evidence over synthetic fixtures and should not be read as a
-claim of production superiority over other GBT libraries.
+deterministic checks over synthetic fixtures and are intended to catch behavior
+regressions during development.
 
 ## Documentation
 
 - [v1 API](docs/v1_api.md)
 - [Sparse Features](docs/sparse_features.md)
 - [Feature Schema](docs/feature_schema.md)
+- [SHAP Support](docs/shap.md)
 - [Model Artifact](docs/model_artifact.md)
 - [Testing Strategy](docs/testing_strategy.md)
 - [Limitations](docs/limitations.md)

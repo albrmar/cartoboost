@@ -69,3 +69,10 @@ fuzz campaigns are post-v1 hardening unless explicitly scheduled.
 Criterion benchmarks must compile in CI. Benchmark numbers are diagnostic and
 must not be presented as broad performance claims without a documented,
 reproducible comparison setup.
+
+`scripts/run_nyc_taxi_quality_benchmarks.py` is the optional real-data
+model-quality benchmark path. It writes tables and graphics under
+`docs/assets/nyc_taxi_benchmarks/`, supports official NYC TLC Parquet inputs,
+and compares GeoBoost with LightGBM/XGBoost when those optional packages are
+installed. It is intentionally outside `just validate` because it may download
+large data and depends on optional benchmark packages.
