@@ -131,7 +131,17 @@ mod tests {
         let model = booster.fit(&x, &y, None).unwrap();
 
         assert_eq!(model.artifact_version, MODEL_ARTIFACT_VERSION);
-        assert_eq!(model.predict(&x), y);
+        assert_predictions_close(&model.predict(&x), &y);
+    }
+
+    fn assert_predictions_close(actual: &[f64], expected: &[f64]) {
+        assert_eq!(actual.len(), expected.len());
+        for (actual, expected) in actual.iter().zip(expected) {
+            assert!(
+                (actual - expected).abs() < 1e-12,
+                "expected {expected}, got {actual}"
+            );
+        }
     }
 
     #[test]
@@ -186,7 +196,7 @@ mod tests {
 
         let model = booster.fit(&x, &y, None).unwrap();
 
-        assert_eq!(model.predict(&x), y);
+        assert_predictions_close(&model.predict(&x), &y);
         assert!(matches!(
             model.trees[0].root,
             crate::tree::Node::Branch {
@@ -244,7 +254,45 @@ mod tests {
 
         let model = booster.fit(&x, &y, None).unwrap();
 
-        assert_eq!(model.predict(&x), y);
+        assert_predictions_close(&model.predict(&x), &y);
+        assert!(matches!(
+            model.trees[0].root,
+            crate::tree::Node::Branch {
+                split: Split::PeriodicInterval { .. },
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn periodic_splitter_learns_shifted_interval_from_observed_boundaries() {
+        let x = Dataset::from_rows(vec![
+            vec![0.0],
+            vec![1.0],
+            vec![4.0],
+            vec![5.0],
+            vec![6.0],
+            vec![7.0],
+            vec![11.0],
+            vec![14.0],
+            vec![18.0],
+            vec![21.0],
+        ])
+        .unwrap();
+        let y = vec![-3.0, -3.0, 8.0, 8.0, 8.0, 8.0, -3.0, -3.0, -3.0, -3.0];
+        let booster = Booster::new(BoosterConfig {
+            n_estimators: 1,
+            learning_rate: 1.0,
+            max_depth: 1,
+            min_samples_leaf: 2,
+            min_gain: 0.0,
+            splitters: vec![SplitterKind::Periodic { period: 24.0 }],
+            ..BoosterConfig::default()
+        });
+
+        let model = booster.fit(&x, &y, None).unwrap();
+
+        assert_predictions_close(&model.predict(&x), &y);
         assert!(matches!(
             model.trees[0].root,
             crate::tree::Node::Branch {
@@ -275,6 +323,44 @@ mod tests {
             model.trees[0].root,
             crate::tree::Node::Branch {
                 split: Split::SparseSetContainsAny { .. },
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn gaussian_splitter_learns_off_center_hotspot() {
+        let x = Dataset::from_rows(vec![
+            vec![4.8, -2.0],
+            vec![5.0, -2.1],
+            vec![5.2, -1.9],
+            vec![5.1, -2.2],
+            vec![-5.0, -5.0],
+            vec![-4.0, 4.0],
+            vec![0.0, 5.0],
+            vec![5.0, 5.0],
+            vec![-5.0, 0.0],
+            vec![0.0, -5.0],
+        ])
+        .unwrap();
+        let y = vec![12.0, 12.0, 12.0, 12.0, -4.0, -4.0, -4.0, -4.0, -4.0, -4.0];
+        let booster = Booster::new(BoosterConfig {
+            n_estimators: 1,
+            learning_rate: 1.0,
+            max_depth: 1,
+            min_samples_leaf: 2,
+            min_gain: 0.0,
+            splitters: vec![SplitterKind::Gaussian2D],
+            ..BoosterConfig::default()
+        });
+
+        let model = booster.fit(&x, &y, None).unwrap();
+
+        assert_predictions_close(&model.predict(&x), &y);
+        assert!(matches!(
+            model.trees[0].root,
+            crate::tree::Node::Branch {
+                split: Split::Gaussian2D { .. },
                 ..
             }
         ));

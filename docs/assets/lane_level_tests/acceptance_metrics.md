@@ -13,7 +13,7 @@ coordinates, lane ID, hour of day, route midpoint, and route distance.
 | wraparound_lane_hour | axis_hour | train_rmse | 3.15772547e+01 |
 | wraparound_lane_hour | periodic_hour | train_rmse | 1.98951966e-13 |
 | regional_lane_boosting | axis_only | holdout_rmse | 1.26819804e+01 |
-| regional_lane_boosting | lane_spatial_temporal | holdout_rmse | 2.14258915e+00 |
+| regional_lane_boosting | lane_spatial_temporal | holdout_rmse | 4.85635574e+00 |
 
 ## Inspection Metrics
 
@@ -44,11 +44,11 @@ coordinates, lane ID, hour of day, route midpoint, and route distance.
 - `axis_edge_gap_gt_50`: PASS (1.04047619e+02 > 5.00000000e+01)
 
 ### regional_lane_boosting
-- `holdout_rmse_ratio`: 1.68947522e-01
-- `hot_lane_midnight_prediction`: 2.98285829e+02
-- `cold_lane_midday_prediction`: 1.44849242e+02
-- `hot_cold_operating_contrast`: 1.53436587e+02
+- `holdout_rmse_ratio`: 3.82933548e-01
+- `hot_lane_midnight_prediction`: 2.93406476e+02
+- `cold_lane_midday_prediction`: 1.43021033e+02
+- `hot_cold_operating_contrast`: 1.50385443e+02
 - `uses_hidden_simulator_metadata_in_training`: 0.00000000e+00
-- `full_beats_axis_holdout`: PASS (1.68947522e-01 < 6.50000000e-01)
-- `hot_cold_contrast_gt_120`: PASS (1.53436587e+02 > 1.20000000e+02)
+- `full_beats_axis_holdout`: PASS (3.82933548e-01 < 6.50000000e-01)
+- `hot_cold_contrast_gt_120`: PASS (1.50385443e+02 > 1.20000000e+02)
 

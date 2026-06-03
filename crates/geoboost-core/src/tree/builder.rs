@@ -218,7 +218,17 @@ impl TreeBuilder {
                     continue;
                 }
                 let gain = parent_sse - sse(target, weights, &left) - sse(target, weights, &right);
-                let replace = best.as_ref().is_none_or(|old| gain > old.gain);
+                let replace = best.as_ref().is_none_or(|old| {
+                    is_better_split(
+                        gain,
+                        &Split::Axis {
+                            feature,
+                            threshold,
+                            missing_goes_left: true,
+                        },
+                        old,
+                    )
+                });
                 if replace {
                     *best = Some(BestSplit {
                         split: Split::Axis {
@@ -295,45 +305,116 @@ impl TreeBuilder {
         }
         for x_feature in 0..x.n_cols() {
             for y_feature in (x_feature + 1)..x.n_cols() {
-                let center_x = indices
-                    .iter()
-                    .map(|&idx| x.get(idx, x_feature))
-                    .sum::<f64>()
-                    / indices.len() as f64;
-                let center_y = indices
-                    .iter()
-                    .map(|&idx| x.get(idx, y_feature))
-                    .sum::<f64>()
-                    / indices.len() as f64;
-                let mut distances = indices
-                    .iter()
-                    .map(|&idx| {
-                        (
-                            ((x.get(idx, x_feature) - center_x).powi(2)
-                                + (x.get(idx, y_feature) - center_y).powi(2))
-                            .sqrt(),
-                            idx,
-                        )
-                    })
-                    .collect::<Vec<_>>();
-                distances.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
-                for window in distances.windows(2) {
-                    if window[0].0 == window[1].0 {
-                        continue;
+                for (center_x, center_y) in
+                    self.gaussian_centers(x, target, weights, indices, x_feature, y_feature)
+                {
+                    let mut distances = indices
+                        .iter()
+                        .map(|&idx| {
+                            (
+                                ((x.get(idx, x_feature) - center_x).powi(2)
+                                    + (x.get(idx, y_feature) - center_y).powi(2))
+                                .sqrt(),
+                                idx,
+                            )
+                        })
+                        .filter(|(distance, _)| distance.is_finite())
+                        .collect::<Vec<_>>();
+                    distances.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
+                    for window in distances.windows(2) {
+                        if window[0].0 == window[1].0 {
+                            continue;
+                        }
+                        let radius = (window[0].0 + window[1].0) / 2.0;
+                        let split = Split::Gaussian2D {
+                            x_feature,
+                            y_feature,
+                            center_x,
+                            center_y,
+                            radius,
+                            missing_goes_left: true,
+                        };
+                        self.consider_split(split, x, target, weights, indices, parent_sse, best);
                     }
-                    let radius = (window[0].0 + window[1].0) / 2.0;
-                    let split = Split::Gaussian2D {
-                        x_feature,
-                        y_feature,
-                        center_x,
-                        center_y,
-                        radius,
-                        missing_goes_left: true,
-                    };
-                    self.consider_split(split, x, target, weights, indices, parent_sse, best);
                 }
             }
         }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn gaussian_centers(
+        &self,
+        x: &Dataset,
+        target: &[f64],
+        weights: &[f64],
+        indices: &[usize],
+        x_feature: usize,
+        y_feature: usize,
+    ) -> Vec<(f64, f64)> {
+        let mut centers = Vec::new();
+        let mut push_center = |center_x: f64, center_y: f64| {
+            if !center_x.is_finite() || !center_y.is_finite() {
+                return;
+            }
+            if centers.iter().any(|&(old_x, old_y): &(f64, f64)| {
+                (old_x - center_x).abs() < 1e-12 && (old_y - center_y).abs() < 1e-12
+            }) {
+                return;
+            }
+            centers.push((center_x, center_y));
+        };
+
+        let weighted_centroid = |selected: &[usize]| -> Option<(f64, f64)> {
+            let weight_sum = selected.iter().map(|&idx| weights[idx]).sum::<f64>();
+            if weight_sum <= 0.0 {
+                return None;
+            }
+            let center_x = selected
+                .iter()
+                .map(|&idx| x.get(idx, x_feature) * weights[idx])
+                .sum::<f64>()
+                / weight_sum;
+            let center_y = selected
+                .iter()
+                .map(|&idx| x.get(idx, y_feature) * weights[idx])
+                .sum::<f64>()
+                / weight_sum;
+            Some((center_x, center_y))
+        };
+
+        if let Some((center_x, center_y)) = weighted_centroid(indices) {
+            push_center(center_x, center_y);
+        }
+
+        let weight_sum = indices.iter().map(|&idx| weights[idx]).sum::<f64>();
+        let target_mean = if weight_sum > 0.0 {
+            indices
+                .iter()
+                .map(|&idx| target[idx] * weights[idx])
+                .sum::<f64>()
+                / weight_sum
+        } else {
+            0.0
+        };
+        let above_mean = indices
+            .iter()
+            .copied()
+            .filter(|&idx| target[idx] >= target_mean)
+            .collect::<Vec<_>>();
+        let below_mean = indices
+            .iter()
+            .copied()
+            .filter(|&idx| target[idx] < target_mean)
+            .collect::<Vec<_>>();
+        for selected in [&above_mean, &below_mean] {
+            if selected.len() >= self.min_samples_leaf {
+                if let Some((center_x, center_y)) = weighted_centroid(selected) {
+                    push_center(center_x, center_y);
+                }
+            }
+        }
+
+        centers
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -350,22 +431,43 @@ impl TreeBuilder {
         if period <= 0.0 || !period.is_finite() {
             return;
         }
-        let starts = [0.0, 6.0, 7.0, 8.0, 16.0, 22.0]
-            .into_iter()
-            .filter(|value| *value < period)
-            .collect::<Vec<_>>();
-        let widths = [2.0, 3.0, 4.0, 8.0]
-            .into_iter()
-            .filter(|value| *value < period)
-            .collect::<Vec<_>>();
         for feature in 0..x.n_cols() {
-            for start in &starts {
-                for width in &widths {
+            if !looks_like_periodic_feature(x, indices, feature, period) {
+                continue;
+            }
+            let mut values = indices
+                .iter()
+                .filter_map(|&idx| {
+                    let value = x.get(idx, feature);
+                    value
+                        .is_finite()
+                        .then_some(super::normalize_periodic(value, period))
+                })
+                .collect::<Vec<_>>();
+            values.sort_by(f64::total_cmp);
+            values.dedup_by(|a, b| (*a - *b).abs() < 1e-12);
+            if values.len() < 2 {
+                continue;
+            }
+
+            let mut boundaries = values.clone();
+            for idx in 0..values.len() {
+                let current = values[idx];
+                let next = values[(idx + 1) % values.len()];
+                let gap = (next - current).rem_euclid(period);
+                boundaries.push(super::normalize_periodic(current + gap / 2.0, period));
+            }
+
+            for start_idx in 0..boundaries.len() {
+                for end_idx in 0..boundaries.len() {
+                    if start_idx == end_idx {
+                        continue;
+                    }
                     let split = Split::PeriodicInterval {
                         feature,
                         period,
-                        start: *start,
-                        end: (start + width).rem_euclid(period),
+                        start: boundaries[start_idx],
+                        end: boundaries[end_idx],
                         missing_goes_left: true,
                     };
                     self.consider_split(split, x, target, weights, indices, parent_sse, best);
@@ -432,7 +534,10 @@ impl TreeBuilder {
             return;
         }
         let gain = parent_sse - sse(target, weights, &left) - sse(target, weights, &right);
-        if best.as_ref().is_none_or(|old| gain > old.gain) {
+        if best
+            .as_ref()
+            .is_none_or(|old| is_better_split(gain, &split, old))
+        {
             *best = Some(BestSplit {
                 split,
                 gain,
@@ -440,6 +545,52 @@ impl TreeBuilder {
                 right,
             });
         }
+    }
+}
+
+fn looks_like_periodic_feature(
+    x: &Dataset,
+    indices: &[usize],
+    feature: usize,
+    period: f64,
+) -> bool {
+    let mut min = f64::INFINITY;
+    let mut max = f64::NEG_INFINITY;
+    let mut count = 0usize;
+    for &idx in indices {
+        let value = x.get(idx, feature);
+        if !value.is_finite() {
+            continue;
+        }
+        if value < 0.0 || value > period {
+            return false;
+        }
+        min = min.min(value);
+        max = max.max(value);
+        count += 1;
+    }
+    count >= 2 && min <= period * 0.25 && max >= period * 0.75
+}
+
+fn is_better_split(gain: f64, split: &Split, old: &BestSplit) -> bool {
+    if gain > old.gain + 1e-12 {
+        return true;
+    }
+    if (gain - old.gain).abs() > 1e-12 {
+        return false;
+    }
+    match (periodic_width(split), periodic_width(&old.split)) {
+        (Some(width), Some(old_width)) => width < old_width - 1e-12,
+        _ => false,
+    }
+}
+
+fn periodic_width(split: &Split) -> Option<f64> {
+    match split {
+        Split::PeriodicInterval {
+            period, start, end, ..
+        } => Some((end - start).rem_euclid(*period)),
+        _ => None,
     }
 }
 

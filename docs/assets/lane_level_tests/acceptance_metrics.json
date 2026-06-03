@@ -127,28 +127,28 @@
         "holdout_rmse": 12.681980364960808
       },
       "lane_spatial_temporal": {
-        "holdout_rmse": 2.142589152248399
+        "holdout_rmse": 4.856355742982259
       }
     },
     "inspection_metrics": {
-      "holdout_rmse_ratio": 0.16894752164797414,
-      "hot_lane_midnight_prediction": 298.2858293075685,
-      "cold_lane_midday_prediction": 144.84924240491756,
-      "hot_cold_operating_contrast": 153.43658690265096,
+      "holdout_rmse_ratio": 0.3829335484858454,
+      "hot_lane_midnight_prediction": 293.4064758286511,
+      "cold_lane_midday_prediction": 143.02103266850418,
+      "hot_cold_operating_contrast": 150.3854431601469,
       "uses_hidden_simulator_metadata_in_training": 0.0
     },
     "acceptance_gates": [
       {
         "name": "full_beats_axis_holdout",
         "passed": true,
-        "actual": 0.16894752164797414,
+        "actual": 0.3829335484858454,
         "threshold": 0.65,
         "comparator": "<"
       },
       {
         "name": "hot_cold_contrast_gt_120",
         "passed": true,
-        "actual": 153.43658690265096,
+        "actual": 150.3854431601469,
         "threshold": 120.0,
         "comparator": ">"
       }
