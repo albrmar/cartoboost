@@ -3,6 +3,7 @@ use crate::data::Dataset;
 use crate::data::FeatureSchema;
 use crate::predictors::LinearLeafModel;
 use crate::{GeoBoostError, Result};
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
@@ -197,6 +198,84 @@ impl Model {
             .collect()
     }
 
+    pub fn try_predict_flat(
+        &self,
+        rows: usize,
+        cols: usize,
+        values: &[f64],
+        sparse_offsets: &[Vec<usize>],
+        sparse_ids: &[Vec<u64>],
+    ) -> Result<Vec<f64>> {
+        if rows.checked_mul(cols) != Some(values.len()) {
+            return Err(GeoBoostError::InvalidInput(format!(
+                "matrix shape {rows}x{cols} does not match {} values",
+                values.len()
+            )));
+        }
+        if cols != self.feature_count {
+            return Err(GeoBoostError::InvalidInput(format!(
+                "X has {cols} features, but model expects {}",
+                self.feature_count
+            )));
+        }
+        if values.iter().any(|value| !value.is_finite()) {
+            return Err(GeoBoostError::InvalidInput(
+                "dataset values must be finite".to_string(),
+            ));
+        }
+        if sparse_offsets.len() != sparse_ids.len() {
+            return Err(GeoBoostError::InvalidInput(
+                "sparse_offsets and sparse_ids must contain the same number of columns".to_string(),
+            ));
+        }
+        if self.requires_sparse_sets() && sparse_offsets.is_empty() {
+            return Err(GeoBoostError::InvalidInput(
+                "prediction requires sparse_sets for a model with list-valued sparse splits"
+                    .to_string(),
+            ));
+        }
+        for (column, (offsets, ids)) in sparse_offsets.iter().zip(sparse_ids).enumerate() {
+            if offsets.len() != rows + 1 {
+                return Err(GeoBoostError::InvalidInput(format!(
+                    "sparse_offsets column {column} must have rows + 1 entries"
+                )));
+            }
+            if offsets.first().copied() != Some(0) || offsets.last().copied() != Some(ids.len()) {
+                return Err(GeoBoostError::InvalidInput(format!(
+                    "sparse_offsets column {column} must span sparse_ids exactly"
+                )));
+            }
+            if offsets.windows(2).any(|window| window[0] > window[1]) {
+                return Err(GeoBoostError::InvalidInput(format!(
+                    "sparse_offsets column {column} must be non-decreasing"
+                )));
+            }
+        }
+        Ok((0..rows)
+            .into_par_iter()
+            .map(|row| self.predict_flat_row(cols, values, sparse_offsets, sparse_ids, row))
+            .collect())
+    }
+
+    fn predict_flat_row(
+        &self,
+        cols: usize,
+        values: &[f64],
+        sparse_offsets: &[Vec<usize>],
+        sparse_ids: &[Vec<u64>],
+        row: usize,
+    ) -> f64 {
+        self.init_prediction
+            + self
+                .trees
+                .iter()
+                .map(|tree| {
+                    self.learning_rate
+                        * tree.predict_flat_row(cols, values, sparse_offsets, sparse_ids, row)
+                })
+                .sum::<f64>()
+    }
+
     pub fn requires_sparse_sets(&self) -> bool {
         self.trees.iter().any(Tree::contains_sparse_list_split)
     }
@@ -229,6 +308,18 @@ impl Tree {
     pub fn contains_sparse_list_split(&self) -> bool {
         self.root.contains_sparse_list_split()
     }
+
+    fn predict_flat_row(
+        &self,
+        cols: usize,
+        values: &[f64],
+        sparse_offsets: &[Vec<usize>],
+        sparse_ids: &[Vec<u64>],
+        row: usize,
+    ) -> f64 {
+        self.root
+            .predict_flat_row(cols, values, sparse_offsets, sparse_ids, row)
+    }
 }
 
 impl Node {
@@ -240,7 +331,11 @@ impl Node {
                 split, left, right, ..
             } => {
                 let weights = split.branch_weights(row);
-                weights.left * left.predict_one(row) + weights.right * right.predict_one(row)
+                weighted_child_prediction(
+                    weights,
+                    || left.predict_one(row),
+                    || right.predict_one(row),
+                )
             }
         }
     }
@@ -256,8 +351,39 @@ impl Node {
                 split, left, right, ..
             } => {
                 let weights = split.branch_weights_dataset_row(x, row);
-                weights.left * left.predict_dataset_row(x, row)
-                    + weights.right * right.predict_dataset_row(x, row)
+                weighted_child_prediction(
+                    weights,
+                    || left.predict_dataset_row(x, row),
+                    || right.predict_dataset_row(x, row),
+                )
+            }
+        }
+    }
+
+    fn predict_flat_row(
+        &self,
+        cols: usize,
+        values: &[f64],
+        sparse_offsets: &[Vec<usize>],
+        sparse_ids: &[Vec<u64>],
+        row: usize,
+    ) -> f64 {
+        match self {
+            Node::Leaf { value, .. } => *value,
+            Node::LinearLeaf { model, .. } => {
+                let dense = flat_dense_row(cols, values, row);
+                model.predict(&dense).unwrap_or(model.intercept)
+            }
+            Node::Branch {
+                split, left, right, ..
+            } => {
+                let weights =
+                    split.branch_weights_flat(cols, values, sparse_offsets, sparse_ids, row);
+                weighted_child_prediction(
+                    weights,
+                    || left.predict_flat_row(cols, values, sparse_offsets, sparse_ids, row),
+                    || right.predict_flat_row(cols, values, sparse_offsets, sparse_ids, row),
+                )
             }
         }
     }
@@ -304,6 +430,27 @@ impl Split {
                 .map(|distance| fuzzy_weights(distance, *bandwidth))
                 .unwrap_or_else(|| base.hard_branch_weights_dataset_row(x, row, &dense)),
             _ => self.hard_branch_weights_dataset_row(x, row, &dense),
+        }
+    }
+
+    fn branch_weights_flat(
+        &self,
+        cols: usize,
+        values: &[f64],
+        sparse_offsets: &[Vec<usize>],
+        sparse_ids: &[Vec<u64>],
+        row: usize,
+    ) -> BranchWeights {
+        match self {
+            Split::Fuzzy {
+                base, bandwidth, ..
+            } => base
+                .signed_distance_flat(cols, values, row)
+                .map(|distance| fuzzy_weights(distance, *bandwidth))
+                .unwrap_or_else(|| {
+                    base.hard_branch_weights_flat(cols, values, sparse_offsets, sparse_ids, row)
+                }),
+            _ => self.hard_branch_weights_flat(cols, values, sparse_offsets, sparse_ids, row),
         }
     }
 
@@ -420,6 +567,47 @@ impl Split {
         }
     }
 
+    fn hard_branch_weights_flat(
+        &self,
+        cols: usize,
+        values: &[f64],
+        sparse_offsets: &[Vec<usize>],
+        sparse_ids: &[Vec<u64>],
+        row: usize,
+    ) -> BranchWeights {
+        let goes_left = match self {
+            Split::SparseListContainsAny {
+                sparse_feature,
+                ids,
+                missing_goes_left,
+            } => {
+                if ids.is_empty() {
+                    *missing_goes_left
+                } else {
+                    encoded_sparse_contains_any(
+                        sparse_offsets,
+                        sparse_ids,
+                        row,
+                        *sparse_feature,
+                        ids,
+                    )
+                }
+            }
+            _ => self.hard_goes_left_flat(cols, values, row),
+        };
+        if goes_left {
+            BranchWeights {
+                left: 1.0,
+                right: 0.0,
+            }
+        } else {
+            BranchWeights {
+                left: 0.0,
+                right: 1.0,
+            }
+        }
+    }
+
     fn hard_goes_left(&self, row: &[f64]) -> bool {
         match self {
             Split::Axis {
@@ -461,6 +649,95 @@ impl Split {
         }
     }
 
+    fn hard_goes_left_flat(&self, cols: usize, values: &[f64], row: usize) -> bool {
+        match self {
+            Split::Axis {
+                missing_goes_left, ..
+            }
+            | Split::Diagonal2D {
+                missing_goes_left, ..
+            }
+            | Split::Gaussian2D {
+                missing_goes_left, ..
+            } => self
+                .signed_distance_flat(cols, values, row)
+                .map(|distance| distance <= 0.0)
+                .unwrap_or(*missing_goes_left),
+            Split::PeriodicInterval {
+                feature,
+                period,
+                start,
+                end,
+                missing_goes_left,
+            } => flat_get(cols, values, row, *feature)
+                .filter(|value| value.is_finite())
+                .map(|value| periodic_contains(value, *period, *start, *end))
+                .unwrap_or(*missing_goes_left),
+            Split::SparseSetContainsAny {
+                feature,
+                ids,
+                missing_goes_left,
+            } => flat_get(cols, values, row, *feature)
+                .filter(|value| value.is_finite())
+                .map(|value| sparse_set_value_contains_any(value, ids))
+                .unwrap_or(*missing_goes_left),
+            Split::SparseListContainsAny {
+                missing_goes_left, ..
+            } => *missing_goes_left,
+            Split::Fuzzy { base, .. } => base.hard_goes_left_flat(cols, values, row),
+        }
+    }
+
+    fn signed_distance_flat(&self, cols: usize, values: &[f64], row: usize) -> Option<f64> {
+        match self {
+            Split::Axis {
+                feature, threshold, ..
+            } => flat_get(cols, values, row, *feature)
+                .filter(|value| value.is_finite())
+                .map(|value| value - threshold),
+            Split::Diagonal2D {
+                x_feature,
+                y_feature,
+                normal_x,
+                normal_y,
+                threshold,
+                ..
+            } => {
+                let x = flat_get(cols, values, row, *x_feature)?;
+                let y = flat_get(cols, values, row, *y_feature)?;
+                (x.is_finite() && y.is_finite()).then_some(normal_x * x + normal_y * y - threshold)
+            }
+            Split::Gaussian2D {
+                x_feature,
+                y_feature,
+                center_x,
+                center_y,
+                radius,
+                ..
+            } => {
+                let x = flat_get(cols, values, row, *x_feature)?;
+                let y = flat_get(cols, values, row, *y_feature)?;
+                (x.is_finite() && y.is_finite())
+                    .then_some(((x - center_x).powi(2) + (y - center_y).powi(2)).sqrt() - radius)
+            }
+            Split::PeriodicInterval {
+                feature,
+                period,
+                start,
+                end,
+                ..
+            } => {
+                let value = flat_get(cols, values, row, *feature)?;
+                value
+                    .is_finite()
+                    .then_some(periodic_signed_distance(value, *period, *start, *end))
+            }
+            Split::SparseSetContainsAny { .. }
+            | Split::SparseListContainsAny { .. }
+            | Split::Fuzzy { .. } => None,
+        }
+    }
+
     pub fn contains_sparse_list_split(&self) -> bool {
         match self {
             Split::SparseListContainsAny { .. } => true,
@@ -472,6 +749,51 @@ impl Split {
 
 fn dense_row(x: &Dataset, row: usize) -> Vec<f64> {
     (0..x.n_cols()).map(|col| x.get(row, col)).collect()
+}
+
+fn weighted_child_prediction(
+    weights: BranchWeights,
+    left: impl FnOnce() -> f64,
+    right: impl FnOnce() -> f64,
+) -> f64 {
+    if weights.left == 0.0 {
+        weights.right * right()
+    } else if weights.right == 0.0 {
+        weights.left * left()
+    } else {
+        weights.left * left() + weights.right * right()
+    }
+}
+
+fn flat_get(cols: usize, values: &[f64], row: usize, col: usize) -> Option<f64> {
+    (col < cols)
+        .then(|| values.get(row * cols + col).copied())
+        .flatten()
+}
+
+fn flat_dense_row(cols: usize, values: &[f64], row: usize) -> Vec<f64> {
+    let start = row * cols;
+    values[start..start + cols].to_vec()
+}
+
+fn encoded_sparse_contains_any(
+    sparse_offsets: &[Vec<usize>],
+    sparse_ids: &[Vec<u64>],
+    row: usize,
+    sparse_col: usize,
+    ids: &[u64],
+) -> bool {
+    let (Some(offsets), Some(values)) =
+        (sparse_offsets.get(sparse_col), sparse_ids.get(sparse_col))
+    else {
+        return false;
+    };
+    let Some(window) = offsets.get(row..row + 2) else {
+        return false;
+    };
+    values[window[0]..window[1]]
+        .iter()
+        .any(|value| ids.contains(value))
 }
 
 pub fn sparse_set_value_contains_any(value: f64, ids: &[u64]) -> bool {

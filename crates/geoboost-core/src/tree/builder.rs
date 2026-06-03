@@ -44,6 +44,36 @@ struct CandidateStats {
     weighted_target_square_sum: f64,
 }
 
+#[derive(Debug, Clone)]
+struct FitContext {
+    sorted_dense_rows: Vec<Option<Vec<usize>>>,
+}
+
+impl FitContext {
+    fn new(x: &Dataset) -> Self {
+        let sorted_dense_rows = (0..x.n_cols())
+            .map(|feature| {
+                let mut rows = (0..x.n_rows())
+                    .filter(|&row| x.get(row, feature).is_finite())
+                    .collect::<Vec<_>>();
+                rows.sort_by(|&left, &right| {
+                    x.get(left, feature)
+                        .total_cmp(&x.get(right, feature))
+                        .then(left.cmp(&right))
+                });
+                (!rows.is_empty()).then_some(rows)
+            })
+            .collect();
+        Self { sorted_dense_rows }
+    }
+
+    fn sorted_rows(&self, feature: usize) -> Option<&[usize]> {
+        self.sorted_dense_rows
+            .get(feature)
+            .and_then(Option::as_deref)
+    }
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub enum SplitterKind {
     #[default]
@@ -66,8 +96,9 @@ pub enum LeafPredictorKind {
 impl TreeBuilder {
     pub fn fit(&self, x: &Dataset, target: &[f64], weights: &[f64]) -> Tree {
         let indices = (0..x.n_rows()).collect::<Vec<_>>();
+        let context = FitContext::new(x);
         Tree {
-            root: self.build_node(x, target, weights, &indices, 0),
+            root: self.build_node(x, target, weights, &indices, 0, &context),
         }
     }
 
@@ -78,6 +109,7 @@ impl TreeBuilder {
         weights: &[f64],
         indices: &[usize],
         depth: usize,
+        context: &FitContext,
     ) -> Node {
         let leaf = || {
             let weight_sum: f64 = indices.iter().map(|&idx| weights[idx]).sum();
@@ -134,7 +166,7 @@ impl TreeBuilder {
             return leaf();
         }
 
-        let Some(best) = self.best_split(x, target, weights, indices) else {
+        let Some(best) = self.best_split(x, target, weights, indices, context) else {
             return leaf();
         };
         if best.gain < self.min_gain {
@@ -144,13 +176,21 @@ impl TreeBuilder {
         let sample_weight_sum = indices.iter().map(|&idx| weights[idx]).sum();
         Node::Branch {
             split: best.split,
-            left: Box::new(self.build_node(x, target, &best.left_weights, &best.left, depth + 1)),
+            left: Box::new(self.build_node(
+                x,
+                target,
+                &best.left_weights,
+                &best.left,
+                depth + 1,
+                context,
+            )),
             right: Box::new(self.build_node(
                 x,
                 target,
                 &best.right_weights,
                 &best.right,
                 depth + 1,
+                context,
             )),
             gain: best.gain,
             sample_weight_sum,
@@ -163,6 +203,7 @@ impl TreeBuilder {
         target: &[f64],
         weights: &[f64],
         indices: &[usize],
+        context: &FitContext,
     ) -> Option<BestSplit> {
         let parent_sse = sse(target, weights, indices);
         let mut best: Option<BestSplit> = None;
@@ -174,9 +215,8 @@ impl TreeBuilder {
         };
         for splitter in splitters {
             match splitter {
-                SplitterKind::Axis => {
-                    self.axis_candidates(x, target, weights, indices, parent_sse, &mut best)
-                }
+                SplitterKind::Axis => self
+                    .axis_candidates(x, target, weights, indices, parent_sse, context, &mut best),
                 SplitterKind::Diagonal2D => {
                     self.diagonal_candidates(x, target, weights, indices, parent_sse, &mut best)
                 }
@@ -195,6 +235,7 @@ impl TreeBuilder {
         best
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn axis_candidates(
         &self,
         x: &Dataset,
@@ -202,25 +243,31 @@ impl TreeBuilder {
         weights: &[f64],
         indices: &[usize],
         parent_sse: f64,
+        context: &FitContext,
         best: &mut Option<BestSplit>,
     ) {
         if !self.fuzzy || self.fuzzy_bandwidth <= 0.0 {
-            self.axis_candidates_prefix(x, target, weights, indices, parent_sse, best);
+            self.axis_candidates_prefix(x, target, weights, indices, parent_sse, context, best);
             return;
         }
 
+        let active = active_row_mask(x.n_rows(), indices);
         for feature in 0..x.n_cols() {
             if !dense_feature_allows_axis(x, feature) {
                 continue;
             }
-            let mut pairs = indices
+            let Some(sorted_rows) = context.sorted_rows(feature) else {
+                continue;
+            };
+            let pairs = sorted_rows
                 .iter()
-                .filter_map(|&idx| {
+                .copied()
+                .filter(|&idx| active[idx])
+                .filter_map(|idx| {
                     let value = x.get(idx, feature);
                     value.is_finite().then_some((value, idx))
                 })
                 .collect::<Vec<_>>();
-            pairs.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
 
             for window in pairs.windows(2) {
                 let (a, _) = window[0];
@@ -239,6 +286,7 @@ impl TreeBuilder {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn axis_candidates_prefix(
         &self,
         x: &Dataset,
@@ -246,20 +294,26 @@ impl TreeBuilder {
         weights: &[f64],
         indices: &[usize],
         parent_sse: f64,
+        context: &FitContext,
         best: &mut Option<BestSplit>,
     ) {
+        let active = active_row_mask(x.n_rows(), indices);
         for feature in 0..x.n_cols() {
             if !dense_feature_allows_axis(x, feature) {
                 continue;
             }
-            let mut pairs = indices
+            let Some(sorted_rows) = context.sorted_rows(feature) else {
+                continue;
+            };
+            let pairs = sorted_rows
                 .iter()
-                .filter_map(|&idx| {
+                .copied()
+                .filter(|&idx| active[idx])
+                .filter_map(|idx| {
                     let value = x.get(idx, feature);
                     value.is_finite().then_some((value, idx))
                 })
                 .collect::<Vec<_>>();
-            pairs.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
             if pairs.len() < self.min_samples_leaf * 2 {
                 continue;
             }
@@ -1012,6 +1066,14 @@ fn looks_like_periodic_feature(
         count += 1;
     }
     count >= 2 && min <= period * 0.25 && max >= period * 0.75
+}
+
+fn active_row_mask(rows: usize, indices: &[usize]) -> Vec<bool> {
+    let mut active = vec![false; rows];
+    for &idx in indices {
+        active[idx] = true;
+    }
+    active
 }
 
 fn dense_feature_kind(x: &Dataset, feature: usize) -> Option<&FeatureKind> {

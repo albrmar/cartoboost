@@ -11,5 +11,6 @@ crate-type = ["cdylib"]
 
 [dependencies]
 geoboost-core = { path = "../geoboost-core" }
+numpy = "0.23"
 pyo3.workspace = true
 serde_json.workspace = true

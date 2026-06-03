@@ -116,15 +116,16 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
         del eval_set
         self._validate_params()
         feature_names = _feature_names(X)
-        rows = _as_2d_float_list(X)
-        targets = _as_1d_float_list(y)
-        if len(rows) != len(targets):
+        dense_array = _as_2d_float_array(X)
+        targets_array = _as_1d_float_array(y)
+        if dense_array.shape[0] != targets_array.shape[0]:
             raise ValueError("X and y must contain the same number of rows")
-        weights = _as_sample_weight_list(sample_weight, len(targets))
-        sparse_columns, sparse_names = _normalize_sparse_sets(sparse_sets, len(targets))
-        schema_json = _rust_feature_schema_json(feature_schema, len(rows[0]), sparse_names)
+        weights_array = _as_sample_weight_array(sample_weight, targets_array.shape[0])
+        sparse_columns, sparse_names = _normalize_sparse_sets(sparse_sets, targets_array.shape[0])
+        sparse_offsets, sparse_ids = _encode_sparse_columns(sparse_columns)
+        schema_json = _rust_feature_schema_json(feature_schema, dense_array.shape[1], sparse_names)
         schema_metadata = _feature_schema_metadata(feature_schema)
-        self.n_features_in_ = len(rows[0])
+        self.n_features_in_ = dense_array.shape[1]
         self.n_sparse_sets_in_ = len(sparse_columns)
         self.sparse_set_names_ = sparse_names
         self.feature_schema_ = schema_metadata
@@ -143,14 +144,23 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
                 leaf_predictor=str(self.leaf_predictor),
                 linear_leaf_features=_resolve_linear_leaf_features(
                     self.linear_leaf_features,
-                    len(rows[0]),
+                    dense_array.shape[1],
                 ),
                 l2_regularization=float(self.l2_regularization),
                 fuzzy=bool(self.fuzzy),
                 fuzzy_bandwidth=float(self.fuzzy_bandwidth),
             )
             try:
-                _fit_native(model, rows, targets, weights, sparse_columns, schema_json)
+                _fit_native(
+                    model,
+                    dense_array,
+                    targets_array,
+                    weights_array,
+                    sparse_columns,
+                    sparse_offsets,
+                    sparse_ids,
+                    schema_json,
+                )
             except NotImplementedError:
                 if self.backend == "rust" or not self._python_fallback_supported():
                     raise
@@ -172,6 +182,9 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
             raise ImportError("geoboost._native is not available; build with maturin first")
         if sparse_columns:
             raise NotImplementedError("the pure-Python fallback does not support sparse_sets")
+        rows = dense_array.tolist()
+        targets = targets_array.tolist()
+        weights = None if weights_array is None else weights_array.tolist()
         if self.leaf_predictor != "constant" or (
             int(self.max_depth) != 0 and (self.fuzzy or not _is_axis_splitters(self.splitters))
         ):
@@ -198,17 +211,18 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
     def predict(self, X: Iterable[Iterable[float]], sparse_sets: Any | None = None) -> np.ndarray:
         if self._model is None:
             raise RuntimeError("GeoBoostRegressor is not fitted")
-        rows = _as_2d_float_list(X)
-        if hasattr(self, "n_features_in_") and len(rows[0]) != self.n_features_in_:
+        dense_array = _as_2d_float_array(X)
+        if hasattr(self, "n_features_in_") and dense_array.shape[1] != self.n_features_in_:
             raise ValueError(
-                f"X has {len(rows[0])} features, but GeoBoostRegressor was fitted with "
+                f"X has {dense_array.shape[1]} features, but GeoBoostRegressor was fitted with "
                 f"{self.n_features_in_} features"
             )
         sparse_columns, sparse_names = _normalize_sparse_sets(
             sparse_sets,
-            len(rows),
+            dense_array.shape[0],
             getattr(self, "sparse_set_names_", None),
         )
+        sparse_offsets, sparse_ids = _encode_sparse_columns(sparse_columns)
         expected_sparse_count = getattr(self, "n_sparse_sets_in_", 0)
         if sparse_columns and len(sparse_columns) != expected_sparse_count:
             raise ValueError(
@@ -230,9 +244,17 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
                 raise ValueError(
                     "sparse_sets are required for prediction with this sparse-list model"
                 )
-            return np.asarray(list(self._model.predict(rows, sparse_columns)), dtype=float)
+            try:
+                return np.asarray(
+                    self._model.predict_arrays(dense_array, sparse_offsets, sparse_ids),
+                    dtype=float,
+                )
+            except TypeError:
+                rows = dense_array.tolist()
+                return np.asarray(list(self._model.predict(rows, sparse_columns)), dtype=float)
         if sparse_columns:
             raise NotImplementedError("the pure-Python fallback does not support sparse_sets")
+        rows = dense_array.tolist()
         return np.asarray(list(self._model.predict(rows)), dtype=float)
 
     def __call__(self, X: Iterable[Iterable[float]]) -> np.ndarray:
@@ -500,19 +522,25 @@ class _FallbackModel:
 
 
 def _as_2d_float_list(values: Iterable[Iterable[float]]) -> list[list[float]]:
+    return _as_2d_float_array(values).tolist()
+
+
+def _as_2d_float_array(values: Any) -> np.ndarray:
     if hasattr(values, "to_numpy"):
         values = values.to_numpy()
-    rows = [[float(value) for value in row] for row in values]
-    if not rows:
-        raise ValueError("X must not be empty")
-    width = len(rows[0])
-    if width == 0:
-        raise ValueError("X rows must contain at least one feature")
-    if any(len(row) != width for row in rows):
+    try:
+        array = np.asarray(values, dtype=np.float64, order="C")
+    except (TypeError, ValueError) as exc:
+        raise ValueError("X must be a rectangular 2D array") from exc
+    if array.ndim != 2:
         raise ValueError("X must be a rectangular 2D array")
-    if any(not math.isfinite(value) for row in rows for value in row):
+    if array.shape[0] == 0:
+        raise ValueError("X must not be empty")
+    if array.shape[1] == 0:
+        raise ValueError("X rows must contain at least one feature")
+    if not np.all(np.isfinite(array)):
         raise ValueError("X must contain only finite values")
-    return rows
+    return np.ascontiguousarray(array, dtype=np.float64)
 
 
 def _feature_names(values: Any) -> list[str] | None:
@@ -523,23 +551,42 @@ def _feature_names(values: Any) -> list[str] | None:
 
 
 def _as_1d_float_list(values: Iterable[float]) -> list[float]:
-    rows = [float(value) for value in values]
-    if not rows:
+    return _as_1d_float_array(values).tolist()
+
+
+def _as_1d_float_array(values: Any) -> np.ndarray:
+    try:
+        rows = np.asarray(values, dtype=np.float64)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("y must be a 1D numeric array") from exc
+    if rows.ndim != 1:
+        raise ValueError("y must be a 1D numeric array")
+    if rows.shape[0] == 0:
         raise ValueError("y must not be empty")
-    if any(not math.isfinite(value) for value in rows):
+    if not np.all(np.isfinite(rows)):
         raise ValueError("y must contain only finite values")
-    return rows
+    return np.ascontiguousarray(rows, dtype=np.float64)
 
 
 def _as_sample_weight_list(values: Iterable[float] | None, expected: int) -> list[float] | None:
+    weights = _as_sample_weight_array(values, expected)
+    return None if weights is None else weights.tolist()
+
+
+def _as_sample_weight_array(values: Any | None, expected: int) -> np.ndarray | None:
     if values is None:
         return None
-    weights = [float(value) for value in values]
-    if len(weights) != expected:
+    try:
+        weights = np.asarray(values, dtype=np.float64)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("sample_weight must be a 1D numeric array") from exc
+    if weights.ndim != 1:
+        raise ValueError("sample_weight must be a 1D numeric array")
+    if weights.shape[0] != expected:
         raise ValueError("sample_weight length must match y")
-    if any(not math.isfinite(value) or value < 0.0 for value in weights):
+    if not np.all(np.isfinite(weights)) or bool(np.any(weights < 0.0)):
         raise ValueError("sample_weight must contain only finite non-negative values")
-    return weights
+    return np.ascontiguousarray(weights, dtype=np.float64)
 
 
 def _is_axis_splitters(splitters: Any) -> bool:
@@ -618,6 +665,22 @@ def _normalize_sparse_id(value: Any) -> int:
         if math.isfinite(numeric) and numeric.is_integer():
             return int(numeric)
     raise ValueError("sparse_sets IDs must be non-negative integers")
+
+
+def _encode_sparse_columns(
+    columns: list[list[list[int]]],
+) -> tuple[list[list[int]], list[list[int]]]:
+    encoded_offsets: list[list[int]] = []
+    encoded_ids: list[list[int]] = []
+    for column in columns:
+        offsets = [0]
+        ids: list[int] = []
+        for row in column:
+            ids.extend(row)
+            offsets.append(len(ids))
+        encoded_offsets.append(offsets)
+        encoded_ids.append(ids)
+    return encoded_offsets, encoded_ids
 
 
 def _rust_feature_schema_json(
@@ -766,14 +829,33 @@ def _is_valid_splitter_name(splitter: Any) -> bool:
 
 def _fit_native(
     model: Any,
-    rows: list[list[float]],
-    targets: list[float],
-    sample_weight: list[float] | None,
+    rows: np.ndarray,
+    targets: np.ndarray,
+    sample_weight: np.ndarray | None,
     sparse_sets: list[list[list[int]]],
+    sparse_offsets: list[list[int]],
+    sparse_ids: list[list[int]],
     feature_schema_json: str | None,
 ) -> None:
+    if hasattr(model, "fit_arrays"):
+        try:
+            model.fit_arrays(
+                rows,
+                targets,
+                sample_weight,
+                sparse_offsets,
+                sparse_ids,
+                feature_schema_json,
+            )
+            return
+        except TypeError:
+            pass
+
+    row_list = rows.tolist()
+    target_list = targets.tolist()
+    weight_list = None if sample_weight is None else sample_weight.tolist()
     try:
-        model.fit(rows, targets, sample_weight, sparse_sets, feature_schema_json)
+        model.fit(row_list, target_list, weight_list, sparse_sets, feature_schema_json)
     except TypeError as exc:
         if sparse_sets or feature_schema_json is not None:
             raise NotImplementedError(
@@ -781,13 +863,13 @@ def _fit_native(
             ) from exc
         if sample_weight is None:
             try:
-                model.fit(rows, targets)
+                model.fit(row_list, target_list)
                 return
             except TypeError:
                 pass
         else:
             try:
-                model.fit(rows, targets, sample_weight)
+                model.fit(row_list, target_list, weight_list)
                 return
             except TypeError:
                 pass

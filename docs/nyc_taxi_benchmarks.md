@@ -43,6 +43,15 @@ Then run:
 just nyc-quality-benchmark
 ```
 
+For repeated speed-ratio validation on the 25k-row sample:
+
+```sh
+just nyc-quality-benchmark-repeated
+```
+
+That writes per-run artifacts under `target/nyc_taxi_repeated/` and commits only
+aggregate summaries under `docs/assets/nyc_taxi_benchmarks/`.
+
 For a smaller run:
 
 ```sh

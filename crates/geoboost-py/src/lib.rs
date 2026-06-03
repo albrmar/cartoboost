@@ -1,6 +1,7 @@
 use geoboost_core::data::{FeatureSchema, SparseSetColumn};
 use geoboost_core::tree::{LeafPredictorKind, SplitterKind};
 use geoboost_core::{Booster, BoosterConfig, Dataset, GeoBoostError, Model};
+use numpy::{IntoPyArray, PyArray1, PyReadonlyArray1, PyReadonlyArray2, PyUntypedArrayMethods};
 use pyo3::exceptions::{PyIOError, PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use std::path::PathBuf;
@@ -102,6 +103,24 @@ impl NativeGeoBoostRegressor {
         Ok(())
     }
 
+    #[pyo3(signature = (x, y, sample_weight=None, sparse_offsets=None, sparse_ids=None, feature_schema_json=None))]
+    fn fit_arrays(
+        &mut self,
+        x: PyReadonlyArray2<'_, f64>,
+        y: PyReadonlyArray1<'_, f64>,
+        sample_weight: Option<PyReadonlyArray1<'_, f64>>,
+        sparse_offsets: Option<Vec<Vec<usize>>>,
+        sparse_ids: Option<Vec<Vec<u64>>>,
+        feature_schema_json: Option<String>,
+    ) -> PyResult<()> {
+        let dataset = dataset_from_arrays(x, sparse_offsets, sparse_ids, feature_schema_json)?;
+        let targets = y.as_slice()?.to_vec();
+        let weights = sample_weight
+            .map(|array| array.as_slice().map(|slice| slice.to_vec()))
+            .transpose()?;
+        self.fit_dataset(dataset, targets, weights)
+    }
+
     #[pyo3(signature = (x, y, sparse_sets, feature_schema_json=None, sample_weight=None))]
     fn fit_mixed(
         &mut self,
@@ -126,6 +145,30 @@ impl NativeGeoBoostRegressor {
             .ok_or_else(|| PyRuntimeError::new_err("GeoBoostRegressor is not fitted"))?;
         let dataset = dataset_from_parts(x, sparse_sets, None)?;
         model.try_predict(&dataset).map_err(to_py_value_error)
+    }
+
+    #[pyo3(signature = (x, sparse_offsets=None, sparse_ids=None))]
+    fn predict_arrays<'py>(
+        &self,
+        py: Python<'py>,
+        x: PyReadonlyArray2<'_, f64>,
+        sparse_offsets: Option<Vec<Vec<usize>>>,
+        sparse_ids: Option<Vec<Vec<u64>>>,
+    ) -> PyResult<Bound<'py, PyArray1<f64>>> {
+        let model = self
+            .model
+            .as_ref()
+            .ok_or_else(|| PyRuntimeError::new_err("GeoBoostRegressor is not fitted"))?;
+        let shape = x.shape();
+        let rows = shape[0];
+        let cols = shape[1];
+        let values = x.as_slice()?;
+        let offsets = sparse_offsets.unwrap_or_default();
+        let ids = sparse_ids.unwrap_or_default();
+        let predictions = model
+            .try_predict_flat(rows, cols, values, &offsets, &ids)
+            .map_err(to_py_value_error)?;
+        Ok(predictions.into_pyarray(py))
     }
 
     #[pyo3(signature = (x, sparse_sets))]
@@ -307,6 +350,37 @@ impl NativeGeoBoostRegressor {
     }
 }
 
+impl NativeGeoBoostRegressor {
+    fn fit_dataset(
+        &mut self,
+        dataset: Dataset,
+        y: Vec<f64>,
+        sample_weight: Option<Vec<f64>>,
+    ) -> PyResult<()> {
+        let splitters = parse_splitters(&self.splitters)?;
+        let leaf_predictor = parse_leaf_predictor(&self.leaf_predictor)?;
+        let config = BoosterConfig {
+            n_estimators: self.n_estimators,
+            learning_rate: self.learning_rate,
+            max_depth: self.max_depth,
+            min_samples_leaf: self.min_samples_leaf,
+            min_gain: self.min_gain,
+            splitters,
+            leaf_predictor,
+            linear_leaf_features: self.linear_leaf_features.clone(),
+            linear_lambda_l2: self.l2_regularization,
+            fuzzy: self.fuzzy,
+            fuzzy_bandwidth: self.fuzzy_bandwidth,
+        };
+        self.model = Some(
+            Booster::new(config)
+                .fit(&dataset, &y, sample_weight.as_deref())
+                .map_err(to_py_value_error)?,
+        );
+        Ok(())
+    }
+}
+
 fn parse_splitters(names: &[String]) -> PyResult<Vec<SplitterKind>> {
     let mut splitters = Vec::with_capacity(names.len());
     for name in names {
@@ -451,6 +525,80 @@ fn dataset_from_parts(
         Some(schema) => dataset.with_schema(schema).map_err(to_py_value_error),
         None => Ok(dataset),
     }
+}
+
+fn dataset_from_arrays(
+    x: PyReadonlyArray2<'_, f64>,
+    sparse_offsets: Option<Vec<Vec<usize>>>,
+    sparse_ids: Option<Vec<Vec<u64>>>,
+    feature_schema_json: Option<String>,
+) -> PyResult<Dataset> {
+    let shape = x.shape();
+    let rows = shape[0];
+    let cols = shape[1];
+    let values = x.as_slice()?.to_vec();
+    let dataset = Dataset::from_flat(rows, cols, values).map_err(to_py_value_error)?;
+    let sparse_sets = encoded_sparse_sets(rows, sparse_offsets, sparse_ids)?
+        .into_iter()
+        .map(SparseSetColumn::new)
+        .collect::<Vec<_>>();
+    let schema = feature_schema_json
+        .map(|payload| serde_json::from_str::<FeatureSchema>(&payload))
+        .transpose()
+        .map_err(|err| PyValueError::new_err(format!("invalid feature_schema: {err}")))?;
+    let dataset = dataset
+        .with_sparse_sets(sparse_sets)
+        .map_err(to_py_value_error)?;
+    match schema {
+        Some(schema) => dataset.with_schema(schema).map_err(to_py_value_error),
+        None => Ok(dataset),
+    }
+}
+
+fn encoded_sparse_sets(
+    rows: usize,
+    sparse_offsets: Option<Vec<Vec<usize>>>,
+    sparse_ids: Option<Vec<Vec<u64>>>,
+) -> PyResult<Vec<Vec<Vec<u64>>>> {
+    let offsets = sparse_offsets.unwrap_or_default();
+    let ids = sparse_ids.unwrap_or_default();
+    if offsets.len() != ids.len() {
+        return Err(PyValueError::new_err(
+            "sparse_offsets and sparse_ids must contain the same number of columns",
+        ));
+    }
+    let mut columns = Vec::with_capacity(offsets.len());
+    for (column_index, (column_offsets, column_ids)) in offsets.into_iter().zip(ids).enumerate() {
+        if column_offsets.len() != rows + 1 {
+            return Err(PyValueError::new_err(format!(
+                "sparse_offsets column {column_index} must have rows + 1 entries"
+            )));
+        }
+        if column_offsets.first().copied() != Some(0) {
+            return Err(PyValueError::new_err(format!(
+                "sparse_offsets column {column_index} must start at 0"
+            )));
+        }
+        if column_offsets.last().copied() != Some(column_ids.len()) {
+            return Err(PyValueError::new_err(format!(
+                "sparse_offsets column {column_index} final offset must match sparse_ids length"
+            )));
+        }
+        if column_offsets
+            .windows(2)
+            .any(|window| window[0] > window[1])
+        {
+            return Err(PyValueError::new_err(format!(
+                "sparse_offsets column {column_index} must be non-decreasing"
+            )));
+        }
+        let mut column = Vec::with_capacity(rows);
+        for window in column_offsets.windows(2) {
+            column.push(column_ids[window[0]..window[1]].to_vec());
+        }
+        columns.push(column);
+    }
+    Ok(columns)
 }
 
 fn to_py_value_error(err: GeoBoostError) -> PyErr {

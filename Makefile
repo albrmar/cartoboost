@@ -1,4 +1,4 @@
-.PHONY: fmt lint test build develop sdist wheel validate nyc-quality-benchmark clean
+.PHONY: fmt lint test build develop sdist wheel validate nyc-quality-benchmark nyc-quality-benchmark-repeated clean
 
 fmt:
 	cargo fmt --all
@@ -38,6 +38,10 @@ validate:
 nyc-quality-benchmark:
 	uv run --group dev maturin develop --release
 	PYTHONPATH=python uv run --group dev --group bench python scripts/run_nyc_taxi_quality_benchmarks.py
+
+nyc-quality-benchmark-repeated:
+	uv run --group dev maturin develop --release
+	PYTHONPATH=python uv run --group dev --group bench python scripts/run_repeated_nyc_taxi_benchmarks.py --no-download
 
 clean:
 	cargo clean
