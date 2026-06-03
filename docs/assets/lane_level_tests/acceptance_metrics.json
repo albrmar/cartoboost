@@ -1,0 +1,161 @@
+{
+  "sparse_lane_membership": {
+    "models": {
+      "axis_lane_id": {
+        "train_rmse": 51.96152422706632
+      },
+      "sparse_lane_id": {
+        "train_rmse": 0.0
+      }
+    },
+    "inspection_metrics": {
+      "hot_lane_prediction": 320.0,
+      "cold_neighbor_lane_prediction": 80.0,
+      "hot_lane_margin": 240.0,
+      "hot_lane_id": 7.0,
+      "lane_count": 16.0
+    },
+    "acceptance_gates": [
+      {
+        "name": "sparse_lane_exact",
+        "passed": true,
+        "actual": 0.0,
+        "threshold": 1e-12,
+        "comparator": "<"
+      },
+      {
+        "name": "sparse_beats_axis_lane_id",
+        "passed": true,
+        "actual": 0.0,
+        "threshold": 0.05,
+        "comparator": "<"
+      },
+      {
+        "name": "hot_lane_margin_gt_200",
+        "passed": true,
+        "actual": 240.0,
+        "threshold": 200.0,
+        "comparator": ">"
+      }
+    ],
+    "future_checks": [
+      "Sparse lane IDs should isolate a non-contiguous hot lane without one-hot expansion.",
+      "Neighboring cold lanes should not inherit the hot lane uplift."
+    ]
+  },
+  "route_midpoint_geometry": {
+    "models": {
+      "axis_midpoint": {
+        "train_rmse": 69.40220937885671
+      },
+      "gaussian_midpoint": {
+        "train_rmse": 0.0
+      }
+    },
+    "inspection_metrics": {
+      "center_lane_prediction": 260.0,
+      "outer_lane_prediction": 90.0,
+      "center_outer_margin": 170.0,
+      "axis_to_gaussian_rmse_ratio": 0.0
+    },
+    "acceptance_gates": [
+      {
+        "name": "gaussian_route_rmse_lt_axis_half",
+        "passed": true,
+        "actual": 0.0,
+        "threshold": 0.5,
+        "comparator": "<"
+      },
+      {
+        "name": "center_outer_margin_gt_100",
+        "passed": true,
+        "actual": 170.0,
+        "threshold": 100.0,
+        "comparator": ">"
+      }
+    ],
+    "future_checks": [
+      "Gaussian 2D routing should recover center-focused route geometry.",
+      "This validates lane geometry from observable midpoint features, not hidden metadata."
+    ]
+  },
+  "wraparound_lane_hour": {
+    "models": {
+      "axis_hour": {
+        "train_rmse": 31.57725472350337
+      },
+      "periodic_hour": {
+        "train_rmse": 1.9895196601282805e-13
+      }
+    },
+    "inspection_metrics": {
+      "periodic_23_vs_1_gap": 0.0,
+      "axis_23_vs_1_gap": 104.04761904761905,
+      "periodic_peak_to_midday_margin": 115.0
+    },
+    "acceptance_gates": [
+      {
+        "name": "periodic_hour_exact",
+        "passed": true,
+        "actual": 1.9895196601282805e-13,
+        "threshold": 1e-12,
+        "comparator": "<"
+      },
+      {
+        "name": "periodic_edge_gap_lt_1e_12",
+        "passed": true,
+        "actual": 0.0,
+        "threshold": 1e-12,
+        "comparator": "<"
+      },
+      {
+        "name": "axis_edge_gap_gt_50",
+        "passed": true,
+        "actual": 104.04761904761905,
+        "threshold": 50.0,
+        "comparator": ">"
+      }
+    ],
+    "future_checks": [
+      "Lane demand around midnight should route as one interval across the 24-hour boundary.",
+      "Axis-only hour splits should remain a weaker baseline for wraparound effects."
+    ]
+  },
+  "regional_lane_boosting": {
+    "models": {
+      "axis_only": {
+        "holdout_rmse": 12.681980364960808
+      },
+      "lane_spatial_temporal": {
+        "holdout_rmse": 2.142589152248399
+      }
+    },
+    "inspection_metrics": {
+      "holdout_rmse_ratio": 0.16894752164797414,
+      "hot_lane_midnight_prediction": 298.2858293075685,
+      "cold_lane_midday_prediction": 144.84924240491756,
+      "hot_cold_operating_contrast": 153.43658690265096,
+      "uses_hidden_simulator_metadata_in_training": 0.0
+    },
+    "acceptance_gates": [
+      {
+        "name": "full_beats_axis_holdout",
+        "passed": true,
+        "actual": 0.16894752164797414,
+        "threshold": 0.65,
+        "comparator": "<"
+      },
+      {
+        "name": "hot_cold_contrast_gt_120",
+        "passed": true,
+        "actual": 153.43658690265096,
+        "threshold": 120.0,
+        "comparator": ">"
+      }
+    ],
+    "future_checks": [
+      "Combined lane, route, and hour splitters should beat an axis-only baseline.",
+      "The fixture uses only observable matrix columns documented in the artifact README."
+    ]
+  }
+}
