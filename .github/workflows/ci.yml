@@ -105,6 +105,25 @@ jobs:
       - name: Generate validation artifacts
         run: uv run --group dev python scripts/run_full_validation.py
 
+      - name: Generate v1 validation report
+        run: uv run --group dev python scripts/run_v1_validation.py
+
+  bench-compile:
+    name: Benchmark compile
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Compile benchmarks
+        run: cargo bench --workspace --no-run
+
   wheels:
     name: Wheels
     runs-on: ubuntu-latest

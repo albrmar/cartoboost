@@ -46,6 +46,10 @@ attempt to reproduce Lyft's proprietary system.
 - Larger comparison suite against scikit-learn and LightGBM.
 - Richer schema contracts for named spatial pairs and validation beyond the
   current numeric, periodic, and sparse-set declarations.
+- CLI support for mixed sparse row formats beyond the current dense numeric CSV
+  v1 contract.
+- Long-running fuzz campaigns and benchmark regression tracking beyond compile
+  checks.
 
 The current implementation covers the repo's regression-only clean-room target
 with deterministic Rust training, Rust/Python artifact parity, CLI workflows,
@@ -71,3 +75,5 @@ intentionally narrow:
   superiority over production geospatial boosting systems.
 - Artifact version `1` is supported with backward-compatible optional metadata
   fields, but no older-version migration layer exists yet.
+- CLI workflows are dense numeric CSV only for v1; Python with `backend="rust"`
+  is the public sparse route-cell API.

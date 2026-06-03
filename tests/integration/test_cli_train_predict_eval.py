@@ -46,6 +46,42 @@ def test_cli_train_accepts_max_depth_zero(tmp_path: Path) -> None:
     assert model.exists()
 
 
+def test_cli_dense_train_predict_eval_roundtrip(tmp_path: Path) -> None:
+    data = _write_training_csv(tmp_path)
+    model = tmp_path / "model.geoboost"
+    predictions = tmp_path / "predictions.csv"
+    predict_input = tmp_path / "predict.csv"
+    predict_input.write_text("x1,x2\n0,0\n1,1\n", encoding="utf-8")
+
+    train = _run_cli("train", "--data", str(data), "--model-out", str(model))
+    assert train.returncode == 0, train.stderr
+    assert model.exists()
+
+    predict = _run_cli(
+        "predict",
+        "--model",
+        str(model),
+        "--input",
+        str(predict_input),
+        "--predictions-out",
+        str(predictions),
+    )
+    assert predict.returncode == 0, predict.stderr
+    assert predictions.read_text(encoding="utf-8").startswith("row,prediction\n")
+
+    evaluate = _run_cli("eval", "--model", str(model), "--data", str(data))
+    assert evaluate.returncode == 0, evaluate.stderr
+    assert '"command":"eval"' in evaluate.stdout
+    assert '"mae":' in evaluate.stdout
+
+
+def test_cli_help_exits_zero() -> None:
+    result = _run_cli("--help")
+
+    assert result.returncode == 0
+    assert "Commands:" in result.stdout
+
+
 def test_cli_predict_rejects_wrong_feature_count(tmp_path: Path) -> None:
     data = _write_training_csv(tmp_path)
     model = tmp_path / "model.geoboost"

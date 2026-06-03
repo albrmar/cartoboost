@@ -52,6 +52,28 @@ impl FeatureSchema {
                 self.kinds.len()
             )));
         }
+        for (idx, name) in self.names.iter().enumerate() {
+            if name.trim().is_empty() {
+                return Err(GeoBoostError::InvalidInput(format!(
+                    "feature schema name at index {idx} must not be empty"
+                )));
+            }
+            if self.names[..idx].iter().any(|old| old == name) {
+                return Err(GeoBoostError::InvalidInput(format!(
+                    "feature schema contains duplicate feature name '{name}'"
+                )));
+            }
+        }
+        for (idx, kind) in self.kinds.iter().enumerate() {
+            if let FeatureKind::Periodic { period } = kind {
+                if *period == 0 {
+                    return Err(GeoBoostError::InvalidInput(format!(
+                        "periodic feature '{}' at index {idx} must have a positive period",
+                        self.names[idx]
+                    )));
+                }
+            }
+        }
         Ok(())
     }
 }

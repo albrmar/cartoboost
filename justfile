@@ -29,6 +29,7 @@ wheel:
     uv run --group dev maturin build --release
 
 validate:
+    uv sync --group dev
     cargo fmt --all --check
     cargo clippy --workspace --all-targets -- -D warnings
     cargo test --workspace
@@ -37,6 +38,7 @@ validate:
     uv run --group dev maturin develop
     uv run --group dev pytest
     uv run --group dev python scripts/run_full_validation.py
+    uv run --group dev python scripts/run_v1_validation.py
     cargo bench --workspace --no-run
 
 clean:

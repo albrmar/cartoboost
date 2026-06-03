@@ -78,7 +78,10 @@ impl Dataset {
         })
     }
 
-    pub fn with_sparse_sets(mut self, sparse_sets: Vec<SparseSetColumn>) -> Result<Self> {
+    pub fn with_sparse_sets(mut self, mut sparse_sets: Vec<SparseSetColumn>) -> Result<Self> {
+        for column in &mut sparse_sets {
+            column.normalize();
+        }
         for (idx, column) in sparse_sets.iter().enumerate() {
             if column.len() != self.rows {
                 return Err(GeoBoostError::InvalidInput(format!(
@@ -89,18 +92,15 @@ impl Dataset {
             }
         }
         self.sparse_sets = sparse_sets;
+        if let Some(schema) = &self.schema {
+            validate_schema_layout(schema, self.cols, self.sparse_sets.len())?;
+        }
         Ok(self)
     }
 
     pub fn with_schema(mut self, schema: FeatureSchema) -> Result<Self> {
         schema.validate()?;
-        let expected = self.cols + self.sparse_sets.len();
-        if !schema.is_empty() && schema.len() != expected {
-            return Err(GeoBoostError::InvalidInput(format!(
-                "feature schema length {} does not match dataset feature count {expected}",
-                schema.len()
-            )));
-        }
+        validate_schema_layout(&schema, self.cols, self.sparse_sets.len())?;
         self.schema = Some(schema);
         Ok(self)
     }
@@ -170,6 +170,45 @@ impl Dataset {
     }
 }
 
+fn validate_schema_layout(
+    schema: &FeatureSchema,
+    dense_cols: usize,
+    sparse_cols: usize,
+) -> Result<()> {
+    if schema.is_empty() {
+        return Ok(());
+    }
+
+    let expected = dense_cols + sparse_cols;
+    if schema.len() != expected {
+        return Err(GeoBoostError::InvalidInput(format!(
+            "feature schema length {} does not match dataset feature count {expected} ({dense_cols} dense + {sparse_cols} sparse-set)",
+            schema.len()
+        )));
+    }
+
+    for (idx, kind) in schema.kinds.iter().take(dense_cols).enumerate() {
+        if matches!(kind, FeatureKind::SparseSet) {
+            return Err(GeoBoostError::InvalidInput(format!(
+                "feature schema entry '{}' at dense index {idx} is sparse_set; sparse_set entries must correspond to sparse-set columns after the {dense_cols} dense features",
+                schema.names[idx]
+            )));
+        }
+    }
+
+    for sparse_idx in 0..sparse_cols {
+        let schema_idx = dense_cols + sparse_idx;
+        if !matches!(schema.kinds[schema_idx], FeatureKind::SparseSet) {
+            return Err(GeoBoostError::InvalidInput(format!(
+                "feature schema entry '{}' at sparse-set index {sparse_idx} must be sparse_set",
+                schema.names[schema_idx]
+            )));
+        }
+    }
+
+    Ok(())
+}
+
 impl SampleRef<'_> {
     pub fn get(&self, col: usize) -> f64 {
         self.dataset.get(self.row, col)
@@ -184,5 +223,100 @@ mod tests {
     fn rejects_ragged_or_non_finite_rows() {
         assert!(Dataset::from_rows(vec![vec![1.0], vec![2.0, 3.0]]).is_err());
         assert!(Dataset::from_rows(vec![vec![f64::NAN]]).is_err());
+    }
+
+    #[test]
+    fn mixed_schema_counts_dense_and_sparse_features() {
+        let schema = FeatureSchema {
+            names: vec![
+                "distance".to_string(),
+                "hour".to_string(),
+                "route_cells".to_string(),
+            ],
+            kinds: vec![
+                FeatureKind::Numeric,
+                FeatureKind::Periodic { period: 24 },
+                FeatureKind::SparseSet,
+            ],
+        };
+
+        let dataset = Dataset::mixed(
+            vec![vec![1.0, 7.0], vec![2.0, 8.0]],
+            vec![SparseSetColumn::new(vec![vec![3, 1, 3], vec![]])],
+            Some(schema),
+        )
+        .unwrap();
+
+        assert_eq!(dataset.n_cols(), 2);
+        assert_eq!(dataset.n_sparse_sets(), 1);
+        assert_eq!(dataset.sparse_set_row(0, 0), Some(&[1, 3][..]));
+    }
+
+    #[test]
+    fn with_sparse_sets_normalizes_public_column_values() {
+        let dataset = Dataset::from_rows(vec![vec![1.0], vec![2.0]])
+            .unwrap()
+            .with_sparse_sets(vec![SparseSetColumn {
+                values: vec![vec![9, 3, 9, 1], vec![4, 4]],
+            }])
+            .unwrap();
+
+        assert_eq!(dataset.sparse_set_row(0, 0), Some(&[1, 3, 9][..]));
+        assert_eq!(dataset.sparse_set_row(1, 0), Some(&[4][..]));
+    }
+
+    #[test]
+    fn schema_length_mismatch_reports_dense_and_sparse_counts() {
+        let err = Dataset::mixed(
+            vec![vec![1.0], vec![2.0]],
+            vec![SparseSetColumn::new(vec![vec![1], vec![2]])],
+            Some(FeatureSchema {
+                names: vec!["only_dense".to_string()],
+                kinds: vec![FeatureKind::Numeric],
+            }),
+        )
+        .unwrap_err();
+
+        assert!(err.to_string().contains("1 dense + 1 sparse-set"));
+    }
+
+    #[test]
+    fn sparse_set_schema_entries_must_correspond_to_sparse_columns() {
+        let dense_sparse_err = Dataset::from_rows(vec![vec![1.0], vec![2.0]])
+            .unwrap()
+            .with_schema(FeatureSchema {
+                names: vec!["route_cells".to_string()],
+                kinds: vec![FeatureKind::SparseSet],
+            })
+            .unwrap_err();
+        assert!(dense_sparse_err
+            .to_string()
+            .contains("sparse_set entries must correspond"));
+
+        let sparse_kind_err = Dataset::mixed(
+            vec![vec![1.0], vec![2.0]],
+            vec![SparseSetColumn::new(vec![vec![1], vec![2]])],
+            Some(FeatureSchema {
+                names: vec!["distance".to_string(), "route_cells".to_string()],
+                kinds: vec![FeatureKind::Numeric, FeatureKind::Numeric],
+            }),
+        )
+        .unwrap_err();
+        assert!(sparse_kind_err.to_string().contains("must be sparse_set"));
+    }
+
+    #[test]
+    fn with_sparse_sets_revalidates_existing_schema() {
+        let err = Dataset::from_rows(vec![vec![1.0], vec![2.0]])
+            .unwrap()
+            .with_schema(FeatureSchema {
+                names: vec!["distance".to_string()],
+                kinds: vec![FeatureKind::Numeric],
+            })
+            .unwrap()
+            .with_sparse_sets(vec![SparseSetColumn::new(vec![vec![1], vec![2]])])
+            .unwrap_err();
+
+        assert!(err.to_string().contains("dataset feature count 2"));
     }
 }

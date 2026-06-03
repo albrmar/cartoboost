@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import json
+
 import numpy as np
 import pytest
 from geoboost import GeoBoostRegressor
+from geoboost import regressor as regressor_module
 
 
 def _radial_fixture() -> tuple[np.ndarray, np.ndarray]:
@@ -48,6 +51,108 @@ def test_native_fuzzy_gaussian_serialization_preserves_predictions(tmp_path):
 
     assert restored.predict(probes) == pytest.approx(before)
     assert restored.n_features_in_ == 2
+
+
+def test_real_native_save_load_restores_public_params_and_metadata(tmp_path):
+    x = np.array([[0.0, 0.0], [0.2, 0.0], [3.0, 0.0], [0.0, 3.0]])
+    y = np.array([5.0, 5.0, -1.0, -1.0])
+    model = GeoBoostRegressor(
+        n_estimators=2,
+        learning_rate=0.25,
+        max_depth=1,
+        min_samples_leaf=1,
+        min_gain=0.0,
+        splitters=["gaussian_2d"],
+        fuzzy=True,
+        fuzzy_bandwidth=0.5,
+        leaf_predictor="constant",
+        backend="rust",
+    )
+
+    try:
+        model.fit(x, y)
+    except ImportError as exc:
+        pytest.skip(str(exc))
+
+    path = tmp_path / "native-geoboost.json"
+    before = model.predict(x)
+    model.save(path)
+
+    restored = GeoBoostRegressor.load(path)
+
+    assert restored.get_params() == {
+        "n_estimators": 2,
+        "learning_rate": 0.25,
+        "max_depth": 1,
+        "min_samples_leaf": 1,
+        "min_gain": 0.0,
+        "loss": "l2",
+        "splitters": ["gaussian_2d"],
+        "leaf_predictor": "constant",
+        "linear_leaf_features": [],
+        "fuzzy": True,
+        "fuzzy_bandwidth": 0.5,
+        "l2_regularization": 1.0,
+        "random_state": None,
+        "n_threads": None,
+        "backend": "auto",
+    }
+    assert restored.metadata_["library_name"] == "geoboost-core"
+    assert restored.training_config_["splitters"] == ["Gaussian2D"]
+    assert restored.requires_sparse_sets_ is False
+    assert restored.predict(x) == pytest.approx(before)
+
+
+def test_native_sparse_list_prediction_requires_sparse_sets_after_load(tmp_path):
+    x = [[0.0], [0.0], [0.0], [0.0]]
+    y = [7.0, 7.0, -2.0, -2.0]
+    sparse_sets = {"route_cells": [[10, 20], [20, 30], [40], []]}
+    model = GeoBoostRegressor(
+        n_estimators=1,
+        learning_rate=1.0,
+        max_depth=1,
+        min_samples_leaf=1,
+        min_gain=0.0,
+        splitters=["sparse_set"],
+        backend="rust",
+    )
+
+    try:
+        model.fit(x, y, sparse_sets=sparse_sets)
+    except ImportError as exc:
+        pytest.skip(str(exc))
+
+    path = tmp_path / "native-sparse-geoboost.json"
+    model.save(path)
+    restored = GeoBoostRegressor.load(path)
+
+    assert restored.requires_sparse_sets_ is True
+    with pytest.raises(ValueError, match="sparse_sets are required"):
+        restored.predict(x)
+    assert restored.predict(x, sparse_sets=sparse_sets) == pytest.approx(y)
+
+
+def test_native_artifact_version_mismatch_errors_clearly(tmp_path):
+    if regressor_module._NativeGeoBoostRegressor is None:
+        pytest.skip("native extension is not installed")
+
+    path = tmp_path / "future-native-artifact.json"
+    path.write_text(
+        json.dumps(
+            {
+                "artifact_version": 999,
+                "init_prediction": 0.0,
+                "learning_rate": 0.1,
+                "feature_count": 1,
+                "target_name": None,
+                "trees": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ValueError, match="unsupported model artifact version 999"):
+        GeoBoostRegressor.load(path)
 
 
 def test_python_api_rejects_unsupported_objectives_and_backends():

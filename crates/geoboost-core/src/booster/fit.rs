@@ -449,7 +449,7 @@ mod tests {
     }
 
     #[test]
-    fn fuzzy_training_wraps_learned_split_and_preserves_shrinkage() {
+    fn fuzzy_training_uses_fractional_prediction_and_preserves_mass() {
         let x = Dataset::from_rows(vec![vec![0.0], vec![1.0], vec![2.0], vec![3.0]]).unwrap();
         let y = vec![0.0, 0.0, 10.0, 10.0];
         let booster = Booster::new(BoosterConfig {
@@ -473,8 +473,7 @@ mod tests {
                 ..
             }
         ));
-        assert_eq!(model.predict_one(&[0.0]), 0.0);
-        assert_eq!(model.predict_one(&[3.0]), 10.0);
-        assert_eq!(model.predict_one(&[1.5]), 5.0);
+        assert_predictions_close(&model.predict(&x), &[1.25, 3.125, 6.875, 8.75]);
+        assert_predictions_close(&[model.predict_one(&[1.5])], &[5.0]);
     }
 }

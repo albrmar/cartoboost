@@ -3,11 +3,14 @@ from __future__ import annotations
 import json
 import math
 from collections.abc import Iterable
+from numbers import Integral, Real
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 from sklearn.base import BaseEstimator, RegressorMixin
+
+from .schema import normalize_feature_kind
 
 try:
     from ._native import GeoBoostRegressor as _NativeGeoBoostRegressor
@@ -157,6 +160,11 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
                 self.feature_schema_ = (
                     json.loads(schema_json) if schema_json is not None else schema_metadata
                 )
+                self.metadata_ = _json_attr(model, "metadata_json")
+                self.training_config_ = _json_attr(model, "training_config_json")
+                self.requires_sparse_sets_ = bool(
+                    getattr(model, "requires_sparse_sets", bool(sparse_columns))
+                )
                 self.is_fitted_ = True
                 return self
 
@@ -181,6 +189,9 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
         model.fit(rows, targets, weights)
         self._model = model
         self._backend_used = "python"
+        self.metadata_ = None
+        self.training_config_ = None
+        self.requires_sparse_sets_ = False
         self.is_fitted_ = True
         return self
 
@@ -193,8 +204,32 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
                 f"X has {len(rows[0])} features, but GeoBoostRegressor was fitted with "
                 f"{self.n_features_in_} features"
             )
-        sparse_columns, _ = _normalize_sparse_sets(sparse_sets, len(rows))
+        sparse_columns, sparse_names = _normalize_sparse_sets(
+            sparse_sets,
+            len(rows),
+            getattr(self, "sparse_set_names_", None),
+        )
+        expected_sparse_count = getattr(self, "n_sparse_sets_in_", 0)
+        if sparse_columns and len(sparse_columns) != expected_sparse_count:
+            raise ValueError(
+                f"sparse_sets has {len(sparse_columns)} columns, but GeoBoostRegressor was "
+                f"fitted with {expected_sparse_count}"
+            )
+        if (
+            isinstance(sparse_sets, dict)
+            and sparse_names
+            and hasattr(self, "sparse_set_names_")
+            and sparse_names != self.sparse_set_names_
+        ):
+            raise ValueError(
+                f"sparse_sets columns {sparse_names!r} do not match fitted columns "
+                f"{self.sparse_set_names_!r}"
+            )
         if self._backend_used == "rust":
+            if not sparse_columns and getattr(self, "requires_sparse_sets_", False):
+                raise ValueError(
+                    "sparse_sets are required for prediction with this sparse-list model"
+                )
             return np.asarray(list(self._model.predict(rows, sparse_columns)), dtype=float)
         if sparse_columns:
             raise NotImplementedError("the pure-Python fallback does not support sparse_sets")
@@ -220,11 +255,12 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
     def load(cls, path: str | Path) -> GeoBoostRegressor:
         path = Path(path)
         native_cls = _NativeGeoBoostRegressor
+        native_error: ValueError | None = None
         if native_cls is not None:
             try:
                 native_model = native_cls.load(path)
-            except ValueError:
-                pass
+            except ValueError as exc:
+                native_error = exc
             else:
                 estimator = cls(
                     n_estimators=native_model.n_estimators,
@@ -247,11 +283,21 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
                 estimator._backend_used = "rust"
                 estimator.n_features_in_ = native_model.feature_count
                 estimator.feature_schema_ = _json_attr(native_model, "feature_schema_json")
+                estimator.sparse_set_names_ = _sparse_names_from_feature_schema(
+                    estimator.feature_schema_
+                )
+                estimator.n_sparse_sets_in_ = len(estimator.sparse_set_names_)
                 estimator.metadata_ = _json_attr(native_model, "metadata_json")
+                estimator.training_config_ = _json_attr(native_model, "training_config_json")
+                estimator.requires_sparse_sets_ = bool(
+                    getattr(native_model, "requires_sparse_sets", False)
+                )
                 estimator.is_fitted_ = True
                 return estimator
 
         payload = json.loads(path.read_text(encoding="utf-8"))
+        if native_error is not None and _looks_like_native_artifact(payload):
+            raise native_error
         estimator = cls(**payload["params"])
         estimator._model = _FallbackModel.from_dict(payload["model"])
         estimator._backend_used = "python"
@@ -259,6 +305,9 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
         estimator.n_sparse_sets_in_ = 0
         estimator.sparse_set_names_ = []
         estimator.feature_schema_ = payload.get("feature_schema")
+        estimator.metadata_ = None
+        estimator.training_config_ = None
+        estimator.requires_sparse_sets_ = False
         estimator.is_fitted_ = True
         return estimator
 
@@ -446,6 +495,8 @@ def _is_axis_splitters(splitters: Any) -> bool:
 def _feature_schema_metadata(feature_schema: Any | None) -> Any | None:
     if feature_schema is None:
         return None
+    if hasattr(feature_schema, "to_dict"):
+        return feature_schema.to_dict()
     if isinstance(feature_schema, str | int | float | bool):
         return feature_schema
     if isinstance(feature_schema, dict):
@@ -459,31 +510,60 @@ def _feature_schema_metadata(feature_schema: Any | None) -> Any | None:
 
 
 def _normalize_sparse_sets(
-    values: Any | None, expected_rows: int
+    values: Any | None,
+    expected_rows: int,
+    expected_names: list[str] | None = None,
 ) -> tuple[list[list[list[int]]], list[str]]:
     if values is None:
         return [], []
     if isinstance(values, dict):
-        items = [(str(name), column) for name, column in values.items()]
+        mapping = {str(name): column for name, column in values.items()}
+        if expected_names is not None:
+            missing = [name for name in expected_names if name not in mapping]
+            unknown = [name for name in mapping if name not in expected_names]
+            if missing or unknown:
+                raise ValueError(
+                    f"sparse_sets columns do not match fitted columns; missing={missing}, "
+                    f"unknown={unknown}"
+                )
+            items = [(name, mapping[name]) for name in expected_names]
+        else:
+            items = list(mapping.items())
     else:
         items = [(f"sparse_set_{idx}", column) for idx, column in enumerate(values)]
     columns: list[list[list[int]]] = []
     names: list[str] = []
     for name, column in items:
         rows = []
-        for row in column:
+        for row_index, row in enumerate(column):
             ids = []
             for value in row:
-                ident = int(value)
+                ident = _normalize_sparse_id(value)
                 if ident < 0:
-                    raise ValueError("sparse_sets IDs must be non-negative integers")
+                    raise ValueError(
+                        f"sparse_sets column {name!r} row {row_index} contains a negative ID"
+                    )
                 ids.append(ident)
             rows.append(ids)
         if len(rows) != expected_rows:
-            raise ValueError("each sparse_sets column must have the same number of rows as y")
+            raise ValueError(
+                "each sparse_sets column must have the same number of rows as the dense input"
+            )
         columns.append(rows)
         names.append(name)
     return columns, names
+
+
+def _normalize_sparse_id(value: Any) -> int:
+    if isinstance(value, bool):
+        raise ValueError("sparse_sets IDs must be non-negative integers")
+    if isinstance(value, Integral):
+        return int(value)
+    if isinstance(value, Real):
+        numeric = float(value)
+        if math.isfinite(numeric) and numeric.is_integer():
+            return int(numeric)
+    raise ValueError("sparse_sets IDs must be non-negative integers")
 
 
 def _rust_feature_schema_json(
@@ -508,6 +588,13 @@ def _rust_feature_schema_payload(
     dense_width: int,
     sparse_names: list[str],
 ) -> dict[str, Any]:
+    if hasattr(feature_schema, "to_rust_payload"):
+        payload = feature_schema.to_rust_payload(dense_width, sparse_names)
+        names = [str(name) for name in payload["names"]]
+        kinds = [_rust_feature_kind(kind) for kind in payload["kinds"]]
+        _validate_schema_length(names, kinds, dense_width, sparse_names)
+        return {"names": names, "kinds": kinds}
+
     if isinstance(feature_schema, dict) and "names" in feature_schema and "kinds" in feature_schema:
         names = [str(name) for name in feature_schema["names"]]
         kinds = [_rust_feature_kind(kind) for kind in feature_schema["kinds"]]
@@ -550,33 +637,23 @@ def _rust_feature_schema_payload(
 def _schema_entry_name(entry: Any, idx: int, prefix: str) -> str:
     if isinstance(entry, dict):
         return str(entry.get("name", f"{prefix}_{idx}"))
+    if isinstance(entry, tuple) and len(entry) == 2:
+        return str(entry[0])
     return str(entry)
 
 
 def _schema_entry_kind(entry: Any, default: str) -> Any:
     if isinstance(entry, dict):
         return _rust_feature_kind(entry.get("kind", entry.get("role", default)), entry)
+    if isinstance(entry, tuple) and len(entry) == 2:
+        return _rust_feature_kind(entry[1])
     if default == "sparse_set":
         return "SparseSet"
     return "Numeric"
 
 
 def _rust_feature_kind(kind: Any, entry: dict[str, Any] | None = None) -> Any:
-    if kind in {"Numeric", "numeric"}:
-        return "Numeric"
-    if kind in {"SparseSet", "sparse_set", "sparse"}:
-        return "SparseSet"
-    if kind in {"Periodic", "periodic"}:
-        period = 24 if entry is None else int(entry.get("period", 24))
-        if period <= 0:
-            raise ValueError("periodic feature_schema entries require a positive period")
-        return {"Periodic": {"period": period}}
-    if isinstance(kind, dict) and "Periodic" in kind:
-        period = int(kind["Periodic"]["period"])
-        if period <= 0:
-            raise ValueError("periodic feature_schema entries require a positive period")
-        return {"Periodic": {"period": period}}
-    raise ValueError(f"unknown feature kind {kind!r}")
+    return normalize_feature_kind(kind, entry)
 
 
 def _validate_schema_length(
@@ -599,6 +676,24 @@ def _json_attr(model: Any, attr: str) -> Any | None:
     if payload is None:
         return None
     return json.loads(payload)
+
+
+def _sparse_names_from_feature_schema(feature_schema: Any | None) -> list[str]:
+    if not isinstance(feature_schema, dict):
+        return []
+    names = feature_schema.get("names")
+    kinds = feature_schema.get("kinds")
+    if not isinstance(names, list) or not isinstance(kinds, list):
+        return []
+    return [
+        str(name)
+        for name, kind in zip(names, kinds, strict=False)
+        if kind == "SparseSet" or kind == {"SparseSet": {}}
+    ]
+
+
+def _looks_like_native_artifact(payload: Any) -> bool:
+    return isinstance(payload, dict) and "artifact_version" in payload and "trees" in payload
 
 
 def _is_valid_splitter_name(splitter: Any) -> bool:

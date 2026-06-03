@@ -28,6 +28,7 @@ fn run() -> CliResult<()> {
     }
 
     let opts = parse_options(args.collect())?;
+    validate_options(command.as_str(), &opts)?;
     if opts.contains_key("help") {
         print_help();
         return Ok(());
@@ -69,6 +70,22 @@ fn parse_options(raw: Vec<String>) -> CliResult<BTreeMap<String, String>> {
         i += 2;
     }
     Ok(opts)
+}
+
+fn validate_options(command: &str, opts: &BTreeMap<String, String>) -> CliResult<()> {
+    let allowed = match command {
+        "train" => &["config", "data", "help", "model-out", "output"][..],
+        "predict" => &["help", "input", "model", "output", "predictions-out"][..],
+        "eval" => &["data", "help", "model", "output"][..],
+        "inspect" => &["config", "data", "help", "model", "output"][..],
+        _ => return Ok(()),
+    };
+    for key in opts.keys() {
+        if !allowed.contains(&key.as_str()) {
+            return Err(format!("unknown option '--{key}' for command '{command}'").into());
+        }
+    }
+    Ok(())
 }
 
 fn train(opts: BTreeMap<String, String>) -> CliResult<()> {
@@ -119,7 +136,7 @@ fn predict(opts: BTreeMap<String, String>) -> CliResult<()> {
     let rows = read_csv(input_path)?;
     if let Ok(model) = CoreModel::load(model_path) {
         let dataset = numeric_dataset_without_target(&rows, model.feature_count)?;
-        let predictions = model.predict(&dataset);
+        let predictions = model.try_predict(&dataset)?;
         let mut csv = String::from("row,prediction\n");
         for (idx, prediction) in predictions.iter().enumerate() {
             csv.push_str(&format!("{idx},{}\n", format_float(*prediction)));
@@ -177,7 +194,7 @@ fn evaluate(opts: BTreeMap<String, String>) -> CliResult<()> {
             .or_else(|| rows.headers.last().cloned())
             .unwrap_or_else(|| "target".to_string());
         let (dataset, y, _) = numeric_dataset_and_target(&rows, &target)?;
-        let predictions = model.predict(&dataset);
+        let predictions = model.try_predict(&dataset)?;
         let mae = y
             .iter()
             .zip(&predictions)
@@ -407,7 +424,9 @@ fn read_config(path: &str) -> CliResult<Config> {
             "l2_regularization" => {
                 config.l2_regularization = Some(parse_config_value(key, value, line_number)?)
             }
-            _ => {}
+            _ => {
+                return Err(format!("unknown config key '{key}' on line {line_number}").into());
+            }
         }
     }
     Ok(config)
@@ -523,7 +542,24 @@ fn read_csv(path: &str) -> CliResult<CsvData> {
         .next()
         .map(parse_csv_line)
         .ok_or_else(|| format!("CSV file '{}' is empty", Path::new(path).display()))?;
-    let records = lines.map(parse_csv_line).collect();
+    let records = lines.map(parse_csv_line).collect::<Vec<_>>();
+    let records = records
+        .into_iter()
+        .enumerate()
+        .map(|(idx, record)| {
+            if record.len() != headers.len() {
+                Err(format!(
+                    "CSV row {} has {} columns but header has {}",
+                    idx + 2,
+                    record.len(),
+                    headers.len()
+                )
+                .into())
+            } else {
+                Ok(record)
+            }
+        })
+        .collect::<CliResult<Vec<_>>>()?;
     Ok(CsvData { headers, records })
 }
 

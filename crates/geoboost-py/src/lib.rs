@@ -102,6 +102,18 @@ impl NativeGeoBoostRegressor {
         Ok(())
     }
 
+    #[pyo3(signature = (x, y, sparse_sets, feature_schema_json=None, sample_weight=None))]
+    fn fit_mixed(
+        &mut self,
+        x: Vec<Vec<f64>>,
+        y: Vec<f64>,
+        sparse_sets: Vec<Vec<Vec<u64>>>,
+        feature_schema_json: Option<String>,
+        sample_weight: Option<Vec<f64>>,
+    ) -> PyResult<()> {
+        self.fit(x, y, sample_weight, Some(sparse_sets), feature_schema_json)
+    }
+
     #[pyo3(signature = (x, sparse_sets=None))]
     fn predict(
         &self,
@@ -114,6 +126,15 @@ impl NativeGeoBoostRegressor {
             .ok_or_else(|| PyRuntimeError::new_err("GeoBoostRegressor is not fitted"))?;
         let dataset = dataset_from_parts(x, sparse_sets, None)?;
         model.try_predict(&dataset).map_err(to_py_value_error)
+    }
+
+    #[pyo3(signature = (x, sparse_sets))]
+    fn predict_mixed(
+        &self,
+        x: Vec<Vec<f64>>,
+        sparse_sets: Vec<Vec<Vec<u64>>>,
+    ) -> PyResult<Vec<f64>> {
+        self.predict(x, Some(sparse_sets))
     }
 
     fn save(&self, path: PathBuf) -> PyResult<()> {
@@ -248,6 +269,14 @@ impl NativeGeoBoostRegressor {
     }
 
     #[getter]
+    fn requires_sparse_sets(&self) -> bool {
+        self.model
+            .as_ref()
+            .map(Model::requires_sparse_sets)
+            .unwrap_or(false)
+    }
+
+    #[getter]
     fn feature_schema_json(&self) -> PyResult<Option<String>> {
         self.model
             .as_ref()
@@ -262,6 +291,16 @@ impl NativeGeoBoostRegressor {
         self.model
             .as_ref()
             .and_then(|model| model.metadata.as_ref())
+            .map(serde_json::to_string)
+            .transpose()
+            .map_err(|err| PyValueError::new_err(err.to_string()))
+    }
+
+    #[getter]
+    fn training_config_json(&self) -> PyResult<Option<String>> {
+        self.model
+            .as_ref()
+            .and_then(|model| model.training_config.as_ref())
             .map(serde_json::to_string)
             .transpose()
             .map_err(|err| PyValueError::new_err(err.to_string()))

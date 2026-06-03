@@ -847,4 +847,72 @@ mod tests {
             }
         ));
     }
+
+    #[test]
+    fn schema_present_periodic_splitter_ignores_non_periodic_columns() {
+        let x = Dataset::from_rows(vec![
+            vec![0.0, 7.0],
+            vec![1.0, 7.0],
+            vec![23.0, 7.0],
+            vec![24.0, 7.0],
+        ])
+        .unwrap()
+        .with_schema(crate::data::FeatureSchema {
+            names: vec!["numeric_covering_period".to_string(), "hour".to_string()],
+            kinds: vec![FeatureKind::Numeric, FeatureKind::Periodic { period: 24 }],
+        })
+        .unwrap();
+        let y = vec![0.0, 0.0, 10.0, 10.0];
+        let weights = vec![1.0; y.len()];
+        let builder = TreeBuilder {
+            max_depth: 1,
+            min_samples_leaf: 1,
+            min_gain: 0.0,
+            splitters: vec![SplitterKind::Periodic { period: 24.0 }],
+            leaf_predictor: LeafPredictorKind::Constant,
+            linear_leaf_features: Vec::new(),
+            linear_lambda_l2: 1.0,
+            fuzzy: false,
+            fuzzy_bandwidth: 0.0,
+        };
+
+        let tree = builder.fit(&x, &y, &weights);
+
+        assert!(matches!(tree.root, Node::Leaf { .. }));
+    }
+
+    #[test]
+    fn schema_present_sparse_splitter_ignores_dense_scalar_id_columns() {
+        let x = Dataset::mixed(
+            vec![vec![7.0], vec![7.0], vec![2.0], vec![2.0]],
+            vec![crate::data::SparseSetColumn::new(vec![
+                vec![100],
+                vec![101],
+                vec![102],
+                vec![103],
+            ])],
+            Some(crate::data::FeatureSchema {
+                names: vec!["dense_id_like".to_string(), "route_cells".to_string()],
+                kinds: vec![FeatureKind::Numeric, FeatureKind::SparseSet],
+            }),
+        )
+        .unwrap();
+        let y = vec![9.0, 9.0, -4.0, -4.0];
+        let weights = vec![1.0; y.len()];
+        let builder = TreeBuilder {
+            max_depth: 1,
+            min_samples_leaf: 2,
+            min_gain: 0.0,
+            splitters: vec![SplitterKind::SparseSet],
+            leaf_predictor: LeafPredictorKind::Constant,
+            linear_leaf_features: Vec::new(),
+            linear_lambda_l2: 1.0,
+            fuzzy: false,
+            fuzzy_bandwidth: 0.0,
+        };
+
+        let tree = builder.fit(&x, &y, &weights);
+
+        assert!(matches!(tree.root, Node::Leaf { .. }));
+    }
 }

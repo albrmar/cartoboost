@@ -25,3 +25,28 @@ fn schema_validation_rejects_mismatched_fields() {
 
     assert!(schema.validate().is_err());
 }
+
+#[test]
+fn schema_validation_rejects_empty_and_duplicate_names() {
+    let empty_name = FeatureSchema {
+        names: vec!["".to_string()],
+        kinds: vec![FeatureKind::Numeric],
+    };
+    assert!(empty_name.validate().is_err());
+
+    let duplicate_name = FeatureSchema {
+        names: vec!["x".to_string(), "x".to_string()],
+        kinds: vec![FeatureKind::Numeric, FeatureKind::SparseSet],
+    };
+    assert!(duplicate_name.validate().is_err());
+}
+
+#[test]
+fn schema_validation_rejects_zero_period() {
+    let schema = FeatureSchema {
+        names: vec!["hour".to_string()],
+        kinds: vec![FeatureKind::Periodic { period: 0 }],
+    };
+
+    assert!(schema.validate().is_err());
+}
