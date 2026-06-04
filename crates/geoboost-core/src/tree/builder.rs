@@ -99,9 +99,7 @@ pub(crate) struct FitContext {
 #[derive(Debug, Clone)]
 struct HistogramFeature {
     bin_count: usize,
-    min_value: f64,
-    max_value: f64,
-    scale: f64,
+    thresholds: Vec<f64>,
     bins: Vec<u16>,
 }
 
@@ -693,11 +691,9 @@ impl TreeBuilder {
                         {
                             continue;
                         }
-                        let threshold = histogram_feature.min_value
-                            + ((split_bin + 1) as f64 / histogram_feature.scale);
-                        if threshold >= histogram_feature.max_value {
+                        let Some(&threshold) = histogram_feature.thresholds.get(split_bin) else {
                             continue;
-                        }
+                        };
                         let parent_loss = if parent_sse == 0.0 {
                             total.sse()
                         } else {
@@ -935,11 +931,9 @@ impl TreeBuilder {
                 {
                     continue;
                 }
-                let threshold = histogram_feature.min_value
-                    + ((split_bin + 1) as f64 / histogram_feature.scale);
-                if threshold >= histogram_feature.max_value {
+                let Some(&threshold) = histogram_feature.thresholds.get(split_bin) else {
                     continue;
-                }
+                };
                 let parent_loss = if parent_sse == 0.0 {
                     total.sse()
                 } else {
@@ -1088,30 +1082,23 @@ impl TreeBuilder {
             if !dense_feature_allows_axis(x, feature) {
                 continue;
             }
-            let (min_value, max_value) =
+            let thresholds =
                 if let Some(histogram_feature) = context.histogram_feature(feature, bins) {
-                    (histogram_feature.min_value, histogram_feature.max_value)
+                    histogram_feature.thresholds.clone()
                 } else {
-                    let mut min_value = f64::INFINITY;
-                    let mut max_value = f64::NEG_INFINITY;
+                    let mut values = Vec::with_capacity(indices.len());
                     for &idx in indices {
                         let value = x.get(idx, feature);
                         if value.is_finite() {
-                            min_value = min_value.min(value);
-                            max_value = max_value.max(value);
+                            values.push(value);
                         }
                     }
-                    (min_value, max_value)
+                    quantile_histogram_thresholds(values, bins)
                 };
-            if !min_value.is_finite() || min_value >= max_value {
+            if thresholds.is_empty() {
                 continue;
             }
-            let scale = bins as f64 / (max_value - min_value);
-            for split_bin in 0..(bins - 1) {
-                let threshold = min_value + ((split_bin + 1) as f64 / scale);
-                if threshold >= max_value {
-                    continue;
-                }
+            for threshold in thresholds {
                 let split = Split::Axis {
                     feature,
                     threshold,
@@ -2058,6 +2045,82 @@ fn active_row_mask(rows: usize, indices: &[usize]) -> Vec<bool> {
     active
 }
 
+fn quantile_histogram_thresholds(mut values: Vec<f64>, bin_count: usize) -> Vec<f64> {
+    if bin_count < 2 || values.len() < 2 {
+        return Vec::new();
+    }
+    values.sort_by(f64::total_cmp);
+    let mut unique_values = values.clone();
+    unique_values.dedup();
+    if unique_values.len() <= bin_count {
+        return adjacent_value_thresholds(&unique_values);
+    }
+    if unique_values.len() * 10 <= values.len() {
+        return fixed_width_histogram_thresholds(&values, bin_count);
+    }
+    if unique_values
+        .iter()
+        .all(|value| value.fract().abs() < 1e-12)
+    {
+        return fixed_width_histogram_thresholds(&values, bin_count);
+    }
+
+    let mut thresholds = Vec::with_capacity(bin_count - 1);
+    let mut previous_threshold: Option<f64> = None;
+    let last_index = values.len() - 1;
+    for split in 1..bin_count {
+        let mut index = (split * values.len()) / bin_count;
+        if index == 0 {
+            index = 1;
+        } else if index > last_index {
+            index = last_index;
+        }
+
+        while index <= last_index && values[index - 1] == values[index] {
+            index += 1;
+        }
+        if index > last_index {
+            break;
+        }
+
+        let threshold = (values[index - 1] + values[index]) / 2.0;
+        if previous_threshold.is_none_or(|previous| threshold > previous) {
+            thresholds.push(threshold);
+            previous_threshold = Some(threshold);
+        }
+    }
+    thresholds
+}
+
+fn adjacent_value_thresholds(values: &[f64]) -> Vec<f64> {
+    values
+        .windows(2)
+        .filter_map(|window| {
+            let threshold = (window[0] + window[1]) / 2.0;
+            threshold.is_finite().then_some(threshold)
+        })
+        .collect()
+}
+
+fn fixed_width_histogram_thresholds(sorted_values: &[f64], bin_count: usize) -> Vec<f64> {
+    let Some(&min_value) = sorted_values.first() else {
+        return Vec::new();
+    };
+    let Some(&max_value) = sorted_values.last() else {
+        return Vec::new();
+    };
+    if !min_value.is_finite() || min_value >= max_value {
+        return Vec::new();
+    }
+    let scale = bin_count as f64 / (max_value - min_value);
+    (0..(bin_count - 1))
+        .filter_map(|split_bin| {
+            let threshold = min_value + ((split_bin + 1) as f64 / scale);
+            (threshold < max_value).then_some(threshold)
+        })
+        .collect()
+}
+
 fn prebinned_histogram_feature(
     x: &Dataset,
     feature: usize,
@@ -2067,35 +2130,31 @@ fn prebinned_histogram_feature(
         return None;
     }
 
-    let mut min_value = f64::INFINITY;
-    let mut max_value = f64::NEG_INFINITY;
+    let mut values = Vec::with_capacity(x.n_rows());
     for row in 0..x.n_rows() {
         let value = x.get(row, feature);
         if value.is_finite() {
-            min_value = min_value.min(value);
-            max_value = max_value.max(value);
+            values.push(value);
         }
     }
-    if !min_value.is_finite() || min_value >= max_value {
+    let thresholds = quantile_histogram_thresholds(values, bin_count);
+    if thresholds.is_empty() {
         return None;
     }
 
-    let scale = bin_count as f64 / (max_value - min_value);
     let bins = (0..x.n_rows())
         .map(|row| {
             let value = x.get(row, feature);
             if value.is_finite() {
-                (((value - min_value) * scale) as usize).min(bin_count - 1) as u16
+                thresholds.partition_point(|threshold| value > *threshold) as u16
             } else {
                 MISSING_BIN
             }
         })
         .collect();
     Some(HistogramFeature {
-        bin_count,
-        min_value,
-        max_value,
-        scale,
+        bin_count: thresholds.len() + 1,
+        thresholds,
         bins,
     })
 }
@@ -2636,6 +2695,62 @@ mod tests {
             (actual - expected).abs() < 1e-12,
             "expected {expected}, got {actual}"
         );
+    }
+
+    #[test]
+    fn quantile_histogram_thresholds_balance_skewed_features() {
+        let mut values = vec![0.0; 50];
+        values.extend((1..=50).map(|value| value as f64 + 0.25));
+
+        let thresholds = quantile_histogram_thresholds(values, 4);
+
+        assert_eq!(thresholds.len(), 2);
+        assert!(thresholds[0] < thresholds[1]);
+        assert!(
+            thresholds[0] <= 1.0,
+            "first threshold should stay near the dense mass, got {}",
+            thresholds[0]
+        );
+        assert!(thresholds[1] > 20.0);
+    }
+
+    #[test]
+    fn quantile_histogram_thresholds_collapse_duplicate_boundaries() {
+        let thresholds = quantile_histogram_thresholds(vec![1.0, 1.0, 1.0, 2.0, 2.0], 8);
+
+        assert_eq!(thresholds, vec![1.5]);
+    }
+
+    #[test]
+    fn histogram_thresholds_keep_low_cardinality_features_exact() {
+        let thresholds = quantile_histogram_thresholds(vec![0.0, 0.0, 1.0, 2.0, 2.0], 8);
+
+        assert_eq!(thresholds, vec![0.5, 1.5]);
+    }
+
+    #[test]
+    fn histogram_thresholds_keep_integer_id_features_fixed_width() {
+        let values = (1..=100).map(|value| value as f64).collect::<Vec<_>>();
+
+        let thresholds = quantile_histogram_thresholds(values, 4);
+
+        assert_close(thresholds[0], 25.75);
+        assert_close(thresholds[1], 50.5);
+        assert_close(thresholds[2], 75.25);
+    }
+
+    #[test]
+    fn histogram_thresholds_keep_repeated_encoded_features_fixed_width() {
+        let mut values = Vec::new();
+        for bucket in 0..20 {
+            values.extend(std::iter::repeat_n(bucket as f64 / 10.0, 20));
+        }
+
+        let thresholds = quantile_histogram_thresholds(values, 4);
+
+        assert_close(thresholds[0], 0.475);
+        assert_close(thresholds[1], 0.95);
+        assert_close(thresholds[2], 1.4249999999999998);
     }
 
     #[test]
