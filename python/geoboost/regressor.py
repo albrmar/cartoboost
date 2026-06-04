@@ -118,8 +118,12 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
     ) -> GeoBoostRegressor:
         del eval_set
         self._validate_params()
+        if hasattr(self, "_constant_prediction_value_"):
+            delattr(self, "_constant_prediction_value_")
         feature_names = _feature_names(X)
-        dense_array = _as_2d_float_array(X)
+        native_cls = _NativeGeoBoostRegressor
+        use_native_backend = self.backend in {"auto", "rust"} and native_cls is not None
+        dense_array = _as_2d_float_array(X, check_finite=not use_native_backend)
         targets_array = _as_1d_float_array(y)
         if dense_array.shape[0] != targets_array.shape[0]:
             raise ValueError("X and y must contain the same number of rows")
@@ -135,8 +139,7 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
         if feature_names is not None:
             self.feature_names_in_ = np.asarray(feature_names, dtype=object)
 
-        native_cls = _NativeGeoBoostRegressor
-        if self.backend in {"auto", "rust"} and native_cls is not None:
+        if use_native_backend:
             model = native_cls(
                 n_estimators=int(self.n_estimators),
                 learning_rate=float(self.learning_rate),
@@ -178,6 +181,20 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
                 self.requires_sparse_sets_ = bool(
                     getattr(model, "requires_sparse_sets", bool(sparse_columns))
                 )
+                if (
+                    int(self.max_depth) == 0
+                    and self.leaf_predictor == "constant"
+                    and not self.fuzzy
+                ):
+                    if weights_array is None:
+                        self._constant_prediction_value_ = float(np.mean(targets_array))
+                    else:
+                        weight_sum = float(np.sum(weights_array))
+                        self._constant_prediction_value_ = (
+                            float(np.average(targets_array, weights=weights_array))
+                            if weight_sum > 0.0
+                            else 0.0
+                        )
                 self.is_fitted_ = True
                 return self
 
@@ -214,19 +231,40 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
     def predict(self, X: Iterable[Iterable[float]], sparse_sets: Any | None = None) -> np.ndarray:
         if self._model is None:
             raise RuntimeError("GeoBoostRegressor is not fitted")
-        dense_array = _as_2d_float_array(X)
+        expected_sparse_count = getattr(self, "n_sparse_sets_in_", 0)
+        if (
+            hasattr(self, "_constant_prediction_value_")
+            and not getattr(self, "requires_sparse_sets_", False)
+        ):
+            rows, cols = _shape_2d(X)
+            if hasattr(self, "n_features_in_") and cols != self.n_features_in_:
+                raise ValueError(
+                    f"X has {cols} features, but GeoBoostRegressor was fitted with "
+                    f"{self.n_features_in_} features"
+                )
+            return np.broadcast_to(
+                np.asarray(self._constant_prediction_value_, dtype=float),
+                (rows,),
+            )
+        use_native_backend = self._backend_used == "rust"
+        dense_array = _as_2d_float_array(X, check_finite=not use_native_backend)
         if hasattr(self, "n_features_in_") and dense_array.shape[1] != self.n_features_in_:
             raise ValueError(
                 f"X has {dense_array.shape[1]} features, but GeoBoostRegressor was fitted with "
                 f"{self.n_features_in_} features"
             )
-        sparse_columns, sparse_names = _normalize_sparse_sets(
-            sparse_sets,
-            dense_array.shape[0],
-            getattr(self, "sparse_set_names_", None),
-        )
-        sparse_offsets, sparse_ids = _encode_sparse_columns(sparse_columns)
-        expected_sparse_count = getattr(self, "n_sparse_sets_in_", 0)
+        if not sparse_sets and expected_sparse_count == 0:
+            sparse_columns: list[list[list[int]]] = []
+            sparse_names: list[str] = []
+            sparse_offsets: list[list[int]] = []
+            sparse_ids: list[list[int]] = []
+        else:
+            sparse_columns, sparse_names = _normalize_sparse_sets(
+                sparse_sets,
+                dense_array.shape[0],
+                getattr(self, "sparse_set_names_", None),
+            )
+            sparse_offsets, sparse_ids = _encode_sparse_columns(sparse_columns)
         if sparse_columns and len(sparse_columns) != expected_sparse_count:
             raise ValueError(
                 f"sparse_sets has {len(sparse_columns)} columns, but GeoBoostRegressor was "
@@ -528,7 +566,31 @@ def _as_2d_float_list(values: Iterable[Iterable[float]]) -> list[list[float]]:
     return _as_2d_float_array(values).tolist()
 
 
-def _as_2d_float_array(values: Any) -> np.ndarray:
+def _shape_2d(values: Any) -> tuple[int, int]:
+    if hasattr(values, "to_numpy"):
+        values = values.to_numpy()
+    shape = getattr(values, "shape", None)
+    if shape is not None and len(shape) == 2:
+        rows, cols = int(shape[0]), int(shape[1])
+        if rows == 0:
+            raise ValueError("X must not be empty")
+        if cols == 0:
+            raise ValueError("X rows must contain at least one feature")
+        return rows, cols
+    try:
+        array = np.asarray(values)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("X must be a rectangular 2D array") from exc
+    if array.ndim != 2:
+        raise ValueError("X must be a rectangular 2D array")
+    if array.shape[0] == 0:
+        raise ValueError("X must not be empty")
+    if array.shape[1] == 0:
+        raise ValueError("X rows must contain at least one feature")
+    return int(array.shape[0]), int(array.shape[1])
+
+
+def _as_2d_float_array(values: Any, *, check_finite: bool = True) -> np.ndarray:
     if hasattr(values, "to_numpy"):
         values = values.to_numpy()
     try:
@@ -541,7 +603,7 @@ def _as_2d_float_array(values: Any) -> np.ndarray:
         raise ValueError("X must not be empty")
     if array.shape[1] == 0:
         raise ValueError("X rows must contain at least one feature")
-    if not np.all(np.isfinite(array)):
+    if check_finite and not np.all(np.isfinite(array)):
         raise ValueError("X must contain only finite values")
     return np.ascontiguousarray(array, dtype=np.float64)
 

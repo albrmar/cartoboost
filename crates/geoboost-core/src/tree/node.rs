@@ -122,6 +122,15 @@ pub enum Split {
     },
 }
 
+#[derive(Debug, Copy, Clone)]
+struct AxisStump {
+    feature: usize,
+    threshold: f64,
+    missing_goes_left: bool,
+    left_value: f64,
+    right_value: f64,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct BranchWeights {
     pub left: f64,
@@ -251,10 +260,62 @@ impl Model {
                 )));
             }
         }
+        if sparse_offsets.is_empty() {
+            if let Some(value) = self.constant_prediction() {
+                return Ok(vec![value; rows]);
+            }
+        }
+        if sparse_offsets.is_empty() {
+            if let Some(stumps) = self.axis_stumps() {
+                return Ok(self.predict_axis_stumps_flat(rows, cols, values, &stumps));
+            }
+        }
         Ok((0..rows)
             .into_par_iter()
             .map(|row| self.predict_flat_row(cols, values, sparse_offsets, sparse_ids, row))
             .collect())
+    }
+
+    fn axis_stumps(&self) -> Option<Vec<AxisStump>> {
+        self.trees.iter().map(Tree::axis_stump).collect()
+    }
+
+    fn constant_prediction(&self) -> Option<f64> {
+        let mut prediction = self.init_prediction;
+        for tree in &self.trees {
+            prediction += self.learning_rate * tree.constant_value()?;
+        }
+        Some(prediction)
+    }
+
+    fn predict_axis_stumps_flat(
+        &self,
+        rows: usize,
+        cols: usize,
+        values: &[f64],
+        stumps: &[AxisStump],
+    ) -> Vec<f64> {
+        let mut predictions = vec![self.init_prediction; rows];
+        for stump in stumps {
+            let scaled_left = self.learning_rate * stump.left_value;
+            let scaled_right = self.learning_rate * stump.right_value;
+            for (row, prediction) in predictions.iter_mut().enumerate() {
+                let value = values[row * cols + stump.feature];
+                let update = if value.is_finite() {
+                    if value <= stump.threshold {
+                        scaled_left
+                    } else {
+                        scaled_right
+                    }
+                } else if stump.missing_goes_left {
+                    scaled_left
+                } else {
+                    scaled_right
+                };
+                *prediction += update;
+            }
+        }
+        predictions
     }
 
     fn predict_flat_row(
@@ -309,6 +370,14 @@ impl Tree {
         self.root.contains_sparse_list_split()
     }
 
+    fn axis_stump(&self) -> Option<AxisStump> {
+        self.root.axis_stump()
+    }
+
+    fn constant_value(&self) -> Option<f64> {
+        self.root.constant_value()
+    }
+
     fn predict_flat_row(
         &self,
         cols: usize,
@@ -323,6 +392,49 @@ impl Tree {
 }
 
 impl Node {
+    fn constant_value(&self) -> Option<f64> {
+        match self {
+            Node::Leaf { value, .. } => Some(*value),
+            Node::LinearLeaf { .. } | Node::Branch { .. } => None,
+        }
+    }
+
+    fn axis_stump(&self) -> Option<AxisStump> {
+        let Node::Branch {
+            split, left, right, ..
+        } = self
+        else {
+            return None;
+        };
+        let Split::Axis {
+            feature,
+            threshold,
+            missing_goes_left,
+        } = split
+        else {
+            return None;
+        };
+        let Node::Leaf {
+            value: left_value, ..
+        } = left.as_ref()
+        else {
+            return None;
+        };
+        let Node::Leaf {
+            value: right_value, ..
+        } = right.as_ref()
+        else {
+            return None;
+        };
+        Some(AxisStump {
+            feature: *feature,
+            threshold: *threshold,
+            missing_goes_left: *missing_goes_left,
+            left_value: *left_value,
+            right_value: *right_value,
+        })
+    }
+
     pub fn predict_one(&self, row: &[f64]) -> f64 {
         match self {
             Node::Leaf { value, .. } => *value,
@@ -421,15 +533,16 @@ impl Split {
     }
 
     pub fn branch_weights_dataset_row(&self, x: &Dataset, row: usize) -> BranchWeights {
-        let dense = dense_row(x, row);
         match self {
             Split::Fuzzy {
                 base, bandwidth, ..
-            } => base
-                .signed_distance_dataset_row(x, row, &dense)
-                .map(|distance| fuzzy_weights(distance, *bandwidth))
-                .unwrap_or_else(|| base.hard_branch_weights_dataset_row(x, row, &dense)),
-            _ => self.hard_branch_weights_dataset_row(x, row, &dense),
+            } => {
+                let dense = dense_row(x, row);
+                base.signed_distance_dataset_row(x, row, &dense)
+                    .map(|distance| fuzzy_weights(distance, *bandwidth))
+                    .unwrap_or_else(|| base.hard_branch_weights_dataset_row(x, row))
+            }
+            _ => self.hard_branch_weights_dataset_row(x, row),
         }
     }
 
@@ -534,26 +647,8 @@ impl Split {
         }
     }
 
-    fn hard_branch_weights_dataset_row(
-        &self,
-        x: &Dataset,
-        row_index: usize,
-        dense_row: &[f64],
-    ) -> BranchWeights {
-        let goes_left = match self {
-            Split::SparseListContainsAny {
-                sparse_feature,
-                ids,
-                missing_goes_left,
-            } => {
-                if ids.is_empty() {
-                    *missing_goes_left
-                } else {
-                    x.sparse_set_contains_any(row_index, *sparse_feature, ids)
-                }
-            }
-            _ => self.hard_goes_left(dense_row),
-        };
+    fn hard_branch_weights_dataset_row(&self, x: &Dataset, row: usize) -> BranchWeights {
+        let goes_left = self.hard_goes_left_dataset_row(x, row);
         if goes_left {
             BranchWeights {
                 left: 1.0,
@@ -646,6 +741,93 @@ impl Split {
                 missing_goes_left, ..
             } => *missing_goes_left,
             Split::Fuzzy { base, .. } => base.hard_goes_left(row),
+        }
+    }
+
+    fn hard_goes_left_dataset_row(&self, x: &Dataset, row: usize) -> bool {
+        match self {
+            Split::Axis {
+                feature,
+                threshold,
+                missing_goes_left,
+            } => {
+                let value = x.get(row, *feature);
+                if value.is_finite() {
+                    value <= *threshold
+                } else {
+                    *missing_goes_left
+                }
+            }
+            Split::Diagonal2D {
+                x_feature,
+                y_feature,
+                normal_x,
+                normal_y,
+                threshold,
+                missing_goes_left,
+            } => {
+                let x_value = x.get(row, *x_feature);
+                let y_value = x.get(row, *y_feature);
+                if x_value.is_finite() && y_value.is_finite() {
+                    normal_x * x_value + normal_y * y_value <= *threshold
+                } else {
+                    *missing_goes_left
+                }
+            }
+            Split::Gaussian2D {
+                x_feature,
+                y_feature,
+                center_x,
+                center_y,
+                radius,
+                missing_goes_left,
+            } => {
+                let x_value = x.get(row, *x_feature);
+                let y_value = x.get(row, *y_feature);
+                if x_value.is_finite() && y_value.is_finite() {
+                    ((x_value - center_x).powi(2) + (y_value - center_y).powi(2)).sqrt() <= *radius
+                } else {
+                    *missing_goes_left
+                }
+            }
+            Split::PeriodicInterval {
+                feature,
+                period,
+                start,
+                end,
+                missing_goes_left,
+            } => {
+                let value = x.get(row, *feature);
+                if value.is_finite() {
+                    periodic_contains(value, *period, *start, *end)
+                } else {
+                    *missing_goes_left
+                }
+            }
+            Split::SparseSetContainsAny {
+                feature,
+                ids,
+                missing_goes_left,
+            } => {
+                let value = x.get(row, *feature);
+                if value.is_finite() {
+                    sparse_set_value_contains_any(value, ids)
+                } else {
+                    *missing_goes_left
+                }
+            }
+            Split::SparseListContainsAny {
+                sparse_feature,
+                ids,
+                missing_goes_left,
+            } => {
+                if ids.is_empty() {
+                    *missing_goes_left
+                } else {
+                    x.sparse_set_contains_any(row, *sparse_feature, ids)
+                }
+            }
+            Split::Fuzzy { base, .. } => base.hard_goes_left_dataset_row(x, row),
         }
     }
 

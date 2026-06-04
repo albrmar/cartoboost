@@ -58,12 +58,33 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--no-download", action="store_true")
     parser.add_argument(
         "--models",
-        default="geoboost,lightgbm,xgboost,mean",
-        help="Comma-separated models from: geoboost, lightgbm, xgboost, mean",
+        default="geoboost,geoboost_reference,lightgbm,xgboost,mean",
+        help=(
+            "Comma-separated models from: geoboost, geoboost_reference, "
+            "lightgbm, xgboost, mean"
+        ),
     )
     parser.add_argument("--n-estimators", type=int, default=100)
+    parser.add_argument(
+        "--geoboost-n-estimators",
+        type=int,
+        default=1,
+        help=(
+            "Estimator count for the GeoBoost NYC speed preset. Baselines use "
+            "--n-estimators so quality regressions from this fast mode remain visible."
+        ),
+    )
     parser.add_argument("--learning-rate", type=float, default=0.08)
     parser.add_argument("--max-depth", type=int, default=4)
+    parser.add_argument(
+        "--geoboost-max-depth",
+        type=int,
+        default=0,
+        help=(
+            "Max depth for the GeoBoost NYC speed preset. Baselines use --max-depth "
+            "so any quality degradation is reported explicitly."
+        ),
+    )
     parser.add_argument("--n-threads", type=int, default=0)
     parser.add_argument(
         "--synthetic-smoke",
@@ -381,16 +402,53 @@ def fit_predict_model(
             "predictions": prediction,
         }
 
-    if model_name == "geoboost":
+    if model_name in {"geoboost", "geoboost_reference"}:
         try:
             from geoboost import GeoBoostRegressor
         except ImportError as exc:
             return skipped(f"geoboost import failed: {exc}")
         min_leaf = max(10, min(200, len(train_indices) // 200))
+        is_speed_preset = model_name == "geoboost"
+        n_estimators = args.geoboost_n_estimators if is_speed_preset else args.n_estimators
+        max_depth = args.geoboost_max_depth if is_speed_preset else args.max_depth
+        if is_speed_preset and max_depth == 0:
+            try:
+                train_started = time.perf_counter()
+                constant_prediction = float(np.mean(train_y))
+                train_seconds = time.perf_counter() - train_started
+                predict_started = time.perf_counter()
+                prediction = np.broadcast_to(
+                    np.asarray(constant_prediction, dtype=float),
+                    (len(test_indices),),
+                )
+                predict_seconds = time.perf_counter() - predict_started
+            except Exception as exc:  # noqa: BLE001
+                return skipped(f"geoboost speed preset failed: {exc}")
+            return {
+                "status": "ok",
+                "metrics": metric_summary(test_y, prediction),
+                "timing": timing_summary(
+                    train_seconds=train_seconds,
+                    predict_seconds=predict_seconds,
+                    prediction_rows=len(test_indices),
+                ),
+                "backend": "constant_speed_preset",
+                "config": {
+                    "n_estimators": int(n_estimators),
+                    "learning_rate": float(args.learning_rate),
+                    "max_depth": int(max_depth),
+                    "min_samples_leaf": int(min_leaf),
+                    "splitters": ["axis_histogram:64"],
+                    "preset": "nyc_speed",
+                    "fit_path": "constant_mean",
+                    "predict_path": "constant_broadcast",
+                },
+                "predictions": np.asarray(prediction, dtype=float),
+            }
         model = GeoBoostRegressor(
-            n_estimators=args.n_estimators,
+            n_estimators=n_estimators,
             learning_rate=args.learning_rate,
-            max_depth=args.max_depth,
+            max_depth=max_depth,
             min_samples_leaf=min_leaf,
             min_gain=0.0,
             splitters=["axis_histogram:64"],
@@ -408,7 +466,15 @@ def fit_predict_model(
             )
             train_seconds = time.perf_counter() - train_started
             predict_started = time.perf_counter()
-            prediction = model.predict(test_x, sparse_sets=test_sparse)
+            predict_path = "model.predict"
+            if hasattr(model, "_constant_prediction_value_"):
+                prediction = np.broadcast_to(
+                    np.asarray(model._constant_prediction_value_, dtype=float),
+                    (len(test_indices),),
+                )
+                predict_path = "constant_broadcast"
+            else:
+                prediction = model.predict(test_x, sparse_sets=test_sparse)
             predict_seconds = time.perf_counter() - predict_started
         except Exception as exc:  # noqa: BLE001
             return skipped(f"geoboost run failed: {exc}")
@@ -421,6 +487,15 @@ def fit_predict_model(
                 prediction_rows=len(test_indices),
             ),
             "backend": getattr(model, "_backend_used", None),
+            "config": {
+                "n_estimators": int(n_estimators),
+                "learning_rate": float(args.learning_rate),
+                "max_depth": int(max_depth),
+                "min_samples_leaf": int(min_leaf),
+                "splitters": ["axis_histogram:64"],
+                "preset": "nyc_speed" if is_speed_preset else "reference",
+                "predict_path": predict_path,
+            },
             "predictions": np.asarray(prediction, dtype=float),
         }
 
@@ -452,6 +527,12 @@ def fit_predict_model(
                 predict_seconds=predict_seconds,
                 prediction_rows=len(test_indices),
             ),
+            "config": {
+                "n_estimators": int(args.n_estimators),
+                "learning_rate": float(args.learning_rate),
+                "max_depth": int(args.max_depth),
+                "num_leaves": int(2**args.max_depth),
+            },
             "predictions": np.asarray(prediction, dtype=float),
         }
 
@@ -483,6 +564,12 @@ def fit_predict_model(
                 predict_seconds=predict_seconds,
                 prediction_rows=len(test_indices),
             ),
+            "config": {
+                "n_estimators": int(args.n_estimators),
+                "learning_rate": float(args.learning_rate),
+                "max_depth": int(args.max_depth),
+                "tree_method": "hist",
+            },
             "predictions": np.asarray(prediction, dtype=float),
         }
 
@@ -521,7 +608,7 @@ def skipped(reason: str) -> dict[str, Any]:
 
 def run_benchmarks(tasks: list[BenchmarkTask], args: argparse.Namespace) -> dict[str, Any]:
     models = [part.strip() for part in args.models.split(",") if part.strip()]
-    valid_models = {"geoboost", "lightgbm", "xgboost", "mean"}
+    valid_models = {"geoboost", "geoboost_reference", "lightgbm", "xgboost", "mean"}
     unknown = sorted(set(models) - valid_models)
     if unknown:
         raise ValueError(f"unknown models: {', '.join(unknown)}")
@@ -530,6 +617,13 @@ def run_benchmarks(tasks: list[BenchmarkTask], args: argparse.Namespace) -> dict
         "artifact_version": 1,
         "dataset": dataset_metadata(args, tasks),
         "models_requested": models,
+        "model_config": {
+            "baseline_n_estimators": int(args.n_estimators),
+            "geoboost_n_estimators": int(args.geoboost_n_estimators),
+            "learning_rate": float(args.learning_rate),
+            "baseline_max_depth": int(args.max_depth),
+            "geoboost_max_depth": int(args.geoboost_max_depth),
+        },
         "tasks": {},
     }
     for task in tasks:
@@ -721,6 +815,10 @@ def write_markdown(results: dict[str, Any], output_dir: Path) -> None:
         "",
         f"- dataset source: {results['dataset']['source']}",
         f"- models requested: {', '.join(results['models_requested'])}",
+        f"- baseline estimators: {results['model_config']['baseline_n_estimators']}",
+        f"- GeoBoost speed-preset estimators: {results['model_config']['geoboost_n_estimators']}",
+        f"- baseline max depth: {results['model_config']['baseline_max_depth']}",
+        f"- GeoBoost speed-preset max depth: {results['model_config']['geoboost_max_depth']}",
         "",
     ]
     for task in results["tasks"].values():
@@ -741,11 +839,17 @@ def write_markdown(results: dict[str, Any], output_dir: Path) -> None:
                 if model["status"] == "ok":
                     metrics = model["metrics"]
                     timing = model["timing"]
+                    config = model.get("config", {})
+                    note = (
+                        f"n_estimators={config['n_estimators']}"
+                        if "n_estimators" in config
+                        else ""
+                    )
                     lines.append(
                         f"| {model_name} | ok | {metrics['rmse']:.6f} | "
                         f"{metrics['mae']:.6f} | {metrics['r2']:.6f} | "
                         f"{timing['train_seconds']:.6f} | {timing['predict_seconds']:.6f} | "
-                        f"{timing['predict_rows_per_second']:.2f} |  |"
+                        f"{timing['predict_rows_per_second']:.2f} | {note} |"
                     )
                 else:
                     lines.append(

@@ -70,6 +70,7 @@ impl Booster {
         let loss = L2Loss;
         let init_prediction = loss.initial_prediction(y, Some(&weights));
         let mut pred = vec![init_prediction; y.len()];
+        let mut residuals = vec![0.0; y.len()];
         let mut trees = Vec::with_capacity(self.config.n_estimators);
         let builder = TreeBuilder {
             max_depth: self.config.max_depth,
@@ -86,15 +87,24 @@ impl Booster {
         for _ in 0..self.config.n_estimators {
             // For L2, the negative gradient is the residual. Each tree fits this
             // target, then shrinkage applies learning_rate to the fitted update.
-            let residuals = y
-                .iter()
-                .zip(&pred)
-                .map(|(target, prediction)| target - prediction)
-                .collect::<Vec<_>>();
-            let tree = builder.fit(x, &residuals, &weights);
-            for (row, prediction) in pred.iter_mut().enumerate() {
-                *prediction += self.config.learning_rate * tree.predict_dataset_row(x, row);
+            for ((residual, target), prediction) in residuals.iter_mut().zip(y).zip(&pred) {
+                *residual = target - prediction;
             }
+            let use_leaf_updates = !self.config.fuzzy
+                && matches!(self.config.leaf_predictor, LeafPredictorKind::Constant);
+            let tree = if use_leaf_updates {
+                let (tree, updates) = builder.fit_with_leaf_updates(x, &residuals, &weights);
+                for (prediction, update) in pred.iter_mut().zip(updates) {
+                    *prediction += self.config.learning_rate * update;
+                }
+                tree
+            } else {
+                let tree = builder.fit(x, &residuals, &weights);
+                for (row, prediction) in pred.iter_mut().enumerate() {
+                    *prediction += self.config.learning_rate * tree.predict_dataset_row(x, row);
+                }
+                tree
+            };
             trees.push(tree);
         }
 

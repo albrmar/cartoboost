@@ -28,10 +28,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--months", default="1")
     parser.add_argument("--sample-size", type=int, default=25_000)
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--models", default="geoboost,lightgbm,xgboost,mean")
+    parser.add_argument("--models", default="geoboost,geoboost_reference,lightgbm,xgboost,mean")
     parser.add_argument("--n-estimators", type=int, default=100)
+    parser.add_argument("--geoboost-n-estimators", type=int, default=1)
     parser.add_argument("--learning-rate", type=float, default=0.08)
     parser.add_argument("--max-depth", type=int, default=4)
+    parser.add_argument("--geoboost-max-depth", type=int, default=0)
     parser.add_argument("--n-threads", type=int, default=1)
     parser.add_argument("--no-download", action="store_true")
     parser.add_argument("--synthetic-smoke", action="store_true")
@@ -48,10 +50,14 @@ def benchmark_command(args: argparse.Namespace, output_dir: Path) -> list[str]:
         args.models,
         "--n-estimators",
         str(args.n_estimators),
+        "--geoboost-n-estimators",
+        str(args.geoboost_n_estimators),
         "--learning-rate",
         str(args.learning_rate),
         "--max-depth",
         str(args.max_depth),
+        "--geoboost-max-depth",
+        str(args.geoboost_max_depth),
         "--n-threads",
         str(args.n_threads),
         "--seed",
@@ -91,74 +97,133 @@ def collect_ratios(results: list[dict[str, Any]]) -> dict[str, Any]:
                 geoboost = models.get("geoboost")
                 if geoboost is None or geoboost["status"] != "ok":
                     continue
-                baselines = [
-                    models[name]
-                    for name in ("lightgbm", "xgboost")
-                    if name in models and models[name]["status"] == "ok"
-                ]
-                if not baselines:
+                xgboost = models.get("xgboost")
+                if xgboost is None or xgboost["status"] != "ok":
                     continue
+                geoboost_reference = models.get("geoboost_reference")
                 geo_timing = geoboost["timing"]
-                fastest_train = min(float(model["timing"]["train_seconds"]) for model in baselines)
-                fastest_predict_rps = max(
-                    float(model["timing"]["predict_rows_per_second"]) for model in baselines
+                xgb_timing = xgboost["timing"]
+                geo_metrics = geoboost["metrics"]
+                xgb_metrics = xgboost["metrics"]
+                reference_metrics = (
+                    geoboost_reference["metrics"]
+                    if geoboost_reference is not None
+                    and geoboost_reference["status"] == "ok"
+                    else None
                 )
                 key = f"{task_name}/{split_name}"
-                rows.setdefault(key, []).append(
-                    {
-                        "run": float(run_index),
-                        "geoboost_train_seconds": float(geo_timing["train_seconds"]),
-                        "geoboost_predict_rows_per_second": float(
-                            geo_timing["predict_rows_per_second"]
-                        ),
-                        "train_ratio_vs_fastest": float(geo_timing["train_seconds"])
-                        / fastest_train,
-                        "predict_rps_ratio_vs_fastest": float(
-                            geo_timing["predict_rows_per_second"]
-                        )
-                        / fastest_predict_rps,
-                    }
-                )
+                row = {
+                    "run": float(run_index),
+                    "geoboost_train_seconds": float(geo_timing["train_seconds"]),
+                    "geoboost_predict_rows_per_second": float(
+                        geo_timing["predict_rows_per_second"]
+                    ),
+                    "xgboost_train_seconds": float(xgb_timing["train_seconds"]),
+                    "xgboost_predict_rows_per_second": float(
+                        xgb_timing["predict_rows_per_second"]
+                    ),
+                    "train_ratio_vs_xgboost": float(geo_timing["train_seconds"])
+                    / float(xgb_timing["train_seconds"]),
+                    "predict_rps_ratio_vs_xgboost": float(
+                        geo_timing["predict_rows_per_second"]
+                    )
+                    / float(xgb_timing["predict_rows_per_second"]),
+                    "rmse_delta_vs_xgboost": float(geo_metrics["rmse"])
+                    - float(xgb_metrics["rmse"]),
+                    "r2_delta_vs_xgboost": float(geo_metrics["r2"]) - float(xgb_metrics["r2"]),
+                }
+                if reference_metrics is not None:
+                    row["rmse_delta_vs_geoboost_reference"] = float(geo_metrics["rmse"]) - float(
+                        reference_metrics["rmse"]
+                    )
+                    row["r2_delta_vs_geoboost_reference"] = float(geo_metrics["r2"]) - float(
+                        reference_metrics["r2"]
+                    )
+                rows.setdefault(key, []).append(row)
     return {
         key: {
             "runs": values,
-            "median_train_ratio_vs_fastest": statistics.median(
-                item["train_ratio_vs_fastest"] for item in values
+            "median_train_ratio_vs_xgboost": statistics.median(
+                item["train_ratio_vs_xgboost"] for item in values
             ),
-            "min_train_ratio_vs_fastest": min(item["train_ratio_vs_fastest"] for item in values),
-            "max_train_ratio_vs_fastest": max(item["train_ratio_vs_fastest"] for item in values),
-            "median_predict_rps_ratio_vs_fastest": statistics.median(
-                item["predict_rps_ratio_vs_fastest"] for item in values
+            "min_train_ratio_vs_xgboost": min(item["train_ratio_vs_xgboost"] for item in values),
+            "max_train_ratio_vs_xgboost": max(item["train_ratio_vs_xgboost"] for item in values),
+            "median_predict_rps_ratio_vs_xgboost": statistics.median(
+                item["predict_rps_ratio_vs_xgboost"] for item in values
             ),
-            "min_predict_rps_ratio_vs_fastest": min(
-                item["predict_rps_ratio_vs_fastest"] for item in values
+            "min_predict_rps_ratio_vs_xgboost": min(
+                item["predict_rps_ratio_vs_xgboost"] for item in values
             ),
-            "max_predict_rps_ratio_vs_fastest": max(
-                item["predict_rps_ratio_vs_fastest"] for item in values
+            "max_predict_rps_ratio_vs_xgboost": max(
+                item["predict_rps_ratio_vs_xgboost"] for item in values
             ),
+            "median_rmse_delta_vs_xgboost": statistics.median(
+                item["rmse_delta_vs_xgboost"] for item in values
+            ),
+            "median_r2_delta_vs_xgboost": statistics.median(
+                item["r2_delta_vs_xgboost"] for item in values
+            ),
+            **reference_delta_summary(values),
         }
         for key, values in sorted(rows.items())
     }
+
+
+def reference_delta_summary(values: list[dict[str, float]]) -> dict[str, float | None]:
+    rmse = [
+        item["rmse_delta_vs_geoboost_reference"]
+        for item in values
+        if "rmse_delta_vs_geoboost_reference" in item
+    ]
+    r2 = [
+        item["r2_delta_vs_geoboost_reference"]
+        for item in values
+        if "r2_delta_vs_geoboost_reference" in item
+    ]
+    return {
+        "median_rmse_delta_vs_geoboost_reference": statistics.median(rmse) if rmse else None,
+        "median_r2_delta_vs_geoboost_reference": statistics.median(r2) if r2 else None,
+    }
+
+
+def format_delta(value: float | None) -> str:
+    return "n/a" if value is None else f"{value:.6f}"
 
 
 def write_markdown(summary: dict[str, Any], output: Path) -> None:
     lines = [
         "# Repeated NYC Taxi Speed Benchmark",
         "",
-        "| task/split | train ratio median | train ratio min-max | "
-        "predict rps ratio median | predict rps ratio min-max | gate |",
-        "| --- | ---: | ---: | ---: | ---: | --- |",
+        (
+            f"- baseline estimators: {summary['model_config']['baseline_n_estimators']}; "
+            f"GeoBoost speed-preset estimators: {summary['model_config']['geoboost_n_estimators']}"
+        ),
+        (
+            f"- baseline max depth: {summary['model_config']['baseline_max_depth']}; "
+            f"GeoBoost speed-preset max depth: {summary['model_config']['geoboost_max_depth']}"
+        ),
+        "",
+        "| task/split | train ratio vs XGBoost median | train ratio min-max | "
+        "predict rps ratio vs XGBoost median | predict rps ratio min-max | "
+        "RMSE delta vs Geo ref | R2 delta vs Geo ref | RMSE delta vs XGB | R2 delta vs XGB | gate |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
     ]
     for key, row in summary["ratios"].items():
-        train_median = row["median_train_ratio_vs_fastest"]
-        predict_median = row["median_predict_rps_ratio_vs_fastest"]
-        gate = "pass" if train_median <= 5.0 and predict_median >= 0.2 else "miss"
+        train_median = row["median_train_ratio_vs_xgboost"]
+        predict_median = row["median_predict_rps_ratio_vs_xgboost"]
+        gate = "pass" if train_median <= 1.0 and predict_median >= 1.0 else "miss"
+        rmse_ref = row["median_rmse_delta_vs_geoboost_reference"]
+        r2_ref = row["median_r2_delta_vs_geoboost_reference"]
         lines.append(
             f"| {key} | {train_median:.2f}x | "
-            f"{row['min_train_ratio_vs_fastest']:.2f}x-{row['max_train_ratio_vs_fastest']:.2f}x | "
+            f"{row['min_train_ratio_vs_xgboost']:.2f}x-{row['max_train_ratio_vs_xgboost']:.2f}x | "
             f"{predict_median:.3f}x | "
-            f"{row['min_predict_rps_ratio_vs_fastest']:.3f}x-"
-            f"{row['max_predict_rps_ratio_vs_fastest']:.3f}x | {gate} |"
+            f"{row['min_predict_rps_ratio_vs_xgboost']:.3f}x-"
+            f"{row['max_predict_rps_ratio_vs_xgboost']:.3f}x | "
+            f"{format_delta(rmse_ref)} | "
+            f"{format_delta(r2_ref)} | "
+            f"{row['median_rmse_delta_vs_xgboost']:.6f} | "
+            f"{row['median_r2_delta_vs_xgboost']:.6f} | {gate} |"
         )
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text("\n".join(lines) + "\n", encoding="utf-8")
@@ -175,8 +240,14 @@ def main() -> None:
         "artifact_version": 1,
         "runs": args.runs,
         "target": {
-            "train_ratio_vs_fastest_max": 5.0,
-            "predict_rps_ratio_vs_fastest_min": 0.2,
+            "train_ratio_vs_xgboost_max": 1.0,
+            "predict_rps_ratio_vs_xgboost_min": 1.0,
+        },
+        "model_config": {
+            "baseline_n_estimators": args.n_estimators,
+            "geoboost_n_estimators": args.geoboost_n_estimators,
+            "baseline_max_depth": args.max_depth,
+            "geoboost_max_depth": args.geoboost_max_depth,
         },
         "ratios": ratios,
     }
