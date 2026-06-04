@@ -24,6 +24,27 @@ predictions = model.predict(X_test)
 
 `predict` returns a NumPy array.
 
+## Temporal-Spatial Usage
+
+GeoBoost's native backend can use splitters that match common time and location
+patterns:
+
+```python
+model = GeoBoostRegressor(
+    n_estimators=200,
+    learning_rate=0.04,
+    max_depth=5,
+    splitters=["axis", "diagonal_2d", "gaussian_2d", "periodic:24", "sparse_set"],
+    fuzzy=True,
+    fuzzy_bandwidth=0.05,
+    backend="rust",
+)
+```
+
+Use dense columns for coordinates, projected x/y values, distances, and
+periodic time features. Use `sparse_sets=` for route cells, zones, grid cells,
+or encoded H3 cells when a row can belong to multiple locations.
+
 ## Backend Selection
 
 | Backend | Behavior |
@@ -32,7 +53,7 @@ predictions = model.predict(X_test)
 | `auto` | Uses Rust when available and falls back only for supported dense axis configurations. |
 | `python` | Uses the fallback directly. |
 
-Use `backend="rust"` for any workflow that depends on native behavior. The
+Use `backend="rust"` for any model that depends on native behavior. The
 fallback is limited to dense axis splits with constant leaves.
 
 ## Sparse-Set Features
@@ -106,7 +127,8 @@ explainer = model.make_shap_explainer(X_background)
 explanation = model.explain_shap(X_test, background=X_background)
 ```
 
-Install `geoboost[explain]` or add the optional SHAP dependency in development.
+Install `geoboost[explain]` or add the optional SHAP dependency in your local
+environment.
 Sparse-list models can be explained through the helper by supplying matching
 foreground and background sparse sets.
 

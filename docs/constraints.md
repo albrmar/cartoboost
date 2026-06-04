@@ -1,11 +1,13 @@
 # Constraints
 
-Monotonic constraints are an alpha feature for regression models that need
-predictions to move in a declared direction as a dense feature increases.
+Monotonic constraints force predictions to move in a declared direction as a
+dense feature increases. They are useful when the direction is a modeling
+requirement, such as price increasing with distance or demand decreasing with
+travel time.
 
-## Monotonic Status
+## Usage
 
-`monotonic_constraints` accepts one entry per dense feature:
+`monotonic_constraints` has one entry per dense feature:
 
 | Value | Meaning |
 | --- | --- |
@@ -13,49 +15,40 @@ predictions to move in a declared direction as a dense feature increases.
 | `-1` | Prediction must be non-increasing as the feature increases. |
 | `0` | Feature is unconstrained. |
 
-Current support is intentionally narrow:
+```python
+model = GeoBoostRegressor(
+    splitters=["axis"],
+    monotonic_constraints=[1, 0, -1],
+    backend="rust",
+)
+```
 
-- Constant leaves only.
-- Non-fuzzy training only.
-- Axis-style splitters only, including histogram-axis splitters.
-- Dense features only; sparse-set features do not have monotonic semantics.
-- Regression only.
+Current support:
 
-The Python estimator validates these constraints before training. Native model
-artifacts preserve the configured constraint vector when present.
+- Constant leaves.
+- Non-fuzzy training.
+- Axis-style splitters, including histogram-axis splitters.
+- Dense features only.
+- Regression.
 
-## Unsupported Combinations
+## Temporal-Spatial Guidance
 
-The following combinations are outside the current alpha contract:
+Use constraints only when the direction is real, not just visually convenient.
+Distance, elapsed time, toll amount, or known service-level features can be good
+candidates. Latitude, longitude, zone ID, and route-cell IDs usually are not:
+their relationship to the target is often local, discontinuous, or directional
+only within a specific market.
 
-| Combination | Status |
-| --- | --- |
-| Monotonic constraints with fuzzy routing | Rejected. |
-| Monotonic constraints with linear leaves | Rejected. |
-| Monotonic constraints with diagonal, Gaussian/radial, periodic, or sparse-set splitters | Rejected. |
-| Monotonic sparse-set constraints | Not defined. |
-| Monotonic interaction constraints | Not implemented. |
+For temporal-spatial effects, prefer spatial splitters, periodic splitters,
+sparse route-cell features, blocked evaluation, and residual diagnostics unless
+a monotonic rule is part of the problem definition.
 
-## Modeling Guidance
+## Validation
 
-Use constraints only when the monotonic direction is part of the data contract,
-not just a visual preference. For spatial experiments, avoid applying monotonic
-constraints directly to latitude/longitude unless the target truly has a
-one-directional geographic relationship. Spatial effects are usually better
-represented by spatial splitters, blocked evaluation, and residual diagnostics.
-
-Report constrained experiments separately from unconstrained baselines because
-constraints intentionally trade model flexibility for shape guarantees.
-
-## Validation Guidance
-
-Constraint validation should include more than aggregate RMSE:
+Check more than aggregate RMSE:
 
 - Probe rows that differ only in the constrained feature.
-- Check both increasing and decreasing directions when both are configured.
+- Check increasing and decreasing constraints separately.
 - Include tied or nearly tied feature values.
-- Include a blocked holdout if the constrained feature is correlated with
-  geography, route, or time.
-
-These checks are especially important because a model can satisfy aggregate
-quality thresholds while violating local shape expectations.
+- Use spatial or temporal holdouts when the constrained feature is correlated
+  with geography, route, or time.

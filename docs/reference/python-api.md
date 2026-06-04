@@ -1,7 +1,7 @@
 # Python API Reference
 
-This is the hand-maintained public reference for the current Python surface.
-Keep it synchronized with `python/geoboost`.
+This page lists the public Python entry points used to fit, evaluate, explain,
+and save GeoBoost regression models.
 
 ## `geoboost.GeoBoostRegressor`
 
@@ -49,7 +49,7 @@ GeoBoostRegressor(
 FeatureSchema(dense, sparse_sets=None)
 ```
 
-Helper for converting Python schema entries to Rust feature metadata.
+Helper for declaring numeric, periodic, and sparse-set feature roles.
 
 | Method | Returns | Notes |
 | --- | --- | --- |
@@ -66,6 +66,24 @@ geoboost.explain_shap(model, X, background=..., **kwargs)
 
 These functions are also available as estimator methods. See
 [SHAP Support](../shap.md).
+
+## Evaluation Helpers
+
+```python
+geoboost.out_of_time_split(times, validation_fraction=0.2, gap=0)
+geoboost.spatial_blocked_cv(coordinates, n_splits=5)
+geoboost.temporal_blocked_cv(times, n_splits=5, gap=0)
+geoboost.grouped_blocked_cv(groups, n_splits=5)
+```
+
+`out_of_time_split` returns one `(train_idx, validation_idx)` pair for a future
+holdout window. Use `validation_size=...` for an exact tail count or
+`cutoff=...` for rows strictly after a time boundary. Use `gap=...` to remove
+recent training rows immediately before the validation window.
+
+Use these helpers to evaluate temporal-spatial generalization: future periods,
+withheld locations, or held-out route groups often reveal failure modes that a
+random split hides.
 
 ## I/O Helpers
 

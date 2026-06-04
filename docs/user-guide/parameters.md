@@ -1,7 +1,8 @@
 # Parameters
 
 This page summarizes the public training controls exposed by
-`GeoBoostRegressor`.
+`GeoBoostRegressor`, with emphasis on choosing splitters for temporal-spatial
+regression.
 
 ## Core Boosting
 
@@ -26,16 +27,28 @@ Quantile loss currently requires `leaf_predictor="constant"`.
 
 ## Splitters
 
+The splitter list is the main GeoBoost modeling choice. Start with `axis` as a
+baseline, then add the splitters that match your data:
+
 | Name | Purpose | Backend |
 | --- | --- | --- |
 | `axis` | Standard one-feature threshold splits. | Rust and Python fallback |
-| `axis_histogram`, `axis_hist`, `histogram` | Axis histogram aliases; `axis_histogram:<bins>` and `axis_hist:<bins>` are accepted by Python validation. | Rust |
-| `diagonal_2d`, `diagonal2d` | Oblique 2D spatial boundary candidates. | Rust |
-| `gaussian_2d`, `gaussian2d`, `radial` | Radial 2D candidates. | Rust |
-| `periodic_time`, `periodic_24`, `periodic:<period>` | Periodic wraparound splits. | Rust |
-| `sparse_set`, `sparse` | List-valued sparse ID set splits. | Rust |
+| `axis_histogram`, `axis_hist`, `histogram` | Fast axis-threshold search for dense numeric features. | Rust |
+| `diagonal_2d`, `diagonal2d` | Oblique 2D boundaries for coordinates or projected x/y features. | Rust |
+| `gaussian_2d`, `gaussian2d`, `radial` | Radial neighborhoods around local hotspots, depots, zones, or corridors. | Rust |
+| `periodic_time`, `periodic_24`, `periodic:<period>` | Wraparound time features such as hour-of-day, weekday, or seasonal phase. | Rust |
+| `sparse_set`, `sparse` | List-valued route-cell, zone, grid, or encoded H3 memberships. | Rust |
 
 Unknown splitter names raise `ValueError`.
+
+Common temporal-spatial combinations:
+
+| Problem shape | Suggested splitters |
+| --- | --- |
+| General tabular baseline | `["axis"]` |
+| Dense location and time | `["axis", "diagonal_2d", "gaussian_2d", "periodic:24"]` |
+| Route or cell membership | `["axis", "periodic:24", "sparse_set"]` |
+| Location plus route cells | `["axis", "diagonal_2d", "gaussian_2d", "periodic:24", "sparse_set"]` |
 
 ## Leaves
 
@@ -47,6 +60,9 @@ Unknown splitter names raise `ValueError`.
 
 Linear leaves require the Rust backend.
 
+Use linear leaves when the tree can find a region, lane, or time bucket but the
+remaining residual trend inside that region is still approximately linear.
+
 ## Fuzzy Routing
 
 | Parameter | Default | Notes |
@@ -56,6 +72,10 @@ Linear leaves require the Rust backend.
 
 Fuzzy routing requires the Rust backend and is not compatible with monotonic
 constraints.
+
+Use fuzzy routing for temporal-spatial features where nearby values should not
+change abruptly at a learned boundary. Set `fuzzy_bandwidth` in the same units
+as the feature values, such as projected coordinate units or hours.
 
 ## Monotonic Constraints
 

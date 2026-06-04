@@ -1,8 +1,7 @@
 # NYC Taxi Benchmark Assets
 
 This directory contains generated NYC taxi benchmark evidence. The maintained
-runbook is [NYC Taxi Benchmarks](../../benchmarks/nyc-taxi.md), and the commit
-policy is [Benchmark Artifact Policy](../../benchmarks/artifacts.md).
+runbook is [NYC Taxi Benchmarks](../../benchmarks/nyc-taxi.md).
 
 Generated files include single-run `results.*`, repeated-run
 `repeated_results.*`, top-level summary images, and per-task plots under

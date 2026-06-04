@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -28,7 +29,7 @@ def test_parity_fixture_generation_is_deterministic(tmp_path: Path):
         [sys.executable, str(generator), "--output-dir", str(tmp_path)],
         check=True,
         cwd=repo_root,
-        env={"PYTHONPATH": str(repo_root / "python")},
+        env={**os.environ, "PYTHONPATH": str(repo_root / "python")},
     )
 
     generated = json.loads((tmp_path / "parity_fixture.json").read_text(encoding="utf-8"))

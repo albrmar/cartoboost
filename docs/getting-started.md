@@ -1,6 +1,6 @@
 # Getting Started
 
-This guide builds the native extension, trains a small regression model, and
+This guide installs the local package, trains a small regression model, and
 checks prediction from Python and the CLI.
 
 ## Requirements
@@ -10,7 +10,7 @@ checks prediction from Python and the CLI.
 - `uv` 0.7 or newer.
 - A checkout of the GeoBoost repository.
 
-## Development Install
+## Install
 
 ```sh
 uv sync --group dev
@@ -18,8 +18,9 @@ uv run --group dev maturin develop
 ```
 
 `maturin develop` builds `geoboost._native` and installs it into the `uv`
-environment. Use `backend="rust"` while developing native behavior so missing
-bindings fail clearly.
+environment. Use `backend="rust"` when your model uses native-only features
+such as spatial splitters, sparse sets, fuzzy routing, feature schemas, or
+linear leaves.
 
 ## Train From Python
 
@@ -41,6 +42,22 @@ model.fit(X, y)
 
 predictions = model.predict([[1.5], [2.5]])
 ```
+
+For a temporal-spatial model, add splitters that match the feature structure:
+
+```python
+model = GeoBoostRegressor(
+    n_estimators=100,
+    learning_rate=0.05,
+    max_depth=4,
+    splitters=["axis", "diagonal_2d", "gaussian_2d", "periodic:24"],
+    backend="rust",
+)
+```
+
+Use `periodic:24` for hour-of-day, diagonal or Gaussian 2D splitters for
+coordinate pairs, and `sparse_set` when rows have route-cell or zone
+memberships.
 
 ## Train From Dense CSV
 
@@ -72,8 +89,8 @@ cargo run -p geoboost-cli -- train --data train.csv --config config.toml --model
 cargo run -p geoboost-cli -- predict --model model.json --input train.csv --predictions-out predictions.csv
 ```
 
-The CLI v1 path expects dense numeric CSV input. Sparse-set route-cell features
-are a Python API feature.
+The CLI expects dense numeric CSV input. Use the Python estimator for sparse-set
+route-cell features.
 
 ## Save And Reload
 
@@ -85,11 +102,11 @@ model.save_weights("model.weights.json")
 weights_loaded = GeoBoostRegressor.load_weights("model.weights.json")
 ```
 
-Use `save` for native model artifacts and `save_weights` for the explicit
-weights-artifact contract. ONNX export is available only for dense axis-tree
+Use `save` for GeoBoost JSON model artifacts and `save_weights` for portable
+prediction artifacts. ONNX export is available only for dense axis-tree
 constant-leaf models when the optional `onnx` dependency is installed.
 
-## Verify The Checkout
+## Run Local Checks
 
 ```sh
 just validate
@@ -102,3 +119,24 @@ uv run --group dev ruff format --check python tests scripts
 uv run --group dev ruff check python tests scripts
 uv run --group dev pytest
 ```
+
+## Out-Of-Time Validation
+
+For temporal-spatial problems, hold out the latest rows before trusting model
+quality:
+
+```python
+from geoboost import out_of_time_split
+
+train_idx, validation_idx = out_of_time_split(
+    pickup_times,
+    validation_fraction=0.2,
+)
+
+model.fit(X_train_all[train_idx], y_all[train_idx])
+prediction = model.predict(X_train_all[validation_idx])
+```
+
+See [Evaluation Protocol](evaluation_protocol.md#out-of-time-validation) for
+cutoff dates, exact validation sizes, gaps, pandas indexing, and sparse-set
+examples.

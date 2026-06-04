@@ -7,7 +7,7 @@ API. Install the optional dependency before using SHAP:
 pip install "geoboost[explain]"
 ```
 
-For local development:
+For a source checkout:
 
 ```sh
 uv sync --extra explain --group dev
@@ -100,7 +100,8 @@ prediction = model.predict(X_test)
 reconstructed = explanation.base_values + explanation.values.sum(axis=1)
 ```
 
-The test suite checks this contract for dense and sparse-set models.
+This additivity property is the main sanity check for dense and sparse-set
+explanations.
 
 ## Current Limits
 

@@ -1,8 +1,13 @@
 # Sparse Features
 
-GeoBoost supports route-cell-style sparse columns through the Rust backend.
-Each sparse column is list-valued: every row contains zero or more non-negative
-integer IDs.
+GeoBoost supports list-valued sparse columns through the Rust backend. Each row
+can contain zero or more non-negative integer IDs for route cells, zones,
+encoded H3 cells, grid cells, corridors, or other memberships.
+
+This is useful when a temporal-spatial row belongs to several places at once,
+such as all route cells crossed by a trip. A generic tabular model usually
+needs a wide one-hot or hashing step for this data; GeoBoost can consume the
+lists directly.
 
 ## Python API
 
@@ -32,7 +37,7 @@ Validation rules:
 ## H3 Sparse Helpers
 
 `FeatureSchema` accepts sparse entries with `kind="h3_sparse_set"` plus H3
-metadata:
+metadata when the caller has already encoded H3 cells:
 
 ```python
 schema = FeatureSchema(
@@ -53,15 +58,15 @@ Python schema metadata keeps the H3 resolution fields for callers and saved
 estimator metadata.
 
 `geoboost.h3.normalize_h3_id` accepts non-negative integer IDs plus decimal or
-hexadecimal strings. `geoboost.h3.expand_h3_sparse_set` adds deterministic
-synthetic parent IDs for tests. That expansion is a scaffold only; it is not
-real H3 parent geometry and should not be used for geospatial semantics.
+hexadecimal strings. GeoBoost does not compute H3 cells from latitude and
+longitude; compute cells upstream, then pass the encoded IDs through
+`sparse_sets=`.
 
-## Rust Semantics
+## Routing Semantics
 
-The Rust dataset stores dense values and sparse-set columns separately. Sparse
-split candidates use `SparseListContainsAny` against the sparse row, not a dense
-one-hot expansion.
+The dataset stores dense values and sparse-set columns separately. Sparse split
+candidates check membership against the sparse row, not a dense one-hot
+expansion.
 
 Routing is:
 
@@ -75,7 +80,7 @@ route.
 
 ## CLI Scope
 
-The CLI v1 dense CSV workflow does not accept mixed sparse rows. Use Python with
+The CLI dense CSV workflow does not accept mixed sparse rows. Use Python with
 `backend="rust"` for sparse route-cell training and prediction.
 
 ## Limitations

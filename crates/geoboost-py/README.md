@@ -1,8 +1,11 @@
-# GeoBoost Python bindings
+# GeoBoost Native Extension
 
-This crate builds the `geoboost._native` extension module with maturin.
+`geoboost._native` powers the Python estimator features used for
+temporal-spatial modeling: spatial splitters, periodic splitters, sparse-set
+features, fuzzy routing, linear leaves, and JSON artifact loading.
 
 ```bash
-cd crates/geoboost-py
-maturin develop
+uv run --group dev maturin develop
 ```
+
+After building the extension, use `backend="rust"` in `GeoBoostRegressor`.

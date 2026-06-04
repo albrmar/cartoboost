@@ -1,6 +1,8 @@
 # Model Artifact
 
-Native GeoBoost models are stored as versioned JSON artifacts.
+GeoBoost models are stored as JSON artifacts. Use them when you need to reload
+a fitted temporal-spatial model with its splitters, sparse-feature requirements,
+feature schema, and training parameters intact.
 
 ## Contents
 
@@ -16,8 +18,9 @@ The artifact includes:
 - optional `feature_schema`
 - optional `training_config`
 
-The optional fields make artifacts self-describing while preserving load
-compatibility for version `1` artifacts that do not contain newer metadata.
+The optional fields make artifacts self-describing. For temporal-spatial models,
+the important fields are the feature schema, sparse-set names, splitters, fuzzy
+settings, and leaf configuration.
 
 ## Save And Load
 
@@ -26,9 +29,9 @@ model.save("model.geoboost.json")
 loaded = GeoBoostRegressor.load("model.geoboost.json")
 ```
 
-Native load restores public estimator parameters when training metadata is
-present, including splitters, leaf predictor, linear leaf features, fuzzy
-settings, regularization, learning rate, depth, and minimum split controls.
+Load restores public estimator parameters when training metadata is present,
+including splitters, leaf predictor, linear leaf features, fuzzy settings,
+regularization, learning rate, depth, and minimum split controls.
 
 ## Weights Artifacts
 
@@ -58,25 +61,20 @@ ONNX export currently supports dense axis-tree models with constant leaves.
 Models using fuzzy, sparse-list, diagonal, Gaussian, periodic, or linear-leaf
 behavior should use the JSON weights artifact.
 
-## Prediction Identity
+## Prediction Consistency
 
-Save/load tests should assert prediction identity with strict tolerance:
+Save/load should preserve predictions:
 
 ```text
 atol <= 1e-12
 ```
 
-Exact equality is preferred when the path is deterministic and uses identical
-floating-point operations.
+For models with sparse-set splits, pass the same sparse columns at prediction
+time after loading:
 
-## Version Policy
-
-Artifact version `1` is the current supported native artifact version. Unknown
-future versions should fail clearly. Backward-compatible optional fields are
-allowed; multi-version migrations are future hardening.
-
-Weights artifact version `1` is the current supported weights wrapper version.
-Unknown future weights versions fail clearly before model loading.
+```python
+loaded.predict(X_test_dense, sparse_sets={"route_cells": route_cells_test})
+```
 
 ## Dense And Sparse Prediction Safety
 

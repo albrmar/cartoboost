@@ -222,7 +222,7 @@ def load_tlc_frame(paths: list[Path]) -> Any:
     if pandas is None:
         raise RuntimeError(
             "pandas and pyarrow are required for real TLC parquet benchmarks. "
-            "Install them with the benchmark extras documented in docs/nyc_taxi_benchmarks.md."
+            "Install them with the benchmark extras documented in docs/benchmarks/nyc-taxi.md."
         )
     columns = [
         "tpep_pickup_datetime",

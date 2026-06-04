@@ -1,12 +1,12 @@
 # NYC Taxi Benchmarks
 
-`scripts/run_nyc_taxi_quality_benchmarks.py` runs optional model-quality and
-speed comparisons on NYC TLC yellow taxi trip-record Parquet files. It compares
+`scripts/run_nyc_taxi_quality_benchmarks.py` runs model-quality and speed
+comparisons on NYC TLC yellow taxi trip-record Parquet files. It compares
 GeoBoost with LightGBM and XGBoost when optional benchmark packages are
 installed, and always supports a mean-prediction baseline.
 
 The repeated wrapper, `scripts/run_repeated_nyc_taxi_benchmarks.py`, runs the
-single-run benchmark several times and writes aggregate speed and quality gates.
+single-run benchmark several times and summarizes speed and quality.
 
 ## Dependency Boundary
 
@@ -47,7 +47,7 @@ just nyc-quality-benchmark-repeated
 ```
 
 The repeated target writes per-run outputs under `target/nyc_taxi_repeated/`
-and committed summaries under `docs/assets/nyc_taxi_benchmarks/`.
+and summary reports under `docs/assets/nyc_taxi_benchmarks/`.
 
 The maintained repeated preset uses:
 
@@ -75,19 +75,6 @@ uv run --group dev --group bench python scripts/run_nyc_taxi_quality_benchmarks.
   --synthetic-smoke \
   --models mean
 ```
-
-Profile Rust fit timing inside repeated runs:
-
-```sh
-PYTHONPATH=python uv run --group dev --group bench python scripts/run_repeated_nyc_taxi_benchmarks.py \
-  --runs 1 \
-  --no-download \
-  --profile-fit
-```
-
-Profile lines are emitted on stderr with `geoboost_fit_profile` and include
-context, histogram accumulation/scoring, materialization, leaf, residual, and
-prediction-update timings.
 
 ## Tasks
 
@@ -141,12 +128,13 @@ Repeated-run summaries:
 
 ## Current Snapshot
 
-The committed repeated 25k report was refreshed on June 4, 2026 with
-target-mean zone treatment through `just nyc-quality-benchmark-repeated`. In
-the current artifact, GeoBoost beats XGBoost on RMSE and R2 for every
-task/split and has higher median prediction throughput for every task/split,
-but still misses the all-task speed gate because training remains slower than
-XGBoost `hist`. The repeated gate requires:
+The repeated 25k report was refreshed on June 4, 2026 with target-mean zone
+treatment through `just nyc-quality-benchmark-repeated`. In that report,
+GeoBoost beats XGBoost on RMSE and R2 for every task/split and has higher
+median prediction throughput for every task/split, while training remains
+slower than XGBoost `hist`.
+
+The comparison checks:
 
 - GeoBoost train time no slower than XGBoost.
 - GeoBoost prediction throughput no slower than XGBoost.
@@ -164,13 +152,9 @@ Observed medians in the refreshed report:
 | pickup_demand/random | 1.91x | 1.515x | -0.012370 | 0.025518 |
 | pickup_demand/spatial_holdout | 1.49x | 1.015x | -0.002626 | 0.008206 |
 
-The committed results are setup-specific evidence for this maintained preset.
-They are not a general claim about production accuracy or package superiority.
+The results are setup-specific evidence for this preset. They are not a general
+claim about production accuracy or package superiority.
 
-For the current v2 alpha work:
-
-- Utility is verified by focused unit tests for objectives, conformal intervals,
-  spatial diagnostics, and blocked validation split helpers.
-- Prediction speed is smoke-tested by Criterion synthetic prediction benches.
-- NYC taxi qualitative and speed claims are limited to the refreshed repeated
-  benchmark artifact and its documented preset.
+For temporal-spatial modeling, interpret this report as evidence for the exact
+NYC taxi preset: task definition, feature handling, row sample, split strategy,
+and estimator settings. Re-run the benchmark when changing those assumptions.

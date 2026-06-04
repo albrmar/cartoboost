@@ -1,5 +1,5 @@
 site_name: GeoBoost
-site_description: Developer and user documentation for GeoBoost regression tooling.
+site_description: User documentation for GeoBoost regression tooling.
 site_url: https://theculliganman.github.io/geoboost/
 repo_url: https://github.com/theculliganman/geoboost
 repo_name: theculliganman/geoboost
@@ -51,7 +51,6 @@ exclude_docs: |
   */*/*/AGENTS.md
 
 not_in_nav: |
-  nyc_taxi_benchmarks.md
   assets/lane_level_tests/acceptance_metrics.md
   assets/nyc_taxi_benchmarks/repeated_results.md
   assets/nyc_taxi_benchmarks/results.md
@@ -62,7 +61,6 @@ nav:
   - User Guide:
       - Python Estimator: user-guide/python-estimator.md
       - Parameters: user-guide/parameters.md
-      - Modeling v2 Alpha: modeling_v2_alpha.md
       - Objectives: objectives.md
       - Constraints: constraints.md
       - Spatial Modeling: spatial_modeling.md
@@ -74,27 +72,9 @@ nav:
       - Model Artifacts: model_artifact.md
       - Limitations: limitations.md
   - Reference:
-      - v1 API Contract: v1_api.md
       - Python API: reference/python-api.md
       - CLI Reference: reference/cli.md
-      - Integration Contract: integration-contract.md
-  - Developer Guide:
-      - Overview: developer-guide/index.md
-      - Architecture: developer-guide/architecture.md
-      - Build And Test: developer-guide/build-test.md
-      - Extending GeoBoost: developer-guide/extending.md
-      - Documentation: developer-guide/documentation.md
-      - Release Process: developer-guide/release.md
-      - Testing Strategy: testing_strategy.md
-      - Fixture Contract: fixture-contract.md
-      - Golden Data Workflow: golden-data-workflow.md
-      - Implementation Status: implementation_status.md
-      - Repository Plan: repo_plan.md
-      - v1 Release Checklist: v1_release_checklist.md
   - Benchmarks:
       - Overview: benchmarks/index.md
-      - Artifact Policy: benchmarks/artifacts.md
-      - Criterion Microbenchmarks: benchmarks/criterion.md
       - NYC Taxi Benchmarks: benchmarks/nyc-taxi.md
-      - Optimization Loop: benchmarks/optimization-loop.md
       - Lane-Level Acceptance: benchmarks/lane-level.md

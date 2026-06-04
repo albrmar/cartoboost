@@ -1,64 +1,79 @@
 # GeoBoost Documentation
 
-GeoBoost is a Rust-backed Python regression package for tabular,
-spatiotemporal, sparse-route, and fuzzy split experiments. The project is
-currently alpha quality and regression-only, with deterministic training,
-inspectable JSON artifacts, and explicit limits around unsupported workflows.
+GeoBoost is a Python regression package for temporal-spatial problems: demand
+by zone and time, route or lane performance, ETA residuals, local pricing
+effects, and other targets where place, time, and sparse location memberships
+carry signal. It is designed for data scientists who want an estimator workflow
+that feels familiar from scikit-learn, XGBoost, and LightGBM while exposing
+split types that directly model temporal and spatial structure.
 
 ## Start Here
 
-- [Getting Started](getting-started.md) gets a local development install running
-  and trains a first model.
-- [Python Estimator](user-guide/python-estimator.md) covers the sklearn-style
-  API, native backend behavior, sparse features, schema metadata, save/load, and
-  SHAP entry points.
-- [Parameters](user-guide/parameters.md) explains the supported training
-  controls and which ones require the Rust backend.
-- [CLI](user-guide/cli.md) documents dense CSV train, predict, eval, and inspect
-  workflows.
-- [Developer Guide](developer-guide/index.md) explains the workspace layout,
-  validation commands, extension points, docs workflow, and release process.
-- [Benchmarks](benchmarks/index.md) collects benchmark runbooks and generated
-  artifact policy.
+- [Getting Started](getting-started.md) installs the package locally and trains
+  a first model.
+- [Python Estimator](user-guide/python-estimator.md) shows the sklearn-style
+  fit, predict, save, load, and explanation workflow.
+- [Parameters](user-guide/parameters.md) lists the model controls and supported
+  splitters.
+- [Objectives](objectives.md) covers L2 and quantile regression.
+- [Spatial Modeling](spatial_modeling.md) explains coordinate features,
+  route-cell sparse sets, fuzzy routing, and blocked evaluation.
+- [CLI](user-guide/cli.md) covers dense numeric CSV training and prediction.
+- [Benchmarks](benchmarks/index.md) explains reproducible comparison reports.
 
-## Current Scope
+## What GeoBoost Supports
 
-GeoBoost supports:
-
-- L2 and quantile regression objectives.
+- L2 and quantile regression.
 - Constant and linear residual leaves.
 - Axis, histogram-axis, diagonal 2D, Gaussian/radial 2D, periodic, sparse-set,
   and fuzzy split behavior.
 - Dense numeric arrays plus list-valued sparse-set columns in Python.
-- Feature schema metadata for dense numeric, dense periodic, and sparse-set
-  declarations.
+- Feature schemas for numeric, periodic, and sparse-set declarations.
 - Versioned JSON model and weights artifacts, with optional ONNX export for a
   dense axis-tree subset.
-- Python API ergonomics compatible with common sklearn estimator workflows.
+- sklearn-compatible estimator workflows including `Pipeline`, `GridSearchCV`,
+  `get_params`, `set_params`, and `clone`.
+
+## Why It Helps Temporal-Spatial Models
+
+Standard tabular boosters are strong baselines, but they usually see location
+and time as ordinary scalar columns unless you pre-engineer richer features.
+GeoBoost adds splitters that match common temporal-spatial patterns:
+
+- Periodic splitters keep wraparound time features, such as hour `23` and hour
+  `0`, adjacent.
+- Diagonal 2D splitters model oblique spatial boundaries more directly than
+  axis-only trees.
+- Gaussian/radial splitters isolate local hotspots, depots, zones, or corridors.
+- Sparse-set splitters consume route-cell and zone memberships without a wide
+  one-hot matrix.
+- Fuzzy routing softens hard boundaries where nearby locations or times should
+  behave similarly.
 
 The Rust native extension is required for advanced splitters, sparse-set
 features, feature schemas, fuzzy routing, linear leaves, and native artifact
-loading. The pure-Python fallback is intentionally narrow: dense axis-split
-constant-leaf experiments.
+loading. The pure-Python fallback covers dense axis-split constant-leaf
+regression.
 
-## Repository Map
+## Typical Workflow
 
-| Path | Responsibility |
-| --- | --- |
-| `crates/geoboost-core` | Core Rust training, prediction, tree, loss, split, metric, and artifact logic. |
-| `crates/geoboost-cli` | Dense numeric CSV command-line interface. |
-| `crates/geoboost-py` | PyO3 bindings that expose `geoboost._native`. |
-| `python/geoboost` | Python estimator, schema helpers, SHAP integration, and fallback path. |
-| `docs` | User docs, developer docs, contracts, validation notes, and benchmark reports. |
-| `tests` | Python, integration, fixture, parity, and CLI tests. |
-| `scripts` | Validation, benchmark, fixture, and proof-image utilities. |
+```python
+from geoboost import GeoBoostRegressor
 
-## Validation
+model = GeoBoostRegressor(
+    n_estimators=100,
+    learning_rate=0.05,
+    max_depth=4,
+    min_samples_leaf=20,
+    splitters=["axis"],
+    backend="rust",
+)
 
-Use `just validate` as the local source of truth before release work. For docs
-changes, also run:
-
-```sh
-uv sync --group docs --no-install-project
-uv run --group docs --no-sync mkdocs build --strict
+model.fit(X_train, y_train)
+predictions = model.predict(X_test)
+model.save("model.geoboost.json")
 ```
+
+Use GeoBoost like other gradient-boosting regressors: choose features, split the
+data, fit the estimator, compare metrics against baselines, inspect residuals,
+and save the fitted model artifact.

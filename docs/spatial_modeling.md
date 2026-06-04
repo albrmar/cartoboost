@@ -1,32 +1,77 @@
-# Spatial Modeling
+# Temporal-Spatial Modeling
 
-GeoBoost's spatial modeling surface is a clean-room, GeoBoost-inspired alpha
-implementation for regression experiments. It supports spatially useful
-splitters and sparse route-cell features, but it does not include proprietary
-Lyft GeoBoost behavior, H3-native feature engineering, or production geospatial
-validation infrastructure.
+GeoBoost is built for regression problems where time, place, route membership,
+or local neighborhoods drive the target. Examples include pickup demand by hour
+and zone, delivery ETA residuals by lane, fare or cost adjustments by location,
+and operational metrics grouped by route cells.
 
-## Spatial Feature Paths
+## Why Use GeoBoost
 
-| Path | Status |
-| --- | --- |
-| Dense latitude/longitude or projected coordinates | Supported as numeric columns. |
-| Diagonal 2D splitters | Rust native splitter for oblique 2D boundaries. |
-| Gaussian/radial 2D splitters | Rust native splitter for radial neighborhoods. |
-| Periodic splitters | Rust native splitter for wraparound features such as hour-of-day. |
-| Sparse-set route cells | Rust native list-valued integer-ID sparse feature path. |
-| H3 cells | Supported only when pre-encoded as non-negative sparse integer IDs. |
-| Named spatial schemas | Future hardening; current schema metadata does not declare named coordinate pairs. |
+XGBoost and LightGBM are excellent tabular baselines. GeoBoost is useful when
+the feature engineering needed for those models starts to hide the structure of
+the problem:
 
-Dense spatial splitters operate over numeric columns. Feature schema metadata can
-mark numeric, periodic, and sparse-set roles, but richer geospatial declarations
-such as "pickup latitude/pickup longitude" pairs remain outside the current
-schema contract.
+- Wraparound time needs sine/cosine, buckets, or custom encodings.
+- Spatial boundaries need many axis-aligned splits or hand-built region
+  features.
+- Local hotspots need precomputed distance-to-center features.
+- Route or cell memberships can become very wide one-hot matrices.
+- Hard split boundaries can produce abrupt predictions for nearby points.
 
-## H3 Sparse Scaffold
+GeoBoost gives those structures direct model controls through periodic,
+diagonal 2D, Gaussian/radial, sparse-set, and fuzzy split behavior.
 
-The sparse-set API can represent H3-like cell membership if callers provide
-pre-encoded non-negative integer IDs:
+## Feature Patterns
+
+| Pattern | GeoBoost feature path | Why it helps |
+| --- | --- | --- |
+| Hour-of-day, weekday, seasonality | Dense periodic feature with `periodic:<period>` | Preserves wraparound adjacency. |
+| Latitude/longitude or projected x/y | Dense numeric features with `diagonal_2d` or `gaussian_2d` | Learns spatial boundaries and neighborhoods without only stair-step axis cuts. |
+| Route cells, zones, encoded H3 cells | `sparse_sets={...}` with `splitters=["sparse_set"]` | Uses list-valued memberships directly. |
+| Smooth transitions near a boundary | `fuzzy=True` with `fuzzy_bandwidth` | Routes samples fractionally instead of forcing a hard left/right decision. |
+| Local trend inside a region | `leaf_predictor="linear"` | Fits a ridge residual model inside leaves. |
+
+## Example
+
+```python
+from geoboost import GeoBoostRegressor
+
+schema = {
+    "dense": [
+        {"name": "pickup_x", "kind": "numeric"},
+        {"name": "pickup_y", "kind": "numeric"},
+        {"name": "hour", "kind": "periodic", "period": 24},
+        {"name": "distance_m", "kind": "numeric"},
+    ],
+    "sparse_sets": [
+        {"name": "route_cells", "kind": "sparse_set"},
+    ],
+}
+
+model = GeoBoostRegressor(
+    n_estimators=200,
+    learning_rate=0.04,
+    max_depth=5,
+    min_samples_leaf=30,
+    splitters=["axis", "diagonal_2d", "gaussian_2d", "periodic:24", "sparse_set"],
+    fuzzy=True,
+    fuzzy_bandwidth=0.05,
+    backend="rust",
+)
+
+model.fit(
+    X_train_dense,
+    y_train,
+    sparse_sets={"route_cells": route_cells_train},
+    feature_schema=schema,
+)
+```
+
+## Encoded H3 Or Grid Cells
+
+GeoBoost does not compute H3 cells from latitude and longitude. If you already
+have H3, S2, grid, zone, or corridor IDs, encode them as non-negative integers
+and pass them through a sparse-set column:
 
 ```python
 model.fit(
@@ -36,84 +81,24 @@ model.fit(
 )
 ```
 
-This is a sparse integer-ID scaffold, not an H3 integration. GeoBoost does not
-currently:
+A sparse split routes left when a row contains one of the learned IDs and right
+otherwise. Empty rows and unseen IDs route as no match.
 
-- Convert latitude/longitude to H3 cells.
-- Validate H3 resolutions or parent/child relationships.
-- Expand neighbor rings.
-- Apply H3 distance, hierarchy, compacting, or polygon coverage logic.
-- Serialize H3 metadata beyond the generic sparse-set feature name and IDs used
-  by trained splits.
+## Evaluation
 
-Use the sparse-set docs for routing semantics: a sparse split routes left when a
-row contains any split ID, and right otherwise.
+Temporal-spatial models should be tested with the kind of holdout they will
+face in use:
 
-## Fuzzy Routing
+- Use random holdouts to measure general regression quality.
+- Use spatial holdouts to test new zones, cells, routes, or corridors.
+- Use [out-of-time validation](evaluation_protocol.md#out-of-time-validation)
+  to test later periods.
+- Report residuals by zone, route cell, hour, or lane to find localized failure
+  modes.
+- Compare against axis-only GeoBoost, XGBoost, or LightGBM baselines with the
+  same train/test split and feature set.
 
-Fuzzy routing is implemented in the Rust backend as fractional branch assignment
-around supported split boundaries. Training uses fractional child weights, and
-prediction uses weighted branch recursion.
-
-Current status:
-
-- Requires the Rust backend.
-- Controlled by `fuzzy=True` and non-negative `fuzzy_bandwidth`.
-- Not compatible with monotonic constraints.
-- Preserved by native model artifacts.
-- Covered by deterministic routing and acceptance checks.
-
-Fuzzy routing should be reported as a modeling choice, not as a default spatial
-smoothing guarantee. The bandwidth is data-scale dependent, so experiments
-should state the coordinate system and units used by the fuzzy boundary.
-
-## Spatial Diagnostics
-
-Spatial diagnostics should separate global model quality from spatial failure
-modes. Recommended diagnostics include:
-
-- Random holdout metrics for generalization under IID-style splits.
-- Spatially blocked holdout metrics for generalization to withheld locations or
-  zones.
-- Residual summaries by route cell, pickup zone, grid cell, or other stable
-  geography.
-- Residual plots or maps when generated artifacts are part of the report.
-- Comparison against axis-only baselines to isolate the value of spatial
-  splitters.
-- Comparison against sparse-only or dense-only variants when both feature paths
-  are available.
-
-Existing benchmark scripts produce examples of random versus spatial holdout
-metrics and zone residual plots. Those artifacts are diagnostics for the exact
-script setup, not universal production claims.
-
-## Blocked Evaluation Metrics
-
-Blocked evaluation means the test set withholds correlated groups instead of
-sampling rows independently. For spatial work, blocks can be pickup zones,
-delivery regions, route corridors, grid cells, H3 cells, or time windows.
-
-Report blocked metrics alongside random metrics:
-
-| Metric | Purpose |
-| --- | --- |
-| RMSE | Penalizes large residuals and is the main quality metric in current scripts. |
-| MAE | Easier to interpret for typical absolute error. |
-| R2 | Explains variance relative to the target distribution for the same split. |
-| Block/random ratio | Shows whether spatial holdout quality degrades more than random holdout quality. |
-| Residual-by-block summary | Identifies localized failure modes hidden by aggregate scores. |
-
-Blocked evaluation is currently a benchmark and validation practice, not a
-first-class `GeoBoostRegressor` cross-validation API. Keep blocked metric claims
-tied to the script, data version, feature set, estimator settings, and committed
-artifact that produced them.
-
-## Linear Leaves And Elastic Net
-
-Rust linear leaves fit weighted ridge residual models over configured dense
-features. This is useful when a local residual trend is approximately linear.
-
-Elastic-net linear leaves are not implemented. The current public knob is
-`l2_regularization`, which is a ridge penalty. Do not document L1 or elastic-net
-selection behavior unless a future implementation adds explicit parameters,
-artifact fields, and tests.
+GeoBoost can be better suited than a generic tabular booster when these
+temporal-spatial holdouts improve because the model can express the real
+structure with fewer ad hoc preprocessing steps. Keep claims tied to your data,
+features, split strategy, and metrics.

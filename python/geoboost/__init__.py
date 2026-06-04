@@ -1,6 +1,11 @@
 """Python interface for the clean-room GeoBoost-inspired regressor."""
 
-from .evaluation import grouped_blocked_cv, spatial_blocked_cv, temporal_blocked_cv
+from .evaluation import (
+    grouped_blocked_cv,
+    out_of_time_split,
+    spatial_blocked_cv,
+    temporal_blocked_cv,
+)
 from .explain import explain_shap, make_shap_explainer
 from .metrics import (
     calibrated_intervals,
@@ -28,6 +33,7 @@ __all__ = [
     "jitter_volatility",
     "make_shap_explainer",
     "mean_interval_width",
+    "out_of_time_split",
     "pinball_loss",
     "residual_morans_i",
     "spatial_blocked_cv",

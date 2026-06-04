@@ -1,8 +1,10 @@
 # CLI
 
-The `geoboost` CLI is a dense numeric CSV interface for training, prediction,
-evaluation, and artifact inspection. Sparse-set route features are supported by
-the Python API, not by the CLI v1 path.
+The `geoboost` CLI is a dense numeric CSV interface for quick training,
+prediction, evaluation, and artifact inspection. It is useful for simple
+baselines and scripted checks. Use the Python API for list-valued sparse route
+features, feature schemas, SHAP explanations, and richer temporal-spatial
+workflows.
 
 ## Commands
 
@@ -13,7 +15,7 @@ geoboost eval --model <path> --data <csv> [--output json|csv]
 geoboost inspect [--model <path>] [--config <toml>] [--data <csv>] [--output json|csv]
 ```
 
-During development, run the binary through Cargo:
+From a source checkout, you can run the binary through Cargo:
 
 ```sh
 cargo run -p geoboost-cli -- train --data train.csv --config config.toml --model-out model.json
@@ -63,6 +65,17 @@ loss = "l2"
 splitter = "axis,periodic_24"
 leaf_predictor = "constant"
 ```
+
+For a dense temporal-spatial CSV, include periodic or spatial splitters in the
+config:
+
+```toml
+target = "demand"
+splitter = "axis,diagonal_2d,gaussian_2d,periodic_24"
+```
+
+Sparse route-cell columns are not represented in CLI CSV input; train those
+models with `GeoBoostRegressor`.
 
 ## Output
 

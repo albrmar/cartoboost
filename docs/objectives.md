@@ -1,78 +1,52 @@
 # Objectives
 
-GeoBoost is currently a regression-only package. Objective support is split
-between the stable public API and native scaffolding that is not yet exposed
-end-to-end.
+GeoBoost supports regression objectives for continuous temporal-spatial targets
+such as demand, duration, fare, cost, or residual error.
 
-## Objective Status
+## L2 Regression
 
-| Objective | Public names | Status |
-| --- | --- | --- |
-| L2 squared error | `"l2"`, `"squared_error"` | Stable public objective for Rust and Python fallback paths. |
-| Quantile pinball | `"quantile"`, `"pinball"` | Public alpha objective for constant leaves. |
-| Huber | Not public | Native loss/config scaffold exists in core Rust, but Python and CLI parsers do not expose it. |
-| Log-L2 | Not public | Native config scaffold exists in core Rust, but it is not wired into public training. |
-| Conformal intervals | Not public | Evaluation scaffold only; no fitted interval estimator contract. |
+L2 squared error is the default objective:
 
-## L2
+```python
+model = GeoBoostRegressor(loss="l2")
+```
 
-L2 is the default and the most validated objective. It initializes from the
-weighted mean target, trains on residuals, and supports the current splitters,
-sample weights, constant leaves, and Rust linear leaves.
+Use L2 when your primary score is RMSE, R2, or general point-prediction quality.
+It supports the current splitters, sample weights, constant leaves, and Rust
+linear leaves.
 
-Use L2 when comparing splitter behavior, sparse routing, fuzzy routing, linear
-leaves, or benchmark outputs unless the experiment is explicitly about quantile
-behavior.
+## Quantile Regression
 
-## Quantile
+Quantile regression estimates a conditional quantile instead of the conditional
+mean:
 
-Quantile regression uses weighted quantile initialization and pinball loss. The
-public names are `loss="quantile"` and `loss="pinball"`, with
-`quantile_alpha` required to be finite and in `(0, 1)`.
+```python
+model = GeoBoostRegressor(
+    loss="quantile",
+    quantile_alpha=0.9,
+    leaf_predictor="constant",
+    backend="rust",
+)
+```
 
-Current limits:
+Use quantile regression when upper or lower tails matter, such as high-delay ETA
+risk, high-cost trip estimates, or conservative demand forecasts.
 
-- Quantile loss requires `leaf_predictor="constant"`.
-- Quantile behavior is available through the Python estimator and native
-  backend parameter surface.
-- Quantile benchmark evidence should be reported separately from L2 benchmark
-  evidence because the acceptance metrics are not interchangeable.
+Accepted names:
 
-## Huber And Log-L2
+| Objective | Names |
+| --- | --- |
+| L2 squared error | `"l2"`, `"squared_error"` |
+| Quantile pinball | `"quantile"`, `"pinball"` |
 
-Huber and log-L2 should be described as scaffolding, not supported user-facing
-objectives. Core Rust types exist for Huber and log-L2 configuration, and Huber
-has loss primitive behavior, but the public Python estimator and CLI objective
-parsers currently accept only L2 and quantile aliases.
+`quantile_alpha` must be in `(0, 1)`. Quantile loss currently requires
+constant leaves.
 
-Before either objective becomes public, it needs:
+## Evaluation Guidance
 
-- Public parameter names and validation rules.
-- Rust booster wiring for initialization, gradients, hessians, leaf values, and
-  split scoring.
-- PyO3, Python fallback, CLI, artifact, and documentation coverage.
-- Targeted tests showing behavior with sample weights and representative
-  splitter combinations.
-
-## Conformal Scaffold
-
-Conformal prediction is not a fitted interval feature in the current estimator.
-For v2 alpha docs, "conformal scaffold" means the planned evaluation pattern:
-train a point or quantile model, reserve calibration data, compute residual or
-pinball-style calibration scores, and report empirical coverage on blocked and
-random holdouts.
-
-Do not document conformal intervals as a production API until there is an
-estimator method or artifact contract that stores calibration metadata and
-reproduces intervals after load.
-
-## Reporting
-
-Objective reports should include:
-
-- Objective name and parameters, especially `quantile_alpha`.
-- Leaf predictor type.
-- Backend used.
-- Sample-weight handling if weights are present.
-- Evaluation split type, including whether the split is random, temporal,
-  spatial, or otherwise blocked.
+- Use RMSE, MAE, and R2 for L2 point prediction.
+- Use pinball loss for quantile models.
+- Report the holdout type: random, temporal, spatial, grouped, or route-based.
+- Compare objectives on the same split and feature set.
+- For temporal-spatial work, include residual summaries by time bucket, zone,
+  route cell, or lane; aggregate metrics can hide localized failure modes.

@@ -1,7 +1,7 @@
 # Lane-Level Acceptance
 
-Lane-level acceptance checks exercise combined dense, temporal, spatial, and
-sparse route-cell behavior on deterministic synthetic data.
+Lane-level checks exercise combined dense, temporal, spatial, and sparse
+route-cell behavior on deterministic synthetic data.
 
 ## Command
 
@@ -10,10 +10,7 @@ uv run --group dev maturin develop
 uv run --group dev python scripts/run_lane_level_acceptance_metrics.py
 ```
 
-`scripts/run_full_validation.py` also runs this check and copies the generated
-lane-level directory into `target/validation/`.
-
-## Fixture Shape
+## Dataset Shape
 
 - 4 origin regions x 4 destination regions = 16 lanes.
 - 24 hourly observations per lane.
@@ -21,9 +18,9 @@ lane-level directory into `target/validation/`.
   and distance.
 - No hidden simulator metadata is passed into training.
 
-## Artifacts
+## Outputs
 
-Generated committed artifacts live under `docs/assets/lane_level_tests/`:
+Generated outputs live under `docs/assets/lane_level_tests/`:
 
 - `acceptance_metrics.json`
 - `acceptance_metrics.md`
@@ -31,12 +28,12 @@ Generated committed artifacts live under `docs/assets/lane_level_tests/`:
 - `hour_profile.png`
 - `lane_heatmap.png`
 
-Treat these files as evidence artifacts. Refresh them only when the lane-level
-fixture, model behavior, or acceptance gates intentionally change.
+Use these files to inspect route geometry, hour effects, lane-level residuals,
+and combined split behavior.
 
 ## What The Check Proves
 
-The lane-level fixture is intended to catch regressions in:
+The lane-level dataset is intended to show whether GeoBoost captures:
 
 - Route-cell sparse-set encoding.
 - Temporal profile behavior.

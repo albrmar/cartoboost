@@ -8,6 +8,7 @@ import numpy as np
 
 __all__ = [
     "grouped_blocked_cv",
+    "out_of_time_split",
     "spatial_blocked_cv",
     "temporal_blocked_cv",
 ]
@@ -80,6 +81,60 @@ def temporal_blocked_cv(
         yield np.sort(train_idx), np.sort(test_idx)
 
 
+def out_of_time_split(
+    times: object,
+    *,
+    validation_size: int | None = None,
+    validation_fraction: float | None = 0.2,
+    cutoff: object | None = None,
+    gap: int = 0,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return train/validation indices for a future holdout window.
+
+    By default, the latest 20% of rows by ``times`` are used for validation.
+    Pass ``validation_size`` for an exact tail count, ``validation_fraction``
+    for a tail fraction, or ``cutoff`` to validate on rows strictly after a
+    time boundary. ``gap`` removes that many sorted rows immediately before the
+    validation window from training.
+    """
+
+    time_values = np.asarray(times)
+    if time_values.ndim != 1:
+        raise ValueError("times must be one-dimensional")
+    if time_values.shape[0] < 2:
+        raise ValueError("times must contain at least two samples")
+    if gap < 0:
+        raise ValueError("gap must be non-negative")
+    if validation_size is not None and validation_fraction is not None:
+        raise ValueError("pass only one of validation_size or validation_fraction")
+    if cutoff is not None and (validation_size is not None or validation_fraction is not None):
+        raise ValueError("cutoff cannot be combined with validation_size or validation_fraction")
+
+    order = np.argsort(time_values, kind="mergesort")
+    if cutoff is not None:
+        cutoff_value = _coerce_cutoff(cutoff, time_values)
+        validation_mask = time_values > cutoff_value
+        validation_positions = np.nonzero(validation_mask[order])[0]
+        if validation_positions.size == 0:
+            raise ValueError("cutoff leaves no validation samples")
+        validation_start = int(validation_positions[0])
+        validation_idx = order[validation_positions]
+    else:
+        holdout_count = _resolve_validation_count(
+            time_values.shape[0],
+            validation_size,
+            validation_fraction,
+        )
+        validation_start = time_values.shape[0] - holdout_count
+        validation_idx = order[validation_start:]
+
+    train_stop = max(0, validation_start - gap)
+    train_idx = order[:train_stop]
+    if train_idx.size == 0:
+        raise ValueError("out-of-time split leaves no training samples")
+    return np.sort(train_idx), np.sort(validation_idx)
+
+
 def grouped_blocked_cv(
     groups: object,
     *,
@@ -116,6 +171,34 @@ def _validate_n_splits(n_splits: int, n_samples: int) -> None:
         raise ValueError("n_splits must be at least 2")
     if n_splits > n_samples:
         raise ValueError("n_splits cannot exceed the number of samples")
+
+
+def _resolve_validation_count(
+    n_samples: int,
+    validation_size: int | None,
+    validation_fraction: float | None,
+) -> int:
+    if validation_size is not None:
+        if not isinstance(validation_size, int):
+            raise ValueError("validation_size must be an integer")
+        if validation_size < 1:
+            raise ValueError("validation_size must be at least 1")
+        if validation_size >= n_samples:
+            raise ValueError("validation_size must be smaller than the number of samples")
+        return validation_size
+
+    if validation_fraction is None:
+        raise ValueError("validation_fraction must be provided when validation_size is omitted")
+    if not 0.0 < validation_fraction < 1.0:
+        raise ValueError("validation_fraction must be between 0 and 1")
+    holdout_count = int(np.ceil(n_samples * validation_fraction))
+    return min(max(holdout_count, 1), n_samples - 1)
+
+
+def _coerce_cutoff(cutoff: object, time_values: np.ndarray) -> object:
+    if np.issubdtype(time_values.dtype, np.datetime64):
+        return np.asarray(cutoff, dtype=time_values.dtype)
+    return cutoff
 
 
 def _resolve_grid_shape(

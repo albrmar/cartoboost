@@ -1,8 +1,8 @@
-# GeoBoost Benchmark Scaffold
+# GeoBoost Benchmarks
 
-This directory contains Criterion microbenchmarks for `geoboost-core`.
-Maintained benchmark runbooks and artifact policy live under
-`docs/benchmarks/`.
+This directory contains low-level Rust timing benchmarks. Most data-science
+model comparisons should use the benchmark guides under `docs/benchmarks/`,
+especially the NYC taxi and lane-level temporal-spatial reports.
 
 Files:
 
@@ -11,7 +11,7 @@ Files:
   batches.
 - `serialize.rs`: in-memory JSON serialization and deserialization.
 
-Useful commands:
+Commands:
 
 ```sh
 cargo bench --workspace --no-run
@@ -19,5 +19,5 @@ cargo bench --workspace
 uv run --group dev python scripts/plot_benchmarks.py
 ```
 
-Do not commit raw `target/criterion/` output. Refresh generated summary images
-only when benchmark artifacts are explicitly part of the task.
+Use these timings for local performance checks. Use dataset benchmarks for
+claims about model quality.

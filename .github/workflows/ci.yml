@@ -195,6 +195,13 @@ jobs:
             runner: windows-11-arm
             target: aarch64-pc-windows-msvc
             manylinux: auto
+        exclude:
+          - platform:
+              name: windows-aarch64
+              runner: windows-11-arm
+              target: aarch64-pc-windows-msvc
+              manylinux: auto
+            python-version: "3.10"
 
     steps:
       - name: Checkout

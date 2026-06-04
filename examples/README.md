@@ -1,16 +1,14 @@
-GeoBoost examples scaffold
-==========================
+# GeoBoost Examples
 
-This directory holds lightweight example assets for early GeoBoost development.
-The scripts intentionally use synthetic data and Python standard-library code so
-they can run before the Rust and Python package APIs are finalized.
+This directory holds lightweight examples for fitting and evaluating GeoBoost
+regression models. The examples use synthetic data so the temporal-spatial
+patterns are easy to inspect.
 
-Suggested workflow once the project API exists:
+Suggested workflow:
 
-1. Generate regression, binary, and ranking-shaped CSV files with
+1. Generate regression-shaped CSV files with
    `scripts/generate_synthetic_data.py`.
-2. Train GeoBoost models with the CLI or Python package.
+2. Train GeoBoost models with the CLI or Python estimator.
 3. Write predictions to CSV with `target` and `prediction` columns.
 4. Summarize metrics with `scripts/validation_report.py`.
 5. Plot benchmark summaries with `scripts/plot_benchmarks.py`.
-
