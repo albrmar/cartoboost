@@ -4,6 +4,8 @@
 - This folder contains the Python package source root.
 - Keep the public package importable through `pythonpath = ["python"]`.
 - Keep layout compatible with maturin's `python-source` setting.
+- Keep estimator training native-extension-only; do not add a separate Python
+  training path.
 
 ## Testing instructions
 - Run `uv run --group dev ruff format --check python`.

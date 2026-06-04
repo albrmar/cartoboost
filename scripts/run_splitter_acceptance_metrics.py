@@ -76,7 +76,6 @@ def fit_model(
         fuzzy=fuzzy,
         fuzzy_bandwidth=fuzzy_bandwidth,
         l2_regularization=0.0,
-        backend="rust",
     )
     model.fit(x, y)
     return model

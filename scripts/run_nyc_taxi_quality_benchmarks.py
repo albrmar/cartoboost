@@ -623,7 +623,6 @@ def fit_predict_model(
             splitters=splitters,
             leaf_predictor=args.geoboost_leaf_predictor,
             constant_l2_regularization=args.geoboost_constant_l2,
-            backend="rust",
         )
         train_sparse = sparse_subset(task.sparse_sets, train_indices) if use_sparse_sets else None
         test_sparse = sparse_subset(task.sparse_sets, test_indices) if use_sparse_sets else None

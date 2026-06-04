@@ -10,16 +10,13 @@ splitters match the structure in your data.
 - Regression only; classification, ranking, and survival objectives are not
   supported.
 - L2 and quantile regression are the public objectives.
-- GeoBoost does not claim equivalence to Lyft's proprietary GeoBoost system.
 - GeoBoost should not be described as generally superior to other boosters.
   Compare on the same data, split strategy, features, and metrics.
 
 ## Backend Scope
 
-- Advanced splitters, fuzzy training, list-valued sparse features,
-  schema-driven training, and linear leaves require the Rust native backend.
-- The pure-Python fallback is limited to dense axis-split constant-leaf
-  regression.
+- The Python estimator requires the Rust native extension.
+- Training and prediction require that extension.
 
 ## Data Scope
 

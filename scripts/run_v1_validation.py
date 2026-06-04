@@ -151,8 +151,7 @@ def collect_report() -> dict[str, Any]:
         "scope": "deterministic v1 release-candidate validation fixtures",
         "claim_policy": (
             "These fixtures provide regression evidence for implemented behavior. "
-            "They do not claim equivalence to Lyft's proprietary implementation or "
-            "broad production superiority."
+            "They do not claim broad production superiority."
         ),
         "phases": phases,
     }

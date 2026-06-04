@@ -14,7 +14,6 @@ def test_estimator_clones_and_exposes_fitted_metadata():
         learning_rate=0.5,
         max_depth=1,
         min_samples_leaf=1,
-        backend="python",
     )
 
     cloned = clone(model)
@@ -42,7 +41,6 @@ def test_pipeline_and_grid_search_work_with_sklearn():
                     n_estimators=3,
                     max_depth=1,
                     min_samples_leaf=1,
-                    backend="python",
                 ),
             ),
         ]

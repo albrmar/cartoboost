@@ -37,7 +37,6 @@ def fit_and_report(name: str, splitters: list[str], data: tuple[list[list[float]
         max_depth=1,
         min_samples_leaf=1,
         splitters=splitters,
-        backend="rust",
     )
     model.fit(x, y)
     pred = model.predict(x)

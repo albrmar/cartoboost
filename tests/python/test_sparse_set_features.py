@@ -25,7 +25,6 @@ def test_python_native_sparse_list_route_cells_train_predict():
         min_samples_leaf=1,
         min_gain=0.0,
         splitters=["sparse_set"],
-        backend="rust",
     )
 
     _fit_or_skip(model, x, y, sparse_sets=sparse_sets, feature_schema=schema)
@@ -46,7 +45,6 @@ def test_python_native_sparse_list_two_tree_boosting():
         min_samples_leaf=1,
         min_gain=0.0,
         splitters=["sparse_set"],
-        backend="rust",
     )
 
     _fit_or_skip(model, x, y, sparse_sets=sparse_sets)
@@ -65,7 +63,6 @@ def test_python_native_sparse_list_save_load_identity(tmp_path: Path):
         min_samples_leaf=1,
         min_gain=0.0,
         splitters=["sparse_set"],
-        backend="rust",
     )
     _fit_or_skip(model, x, y, sparse_sets=sparse_sets)
     path = tmp_path / "sparse-list.json"
@@ -90,7 +87,6 @@ def test_unseen_sparse_ids_route_correctly():
         min_samples_leaf=1,
         min_gain=0.0,
         splitters=["sparse_set"],
-        backend="rust",
     )
     _fit_or_skip(model, x, y, sparse_sets=train_sparse)
 
@@ -111,7 +107,6 @@ def test_empty_sparse_rows_route_correctly():
         min_samples_leaf=1,
         min_gain=0.0,
         splitters=["sparse_set"],
-        backend="rust",
     )
     _fit_or_skip(model, x, y, sparse_sets=sparse_sets)
 
@@ -134,7 +129,6 @@ def test_duplicate_sparse_ids_do_not_change_predictions():
         min_samples_leaf=1,
         min_gain=0.0,
         splitters=["sparse_set"],
-        backend="rust",
     )
     _fit_or_skip(model, x, y, sparse_sets=train_sparse)
 
@@ -161,7 +155,6 @@ def test_sparse_prediction_dict_order_uses_fitted_column_order():
         min_samples_leaf=1,
         min_gain=0.0,
         splitters=["sparse_set"],
-        backend="rust",
     )
     _fit_or_skip(model, x, y, sparse_sets=sparse_sets)
 
@@ -181,7 +174,6 @@ def test_sparse_prediction_list_input_is_positional():
         min_samples_leaf=1,
         min_gain=0.0,
         splitters=["sparse_set"],
-        backend="rust",
     )
     _fit_or_skip(model, x, y, sparse_sets=sparse_columns)
 
@@ -189,28 +181,28 @@ def test_sparse_prediction_list_input_is_positional():
 
 
 def test_sparse_row_count_mismatch_raises():
-    model = GeoBoostRegressor(max_depth=0, backend="python")
+    model = GeoBoostRegressor(max_depth=0)
 
     with pytest.raises(ValueError, match="same number of rows"):
         model.fit([[0.0], [1.0]], [0.0, 1.0], sparse_sets={"route_cells": [[7]]})
 
 
 def test_non_integer_sparse_id_raises():
-    model = GeoBoostRegressor(max_depth=0, backend="python")
+    model = GeoBoostRegressor(max_depth=0)
 
     with pytest.raises(ValueError, match="non-negative integers"):
         model.fit([[0.0]], [0.0], sparse_sets={"route_cells": [[1.5]]})
 
 
 def test_negative_sparse_id_raises():
-    model = GeoBoostRegressor(max_depth=0, backend="python")
+    model = GeoBoostRegressor(max_depth=0)
 
     with pytest.raises(ValueError, match="negative ID"):
         model.fit([[0.0]], [0.0], sparse_sets={"route_cells": [[-1]]})
 
 
 def test_mixed_fit_preserves_sample_weight_validation():
-    model = GeoBoostRegressor(max_depth=0, backend="python")
+    model = GeoBoostRegressor(max_depth=0)
 
     with pytest.raises(ValueError, match="sample_weight length"):
         model.fit(

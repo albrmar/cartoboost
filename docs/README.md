@@ -40,7 +40,6 @@ model = GeoBoostRegressor(
     learning_rate=0.1,
     max_depth=3,
     splitters=["axis"],
-    backend="rust",
 )
 model.fit(X_train, y_train)
 predictions = model.predict(X_test)

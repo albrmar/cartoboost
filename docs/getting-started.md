@@ -18,9 +18,7 @@ uv run --group dev maturin develop
 ```
 
 `maturin develop` builds `geoboost._native` and installs it into the `uv`
-environment. Use `backend="rust"` when your model uses native-only features
-such as spatial splitters, sparse sets, fuzzy routing, feature schemas, or
-linear leaves.
+environment. The Python estimator requires this native extension.
 
 ## Train From Python
 
@@ -36,7 +34,6 @@ model = GeoBoostRegressor(
     max_depth=2,
     min_samples_leaf=1,
     splitters=["axis"],
-    backend="rust",
 )
 model.fit(X, y)
 
@@ -51,7 +48,6 @@ model = GeoBoostRegressor(
     learning_rate=0.05,
     max_depth=4,
     splitters=["axis", "diagonal_2d", "gaussian_2d", "periodic:24"],
-    backend="rust",
 )
 ```
 

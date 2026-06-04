@@ -27,7 +27,6 @@ def test_native_fuzzy_gaussian_serialization_preserves_predictions(tmp_path):
         splitters=["gaussian_2d"],
         fuzzy=True,
         fuzzy_bandwidth=0.5,
-        backend="rust",
     )
 
     try:
@@ -66,7 +65,6 @@ def test_real_native_save_load_restores_public_params_and_metadata(tmp_path):
         fuzzy=True,
         fuzzy_bandwidth=0.5,
         leaf_predictor="constant",
-        backend="rust",
     )
 
     try:
@@ -100,7 +98,6 @@ def test_real_native_save_load_restores_public_params_and_metadata(tmp_path):
         "constant_l2_regularization": 0.0,
         "random_state": None,
         "n_threads": None,
-        "backend": "auto",
         "monotonic_constraints": None,
     }
     assert restored.metadata_["library_name"] == "geoboost-core"
@@ -118,7 +115,6 @@ def test_real_native_save_weights_load_weights_restores_predictions(tmp_path):
         max_depth=1,
         min_samples_leaf=1,
         min_gain=0.0,
-        backend="rust",
     )
 
     try:
@@ -150,7 +146,6 @@ def test_native_sparse_list_prediction_requires_sparse_sets_after_load(tmp_path)
         min_samples_leaf=1,
         min_gain=0.0,
         splitters=["sparse_set"],
-        backend="rust",
     )
 
     try:
@@ -191,19 +186,17 @@ def test_native_artifact_version_mismatch_errors_clearly(tmp_path):
         GeoBoostRegressor.load(path)
 
 
-def test_python_api_rejects_unsupported_objectives_and_backends():
+def test_python_api_rejects_unsupported_objectives():
     with pytest.raises(ValueError, match="loss"):
         GeoBoostRegressor(loss="l1").fit([[0.0], [1.0]], [0.0, 1.0])
     with pytest.raises(ValueError, match="quantile_alpha"):
         GeoBoostRegressor(loss="quantile", quantile_alpha=1.0).fit([[0.0], [1.0]], [0.0, 1.0])
-    with pytest.raises(ValueError, match="backend"):
-        GeoBoostRegressor(backend="cuda").fit([[0.0], [1.0]], [0.0, 1.0])
     with pytest.raises(ValueError, match="leaf_predictor"):
         GeoBoostRegressor(leaf_predictor="spline").fit([[0.0], [1.0]], [0.0, 1.0])
 
 
 def test_python_api_rejects_invalid_training_arrays():
-    model = GeoBoostRegressor(backend="python")
+    model = GeoBoostRegressor()
 
     with pytest.raises(ValueError, match="same number of rows"):
         model.fit([[0.0], [1.0]], [0.0])
@@ -215,30 +208,15 @@ def test_python_api_rejects_invalid_training_arrays():
         model.fit([[0.0], [1.0]], [0.0, float("inf")])
 
 
-def test_python_fallback_rejects_native_only_features():
-    with pytest.raises(NotImplementedError, match="pure-Python fallback"):
-        GeoBoostRegressor(splitters=["gaussian_2d"], backend="python").fit(
-            [[0.0, 0.0], [1.0, 1.0]],
-            [0.0, 1.0],
-        )
-    with pytest.raises(NotImplementedError, match="pure-Python fallback"):
-        GeoBoostRegressor(fuzzy=True, fuzzy_bandwidth=1.0, backend="python").fit(
-            [[0.0], [1.0]],
-            [0.0, 1.0],
-        )
-
-
 def test_linear_leaf_feature_indices_are_validated():
     with pytest.raises(ValueError, match="stringified integer"):
         GeoBoostRegressor(
             leaf_predictor="linear",
             linear_leaf_features=["distance"],
-            backend="rust",
         ).fit([[0.0], [1.0]], [0.0, 1.0])
 
     with pytest.raises(ValueError, match="out of bounds"):
         GeoBoostRegressor(
             leaf_predictor="linear",
             linear_leaf_features=["2"],
-            backend="rust",
         ).fit([[0.0], [1.0]], [0.0, 1.0])

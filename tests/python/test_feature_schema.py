@@ -41,7 +41,6 @@ def test_python_schema_periodic_feature_used_without_full_period_coverage():
         min_samples_leaf=1,
         min_gain=0.0,
         splitters=["periodic:24"],
-        backend="rust",
     )
 
     _fit_or_skip(model, x, y, feature_schema=schema)
@@ -66,7 +65,6 @@ def test_python_schema_sparse_columns_restrict_sparse_splitter():
         min_samples_leaf=1,
         min_gain=0.0,
         splitters=["sparse_set"],
-        backend="rust",
     )
 
     _fit_or_skip(model, x, y, sparse_sets=sparse_sets, feature_schema=schema)
@@ -77,7 +75,7 @@ def test_python_schema_sparse_columns_restrict_sparse_splitter():
 
 
 def test_python_schema_rejects_unknown_kind():
-    model = GeoBoostRegressor(max_depth=0, backend="python")
+    model = GeoBoostRegressor(max_depth=0)
     schema = FeatureSchema(dense=[("hour", "clockish")])
 
     with pytest.raises(ValueError, match="unknown feature kind"):
@@ -85,7 +83,7 @@ def test_python_schema_rejects_unknown_kind():
 
 
 def test_python_schema_rejects_length_mismatch():
-    model = GeoBoostRegressor(max_depth=0, backend="python")
+    model = GeoBoostRegressor(max_depth=0)
     schema = FeatureSchema(dense=[("only_one", "numeric")])
 
     with pytest.raises(ValueError, match="feature_schema length"):
@@ -93,7 +91,7 @@ def test_python_schema_rejects_length_mismatch():
 
 
 def test_python_schema_rejects_sparse_length_mismatch():
-    model = GeoBoostRegressor(max_depth=0, backend="python")
+    model = GeoBoostRegressor(max_depth=0)
     schema = FeatureSchema(dense=[("x", "numeric")])
 
     with pytest.raises(ValueError, match="feature_schema length"):
@@ -120,7 +118,6 @@ def test_schema_survives_save_load(tmp_path: Path):
         min_samples_leaf=1,
         min_gain=0.0,
         splitters=["sparse_set"],
-        backend="rust",
     )
     _fit_or_skip(model, x, y, sparse_sets=sparse_sets, feature_schema=schema)
     path = tmp_path / "schema.json"

@@ -42,7 +42,6 @@ def main() -> None:
         learning_rate=0.25,
         max_depth=2,
         min_samples_leaf=1,
-        backend="rust",
     )
     model.fit(rows, target)
 

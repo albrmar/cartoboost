@@ -83,7 +83,6 @@ model = GeoBoostRegressor(
     learning_rate=0.04,
     max_depth=5,
     splitters=["axis", "periodic:24", "diagonal_2d"],
-    backend="rust",
 )
 
 model.fit(X[train_idx], y[train_idx])

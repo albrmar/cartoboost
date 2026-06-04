@@ -63,7 +63,6 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
         constant_l2_regularization: float = 0.0,
         random_state: int | None = None,
         n_threads: int | None = None,
-        backend: str = "auto",
         monotonic_constraints: list[int] | None = None,
     ) -> None:
         self.n_estimators = n_estimators
@@ -85,7 +84,6 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
         self.constant_l2_regularization = constant_l2_regularization
         self.random_state = random_state
         self.n_threads = n_threads
-        self.backend = backend
         self.monotonic_constraints = monotonic_constraints
         self._model: Any | None = None
         self._backend_used: str | None = None
@@ -111,7 +109,6 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
             "constant_l2_regularization": self.constant_l2_regularization,
             "random_state": self.random_state,
             "n_threads": self.n_threads,
-            "backend": self.backend,
             "monotonic_constraints": self.monotonic_constraints,
         }
 
@@ -140,9 +137,8 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
         if hasattr(self, "_constant_prediction_value_"):
             delattr(self, "_constant_prediction_value_")
         feature_names = _feature_names(X)
-        native_cls = _NativeGeoBoostRegressor
-        use_native_backend = self.backend in {"auto", "rust"} and native_cls is not None
-        dense_array = _as_2d_float_array(X, check_finite=not use_native_backend)
+        native_cls = _require_native_backend()
+        dense_array = _as_2d_float_array(X, check_finite=False)
         targets_array = _as_1d_float_array(y)
         if dense_array.shape[0] != targets_array.shape[0]:
             raise ValueError("X and y must contain the same number of rows")
@@ -173,100 +169,7 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
         if feature_names is not None:
             self.feature_names_in_ = np.asarray(feature_names, dtype=object)
 
-        if use_native_backend:
-            model = native_cls(
-                n_estimators=int(self.n_estimators),
-                learning_rate=float(self.learning_rate),
-                max_depth=int(self.max_depth),
-                min_samples_leaf=int(self.min_samples_leaf),
-                min_gain=float(self.min_gain),
-                loss=str(self.loss),
-                quantile_alpha=float(loss_params["quantile_alpha"]),
-                huber_delta=float(loss_params["huber_delta"]),
-                log_offset=float(loss_params["log_offset"]),
-                splitters=list(self.splitters or ["axis"]),
-                leaf_predictor=str(self.leaf_predictor),
-                linear_leaf_features=_resolve_linear_leaf_features(
-                    self.linear_leaf_features,
-                    dense_array.shape[1],
-                ),
-                l2_regularization=float(self.l2_regularization),
-                constant_l2_regularization=float(self.constant_l2_regularization),
-                fuzzy=bool(self.fuzzy),
-                fuzzy_bandwidth=float(self.fuzzy_bandwidth),
-                monotonic_constraints=(
-                    None
-                    if self.monotonic_constraints is None
-                    else [int(value) for value in self.monotonic_constraints]
-                ),
-            )
-            try:
-                _fit_native(
-                    model,
-                    dense_array,
-                    targets_array,
-                    weights_array,
-                    sparse_columns,
-                    sparse_offsets,
-                    sparse_ids,
-                    schema_json,
-                )
-            except NotImplementedError:
-                if self.backend == "rust" or not self._python_fallback_supported():
-                    raise
-            else:
-                self._model = model
-                self._backend_used = "rust"
-                self.feature_schema_ = (
-                    json.loads(schema_json) if schema_json is not None else schema_metadata
-                )
-                self.metadata_ = _json_attr(model, "metadata_json")
-                self.training_config_ = _json_attr(model, "training_config_json")
-                self.requires_sparse_sets_ = bool(
-                    getattr(model, "requires_sparse_sets", bool(sparse_columns))
-                )
-                if (
-                    int(self.max_depth) == 0
-                    and self.leaf_predictor == "constant"
-                    and not self.fuzzy
-                ):
-                    if weights_array is None:
-                        self._constant_prediction_value_ = _initial_value(
-                            targets_array.tolist(),
-                            None,
-                            self.loss,
-                            float(loss_params["quantile_alpha"]),
-                        )
-                    else:
-                        weight_sum = float(np.sum(weights_array))
-                        self._constant_prediction_value_ = (
-                            _initial_value(
-                                targets_array.tolist(),
-                                weights_array.tolist(),
-                                self.loss,
-                                float(loss_params["quantile_alpha"]),
-                            )
-                            if weight_sum > 0.0
-                            else 0.0
-                        )
-                self.is_fitted_ = True
-                return self
-
-        if self.backend == "rust":
-            raise ImportError("geoboost._native is not available; build with maturin first")
-        if sparse_columns:
-            raise NotImplementedError("the pure-Python fallback does not support sparse_sets")
-        rows = dense_array.tolist()
-        targets = targets_array.tolist()
-        weights = None if weights_array is None else weights_array.tolist()
-        if self.leaf_predictor != "constant" or (
-            int(self.max_depth) != 0 and (self.fuzzy or not _is_axis_splitters(self.splitters))
-        ):
-            raise NotImplementedError(
-                "the pure-Python fallback supports only axis splits with constant leaves"
-            )
-
-        model = _FallbackModel(
+        model = native_cls(
             n_estimators=int(self.n_estimators),
             learning_rate=float(self.learning_rate),
             max_depth=int(self.max_depth),
@@ -276,18 +179,71 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
             quantile_alpha=float(loss_params["quantile_alpha"]),
             huber_delta=float(loss_params["huber_delta"]),
             log_offset=float(loss_params["log_offset"]),
+            splitters=list(self.splitters or ["axis"]),
+            leaf_predictor=str(self.leaf_predictor),
+            linear_leaf_features=_resolve_linear_leaf_features(
+                self.linear_leaf_features,
+                dense_array.shape[1],
+            ),
+            l2_regularization=float(self.l2_regularization),
+            constant_l2_regularization=float(self.constant_l2_regularization),
+            fuzzy=bool(self.fuzzy),
+            fuzzy_bandwidth=float(self.fuzzy_bandwidth),
             monotonic_constraints=(
                 None
                 if self.monotonic_constraints is None
                 else [int(value) for value in self.monotonic_constraints]
             ),
         )
-        model.fit(rows, targets, weights)
+        _fit_native(
+            model,
+            dense_array,
+            targets_array,
+            weights_array,
+            sparse_columns,
+            sparse_offsets,
+            sparse_ids,
+            schema_json,
+        )
         self._model = model
-        self._backend_used = "python"
-        self.metadata_ = None
-        self.training_config_ = None
-        self.requires_sparse_sets_ = False
+        self._backend_used = "rust"
+        self.feature_schema_ = (
+            json.loads(schema_json) if schema_json is not None else schema_metadata
+        )
+        self.metadata_ = _json_attr(model, "metadata_json")
+        self.training_config_ = _json_attr(model, "training_config_json")
+        self.requires_sparse_sets_ = bool(
+            getattr(model, "requires_sparse_sets", bool(sparse_columns))
+        )
+        if int(self.max_depth) == 0 and self.leaf_predictor == "constant" and not self.fuzzy:
+            training_targets = _training_targets(
+                targets_array.tolist(),
+                self.loss,
+                float(loss_params["log_offset"]),
+            )
+            if weights_array is None:
+                self._constant_prediction_value_ = _initial_value(
+                    training_targets,
+                    None,
+                    self.loss,
+                    float(loss_params["quantile_alpha"]),
+                )
+            else:
+                weight_sum = float(np.sum(weights_array))
+                self._constant_prediction_value_ = (
+                    _initial_value(
+                        training_targets,
+                        weights_array.tolist(),
+                        self.loss,
+                        float(loss_params["quantile_alpha"]),
+                    )
+                    if weight_sum > 0.0
+                    else 0.0
+                )
+            self._constant_prediction_value_ = _inverse_prediction(
+                self._constant_prediction_value_,
+                self.loss,
+            )
         self.is_fitted_ = True
         return self
 
@@ -308,14 +264,13 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
                 np.asarray(self._constant_prediction_value_, dtype=float),
                 (rows,),
             )
-        use_native_backend = self._backend_used == "rust"
-        dense_array = _as_2d_float_array(X, check_finite=not use_native_backend)
+        dense_array = _as_2d_float_array(X, check_finite=False)
         if hasattr(self, "n_features_in_") and dense_array.shape[1] != self.n_features_in_:
             raise ValueError(
                 f"X has {dense_array.shape[1]} features, but GeoBoostRegressor was fitted with "
                 f"{self.n_features_in_} features"
             )
-        if use_native_backend and not getattr(self, "requires_sparse_sets_", False):
+        if not getattr(self, "requires_sparse_sets_", False):
             sparse_columns: list[list[list[int]]] = []
             sparse_names: list[str] = []
             sparse_offsets: list[list[int]] = []
@@ -347,23 +302,16 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
                 f"sparse_sets columns {sparse_names!r} do not match fitted columns "
                 f"{self.sparse_set_names_!r}"
             )
-        if self._backend_used == "rust":
-            if not sparse_columns and getattr(self, "requires_sparse_sets_", False):
-                raise ValueError(
-                    "sparse_sets are required for prediction with this sparse-list model"
-                )
-            try:
-                return np.asarray(
-                    self._model.predict_arrays(dense_array, sparse_offsets, sparse_ids),
-                    dtype=float,
-                )
-            except TypeError:
-                rows = dense_array.tolist()
-                return np.asarray(list(self._model.predict(rows, sparse_columns)), dtype=float)
-        if sparse_columns:
-            raise NotImplementedError("the pure-Python fallback does not support sparse_sets")
-        rows = dense_array.tolist()
-        return np.asarray(list(self._model.predict(rows)), dtype=float)
+        if not sparse_columns and getattr(self, "requires_sparse_sets_", False):
+            raise ValueError("sparse_sets are required for prediction with this sparse-list model")
+        try:
+            return np.asarray(
+                self._model.predict_arrays(dense_array, sparse_offsets, sparse_ids),
+                dtype=float,
+            )
+        except TypeError:
+            rows = dense_array.tolist()
+            return np.asarray(list(self._model.predict(rows, sparse_columns)), dtype=float)
 
     def predict_additive_values(
         self,
@@ -377,25 +325,17 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
             X,
             sparse_sets,
         )
-        if self._backend_used == "rust":
-            if hasattr(self._model, "predict_additive_arrays"):
-                return np.asarray(
-                    self._model.predict_additive_arrays(
-                        dense_array,
-                        sparse_offsets,
-                        sparse_ids,
-                    ),
-                    dtype=float,
-                )
-            rows = dense_array.tolist()
+        if hasattr(self._model, "predict_additive_arrays"):
             return np.asarray(
-                self._model.predict_additive(rows, sparse_columns),
+                self._model.predict_additive_arrays(
+                    dense_array,
+                    sparse_offsets,
+                    sparse_ids,
+                ),
                 dtype=float,
             )
-        if sparse_columns:
-            raise NotImplementedError("the pure-Python fallback does not support sparse_sets")
         rows = dense_array.tolist()
-        return np.asarray(self._model.predict_additive(rows), dtype=float)
+        return np.asarray(self._model.predict_additive(rows, sparse_columns), dtype=float)
 
     def _prediction_inputs(
         self,
@@ -403,14 +343,13 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
         sparse_sets: Any | None,
     ) -> tuple[np.ndarray, list[list[list[int]]], list[list[int]], list[list[int]]]:
         expected_sparse_count = getattr(self, "n_sparse_sets_in_", 0)
-        use_native_backend = self._backend_used == "rust"
-        dense_array = _as_2d_float_array(X, check_finite=not use_native_backend)
+        dense_array = _as_2d_float_array(X, check_finite=False)
         if hasattr(self, "n_features_in_") and dense_array.shape[1] != self.n_features_in_:
             raise ValueError(
                 f"X has {dense_array.shape[1]} features, but GeoBoostRegressor was fitted with "
                 f"{self.n_features_in_} features"
             )
-        if use_native_backend and not getattr(self, "requires_sparse_sets_", False):
+        if not getattr(self, "requires_sparse_sets_", False):
             sparse_columns: list[list[list[int]]] = []
             sparse_names: list[str] = []
             sparse_offsets: list[list[int]] = []
@@ -442,11 +381,7 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
                 f"sparse_sets columns {sparse_names!r} do not match fitted columns "
                 f"{self.sparse_set_names_!r}"
             )
-        if (
-            use_native_backend
-            and not sparse_columns
-            and getattr(self, "requires_sparse_sets_", False)
-        ):
+        if not sparse_columns and getattr(self, "requires_sparse_sets_", False):
             raise ValueError("sparse_sets are required for prediction with this sparse-list model")
         return dense_array, sparse_columns, sparse_offsets, sparse_ids
 
@@ -512,17 +447,10 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
         if self._model is None:
             raise RuntimeError("GeoBoostRegressor is not fitted")
         path = Path(path)
-        if self._backend_used == "rust" and hasattr(self._model, "save"):
+        if hasattr(self._model, "save"):
             self._model.save(path)
             return
-
-        payload = {
-            "params": self.get_params(),
-            "model": self._model.to_dict(),
-            "backend": "python",
-            "feature_schema": getattr(self, "feature_schema_", None),
-        }
-        path.write_text(json.dumps(payload), encoding="utf-8")
+        raise NotImplementedError("native model does not support save")
 
     def save_weights(self, path: str | Path, *, format: str = "auto") -> None:
         """Save a versioned, prediction-ready weights artifact.
@@ -542,123 +470,22 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
         if resolved_format != "json":
             raise ValueError("format must be one of 'auto', 'json', or 'onnx'")
 
-        if self._backend_used == "rust" and hasattr(self._model, "save_weights"):
+        if hasattr(self._model, "save_weights"):
             self._model.save_weights(path)
             return
-        path.write_text(
-            json.dumps(self._weights_artifact_payload(), indent=2, sort_keys=True),
-            encoding="utf-8",
-        )
+        raise NotImplementedError("native model does not support save_weights")
 
     @classmethod
     def load(cls, path: str | Path) -> GeoBoostRegressor:
         path = Path(path)
-        native_cls = _NativeGeoBoostRegressor
-        native_error: ValueError | None = None
-        if native_cls is not None:
-            try:
-                native_model = native_cls.load(path)
-            except ValueError as exc:
-                native_error = exc
-            else:
-                estimator = cls(
-                    n_estimators=native_model.n_estimators,
-                    learning_rate=native_model.learning_rate,
-                    max_depth=native_model.max_depth,
-                    min_samples_leaf=native_model.min_samples_leaf,
-                    min_gain=native_model.min_gain,
-                    loss=str(getattr(native_model, "loss", "l2")),
-                    quantile_alpha=float(getattr(native_model, "quantile_alpha", 0.5)),
-                    huber_delta=float(getattr(native_model, "huber_delta", 1.0)),
-                    log_offset=float(getattr(native_model, "log_offset", 1.0)),
-                    splitters=list(getattr(native_model, "splitters", ["axis"])),
-                    leaf_predictor=str(getattr(native_model, "leaf_predictor", "constant")),
-                    linear_leaf_features=[
-                        str(feature)
-                        for feature in getattr(native_model, "linear_leaf_features", [])
-                    ],
-                    fuzzy=bool(getattr(native_model, "fuzzy", False)),
-                    fuzzy_bandwidth=float(getattr(native_model, "fuzzy_bandwidth", 0.0)),
-                    l2_regularization=float(getattr(native_model, "l2_regularization", 1.0)),
-                    constant_l2_regularization=float(
-                        getattr(native_model, "constant_l2_regularization", 0.0)
-                    ),
-                    backend="auto",
-                    monotonic_constraints=list(getattr(native_model, "monotonic_constraints", []))
-                    or None,
-                )
-                estimator._model = native_model
-                estimator._backend_used = "rust"
-                estimator.n_features_in_ = native_model.feature_count
-                estimator.feature_schema_ = _json_attr(native_model, "feature_schema_json")
-                estimator.sparse_set_names_ = _sparse_names_from_feature_schema(
-                    estimator.feature_schema_
-                )
-                estimator.n_sparse_sets_in_ = len(estimator.sparse_set_names_)
-                estimator.metadata_ = _json_attr(native_model, "metadata_json")
-                estimator.training_config_ = _json_attr(native_model, "training_config_json")
-                estimator.requires_sparse_sets_ = bool(
-                    getattr(native_model, "requires_sparse_sets", False)
-                )
-                estimator.is_fitted_ = True
-                return estimator
-
-        payload = json.loads(path.read_text(encoding="utf-8"))
-        if native_error is not None and _looks_like_native_artifact(payload):
-            raise native_error
-        estimator = cls(**payload["params"])
-        estimator._model = _FallbackModel.from_dict(payload["model"])
-        estimator._backend_used = "python"
-        estimator.n_features_in_ = payload["model"].get("feature_count", 0) or 1
-        estimator.n_sparse_sets_in_ = 0
-        estimator.sparse_set_names_ = []
-        estimator.feature_schema_ = payload.get("feature_schema")
-        estimator.metadata_ = None
-        estimator.training_config_ = None
-        estimator.requires_sparse_sets_ = False
-        estimator.is_fitted_ = True
-        return estimator
+        native_model = _require_native_backend().load(path)
+        return cls._from_native_model(native_model)
 
     @classmethod
     def load_weights(cls, path: str | Path) -> GeoBoostRegressor:
         path = Path(path)
-        native_cls = _NativeGeoBoostRegressor
-        native_error: ValueError | None = None
-        if native_cls is not None:
-            try:
-                native_model = native_cls.load_weights(path)
-            except ValueError as exc:
-                native_error = exc
-            else:
-                return cls._from_native_model(native_model)
-
-        payload = json.loads(path.read_text(encoding="utf-8"))
-        if native_error is not None and _looks_like_native_weights_artifact(payload):
-            raise native_error
-        if _looks_like_native_artifact(payload):
-            return cls.load(path)
-        if payload.get("artifact_type") != "geoboost.weights":
-            raise ValueError(f"unsupported weights artifact type {payload.get('artifact_type')!r}")
-        if int(payload.get("weights_artifact_version", -1)) != 1:
-            raise ValueError(
-                f"unsupported weights artifact version {payload.get('weights_artifact_version')}"
-            )
-        if payload.get("backend") != "python":
-            raise ValueError(
-                "loading native weights requires geoboost._native; rebuild with maturin first"
-            )
-        estimator = cls(**payload["params"])
-        estimator._model = _FallbackModel.from_dict(payload["model"])
-        estimator._backend_used = "python"
-        estimator.n_features_in_ = payload["model"].get("feature_count", 0) or 1
-        estimator.n_sparse_sets_in_ = 0
-        estimator.sparse_set_names_ = []
-        estimator.feature_schema_ = payload.get("feature_schema")
-        estimator.metadata_ = None
-        estimator.training_config_ = None
-        estimator.requires_sparse_sets_ = False
-        estimator.is_fitted_ = True
-        return estimator
+        native_model = _require_native_backend().load_weights(path)
+        return cls._from_native_model(native_model)
 
     @classmethod
     def _from_native_model(cls, native_model: Any) -> GeoBoostRegressor:
@@ -683,7 +510,6 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
             constant_l2_regularization=float(
                 getattr(native_model, "constant_l2_regularization", 0.0)
             ),
-            backend="auto",
             monotonic_constraints=list(getattr(native_model, "monotonic_constraints", [])) or None,
         )
         estimator._model = native_model
@@ -699,20 +525,12 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
         return estimator
 
     def _weights_artifact_payload(self) -> dict[str, Any]:
-        if self._backend_used == "rust" and hasattr(self._model, "save_weights"):
+        if hasattr(self._model, "save_weights"):
             with tempfile.TemporaryDirectory() as temp_dir:
                 temp_path = Path(temp_dir) / "weights.json"
                 self._model.save_weights(temp_path)
                 return json.loads(temp_path.read_text(encoding="utf-8"))
-        return {
-            "artifact_type": "geoboost.weights",
-            "weights_artifact_version": 1,
-            "backend": "python",
-            "model_artifact_version": 1,
-            "params": self.get_params(),
-            "feature_schema": getattr(self, "feature_schema_", None),
-            "model": self._model.to_dict(),
-        }
+        raise NotImplementedError("native model does not support save_weights")
 
     def _validate_params(self) -> None:
         if int(self.n_estimators) <= 0:
@@ -772,8 +590,6 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
             raise ValueError("constant_l2_regularization must be finite and non-negative")
         if float(self.fuzzy_bandwidth) < 0 or not math.isfinite(float(self.fuzzy_bandwidth)):
             raise ValueError("fuzzy_bandwidth must be finite and non-negative")
-        if self.backend not in {"auto", "rust", "python"}:
-            raise ValueError("backend must be one of 'auto', 'rust', or 'python'")
         if self.monotonic_constraints is not None:
             constraints = list(self.monotonic_constraints)
             if any(int(value) not in {-1, 0, 1} for value in constraints):
@@ -800,158 +616,6 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
         unknown = [splitter for splitter in splitters if not _is_valid_splitter_name(splitter)]
         if unknown:
             raise ValueError(f"unknown splitter(s): {unknown}")
-
-    def _python_fallback_supported(self) -> bool:
-        if self.leaf_predictor != "constant":
-            return False
-        if int(self.max_depth) == 0:
-            return True
-        return not self.fuzzy and _is_axis_splitters(self.splitters)
-
-
-class _FallbackModel:
-    def __init__(
-        self,
-        n_estimators: int,
-        learning_rate: float,
-        max_depth: int,
-        min_samples_leaf: int,
-        min_gain: float,
-        loss: str = "l2",
-        quantile_alpha: float = 0.5,
-        huber_delta: float = 1.0,
-        log_offset: float = 1.0,
-        monotonic_constraints: list[int] | None = None,
-    ) -> None:
-        self.n_estimators = n_estimators
-        self.learning_rate = learning_rate
-        self.max_depth = max_depth
-        self.min_samples_leaf = min_samples_leaf
-        self.min_gain = min_gain
-        self.loss = loss
-        self.quantile_alpha = quantile_alpha
-        self.huber_delta = huber_delta
-        self.log_offset = log_offset
-        self.monotonic_constraints = monotonic_constraints or []
-        self.init_value = 0.0
-        self.feature_count = 0
-        self.stumps: list[dict[str, float | int]] = []
-
-    def fit(
-        self,
-        X: list[list[float]],
-        y: list[float],
-        sample_weight: list[float] | None = None,
-    ) -> None:
-        self.feature_count = len(X[0])
-        weights = sample_weight or [1.0 for _ in y]
-        training_targets = _training_targets(y, self.loss, self.log_offset)
-        self.init_value = _initial_value(
-            training_targets,
-            weights,
-            self.loss,
-            self.quantile_alpha,
-        )
-        prediction = [self.init_value for _ in training_targets]
-        self.stumps = []
-        if self.max_depth == 0:
-            return
-        for _ in range(self.n_estimators):
-            residuals = [
-                _negative_gradient(target, pred, self.loss, self.huber_delta)
-                for target, pred in zip(training_targets, prediction, strict=True)
-            ]
-            stump = _best_stump(
-                X,
-                residuals,
-                weights,
-                self.min_samples_leaf,
-                self.loss,
-                self.quantile_alpha,
-                self.huber_delta,
-                self.monotonic_constraints,
-            )
-            if stump is None:
-                break
-            for row_index, row in enumerate(X):
-                feature = int(stump["feature"])
-                value = (
-                    stump["left_value"]
-                    if row[feature] <= stump["threshold"]
-                    else stump["right_value"]
-                )
-                prediction[row_index] += self.learning_rate * float(value)
-            self.stumps.append(stump)
-
-    def predict(self, X: list[list[float]]) -> list[float]:
-        predictions = []
-        for row in X:
-            pred = self.init_value
-            for stump in self.stumps:
-                feature = int(stump["feature"])
-                value = (
-                    stump["left_value"]
-                    if row[feature] <= stump["threshold"]
-                    else stump["right_value"]
-                )
-                pred += self.learning_rate * float(value)
-            predictions.append(_inverse_prediction(pred, self.loss))
-        return predictions
-
-    def predict_additive(self, X: list[list[float]]) -> list[list[float]]:
-        additive_values = []
-        for row in X:
-            row_values = [self.init_value]
-            for stump in self.stumps:
-                feature = int(stump["feature"])
-                value = (
-                    stump["left_value"]
-                    if row[feature] <= stump["threshold"]
-                    else stump["right_value"]
-                )
-                row_values.append(self.learning_rate * float(value))
-            additive_values.append(row_values)
-        return additive_values
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "n_estimators": self.n_estimators,
-            "learning_rate": self.learning_rate,
-            "max_depth": self.max_depth,
-            "min_samples_leaf": self.min_samples_leaf,
-            "min_gain": self.min_gain,
-            "loss": self.loss,
-            "quantile_alpha": self.quantile_alpha,
-            "huber_delta": self.huber_delta,
-            "log_offset": self.log_offset,
-            "monotonic_constraints": self.monotonic_constraints,
-            "feature_count": self.feature_count,
-            "init_value": self.init_value,
-            "stumps": self.stumps,
-        }
-
-    @classmethod
-    def from_dict(cls, payload: dict[str, Any]) -> _FallbackModel:
-        model = cls(
-            n_estimators=int(payload["n_estimators"]),
-            learning_rate=float(payload["learning_rate"]),
-            max_depth=int(payload.get("max_depth", 1)),
-            min_samples_leaf=int(payload["min_samples_leaf"]),
-            min_gain=float(payload.get("min_gain", 0.0)),
-            loss=str(payload.get("loss", "l2")),
-            quantile_alpha=float(payload.get("quantile_alpha", 0.5)),
-            huber_delta=float(payload.get("huber_delta", 1.0)),
-            log_offset=float(payload.get("log_offset", 1.0)),
-            monotonic_constraints=list(payload.get("monotonic_constraints", [])),
-        )
-        model.init_value = float(payload["init_value"])
-        model.feature_count = int(payload.get("feature_count", 0))
-        model.stumps = list(payload["stumps"])
-        return model
-
-
-def _as_2d_float_list(values: Iterable[Iterable[float]]) -> list[list[float]]:
-    return _as_2d_float_array(values).tolist()
 
 
 def _shape_2d(values: Any) -> tuple[int, int]:
@@ -1001,10 +665,6 @@ def _feature_names(values: Any) -> list[str] | None:
     return [str(column) for column in columns]
 
 
-def _as_1d_float_list(values: Iterable[float]) -> list[float]:
-    return _as_1d_float_array(values).tolist()
-
-
 def _as_1d_float_array(values: Any) -> np.ndarray:
     values = _to_numpy(values)
     try:
@@ -1018,11 +678,6 @@ def _as_1d_float_array(values: Any) -> np.ndarray:
     if not np.all(np.isfinite(rows)):
         raise ValueError("y must contain only finite values")
     return np.ascontiguousarray(rows, dtype=np.float64)
-
-
-def _as_sample_weight_list(values: Iterable[float] | None, expected: int) -> list[float] | None:
-    weights = _as_sample_weight_array(values, expected)
-    return None if weights is None else weights.tolist()
 
 
 def _as_sample_weight_array(values: Any | None, expected: int) -> np.ndarray | None:
@@ -1314,6 +969,12 @@ def _sparse_names_from_feature_schema(feature_schema: Any | None) -> list[str]:
     ]
 
 
+def _require_native_backend() -> type[Any]:
+    if _NativeGeoBoostRegressor is None:
+        raise ImportError("geoboost._native is required; build it with maturin first")
+    return _NativeGeoBoostRegressor
+
+
 def _looks_like_native_artifact(payload: Any) -> bool:
     return isinstance(payload, dict) and "artifact_version" in payload and "trees" in payload
 
@@ -1379,61 +1040,7 @@ def _onnx_model_payload(artifact: dict[str, Any]) -> dict[str, Any]:
         return artifact
     if _looks_like_native_weights_artifact(artifact):
         return artifact["model"]
-    if artifact.get("backend") != "python":
-        raise NotImplementedError("ONNX export currently requires native or Python weights JSON")
-    fallback = artifact["model"]
-    trees = []
-    for stump in fallback.get("stumps", []):
-        trees.append(
-            {
-                "root": {
-                    "Branch": {
-                        "split": {
-                            "Axis": {
-                                "feature": int(stump["feature"]),
-                                "threshold": float(stump["threshold"]),
-                                "missing_goes_left": True,
-                            }
-                        },
-                        "left": {
-                            "Leaf": {
-                                "value": float(stump["left_value"]),
-                                "sample_weight_sum": 0.0,
-                                "training_loss": 0.0,
-                            }
-                        },
-                        "right": {
-                            "Leaf": {
-                                "value": float(stump["right_value"]),
-                                "sample_weight_sum": 0.0,
-                                "training_loss": 0.0,
-                            }
-                        },
-                        "gain": 0.0,
-                        "sample_weight_sum": 0.0,
-                    }
-                }
-            }
-        )
-    if not trees:
-        trees.append(
-            {
-                "root": {
-                    "Leaf": {
-                        "value": 0.0,
-                        "sample_weight_sum": 0.0,
-                        "training_loss": 0.0,
-                    }
-                }
-            }
-        )
-    return {
-        "artifact_version": 1,
-        "init_prediction": float(fallback["init_value"]),
-        "learning_rate": float(fallback["learning_rate"]),
-        "feature_count": int(fallback["feature_count"]),
-        "trees": trees,
-    }
+    raise NotImplementedError("ONNX export requires a native GeoBoost artifact")
 
 
 def _onnx_tree_ensemble_attrs(model_payload: dict[str, Any]) -> dict[str, Any]:
@@ -1607,64 +1214,6 @@ def _resolve_linear_leaf_features(features: list[str] | None, width: int) -> lis
     return resolved
 
 
-def _best_stump(
-    X: list[list[float]],
-    residuals: list[float],
-    weights: list[float],
-    min_samples_leaf: int,
-    loss: str,
-    quantile_alpha: float,
-    huber_delta: float,
-    monotonic_constraints: list[int],
-) -> dict[str, float | int] | None:
-    best_loss: float | None = None
-    best: dict[str, float | int] | None = None
-    for feature in range(len(X[0])):
-        thresholds = sorted({row[feature] for row in X})
-        for threshold in thresholds:
-            left_indices = [idx for idx, row in enumerate(X) if row[feature] <= threshold]
-            right_indices = [idx for idx, row in enumerate(X) if row[feature] > threshold]
-            left = [residuals[idx] for idx in left_indices]
-            right = [residuals[idx] for idx in right_indices]
-            if len(left) < min_samples_leaf or len(right) < min_samples_leaf:
-                continue
-            left_weights = [weights[idx] for idx in left_indices]
-            right_weights = [weights[idx] for idx in right_indices]
-            left_value = _leaf_value(left, left_weights, loss, quantile_alpha)
-            right_value = _leaf_value(right, right_weights, loss, quantile_alpha)
-            direction = (
-                monotonic_constraints[feature] if feature < len(monotonic_constraints) else 0
-            )
-            if direction > 0 and left_value > right_value + 1e-12:
-                continue
-            if direction < 0 and left_value + 1e-12 < right_value:
-                continue
-            candidate_loss = _leaf_loss(
-                left,
-                left_weights,
-                left_value,
-                loss,
-                quantile_alpha,
-                huber_delta,
-            ) + _leaf_loss(
-                right,
-                right_weights,
-                right_value,
-                loss,
-                quantile_alpha,
-                huber_delta,
-            )
-            if best_loss is None or candidate_loss < best_loss:
-                best_loss = candidate_loss
-                best = {
-                    "feature": feature,
-                    "threshold": threshold,
-                    "left_value": left_value,
-                    "right_value": right_value,
-                }
-    return best
-
-
 def _resolved_loss_params(
     loss: str,
     quantile_alpha: float,
@@ -1686,13 +1235,6 @@ def _training_targets(values: list[float], loss: str, log_offset: float) -> list
     if any(value + log_offset <= 0.0 for value in values):
         raise ValueError("log_l2 targets must be greater than -log_offset")
     return [math.log(value + log_offset) for value in values]
-
-
-def _negative_gradient(target: float, prediction: float, loss: str, huber_delta: float) -> float:
-    residual = target - prediction
-    if loss == "huber":
-        return max(-huber_delta, min(huber_delta, residual))
-    return residual
 
 
 def _inverse_prediction(prediction: float, loss: str) -> float:
@@ -1719,35 +1261,6 @@ def _leaf_value(
     return _weighted_mean(values, weights)
 
 
-def _leaf_loss(
-    values: list[float],
-    weights: list[float],
-    center: float,
-    loss: str,
-    quantile_alpha: float,
-    huber_delta: float,
-) -> float:
-    if loss in {"quantile", "pinball"}:
-        return sum(
-            weight * _pinball_loss(value, center, quantile_alpha)
-            for value, weight in zip(values, weights, strict=True)
-        )
-    if loss == "huber":
-        return sum(
-            weight * _huber_loss(value, center, huber_delta)
-            for value, weight in zip(values, weights, strict=True)
-        )
-    return _squared_error(values, weights, center)
-
-
-def _huber_loss(value: float, center: float, delta: float) -> float:
-    residual = value - center
-    abs_residual = abs(residual)
-    if abs_residual <= delta:
-        return 0.5 * residual * residual
-    return delta * (abs_residual - 0.5 * delta)
-
-
 def _weighted_quantile(values: list[float], weights: list[float], alpha: float) -> float:
     pairs = sorted(
         (value, weight)
@@ -1766,21 +1279,8 @@ def _weighted_quantile(values: list[float], weights: list[float], alpha: float) 
     return float(pairs[-1][0])
 
 
-def _pinball_loss(value: float, prediction: float, alpha: float) -> float:
-    residual = value - prediction
-    if residual >= 0.0:
-        return alpha * residual
-    return (alpha - 1.0) * residual
-
-
 def _weighted_mean(values: list[float], weights: list[float]) -> float:
     weight_sum = sum(weights)
     if weight_sum <= 0.0:
         return 0.0
     return sum(value * weight for value, weight in zip(values, weights, strict=True)) / weight_sum
-
-
-def _squared_error(values: list[float], weights: list[float], center: float) -> float:
-    return sum(
-        weight * (value - center) ** 2 for value, weight in zip(values, weights, strict=True)
-    )

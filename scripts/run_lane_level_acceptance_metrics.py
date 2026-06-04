@@ -77,7 +77,6 @@ def fit_model(
         splitters=splitters,
         fuzzy=fuzzy,
         fuzzy_bandwidth=fuzzy_bandwidth,
-        backend="rust",
     )
     model.fit(x, y)
     return model

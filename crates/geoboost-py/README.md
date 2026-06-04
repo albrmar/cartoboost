@@ -8,4 +8,4 @@ features, fuzzy routing, linear leaves, and JSON artifact loading.
 uv run --group dev maturin develop
 ```
 
-After building the extension, use `backend="rust"` in `GeoBoostRegressor`.
+The Python estimator requires this extension.

@@ -28,7 +28,6 @@ def test_numpy_dense_fast_path_matches_list_path():
         min_samples_leaf=1,
         min_gain=0.0,
         splitters=["axis"],
-        backend="rust",
     )
     list_model = GeoBoostRegressor(**config)
     array_model = GeoBoostRegressor(**config)
@@ -51,7 +50,6 @@ def test_numpy_sparse_fast_path_matches_list_path():
         min_samples_leaf=1,
         min_gain=0.0,
         splitters=["sparse_set"],
-        backend="rust",
     )
     list_model = GeoBoostRegressor(**config)
     array_model = GeoBoostRegressor(**config)
@@ -80,7 +78,6 @@ def test_numpy_sample_weight_fast_path_matches_list_path():
         min_samples_leaf=1,
         min_gain=0.0,
         splitters=["axis"],
-        backend="rust",
     )
     list_model = GeoBoostRegressor(**config)
     array_model = GeoBoostRegressor(**config)
@@ -109,7 +106,6 @@ def test_numpy_feature_schema_fast_path_matches_list_path():
         min_samples_leaf=1,
         min_gain=0.0,
         splitters=["periodic:24"],
-        backend="rust",
     )
     list_model = GeoBoostRegressor(**config)
     array_model = GeoBoostRegressor(**config)
@@ -183,7 +179,6 @@ def test_axis_histogram_splitter_is_accepted_by_python_api():
         min_samples_leaf=1,
         min_gain=0.0,
         splitters=["axis_histogram:8"],
-        backend="rust",
     )
 
     _fit_or_skip(

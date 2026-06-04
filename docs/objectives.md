@@ -25,7 +25,6 @@ model = GeoBoostRegressor(
     loss="quantile",
     quantile_alpha=0.9,
     leaf_predictor="constant",
-    backend="rust",
 )
 ```
 

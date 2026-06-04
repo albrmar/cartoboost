@@ -2,8 +2,7 @@
 
 ## Dev environment tips
 - This folder contains the public Python API, sklearn-compatible regressor, schema helpers, IO helpers, and SHAP integration.
-- Keep Rust-native behavior preferred for advanced features.
-- Keep the Python fallback limited and explicit.
+- Keep estimator training and prediction native-extension-only.
 
 ## Testing instructions
 - Run relevant tests under `tests/python` after estimator, schema, IO, or explanation changes.

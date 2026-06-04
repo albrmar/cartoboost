@@ -15,7 +15,6 @@ model = GeoBoostRegressor(
     max_depth=4,
     min_samples_leaf=20,
     splitters=["axis"],
-    backend="auto",
 )
 
 model.fit(X_train, y_train)
@@ -26,8 +25,7 @@ predictions = model.predict(X_test)
 
 ## Temporal-Spatial Usage
 
-GeoBoost's native backend can use splitters that match common time and location
-patterns:
+GeoBoost can use splitters that match common time and location patterns:
 
 ```python
 model = GeoBoostRegressor(
@@ -37,7 +35,6 @@ model = GeoBoostRegressor(
     splitters=["axis", "diagonal_2d", "gaussian_2d", "periodic:24", "sparse_set"],
     fuzzy=True,
     fuzzy_bandwidth=0.05,
-    backend="rust",
 )
 ```
 
@@ -45,16 +42,11 @@ Use dense columns for coordinates, projected x/y values, distances, and
 periodic time features. Use `sparse_sets=` for route cells, zones, grid cells,
 or encoded H3 cells when a row can belong to multiple locations.
 
-## Backend Selection
+## Native Extension
 
-| Backend | Behavior |
-| --- | --- |
-| `rust` | Requires `geoboost._native`; raises `ImportError` if unavailable. |
-| `auto` | Uses Rust when available and falls back only for supported dense axis configurations. |
-| `python` | Uses the fallback directly. |
-
-Use `backend="rust"` for any model that depends on native behavior. The
-fallback is limited to dense axis splits with constant leaves.
+`GeoBoostRegressor` requires `geoboost._native`. Build it with
+`uv run --group dev maturin develop` from a source checkout. If the extension is
+missing, fitting or loading a model raises `ImportError`.
 
 ## Sparse-Set Features
 
@@ -69,7 +61,6 @@ model = GeoBoostRegressor(
     max_depth=1,
     min_samples_leaf=1,
     splitters=["sparse_set"],
-    backend="rust",
 )
 model.fit(X_dense, y, sparse_sets={"route_cells": route_cells})
 predictions = model.predict(X_dense, sparse_sets={"route_cells": route_cells})
@@ -114,8 +105,7 @@ non-negative values.
 model.fit(X_train, y_train, sample_weight=weights)
 ```
 
-Weights are passed to the Rust trainer and are supported by the Python fallback
-for its dense axis path.
+Weights are passed to the native trainer.
 
 ## Additive Values And SHAP
 
@@ -150,7 +140,7 @@ requirements.
 
 | Error | Cause |
 | --- | --- |
-| `ImportError` | `backend="rust"` was requested but the native extension is unavailable. |
-| `NotImplementedError` | The Python fallback was asked to train unsupported native-only behavior. |
+| `ImportError` | The native extension is unavailable. |
+| `NotImplementedError` | The installed native extension does not support a requested feature. |
 | `ValueError` | Invalid parameters, unknown splitters, mismatched row counts, or incompatible sparse/schema inputs. |
 | `RuntimeError` | Prediction or save was called before fit. |

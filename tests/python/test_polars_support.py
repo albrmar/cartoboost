@@ -26,7 +26,6 @@ def test_polars_dataframe_fit_predict_preserves_feature_names():
         n_estimators=3,
         learning_rate=0.5,
         min_samples_leaf=1,
-        backend="python",
     )
 
     model.fit(x, y)
@@ -48,7 +47,6 @@ def test_polars_series_sample_weight_matches_numpy_path():
         min_samples_leaf=1,
         min_gain=0.0,
         splitters=["axis"],
-        backend="rust",
     )
     polars_model = GeoBoostRegressor(**config)
     numpy_model = GeoBoostRegressor(**config)
@@ -76,7 +74,6 @@ def test_polars_sparse_set_dataframe_train_predict_matches_dict_path():
         min_samples_leaf=1,
         min_gain=0.0,
         splitters=["sparse_set"],
-        backend="rust",
     )
     polars_model = GeoBoostRegressor(**config)
     dict_model = GeoBoostRegressor(**config)
@@ -101,7 +98,6 @@ def test_polars_sparse_shap_adapter_accepts_dataframes():
         max_depth=1,
         min_samples_leaf=1,
         splitters=["sparse_set"],
-        backend="rust",
     )
     _fit_or_skip(model, x, y, sparse_sets=sparse_sets)
 

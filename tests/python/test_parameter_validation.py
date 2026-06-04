@@ -3,15 +3,15 @@ from geoboost import GeoBoostRegressor
 from geoboost import regressor as regressor_module
 
 
-def test_unknown_splitter_is_rejected_before_backend_selection():
-    model = GeoBoostRegressor(splitters=["axis", "not_a_splitter"], backend="auto")
+def test_unknown_splitter_is_rejected_before_native_training():
+    model = GeoBoostRegressor(splitters=["axis", "not_a_splitter"])
 
     with pytest.raises(ValueError, match="unknown splitter"):
         model.fit([[0.0], [1.0]], [0.0, 1.0])
 
 
 def test_splitters_must_be_a_sequence_of_names():
-    model = GeoBoostRegressor(splitters="axis", backend="auto")
+    model = GeoBoostRegressor(splitters="axis")
 
     with pytest.raises(ValueError, match="splitters must be a list"):
         model.fit([[0.0], [1.0]], [0.0, 1.0])
@@ -19,19 +19,19 @@ def test_splitters_must_be_a_sequence_of_names():
 
 def test_feature_schema_metadata_is_retained(tmp_path):
     schema = {"distance": {"role": "numeric"}}
-    model = GeoBoostRegressor(max_depth=0, backend="python")
+    model = GeoBoostRegressor(max_depth=0)
 
     model.fit([[0.0], [1.0]], [2.0, 4.0], feature_schema=schema)
     model_path = tmp_path / "schema.json"
     model.save(model_path)
     restored = GeoBoostRegressor.load(model_path)
 
-    assert model.feature_schema_ == schema
-    assert restored.feature_schema_ == schema
+    assert model.feature_schema_ == {"names": ["distance"], "kinds": ["Numeric"]}
+    assert restored.feature_schema_ == {"names": ["distance"], "kinds": ["Numeric"]}
 
 
 def test_periodic_custom_period_splitter_is_validated():
-    model = GeoBoostRegressor(splitters=["periodic:168"], backend="python", max_depth=0)
+    model = GeoBoostRegressor(splitters=["periodic:168"], max_depth=0)
 
     model.fit([[1.0], [2.0]], [3.0, 4.0])
 
@@ -89,7 +89,6 @@ def test_native_load_restores_public_estimator_params(monkeypatch, tmp_path):
         "constant_l2_regularization": 0.0,
         "random_state": None,
         "n_threads": None,
-        "backend": "auto",
         "monotonic_constraints": None,
     }
     assert loaded.n_features_in_ == 3

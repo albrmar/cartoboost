@@ -27,7 +27,6 @@ def train_diagonal() -> GeoBoostRegressor:
         max_depth=1,
         min_samples_leaf=2,
         splitters=["diagonal_2d"],
-        backend="rust",
     )
     model.fit(points, target)
     return model
@@ -46,7 +45,6 @@ def train_radial() -> GeoBoostRegressor:
         max_depth=1,
         min_samples_leaf=2,
         splitters=["gaussian_2d"],
-        backend="rust",
     )
     model.fit(points, target)
     return model
@@ -96,7 +94,6 @@ def fit_model(
         fuzzy=fuzzy,
         fuzzy_bandwidth=fuzzy_bandwidth,
         l2_regularization=0.0,
-        backend="rust",
     )
     model.fit(x, y)
     return model

@@ -80,8 +80,8 @@ route.
 
 ## CLI Scope
 
-The CLI dense CSV workflow does not accept mixed sparse rows. Use Python with
-`backend="rust"` for sparse route-cell training and prediction.
+The CLI dense CSV workflow does not accept mixed sparse rows. Use the Python
+estimator for sparse route-cell training and prediction.
 
 ## Limitations
 

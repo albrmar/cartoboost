@@ -22,7 +22,6 @@ model = GeoBoostRegressor(
     n_estimators=50,
     learning_rate=0.1,
     max_depth=3,
-    backend="rust",
 ).fit(X_train, y_train)
 
 explainer = shap.Explainer(model, X_train)

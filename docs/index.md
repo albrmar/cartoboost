@@ -50,10 +50,7 @@ GeoBoost adds splitters that match common temporal-spatial patterns:
 - Fuzzy routing softens hard boundaries where nearby locations or times should
   behave similarly.
 
-The Rust native extension is required for advanced splitters, sparse-set
-features, feature schemas, fuzzy routing, linear leaves, and native artifact
-loading. The pure-Python fallback covers dense axis-split constant-leaf
-regression.
+The Rust native extension is required for training and prediction.
 
 ## Typical Workflow
 
@@ -66,7 +63,6 @@ model = GeoBoostRegressor(
     max_depth=4,
     min_samples_leaf=20,
     splitters=["axis"],
-    backend="rust",
 )
 
 model.fit(X_train, y_train)

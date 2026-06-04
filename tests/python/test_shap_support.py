@@ -26,7 +26,6 @@ def test_shap_explainer_accepts_geoboost_estimator_directly():
         n_estimators=3,
         learning_rate=0.5,
         min_samples_leaf=1,
-        backend="python",
     ).fit(X, y)
 
     explainer = shap.Explainer(model, X, algorithm="exact")
@@ -37,7 +36,7 @@ def test_shap_explainer_accepts_geoboost_estimator_directly():
     _assert_additive(explanation, model.predict(X[:2]))
 
 
-def test_explain_shap_returns_additive_explanation_for_python_backend():
+def test_explain_shap_returns_additive_explanation_for_native_backend():
     X = np.asarray(
         [
             [0.0, 0.0],
@@ -55,7 +54,6 @@ def test_explain_shap_returns_additive_explanation_for_python_backend():
         learning_rate=0.5,
         max_depth=1,
         min_samples_leaf=1,
-        backend="python",
     ).fit(X, y)
 
     explanation = model.explain_shap(X[:3], background=X, algorithm="exact")
@@ -72,7 +70,6 @@ def test_make_shap_explainer_public_helper_matches_method():
         n_estimators=3,
         learning_rate=0.5,
         min_samples_leaf=1,
-        backend="python",
     ).fit(X, y)
 
     helper_explainer = make_shap_explainer(model, X, algorithm="exact")
@@ -85,7 +82,7 @@ def test_make_shap_explainer_public_helper_matches_method():
     assert helper_explanation.base_values == pytest.approx(method_explanation.base_values)
 
 
-def test_shap_decomposes_additive_weights_for_weighted_python_backend():
+def test_shap_decomposes_additive_weights_for_weighted_native_backend():
     X = np.asarray([[0.0], [1.0], [2.0], [3.0]], dtype=float)
     y = np.asarray([0.0, 1.0, 4.0, 9.0], dtype=float)
     sample_weight = np.asarray([4.0, 1.0, 1.0, 2.0], dtype=float)
@@ -94,11 +91,10 @@ def test_shap_decomposes_additive_weights_for_weighted_python_backend():
         learning_rate=0.5,
         max_depth=1,
         min_samples_leaf=1,
-        backend="python",
     ).fit(X, y, sample_weight=sample_weight)
 
     additive = model.predict_additive_values(X[:2])
-    assert additive.shape == (2, len(model._model.stumps) + 1)
+    assert additive.shape[0] == 2
     assert additive.sum(axis=1) == pytest.approx(model.predict(X[:2]))
 
     explanation = model.explain_shap(
@@ -110,7 +106,7 @@ def test_shap_decomposes_additive_weights_for_weighted_python_backend():
 
     assert list(explanation.feature_names) == [
         "init_prediction",
-        *[f"tree_{idx}" for idx in range(len(model._model.stumps))],
+        *[f"tree_{idx}" for idx in range(additive.shape[1] - 1)],
     ]
     assert explanation.values.shape == additive.shape
     _assert_additive(explanation, model.predict(X[:2]))
@@ -124,7 +120,6 @@ def test_shap_preserves_pandas_feature_names():
         n_estimators=3,
         learning_rate=0.5,
         min_samples_leaf=1,
-        backend="python",
     ).fit(X, y)
 
     explanation = model.explain_shap(X.iloc[:2], background=X, algorithm="exact")
@@ -165,7 +160,6 @@ def test_shap_additivity_for_rust_dense_splitters(splitters, X, y, extra):
         max_depth=1,
         min_samples_leaf=1,
         splitters=splitters,
-        backend="rust",
     )
     _fit_or_skip(model, rows, y, **extra)
 
@@ -190,7 +184,6 @@ def test_shap_additivity_for_rust_fuzzy_and_linear_leaf(params):
         learning_rate=0.5,
         max_depth=1,
         min_samples_leaf=1,
-        backend="rust",
         **params,
     )
     _fit_or_skip(model, X, y)
@@ -207,7 +200,6 @@ def test_shap_additivity_after_save_load(tmp_path: Path):
         n_estimators=2,
         learning_rate=0.5,
         min_samples_leaf=1,
-        backend="rust",
     )
     _fit_or_skip(model, X, y)
     path = tmp_path / "model.geoboost.json"
@@ -229,7 +221,6 @@ def test_shap_supports_sparse_set_models_with_augmented_features():
         max_depth=1,
         min_samples_leaf=1,
         splitters=["sparse_set"],
-        backend="rust",
     )
     _fit_or_skip(model, X, y, sparse_sets=sparse_sets)
 
@@ -264,7 +255,6 @@ def test_shap_decomposes_additive_weights_for_sparse_set_models():
         max_depth=1,
         min_samples_leaf=1,
         splitters=["sparse_set"],
-        backend="rust",
     )
     _fit_or_skip(model, X, y, sparse_sets=sparse_sets)
 

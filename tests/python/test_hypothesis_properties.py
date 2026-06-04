@@ -4,7 +4,6 @@ import math
 import tempfile
 from pathlib import Path
 
-import geoboost.regressor as regressor_module
 import numpy as np
 import pytest
 from geoboost import GeoBoostRegressor
@@ -41,7 +40,7 @@ def _fit_or_skip(model, *args, **kwargs):
 
 @settings(max_examples=12, deadline=None)
 @given(small_regression_cases())
-def test_python_backend_predictions_are_finite(case):
+def test_native_backend_predictions_are_finite(case):
     x, y = case
     model = GeoBoostRegressor(
         n_estimators=3,
@@ -49,7 +48,6 @@ def test_python_backend_predictions_are_finite(case):
         max_depth=2,
         min_samples_leaf=1,
         min_gain=0.0,
-        backend="python",
     )
 
     model.fit(x, y)
@@ -61,7 +59,7 @@ def test_python_backend_predictions_are_finite(case):
 
 @settings(max_examples=8, deadline=None)
 @given(small_regression_cases())
-def test_python_backend_save_load_preserves_predictions(case):
+def test_native_backend_save_load_preserves_predictions(case):
     x, y = case
     model = GeoBoostRegressor(
         n_estimators=2,
@@ -69,28 +67,22 @@ def test_python_backend_save_load_preserves_predictions(case):
         max_depth=1,
         min_samples_leaf=1,
         min_gain=0.0,
-        backend="python",
     )
 
     model.fit(x, y)
     before = model.predict(x)
-    native_cls = regressor_module._NativeGeoBoostRegressor
-    try:
-        regressor_module._NativeGeoBoostRegressor = None
-        with tempfile.TemporaryDirectory() as temp_dir:
-            path = Path(temp_dir) / "model.json"
-            model.save(path)
+    with tempfile.TemporaryDirectory() as temp_dir:
+        path = Path(temp_dir) / "model.json"
+        model.save(path)
 
-            restored = GeoBoostRegressor.load(path)
-    finally:
-        regressor_module._NativeGeoBoostRegressor = native_cls
+        restored = GeoBoostRegressor.load(path)
 
     assert restored.predict(x) == pytest.approx(before)
 
 
 @settings(max_examples=8, deadline=None)
 @given(small_regression_cases())
-def test_python_backend_batch_prediction_equals_row_by_row(case):
+def test_native_backend_batch_prediction_equals_row_by_row(case):
     x, y = case
     model = GeoBoostRegressor(
         n_estimators=2,
@@ -98,7 +90,6 @@ def test_python_backend_batch_prediction_equals_row_by_row(case):
         max_depth=1,
         min_samples_leaf=1,
         min_gain=0.0,
-        backend="python",
     )
 
     model.fit(x, y)
@@ -131,7 +122,6 @@ def test_zero_weight_rows_do_not_affect_weighted_initial_prediction(targets):
         max_depth=0,
         min_samples_leaf=1,
         min_gain=0.0,
-        backend="python",
     )
 
     model.fit(x, targets, sample_weight=weights)
@@ -149,7 +139,6 @@ def test_native_fuzzy_midpoint_preserves_branch_mass():
         splitters=["axis"],
         fuzzy=True,
         fuzzy_bandwidth=1.0,
-        backend="rust",
     )
 
     _fit_or_skip(model, [[0.0], [1.0], [2.0], [3.0]], [0.0, 0.0, 10.0, 10.0])
@@ -168,7 +157,6 @@ def test_native_periodic_prediction_invariant_under_period_shift():
         min_samples_leaf=1,
         min_gain=0.0,
         splitters=["periodic:24"],
-        backend="rust",
     )
 
     _fit_or_skip(
@@ -195,7 +183,6 @@ def test_native_duplicate_sparse_ids_do_not_change_predictions():
         min_samples_leaf=1,
         min_gain=0.0,
         splitters=["sparse_set"],
-        backend="rust",
     )
 
     _fit_or_skip(model, x, y, sparse_sets=sparse_sets)
@@ -217,7 +204,6 @@ def test_native_sparse_save_load_preserves_predictions(tmp_path: Path):
         min_samples_leaf=1,
         min_gain=0.0,
         splitters=["sparse_set"],
-        backend="rust",
     )
     _fit_or_skip(model, x, y, sparse_sets=sparse_sets)
     before = np.asarray(model.predict(x, sparse_sets=sparse_sets), dtype=float)

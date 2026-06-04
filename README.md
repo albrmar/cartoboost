@@ -29,8 +29,8 @@ uv sync --group dev
 uv run --group dev maturin develop
 ```
 
-Use `backend="rust"` for temporal-spatial splitters, sparse sets, fuzzy routing,
-feature schemas, linear leaves, and native JSON artifacts.
+`maturin develop` builds the native extension used by the Python estimator.
+Training and prediction require that extension.
 
 ## Basic Regression
 
@@ -43,7 +43,6 @@ model = GeoBoostRegressor(
     max_depth=4,
     min_samples_leaf=20,
     splitters=["axis"],
-    backend="rust",
 )
 
 model.fit(X_train, y_train)
@@ -81,7 +80,6 @@ model = GeoBoostRegressor(
     splitters=["axis", "diagonal_2d", "gaussian_2d", "periodic:24", "sparse_set"],
     fuzzy=True,
     fuzzy_bandwidth=0.05,
-    backend="rust",
 )
 
 model.fit(

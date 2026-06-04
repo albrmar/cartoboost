@@ -19,7 +19,6 @@ travel time.
 model = GeoBoostRegressor(
     splitters=["axis"],
     monotonic_constraints=[1, 0, -1],
-    backend="rust",
 )
 ```
 

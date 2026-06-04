@@ -10,4 +10,4 @@
 
 ## PR instructions
 - Describe the Python behavior covered by changed tests.
-- Mention native, fallback, schema, sparse, or SHAP coverage when relevant.
+- Mention native, schema, sparse, or SHAP coverage when relevant.

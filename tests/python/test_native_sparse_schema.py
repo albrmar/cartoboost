@@ -25,7 +25,6 @@ def test_python_native_sparse_list_route_cells_train_predict():
         min_samples_leaf=1,
         min_gain=0.0,
         splitters=["sparse_set"],
-        backend="rust",
     )
 
     _fit_or_skip(model, x, y, sparse_sets=sparse_sets)
@@ -46,7 +45,6 @@ def test_python_native_sparse_list_two_tree_boosting():
         min_samples_leaf=1,
         min_gain=0.0,
         splitters=["sparse_set"],
-        backend="rust",
     )
 
     _fit_or_skip(model, x, y, sparse_sets=sparse_sets)
@@ -65,7 +63,6 @@ def test_python_native_sparse_list_save_load_identity(tmp_path: Path):
         min_samples_leaf=1,
         min_gain=0.0,
         splitters=["sparse_set"],
-        backend="rust",
     )
     _fit_or_skip(model, x, y, sparse_sets=sparse_sets)
     path = tmp_path / "sparse-list.json"
@@ -89,7 +86,6 @@ def test_python_schema_periodic_feature_used_without_full_period_coverage():
         min_samples_leaf=1,
         min_gain=0.0,
         splitters=["periodic:24"],
-        backend="rust",
     )
 
     _fit_or_skip(model, x, y, feature_schema=schema)
@@ -99,7 +95,7 @@ def test_python_schema_periodic_feature_used_without_full_period_coverage():
 
 
 def test_python_schema_rejects_length_mismatch():
-    model = GeoBoostRegressor(max_depth=0, backend="python")
+    model = GeoBoostRegressor(max_depth=0)
 
     with pytest.raises(ValueError, match="feature_schema length"):
         model.fit(
@@ -122,7 +118,6 @@ def test_real_native_save_load_restores_public_params(tmp_path: Path):
         fuzzy=True,
         fuzzy_bandwidth=0.5,
         leaf_predictor="constant",
-        backend="rust",
     )
     _fit_or_skip(model, x, y)
     path = tmp_path / "native.json"

@@ -22,7 +22,6 @@ GeoBoostRegressor(
     l2_regularization=1.0,
     random_state=None,
     n_threads=None,
-    backend="auto",
     monotonic_constraints=None,
 )
 ```
@@ -38,7 +37,7 @@ GeoBoostRegressor(
 | `explain_shap(X, background=..., **kwargs)` | `shap.Explanation` | Convenience SHAP entry point. |
 | `save(path)` | `None` | Writes a model artifact. |
 | `save_weights(path, format="auto")` | `None` | Writes JSON weights or supported ONNX. |
-| `GeoBoostRegressor.load(path)` | estimator | Loads native or fallback model artifacts. |
+| `GeoBoostRegressor.load(path)` | estimator | Loads native model artifacts. |
 | `GeoBoostRegressor.load_weights(path)` | estimator | Loads weights artifacts. |
 | `get_params(deep=True)` | `dict` | sklearn-compatible parameter inspection. |
 | `set_params(**params)` | `self` | Validates known parameter names. |

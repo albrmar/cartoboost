@@ -6,7 +6,7 @@ from geoboost import GeoBoostRegressor
 
 
 def test_get_params_and_set_params_reset_model():
-    regressor = GeoBoostRegressor(n_estimators=3, backend="python")
+    regressor = GeoBoostRegressor(n_estimators=3)
     assert regressor.get_params()["n_estimators"] == 3
 
     returned = regressor.set_params(learning_rate=0.2)
@@ -15,14 +15,13 @@ def test_get_params_and_set_params_reset_model():
     assert regressor.learning_rate == 0.2
 
 
-def test_fit_predict_and_roundtrip_python_backend(tmp_path: Path):
+def test_fit_predict_and_roundtrip_native_backend(tmp_path: Path):
     X = [[0.0], [1.0], [2.0], [3.0]]
     y = [0.0, 1.0, 2.0, 3.0]
     regressor = GeoBoostRegressor(
         n_estimators=8,
         learning_rate=0.4,
         min_samples_leaf=1,
-        backend="python",
     )
 
     regressor.fit(X, y)
@@ -37,7 +36,7 @@ def test_fit_predict_and_roundtrip_python_backend(tmp_path: Path):
     assert loaded.predict([[0.0], [3.0]]) == pytest.approx(predictions)
 
 
-def test_quantile_python_backend_uses_quantile_initial_prediction_and_roundtrips(tmp_path: Path):
+def test_quantile_native_backend_uses_quantile_initial_prediction_and_roundtrips(tmp_path: Path):
     X = [[0.0], [1.0], [2.0], [3.0]]
     y = [0.0, 10.0, 20.0, 30.0]
     regressor = GeoBoostRegressor(
@@ -46,7 +45,6 @@ def test_quantile_python_backend_uses_quantile_initial_prediction_and_roundtrips
         max_depth=0,
         loss="quantile",
         quantile_alpha=0.8,
-        backend="python",
     ).fit(X, y)
 
     assert regressor.predict([[0.0], [3.0]]) == pytest.approx([30.0, 30.0])
@@ -60,14 +58,13 @@ def test_quantile_python_backend_uses_quantile_initial_prediction_and_roundtrips
     assert loaded.predict([[0.0], [3.0]]) == pytest.approx([30.0, 30.0])
 
 
-def test_python_backend_monotonic_constraint_blocks_decreasing_stump():
+def test_native_backend_monotonic_constraint_blocks_decreasing_stump():
     model = GeoBoostRegressor(
         n_estimators=1,
         learning_rate=1.0,
         max_depth=1,
         min_samples_leaf=1,
         monotonic_constraints=[1],
-        backend="python",
     ).fit([[0.0], [1.0], [2.0], [3.0]], [10.0, 10.0, 0.0, 0.0])
 
     predictions = model.predict([[0.0], [3.0]])
@@ -75,14 +72,13 @@ def test_python_backend_monotonic_constraint_blocks_decreasing_stump():
     assert predictions[0] == pytest.approx(predictions[1])
 
 
-def test_python_backend_save_weights_roundtrip_is_versioned_json(tmp_path: Path):
+def test_native_backend_save_weights_roundtrip_is_versioned_json(tmp_path: Path):
     X = [[0.0], [1.0], [2.0], [3.0]]
     y = [0.0, 1.0, 2.0, 3.0]
     regressor = GeoBoostRegressor(
         n_estimators=3,
         learning_rate=0.3,
         min_samples_leaf=1,
-        backend="python",
     ).fit(X, y)
     predictions = regressor.predict([[0.0], [3.0]])
     path = tmp_path / "model.weights.json"
@@ -94,46 +90,16 @@ def test_python_backend_save_weights_roundtrip_is_versioned_json(tmp_path: Path)
     assert payload["artifact_type"] == "geoboost.weights"
     assert payload["weights_artifact_version"] == 1
     assert payload["model_artifact_version"] == 1
-    assert payload["backend"] == "python"
+    assert payload["backend"] == "rust"
     assert loaded.predict([[0.0], [3.0]]) == pytest.approx(predictions)
 
 
-def test_load_weights_rejects_future_python_weights_version(tmp_path: Path):
-    path = tmp_path / "future.weights.json"
-    path.write_text(
-        json.dumps(
-            {
-                "artifact_type": "geoboost.weights",
-                "weights_artifact_version": 999,
-                "model_artifact_version": 1,
-                "backend": "python",
-                "params": GeoBoostRegressor(backend="python").get_params(),
-                "model": {
-                    "n_estimators": 1,
-                    "learning_rate": 0.1,
-                    "max_depth": 1,
-                    "min_samples_leaf": 1,
-                    "min_gain": 0.0,
-                    "feature_count": 1,
-                    "init_value": 0.0,
-                    "stumps": [],
-                },
-            }
-        ),
-        encoding="utf-8",
-    )
-
-    with pytest.raises(ValueError, match="unsupported weights artifact version 999"):
-        GeoBoostRegressor.load_weights(path)
-
-
-def test_python_backend_save_weights_onnx_when_optional_dependency_is_available(tmp_path: Path):
+def test_native_backend_save_weights_onnx_when_optional_dependency_is_available(tmp_path: Path):
     pytest.importorskip("onnx")
     regressor = GeoBoostRegressor(
         n_estimators=1,
         learning_rate=0.3,
         min_samples_leaf=1,
-        backend="python",
     ).fit([[0.0], [1.0], [2.0], [3.0]], [0.0, 1.0, 2.0, 3.0])
     path = tmp_path / "model.onnx"
 
@@ -144,7 +110,7 @@ def test_python_backend_save_weights_onnx_when_optional_dependency_is_available(
 
 def test_predict_before_fit_raises():
     with pytest.raises(RuntimeError, match="not fitted"):
-        GeoBoostRegressor(backend="python").predict([[1.0]])
+        GeoBoostRegressor().predict([[1.0]])
 
 
 def test_rust_backend_accepts_special_splitters():
@@ -154,7 +120,6 @@ def test_rust_backend_accepts_special_splitters():
         max_depth=1,
         min_samples_leaf=1,
         splitters=["diagonal_2d"],
-        backend="rust",
     )
     try:
         regressor.fit(
@@ -175,7 +140,6 @@ def test_rust_backend_accepts_linear_fuzzy_and_sparse_options():
         leaf_predictor="linear",
         linear_leaf_features=["0"],
         l2_regularization=0.0,
-        backend="rust",
     )
     sparse = GeoBoostRegressor(
         n_estimators=1,
@@ -183,7 +147,6 @@ def test_rust_backend_accepts_linear_fuzzy_and_sparse_options():
         max_depth=1,
         min_samples_leaf=1,
         splitters=["sparse_set"],
-        backend="rust",
     )
     fuzzy = GeoBoostRegressor(
         n_estimators=1,
@@ -192,7 +155,6 @@ def test_rust_backend_accepts_linear_fuzzy_and_sparse_options():
         min_samples_leaf=1,
         fuzzy=True,
         fuzzy_bandwidth=1.0,
-        backend="rust",
     )
 
     try:
@@ -216,7 +178,6 @@ def test_rust_backend_quantile_and_monotonic_roundtrip(tmp_path: Path):
         loss="quantile",
         quantile_alpha=0.8,
         monotonic_constraints=[1],
-        backend="rust",
     )
     try:
         model.fit([[0.0], [1.0], [2.0], [3.0]], [0.0, 10.0, 20.0, 30.0])

@@ -3,8 +3,8 @@ import pytest
 from geoboost import GeoBoostRegressor
 
 
-def test_python_fallback_uses_weighted_initial_prediction():
-    model = GeoBoostRegressor(max_depth=0, backend="python")
+def test_native_backend_uses_weighted_initial_prediction():
+    model = GeoBoostRegressor(max_depth=0)
 
     model.fit([[0.0], [1.0]], [0.0, 10.0], sample_weight=[3.0, 1.0])
 
@@ -12,7 +12,7 @@ def test_python_fallback_uses_weighted_initial_prediction():
 
 
 def test_sample_weight_validation():
-    model = GeoBoostRegressor(backend="python")
+    model = GeoBoostRegressor()
 
     with pytest.raises(ValueError, match="length"):
         model.fit([[0.0], [1.0]], [0.0, 1.0], sample_weight=[1.0])
@@ -35,14 +35,14 @@ def test_sample_weight_is_passed_to_native_when_supported(monkeypatch):
 
     monkeypatch.setattr(regressor_module, "_NativeGeoBoostRegressor", NativeWithWeights)
 
-    model = GeoBoostRegressor(n_estimators=1, backend="rust")
+    model = GeoBoostRegressor(n_estimators=1)
     model.fit([[0.0], [1.0]], [0.0, 1.0], sample_weight=[0.25, 0.75])
 
     assert calls["fit"] == ([[0.0], [1.0]], [0.0, 1.0], [0.25, 0.75])
     assert model._backend_used == "rust"
 
 
-def test_auto_backend_falls_back_when_native_lacks_sample_weight(monkeypatch):
+def test_native_backend_requires_sample_weight_support(monkeypatch):
     class NativeWithoutWeights:
         def __init__(self, **params):
             pass
@@ -52,8 +52,7 @@ def test_auto_backend_falls_back_when_native_lacks_sample_weight(monkeypatch):
 
     monkeypatch.setattr(regressor_module, "_NativeGeoBoostRegressor", NativeWithoutWeights)
 
-    model = GeoBoostRegressor(max_depth=1, backend="auto")
-    model.fit([[0.0], [1.0]], [0.0, 10.0], sample_weight=[1.0, 3.0])
+    model = GeoBoostRegressor(max_depth=1)
 
-    assert model._backend_used == "python"
-    assert model.predict([[0.0]]) == pytest.approx([7.5])
+    with pytest.raises(NotImplementedError, match="sample_weight"):
+        model.fit([[0.0], [1.0]], [0.0, 10.0], sample_weight=[1.0, 3.0])

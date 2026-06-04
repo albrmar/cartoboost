@@ -56,7 +56,6 @@ model = GeoBoostRegressor(
     splitters=["axis", "diagonal_2d", "gaussian_2d", "periodic:24", "sparse_set"],
     fuzzy=True,
     fuzzy_bandwidth=0.05,
-    backend="rust",
 )
 
 model.fit(
