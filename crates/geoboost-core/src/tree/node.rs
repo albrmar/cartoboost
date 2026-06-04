@@ -47,6 +47,10 @@ pub struct TrainingConfigMetadata {
     pub linear_lambda_l2: f64,
     pub fuzzy: bool,
     pub fuzzy_bandwidth: f64,
+    #[serde(default)]
+    pub loss: crate::loss::LossConfig,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub monotonic_constraints: Vec<i8>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -131,6 +135,17 @@ struct AxisStump {
     right_value: f64,
 }
 
+#[derive(Debug, Copy, Clone)]
+struct FlatAxisNode {
+    feature: usize,
+    threshold: f64,
+    missing_goes_left: bool,
+    left: usize,
+    right: usize,
+    value: f64,
+    is_leaf: bool,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct BranchWeights {
     pub left: f64,
@@ -185,6 +200,17 @@ impl Model {
                 .sum::<f64>()
     }
 
+    pub fn predict_additive_dataset_row(&self, x: &Dataset, row: usize) -> Vec<f64> {
+        let mut values = Vec::with_capacity(self.trees.len() + 1);
+        values.push(self.init_prediction);
+        values.extend(
+            self.trees
+                .iter()
+                .map(|tree| self.learning_rate * tree.predict_dataset_row(x, row)),
+        );
+        values
+    }
+
     pub fn try_predict_dataset_row(&self, x: &Dataset, row: usize) -> Result<f64> {
         if self.requires_sparse_sets() && x.n_sparse_sets() == 0 {
             return Err(GeoBoostError::InvalidInput(
@@ -205,6 +231,18 @@ impl Model {
         (0..x.n_rows())
             .map(|row| self.try_predict_dataset_row(x, row))
             .collect()
+    }
+
+    pub fn try_predict_additive(&self, x: &Dataset) -> Result<Vec<Vec<f64>>> {
+        if self.requires_sparse_sets() && x.n_sparse_sets() == 0 {
+            return Err(GeoBoostError::InvalidInput(
+                "prediction requires sparse_sets for a model with list-valued sparse splits"
+                    .to_string(),
+            ));
+        }
+        Ok((0..x.n_rows())
+            .map(|row| self.predict_additive_dataset_row(x, row))
+            .collect())
     }
 
     pub fn try_predict_flat(
@@ -260,14 +298,17 @@ impl Model {
                 )));
             }
         }
-        if sparse_offsets.is_empty() {
-            if let Some(value) = self.constant_prediction() {
-                return Ok(vec![value; rows]);
-            }
+        if let Some(value) = self.constant_prediction() {
+            return Ok(vec![value; rows]);
         }
-        if sparse_offsets.is_empty() {
+        if !self.requires_sparse_sets() {
             if let Some(stumps) = self.axis_stumps() {
                 return Ok(self.predict_axis_stumps_flat(rows, cols, values, &stumps));
+            }
+        }
+        if !self.requires_sparse_sets() {
+            if let Some(trees) = self.flat_axis_trees() {
+                return Ok(self.predict_flat_axis_trees(rows, cols, values, &trees));
             }
         }
         Ok((0..rows)
@@ -276,8 +317,91 @@ impl Model {
             .collect())
     }
 
+    pub fn try_predict_additive_flat(
+        &self,
+        rows: usize,
+        cols: usize,
+        values: &[f64],
+        sparse_offsets: &[Vec<usize>],
+        sparse_ids: &[Vec<u64>],
+    ) -> Result<Vec<Vec<f64>>> {
+        self.validate_flat_prediction_inputs(rows, cols, values, sparse_offsets, sparse_ids)?;
+        Ok((0..rows)
+            .into_par_iter()
+            .map(|row| {
+                let mut additive = Vec::with_capacity(self.trees.len() + 1);
+                additive.push(self.init_prediction);
+                additive.extend(self.trees.iter().map(|tree| {
+                    self.learning_rate
+                        * tree.predict_flat_row(cols, values, sparse_offsets, sparse_ids, row)
+                }));
+                additive
+            })
+            .collect())
+    }
+
+    fn validate_flat_prediction_inputs(
+        &self,
+        rows: usize,
+        cols: usize,
+        values: &[f64],
+        sparse_offsets: &[Vec<usize>],
+        sparse_ids: &[Vec<u64>],
+    ) -> Result<()> {
+        if rows.checked_mul(cols) != Some(values.len()) {
+            return Err(GeoBoostError::InvalidInput(format!(
+                "matrix shape {rows}x{cols} does not match {} values",
+                values.len()
+            )));
+        }
+        if cols != self.feature_count {
+            return Err(GeoBoostError::InvalidInput(format!(
+                "X has {cols} features, but model expects {}",
+                self.feature_count
+            )));
+        }
+        if values.iter().any(|value| !value.is_finite()) {
+            return Err(GeoBoostError::InvalidInput(
+                "dataset values must be finite".to_string(),
+            ));
+        }
+        if sparse_offsets.len() != sparse_ids.len() {
+            return Err(GeoBoostError::InvalidInput(
+                "sparse_offsets and sparse_ids must contain the same number of columns".to_string(),
+            ));
+        }
+        if self.requires_sparse_sets() && sparse_offsets.is_empty() {
+            return Err(GeoBoostError::InvalidInput(
+                "prediction requires sparse_sets for a model with list-valued sparse splits"
+                    .to_string(),
+            ));
+        }
+        for (column, (offsets, ids)) in sparse_offsets.iter().zip(sparse_ids).enumerate() {
+            if offsets.len() != rows + 1 {
+                return Err(GeoBoostError::InvalidInput(format!(
+                    "sparse_offsets column {column} must have rows + 1 entries"
+                )));
+            }
+            if offsets.first().copied() != Some(0) || offsets.last().copied() != Some(ids.len()) {
+                return Err(GeoBoostError::InvalidInput(format!(
+                    "sparse_offsets column {column} must span sparse_ids exactly"
+                )));
+            }
+            if offsets.windows(2).any(|window| window[0] > window[1]) {
+                return Err(GeoBoostError::InvalidInput(format!(
+                    "sparse_offsets column {column} must be non-decreasing"
+                )));
+            }
+        }
+        Ok(())
+    }
+
     fn axis_stumps(&self) -> Option<Vec<AxisStump>> {
         self.trees.iter().map(Tree::axis_stump).collect()
+    }
+
+    fn flat_axis_trees(&self) -> Option<Vec<Vec<FlatAxisNode>>> {
+        self.trees.iter().map(Tree::flat_axis_tree).collect()
     }
 
     fn constant_prediction(&self) -> Option<f64> {
@@ -318,6 +442,27 @@ impl Model {
         predictions
     }
 
+    fn predict_flat_axis_trees(
+        &self,
+        rows: usize,
+        cols: usize,
+        values: &[f64],
+        trees: &[Vec<FlatAxisNode>],
+    ) -> Vec<f64> {
+        (0..rows)
+            .into_par_iter()
+            .map(|row| {
+                let row_offset = row * cols;
+                let mut prediction = self.init_prediction;
+                for tree in trees {
+                    prediction +=
+                        self.learning_rate * predict_flat_axis_tree(tree, values, row_offset);
+                }
+                prediction
+            })
+            .collect()
+    }
+
     fn predict_flat_row(
         &self,
         cols: usize,
@@ -355,6 +500,21 @@ impl Model {
         }
         Ok(model)
     }
+
+    pub fn save_weights(&self, path: impl AsRef<Path>) -> Result<()> {
+        crate::serialize::save_weights_json(self, path)
+    }
+
+    pub fn load_weights(path: impl AsRef<Path>) -> Result<Self> {
+        let model = crate::serialize::load_weights_json(path)?;
+        if model.artifact_version != MODEL_ARTIFACT_VERSION {
+            return Err(crate::GeoBoostError::InvalidInput(format!(
+                "unsupported model artifact version {}",
+                model.artifact_version
+            )));
+        }
+        Ok(model)
+    }
 }
 
 impl Tree {
@@ -372,6 +532,12 @@ impl Tree {
 
     fn axis_stump(&self) -> Option<AxisStump> {
         self.root.axis_stump()
+    }
+
+    fn flat_axis_tree(&self) -> Option<Vec<FlatAxisNode>> {
+        let mut nodes = Vec::new();
+        self.root.push_flat_axis_nodes(&mut nodes)?;
+        Some(nodes)
     }
 
     fn constant_value(&self) -> Option<f64> {
@@ -433,6 +599,49 @@ impl Node {
             left_value: *left_value,
             right_value: *right_value,
         })
+    }
+
+    fn push_flat_axis_nodes(&self, nodes: &mut Vec<FlatAxisNode>) -> Option<usize> {
+        let index = nodes.len();
+        nodes.push(FlatAxisNode {
+            feature: 0,
+            threshold: 0.0,
+            missing_goes_left: true,
+            left: 0,
+            right: 0,
+            value: 0.0,
+            is_leaf: true,
+        });
+        match self {
+            Node::Leaf { value, .. } => {
+                nodes[index].value = *value;
+            }
+            Node::Branch {
+                split, left, right, ..
+            } => {
+                let Split::Axis {
+                    feature,
+                    threshold,
+                    missing_goes_left,
+                } = split
+                else {
+                    return None;
+                };
+                let left_index = left.push_flat_axis_nodes(nodes)?;
+                let right_index = right.push_flat_axis_nodes(nodes)?;
+                nodes[index] = FlatAxisNode {
+                    feature: *feature,
+                    threshold: *threshold,
+                    missing_goes_left: *missing_goes_left,
+                    left: left_index,
+                    right: right_index,
+                    value: 0.0,
+                    is_leaf: false,
+                };
+            }
+            Node::LinearLeaf { .. } => return None,
+        }
+        Some(index)
     }
 
     pub fn predict_one(&self, row: &[f64]) -> f64 {
@@ -511,6 +720,28 @@ impl Node {
                     || right.contains_sparse_list_split()
             }
         }
+    }
+}
+
+fn predict_flat_axis_tree(nodes: &[FlatAxisNode], values: &[f64], row_offset: usize) -> f64 {
+    let mut index = 0;
+    loop {
+        let node = nodes[index];
+        if node.is_leaf {
+            return node.value;
+        }
+        let value = values[row_offset + node.feature];
+        index = if value.is_finite() {
+            if value <= node.threshold {
+                node.left
+            } else {
+                node.right
+            }
+        } else if node.missing_goes_left {
+            node.left
+        } else {
+            node.right
+        };
     }
 }
 

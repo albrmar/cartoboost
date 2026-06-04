@@ -6,8 +6,11 @@ hardening, but it is not positioned as production-grade infrastructure.
 
 ## Product Scope
 
-- Regression only; no classification, ranking, quantile, or survival objectives.
-- L2 loss only.
+- Regression only; classification, ranking, and survival objectives are out of
+  scope for the current public contract.
+- L2 regression is the stable objective. Quantile work may exist in the
+  development tree, but it is not part of the benchmark comparison contract
+  until the Python/Rust/API path is fully validated.
 - No claim of equivalence to Lyft's proprietary GeoBoost implementation.
 - No claim of general superiority over LightGBM, XGBoost, scikit-learn, or
   production geospatial systems.
@@ -47,3 +50,10 @@ hardening, but it is not positioned as production-grade infrastructure.
   production accuracy, latency, robustness, or superiority.
 - NYC taxi quality benchmarks are optional real-data comparisons with documented
   setup and generated artifacts; they are not universal superiority claims.
+- LightGBM and XGBoost are optional benchmark dependencies, not runtime
+  dependencies of GeoBoost. Cross-package claims are valid only for the exact
+  committed setup: estimator/depth settings, feature handling, dependency
+  versions allowed by `pyproject.toml`, and the generated artifacts.
+- Current NYC artifacts show that comparable target-mean zone features improve
+  pickup-demand quality, but GeoBoost still misses all-task XGBoost speed parity
+  in the regenerated 25k repeated report.

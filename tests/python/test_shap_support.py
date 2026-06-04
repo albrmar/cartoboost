@@ -85,6 +85,37 @@ def test_make_shap_explainer_public_helper_matches_method():
     assert helper_explanation.base_values == pytest.approx(method_explanation.base_values)
 
 
+def test_shap_decomposes_additive_weights_for_weighted_python_backend():
+    X = np.asarray([[0.0], [1.0], [2.0], [3.0]], dtype=float)
+    y = np.asarray([0.0, 1.0, 4.0, 9.0], dtype=float)
+    sample_weight = np.asarray([4.0, 1.0, 1.0, 2.0], dtype=float)
+    model = GeoBoostRegressor(
+        n_estimators=3,
+        learning_rate=0.5,
+        max_depth=1,
+        min_samples_leaf=1,
+        backend="python",
+    ).fit(X, y, sample_weight=sample_weight)
+
+    additive = model.predict_additive_values(X[:2])
+    assert additive.shape == (2, len(model._model.stumps) + 1)
+    assert additive.sum(axis=1) == pytest.approx(model.predict(X[:2]))
+
+    explanation = model.explain_shap(
+        X[:2],
+        background=X,
+        algorithm="exact",
+        decomposition="weights",
+    )
+
+    assert list(explanation.feature_names) == [
+        "init_prediction",
+        *[f"tree_{idx}" for idx in range(len(model._model.stumps))],
+    ]
+    assert explanation.values.shape == additive.shape
+    _assert_additive(explanation, model.predict(X[:2]))
+
+
 def test_shap_preserves_pandas_feature_names():
     pd = pytest.importorskip("pandas")
     X = pd.DataFrame({"distance_m": [0.0, 1.0, 2.0, 3.0], "hour": [0.0, 1.0, 0.0, 1.0]})
@@ -217,6 +248,46 @@ def test_shap_supports_sparse_set_models_with_augmented_features():
         "route_cells=11",
     ]
     assert explanation.values.shape == (2, 4)
+    _assert_additive(
+        explanation,
+        model.predict(X[:2], sparse_sets={"route_cells": sparse_sets["route_cells"][:2]}),
+    )
+
+
+def test_shap_decomposes_additive_weights_for_sparse_set_models():
+    X = np.asarray([[0.0], [0.0], [0.0], [0.0]], dtype=float)
+    y = np.asarray([10.0, 10.0, 0.0, 0.0], dtype=float)
+    sparse_sets = {"route_cells": [[7], [7, 11], [3], []]}
+    model = GeoBoostRegressor(
+        n_estimators=2,
+        learning_rate=0.5,
+        max_depth=1,
+        min_samples_leaf=1,
+        splitters=["sparse_set"],
+        backend="rust",
+    )
+    _fit_or_skip(model, X, y, sparse_sets=sparse_sets)
+
+    additive = model.predict_additive_values(
+        X[:2],
+        sparse_sets={"route_cells": sparse_sets["route_cells"][:2]},
+    )
+    assert additive.shape == (2, 3)
+    assert additive.sum(axis=1) == pytest.approx(
+        model.predict(X[:2], sparse_sets={"route_cells": sparse_sets["route_cells"][:2]})
+    )
+
+    explanation = model.explain_shap(
+        X[:2],
+        background=X,
+        sparse_sets={"route_cells": sparse_sets["route_cells"][:2]},
+        background_sparse_sets=sparse_sets,
+        algorithm="exact",
+        decomposition="weights",
+    )
+
+    assert list(explanation.feature_names) == ["init_prediction", "tree_0", "tree_1"]
+    assert explanation.values.shape == additive.shape
     _assert_additive(
         explanation,
         model.predict(X[:2], sparse_sets={"route_cells": sparse_sets["route_cells"][:2]}),

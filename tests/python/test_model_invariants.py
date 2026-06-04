@@ -87,6 +87,7 @@ def test_real_native_save_load_restores_public_params_and_metadata(tmp_path):
         "min_samples_leaf": 1,
         "min_gain": 0.0,
         "loss": "l2",
+        "quantile_alpha": 0.5,
         "splitters": ["gaussian_2d"],
         "leaf_predictor": "constant",
         "linear_leaf_features": [],
@@ -96,10 +97,41 @@ def test_real_native_save_load_restores_public_params_and_metadata(tmp_path):
         "random_state": None,
         "n_threads": None,
         "backend": "auto",
+        "monotonic_constraints": None,
     }
     assert restored.metadata_["library_name"] == "geoboost-core"
     assert restored.training_config_["splitters"] == ["Gaussian2D"]
     assert restored.requires_sparse_sets_ is False
+    assert restored.predict(x) == pytest.approx(before)
+
+
+def test_real_native_save_weights_load_weights_restores_predictions(tmp_path):
+    x = np.array([[0.0], [1.0], [2.0], [3.0]])
+    y = np.array([0.0, 0.0, 5.0, 5.0])
+    model = GeoBoostRegressor(
+        n_estimators=2,
+        learning_rate=0.5,
+        max_depth=1,
+        min_samples_leaf=1,
+        min_gain=0.0,
+        backend="rust",
+    )
+
+    try:
+        model.fit(x, y)
+    except ImportError as exc:
+        pytest.skip(str(exc))
+
+    path = tmp_path / "native.weights.json"
+    before = model.predict(x)
+    model.save_weights(path)
+    payload = json.loads(path.read_text(encoding="utf-8"))
+
+    restored = GeoBoostRegressor.load_weights(path)
+
+    assert payload["artifact_type"] == "geoboost.weights"
+    assert payload["weights_artifact_version"] == 1
+    assert payload["backend"] == "rust"
     assert restored.predict(x) == pytest.approx(before)
 
 
@@ -156,8 +188,10 @@ def test_native_artifact_version_mismatch_errors_clearly(tmp_path):
 
 
 def test_python_api_rejects_unsupported_objectives_and_backends():
-    with pytest.raises(NotImplementedError, match="loss='l2'"):
+    with pytest.raises(ValueError, match="loss"):
         GeoBoostRegressor(loss="l1").fit([[0.0], [1.0]], [0.0, 1.0])
+    with pytest.raises(ValueError, match="quantile_alpha"):
+        GeoBoostRegressor(loss="quantile", quantile_alpha=1.0).fit([[0.0], [1.0]], [0.0, 1.0])
     with pytest.raises(ValueError, match="backend"):
         GeoBoostRegressor(backend="cuda").fit([[0.0], [1.0]], [0.0, 1.0])
     with pytest.raises(ValueError, match="leaf_predictor"):

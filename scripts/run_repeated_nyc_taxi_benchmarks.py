@@ -28,12 +28,23 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--months", default="1")
     parser.add_argument("--sample-size", type=int, default=25_000)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--tasks", default="")
     parser.add_argument("--models", default="geoboost,geoboost_reference,lightgbm,xgboost,mean")
     parser.add_argument("--n-estimators", type=int, default=100)
-    parser.add_argument("--geoboost-n-estimators", type=int, default=1)
+    parser.add_argument("--geoboost-n-estimators", type=int, default=100)
     parser.add_argument("--learning-rate", type=float, default=0.08)
     parser.add_argument("--max-depth", type=int, default=4)
-    parser.add_argument("--geoboost-max-depth", type=int, default=0)
+    parser.add_argument("--geoboost-max-depth", type=int, default=4)
+    parser.add_argument("--geoboost-splitters", default="axis_histogram:64")
+    parser.add_argument(
+        "--xgboost-tree-method",
+        default="hist",
+        choices=["auto", "exact", "approx", "hist"],
+    )
+    parser.add_argument("--xgboost-subsample", type=float, default=1.0)
+    parser.add_argument("--xgboost-colsample-bytree", type=float, default=1.0)
+    parser.add_argument("--zone-treatment", default="target_mean", choices=["raw", "target_mean"])
+    parser.add_argument("--zone-target-smoothing", type=float, default=20.0)
     parser.add_argument("--n-threads", type=int, default=1)
     parser.add_argument("--no-download", action="store_true")
     parser.add_argument("--synthetic-smoke", action="store_true")
@@ -58,11 +69,25 @@ def benchmark_command(args: argparse.Namespace, output_dir: Path) -> list[str]:
         str(args.max_depth),
         "--geoboost-max-depth",
         str(args.geoboost_max_depth),
+        "--geoboost-splitters",
+        args.geoboost_splitters,
+        "--xgboost-tree-method",
+        args.xgboost_tree_method,
+        "--xgboost-subsample",
+        str(args.xgboost_subsample),
+        "--xgboost-colsample-bytree",
+        str(args.xgboost_colsample_bytree),
+        "--zone-treatment",
+        args.zone_treatment,
+        "--zone-target-smoothing",
+        str(args.zone_target_smoothing),
         "--n-threads",
         str(args.n_threads),
         "--seed",
         str(args.seed),
     ]
+    if args.tasks:
+        command.extend(["--tasks", args.tasks])
     if args.synthetic_smoke:
         command.append("--synthetic-smoke")
     else:
@@ -190,18 +215,32 @@ def format_delta(value: float | None) -> str:
     return "n/a" if value is None else f"{value:.6f}"
 
 
+def same_quality(row: dict[str, Any], tolerance: float = 1e-9) -> bool:
+    rmse_ref = row["median_rmse_delta_vs_geoboost_reference"]
+    r2_ref = row["median_r2_delta_vs_geoboost_reference"]
+    if rmse_ref is None or r2_ref is None:
+        return False
+    return abs(rmse_ref) <= tolerance and abs(r2_ref) <= tolerance
+
+
 def write_markdown(summary: dict[str, Any], output: Path) -> None:
     lines = [
         "# Repeated NYC Taxi Speed Benchmark",
         "",
         (
             f"- baseline estimators: {summary['model_config']['baseline_n_estimators']}; "
-            f"GeoBoost speed-preset estimators: {summary['model_config']['geoboost_n_estimators']}"
+            f"GeoBoost candidate estimators: {summary['model_config']['geoboost_n_estimators']}"
         ),
         (
             f"- baseline max depth: {summary['model_config']['baseline_max_depth']}; "
-            f"GeoBoost speed-preset max depth: {summary['model_config']['geoboost_max_depth']}"
+            f"GeoBoost candidate max depth: {summary['model_config']['geoboost_max_depth']}"
         ),
+        (
+            f"- GeoBoost splitters: {summary['model_config']['geoboost_splitters']}; "
+            f"XGBoost tree_method: {summary['model_config']['xgboost_tree_method']}"
+        ),
+        f"- zone treatment: {summary['model_config'].get('zone_treatment', 'raw')}",
+        "- gate requires train <= XGBoost, predict rows/sec >= XGBoost, and same quality as GeoBoost reference.",
         "",
         "| task/split | train ratio vs XGBoost median | train ratio min-max | "
         "predict rps ratio vs XGBoost median | predict rps ratio min-max | "
@@ -211,7 +250,11 @@ def write_markdown(summary: dict[str, Any], output: Path) -> None:
     for key, row in summary["ratios"].items():
         train_median = row["median_train_ratio_vs_xgboost"]
         predict_median = row["median_predict_rps_ratio_vs_xgboost"]
-        gate = "pass" if train_median <= 1.0 and predict_median >= 1.0 else "miss"
+        gate = (
+            "pass"
+            if train_median <= 1.0 and predict_median >= 1.0 and same_quality(row)
+            else "miss"
+        )
         rmse_ref = row["median_rmse_delta_vs_geoboost_reference"]
         r2_ref = row["median_r2_delta_vs_geoboost_reference"]
         lines.append(
@@ -242,12 +285,19 @@ def main() -> None:
         "target": {
             "train_ratio_vs_xgboost_max": 1.0,
             "predict_rps_ratio_vs_xgboost_min": 1.0,
+            "quality_delta_vs_geoboost_reference_abs_max": 1e-9,
         },
         "model_config": {
             "baseline_n_estimators": args.n_estimators,
             "geoboost_n_estimators": args.geoboost_n_estimators,
             "baseline_max_depth": args.max_depth,
             "geoboost_max_depth": args.geoboost_max_depth,
+            "geoboost_splitters": args.geoboost_splitters,
+            "xgboost_tree_method": args.xgboost_tree_method,
+            "xgboost_subsample": args.xgboost_subsample,
+            "xgboost_colsample_bytree": args.xgboost_colsample_bytree,
+            "zone_treatment": args.zone_treatment,
+            "zone_target_smoothing": args.zone_target_smoothing,
         },
         "ratios": ratios,
     }

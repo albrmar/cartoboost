@@ -36,6 +36,10 @@ attempt to reproduce Lyft's proprietary system.
 - Criterion benchmark scaffolding, deterministic property-style tests, cargo-fuzz
   harnesses for dense and mixed-dataset paths, and a small sklearn baseline
   comparison report script.
+- Optional NYC taxi benchmark scripts that compare GeoBoost with XGBoost,
+  LightGBM, and a mean baseline when the `bench` dependency group is installed.
+  The current cross-package setup uses comparable tree counts/depths and
+  train-only target-mean zone features for every boosting package.
 - Unit tests for L2 loss, stump training, serialization, spatial/periodic/fuzzy
   routing, sparse routing, and linear leaf fitting.
 - Committed parity fixtures and generated spatial segmentation proof images.
@@ -43,7 +47,8 @@ attempt to reproduce Lyft's proprietary system.
 ## Future Hardening
 
 - Backward-compatible artifact migrations beyond artifact version `1`.
-- Larger comparison suite against scikit-learn and LightGBM.
+- Larger and more stable repeated comparison suite across scikit-learn,
+  LightGBM, XGBoost, and GeoBoost presets.
 - Richer schema contracts for named spatial pairs and validation beyond the
   current numeric, periodic, and sparse-set declarations.
 - CLI support for mixed sparse row formats beyond the current dense numeric CSV
@@ -73,6 +78,10 @@ intentionally narrow:
   and installed first because the generator trains with `backend="rust"`.
 - The committed proof images and metrics are smoke evidence, not a claim of
   superiority over production geospatial boosting systems.
+- The committed NYC taxi comparison artifacts are optional benchmark evidence.
+  In the current target-mean zone setup, GeoBoost narrows the pickup-demand
+  quality gap against XGBoost but still misses XGBoost speed parity on the
+  all-task 25k repeated report.
 - Artifact version `1` is supported with backward-compatible optional metadata
   fields, but no older-version migration layer exists yet.
 - CLI workflows are dense numeric CSV only for v1; Python with `backend="rust"`

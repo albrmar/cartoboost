@@ -94,7 +94,8 @@ Implemented scope:
 Future hardening:
 
 1. Artifact migrations beyond artifact version `1`.
-2. Larger scikit-learn and LightGBM comparison reports.
+2. Larger and more stable cross-package comparison reports across scikit-learn,
+   LightGBM, XGBoost, and GeoBoost presets.
 3. Long-running property and fuzz suites.
 4. Parquet input support for CLI workflows.
 
@@ -272,7 +273,8 @@ Planned validation extensions:
 - Hypothesis property profiles.
 - Fuzz smoke tests.
 - Full synthetic validation report generation.
-- scikit-learn and LightGBM comparison scripts.
+- broader repeated comparison scripts beyond the current NYC taxi
+  LightGBM/XGBoost benchmark path.
 
 ## Milestones
 
@@ -343,7 +345,8 @@ Milestone 8: artifact and CLI
 Milestone 9: comparison suite
 
 - Deterministic scikit-learn comparison script.
-- LightGBM comparison remains future hardening.
+- Optional NYC TLC benchmark path comparing GeoBoost with LightGBM, XGBoost,
+  and a mean baseline when benchmark dependencies are installed.
 - Synthetic benchmark report.
 - Latency and artifact-size tracking.
 - Mixed-dataset fuzz target for sparse-list and dense split prediction.

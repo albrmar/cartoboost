@@ -1,8 +1,11 @@
 use super::{sse, Node, Split, Tree};
 use crate::data::{Dataset, FeatureKind};
+use crate::loss::{pinball_loss, weighted_pinball_loss, weighted_quantile, LossConfig};
 use crate::predictors::LinearLeafPredictor;
+use crate::profile;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use std::time::Instant;
 
 #[derive(Debug, Clone)]
 pub struct TreeBuilder {
@@ -15,6 +18,8 @@ pub struct TreeBuilder {
     pub linear_lambda_l2: f64,
     pub fuzzy: bool,
     pub fuzzy_bandwidth: f64,
+    pub loss: LossConfig,
+    pub monotonic_constraints: Vec<i8>,
 }
 
 #[derive(Debug, Clone)]
@@ -23,8 +28,44 @@ struct BestSplit {
     gain: f64,
     left: Vec<usize>,
     right: Vec<usize>,
+    left_direct_node: Option<Node>,
+    right_direct_node: Option<Node>,
     left_weights: Option<Vec<f64>>,
     right_weights: Option<Vec<f64>>,
+    left_node_stats: Option<CandidateStats>,
+    right_node_stats: Option<CandidateStats>,
+    left_histogram_stats: Option<Vec<CandidateStats>>,
+    right_histogram_stats: Option<Vec<CandidateStats>>,
+}
+
+#[derive(Debug, Clone)]
+struct BestHistogramCandidate {
+    split: Split,
+    gain: f64,
+    split_bin: usize,
+    left_capacity: usize,
+    right_capacity: usize,
+    left_stats: CandidateStats,
+    right_stats: CandidateStats,
+}
+
+impl BestHistogramCandidate {
+    fn feature(&self) -> Option<usize> {
+        match self.split {
+            Split::Axis { feature, .. } => Some(feature),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct BestAxisCandidate {
+    split: Split,
+    gain: f64,
+    feature: usize,
+    split_position: usize,
+    left_capacity: usize,
+    right_capacity: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -36,7 +77,7 @@ struct PeriodicValueGroup {
     weighted_target_square_sum: f64,
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Copy, Default)]
 struct CandidateStats {
     count: usize,
     weight_sum: f64,
@@ -45,10 +86,14 @@ struct CandidateStats {
 }
 
 #[derive(Debug, Clone)]
-struct FitContext {
+pub(crate) struct FitContext {
+    cols: usize,
     sorted_dense_rows: Vec<Option<Vec<usize>>>,
     histogram_bins: Option<usize>,
     histogram_features: Vec<Option<HistogramFeature>>,
+    histogram_feature_indices: Vec<usize>,
+    histogram_all_features: bool,
+    histogram_row_bins: Vec<u16>,
 }
 
 #[derive(Debug, Clone)]
@@ -57,8 +102,10 @@ struct HistogramFeature {
     min_value: f64,
     max_value: f64,
     scale: f64,
-    bins: Vec<Option<usize>>,
+    bins: Vec<u16>,
 }
+
+const MISSING_BIN: u16 = u16::MAX;
 
 impl FitContext {
     fn new(x: &Dataset, splitters: &[SplitterKind]) -> Self {
@@ -86,17 +133,42 @@ impl FitContext {
         } else {
             Vec::new()
         };
-        let histogram_features = histogram_bins
+        let histogram_features: Vec<Option<HistogramFeature>> = histogram_bins
             .map(|bins| {
                 (0..x.n_cols())
                     .map(|feature| prebinned_histogram_feature(x, feature, bins))
                     .collect()
             })
             .unwrap_or_default();
+        let histogram_row_bins = if histogram_bins.is_some() {
+            let mut row_bins = vec![MISSING_BIN; x.n_rows() * x.n_cols()];
+            for (feature, histogram_feature) in histogram_features.iter().enumerate() {
+                let Some(histogram_feature) = histogram_feature else {
+                    continue;
+                };
+                for row in 0..x.n_rows() {
+                    row_bins[row * x.n_cols() + feature] = histogram_feature.bins[row];
+                }
+            }
+            row_bins
+        } else {
+            Vec::new()
+        };
+        let histogram_feature_indices = histogram_features
+            .iter()
+            .enumerate()
+            .filter_map(|(feature, histogram_feature)| histogram_feature.as_ref().map(|_| feature))
+            .collect::<Vec<_>>();
+        let histogram_all_features =
+            histogram_bins.is_some() && histogram_feature_indices.len() == x.n_cols();
         Self {
+            cols: x.n_cols(),
             sorted_dense_rows,
             histogram_bins,
             histogram_features,
+            histogram_feature_indices,
+            histogram_all_features,
+            histogram_row_bins,
         }
     }
 
@@ -111,6 +183,10 @@ impl FitContext {
             .then(|| self.histogram_features.get(feature))
             .flatten()
             .and_then(Option::as_ref)
+    }
+
+    fn histogram_bin(&self, row: usize, feature: usize) -> u16 {
+        self.histogram_row_bins[row * self.cols + feature]
     }
 }
 
@@ -137,11 +213,37 @@ pub enum LeafPredictorKind {
 }
 
 impl TreeBuilder {
+    pub(crate) fn fit_context(&self, x: &Dataset) -> FitContext {
+        FitContext::new(x, &self.splitters)
+    }
+
     pub fn fit(&self, x: &Dataset, target: &[f64], weights: &[f64]) -> Tree {
-        let indices = (0..x.n_rows()).collect::<Vec<_>>();
         let context = FitContext::new(x, &self.splitters);
+        self.fit_in_context(x, target, weights, &context)
+    }
+
+    pub(crate) fn fit_in_context(
+        &self,
+        x: &Dataset,
+        target: &[f64],
+        weights: &[f64],
+        context: &FitContext,
+    ) -> Tree {
+        let indices = (0..x.n_rows()).collect::<Vec<_>>();
         Tree {
-            root: self.build_node_inner(x, target, weights, &indices, 0, &context, None),
+            root: self.build_node_inner(
+                x,
+                target,
+                weights,
+                &indices,
+                0,
+                context,
+                None,
+                None,
+                None,
+                f64::NEG_INFINITY,
+                f64::INFINITY,
+            ),
         }
     }
 
@@ -151,8 +253,18 @@ impl TreeBuilder {
         target: &[f64],
         weights: &[f64],
     ) -> (Tree, Vec<f64>) {
-        let indices = (0..x.n_rows()).collect::<Vec<_>>();
         let context = FitContext::new(x, &self.splitters);
+        self.fit_with_leaf_updates_in_context(x, target, weights, &context)
+    }
+
+    pub(crate) fn fit_with_leaf_updates_in_context(
+        &self,
+        x: &Dataset,
+        target: &[f64],
+        weights: &[f64],
+        context: &FitContext,
+    ) -> (Tree, Vec<f64>) {
+        let indices = (0..x.n_rows()).collect::<Vec<_>>();
         let mut updates = vec![0.0; x.n_rows()];
         let root = self.build_node_inner(
             x,
@@ -160,8 +272,12 @@ impl TreeBuilder {
             weights,
             &indices,
             0,
-            &context,
+            context,
             Some(&mut updates),
+            None,
+            None,
+            f64::NEG_INFINITY,
+            f64::INFINITY,
         );
         (Tree { root }, updates)
     }
@@ -175,31 +291,44 @@ impl TreeBuilder {
         indices: &[usize],
         depth: usize,
         context: &FitContext,
-        updates: Option<&mut [f64]>,
+        mut updates: Option<&mut [f64]>,
+        node_histogram_stats: Option<&[CandidateStats]>,
+        node_stats: Option<CandidateStats>,
+        lower_bound: f64,
+        upper_bound: f64,
     ) -> Node {
         let leaf = |updates: Option<&mut [f64]>| {
-            let weight_sum: f64 = indices.iter().map(|&idx| weights[idx]).sum();
-            let value = if weight_sum <= 0.0 {
-                0.0
-            } else {
-                indices
-                    .iter()
-                    .map(|&idx| target[idx] * weights[idx])
-                    .sum::<f64>()
-                    / weight_sum
-            };
+            let started = Instant::now();
+            let node_stats = node_stats
+                .or_else(|| {
+                    node_histogram_stats.and_then(|stats| histogram_node_stats(context, stats))
+                })
+                .unwrap_or_else(|| {
+                    let mut stats = CandidateStats::default();
+                    for &idx in indices {
+                        stats.add_row(idx, target, weights);
+                    }
+                    stats
+                });
+            let weight_sum = node_stats.weight_sum;
+            let value = self
+                .leaf_value(target, weights, indices, Some(node_stats))
+                .clamp(lower_bound, upper_bound);
             if let Some(updates) = updates {
                 for &idx in indices {
                     updates[idx] = value;
                 }
             }
-            let training_loss = sse(target, weights, indices);
+            let training_loss = self.leaf_training_loss(target, weights, indices, value);
             match self.leaf_predictor {
-                LeafPredictorKind::Constant => Node::Leaf {
-                    value,
-                    sample_weight_sum: weight_sum,
-                    training_loss,
-                },
+                LeafPredictorKind::Constant => {
+                    profile::add(profile::LEAF, started.elapsed());
+                    Node::Leaf {
+                        value,
+                        sample_weight_sum: weight_sum,
+                        training_loss,
+                    }
+                }
                 LeafPredictorKind::Linear => {
                     let features = if self.linear_leaf_features.is_empty() {
                         (0..x.n_cols()).collect()
@@ -212,7 +341,7 @@ impl TreeBuilder {
                         .collect::<Vec<Vec<f64>>>();
                     let leaf_targets = indices.iter().map(|&idx| target[idx]).collect::<Vec<_>>();
                     let leaf_weights = indices.iter().map(|&idx| weights[idx]).collect::<Vec<_>>();
-                    LinearLeafPredictor::fit_ridge(
+                    let node = LinearLeafPredictor::fit_ridge(
                         &rows,
                         &leaf_targets,
                         &leaf_weights,
@@ -228,7 +357,9 @@ impl TreeBuilder {
                         value,
                         sample_weight_sum: weight_sum,
                         training_loss,
-                    })
+                    });
+                    profile::add(profile::LEAF, started.elapsed());
+                    node
                 }
             }
         };
@@ -237,7 +368,16 @@ impl TreeBuilder {
             return leaf(updates);
         }
 
-        let Some(best) = self.best_split(x, target, weights, indices, context) else {
+        let Some(best) = self.best_split(
+            x,
+            target,
+            weights,
+            indices,
+            context,
+            node_histogram_stats,
+            depth + 1 < self.max_depth,
+            updates.as_deref_mut(),
+        ) else {
             return leaf(updates);
         };
         if best.gain < self.min_gain {
@@ -249,15 +389,43 @@ impl TreeBuilder {
             gain,
             left,
             right,
+            left_direct_node,
+            right_direct_node,
             left_weights,
             right_weights,
+            left_node_stats,
+            right_node_stats,
+            left_histogram_stats,
+            right_histogram_stats,
         } = best;
-        let sample_weight_sum = indices.iter().map(|&idx| weights[idx]).sum();
+        let sample_weight_sum = node_histogram_stats
+            .and_then(|stats| histogram_node_stats(context, stats))
+            .or(node_stats)
+            .map(|stats| stats.weight_sum)
+            .unwrap_or_else(|| indices.iter().map(|&idx| weights[idx]).sum());
         let left_weight_values = left_weights.as_deref().unwrap_or(weights);
         let right_weight_values = right_weights.as_deref().unwrap_or(weights);
+        let (left_lower_bound, left_upper_bound, right_lower_bound, right_upper_bound) = self
+            .child_bounds(
+                &split,
+                target,
+                left_weight_values,
+                right_weight_values,
+                &left,
+                &right,
+                left_node_stats,
+                right_node_stats,
+                lower_bound,
+                upper_bound,
+            );
         let left_node;
         let right_node;
-        if let Some(updates) = updates {
+        if let (Some(left_direct_node), Some(right_direct_node)) =
+            (left_direct_node, right_direct_node)
+        {
+            left_node = left_direct_node;
+            right_node = right_direct_node;
+        } else if let Some(updates) = updates {
             left_node = self.build_node_inner(
                 x,
                 target,
@@ -266,6 +434,10 @@ impl TreeBuilder {
                 depth + 1,
                 context,
                 Some(updates),
+                left_histogram_stats.as_deref(),
+                left_node_stats,
+                left_lower_bound,
+                left_upper_bound,
             );
             right_node = self.build_node_inner(
                 x,
@@ -275,6 +447,10 @@ impl TreeBuilder {
                 depth + 1,
                 context,
                 Some(updates),
+                right_histogram_stats.as_deref(),
+                right_node_stats,
+                right_lower_bound,
+                right_upper_bound,
             );
         } else {
             left_node = self.build_node_inner(
@@ -285,6 +461,10 @@ impl TreeBuilder {
                 depth + 1,
                 context,
                 None,
+                left_histogram_stats.as_deref(),
+                left_node_stats,
+                left_lower_bound,
+                left_upper_bound,
             );
             right_node = self.build_node_inner(
                 x,
@@ -294,6 +474,10 @@ impl TreeBuilder {
                 depth + 1,
                 context,
                 None,
+                right_histogram_stats.as_deref(),
+                right_node_stats,
+                right_lower_bound,
+                right_upper_bound,
             );
         }
         Node::Branch {
@@ -305,6 +489,7 @@ impl TreeBuilder {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn best_split(
         &self,
         x: &Dataset,
@@ -312,8 +497,10 @@ impl TreeBuilder {
         weights: &[f64],
         indices: &[usize],
         context: &FitContext,
+        node_histogram_stats: Option<&[CandidateStats]>,
+        build_child_histograms: bool,
+        terminal_updates: Option<&mut [f64]>,
     ) -> Option<BestSplit> {
-        let parent_sse = sse(target, weights, indices);
         let mut best: Option<BestSplit> = None;
 
         let splitters = if self.splitters.is_empty() {
@@ -321,13 +508,51 @@ impl TreeBuilder {
         } else {
             self.splitters.clone()
         };
+        let pure_histogram = splitters
+            .iter()
+            .all(|splitter| matches!(splitter, SplitterKind::AxisHistogram { .. }));
+        let mut terminal_histogram_updates = if !build_child_histograms
+            && pure_histogram
+            && self.leaf_predictor == LeafPredictorKind::Constant
+            && self.uses_l2_split_score()
+            && self.monotonic_constraints.is_empty()
+        {
+            terminal_updates
+        } else {
+            None
+        };
+        let parent_sse = if pure_histogram && self.uses_l2_split_score() {
+            0.0
+        } else {
+            profile::timed(profile::PARENT_SSE, || {
+                self.node_loss(target, weights, indices)
+            })
+        };
         for splitter in splitters {
             match splitter {
                 SplitterKind::Axis => self
                     .axis_candidates(x, target, weights, indices, parent_sse, context, &mut best),
-                SplitterKind::AxisHistogram { bins } => self.axis_histogram_candidates(
-                    x, target, weights, indices, parent_sse, bins, context, &mut best,
-                ),
+                SplitterKind::AxisHistogram { bins } => {
+                    if self.uses_l2_split_score() && self.monotonic_constraints.is_empty() {
+                        self.axis_histogram_candidates(
+                            x,
+                            target,
+                            weights,
+                            indices,
+                            parent_sse,
+                            bins,
+                            context,
+                            node_histogram_stats,
+                            build_child_histograms,
+                            terminal_histogram_updates.as_deref_mut(),
+                            &mut best,
+                        )
+                    } else {
+                        self.axis_histogram_exact_candidates(
+                            x, target, weights, indices, parent_sse, bins, context, &mut best,
+                        )
+                    }
+                }
                 SplitterKind::Diagonal2D => {
                     self.diagonal_candidates(x, target, weights, indices, parent_sse, &mut best)
                 }
@@ -356,25 +581,221 @@ impl TreeBuilder {
         parent_sse: f64,
         bins: usize,
         context: &FitContext,
+        node_histogram_stats: Option<&[CandidateStats]>,
+        build_child_histograms: bool,
+        mut terminal_updates: Option<&mut [f64]>,
         best: &mut Option<BestSplit>,
     ) {
         let bins = bins.clamp(2, 1024);
+        if !context.histogram_row_bins.is_empty() {
+            let started = Instant::now();
+            let mut computed_stats;
+            let stats = if let Some(stats) = node_histogram_stats {
+                stats
+            } else {
+                computed_stats = profile::timed(profile::HIST_PREPARE, || {
+                    vec![CandidateStats::default(); context.cols * bins]
+                });
+                profile::timed(profile::HIST_ACCUMULATE, || {
+                    if context.histogram_all_features {
+                        if context.cols == 3 {
+                            for &idx in indices {
+                                add_histogram_stats_row(
+                                    context,
+                                    bins,
+                                    target,
+                                    weights,
+                                    idx,
+                                    &mut computed_stats,
+                                );
+                            }
+                        } else {
+                            for &idx in indices {
+                                let weight = weights[idx];
+                                let value = target[idx];
+                                let weighted_target = weight * value;
+                                let weighted_target_square = weighted_target * value;
+                                let row_offset = idx * context.cols;
+                                for (feature, &bin) in context.histogram_row_bins
+                                    [row_offset..row_offset + context.cols]
+                                    .iter()
+                                    .enumerate()
+                                {
+                                    let item =
+                                        &mut computed_stats[feature * bins + usize::from(bin)];
+                                    item.count += 1;
+                                    item.weight_sum += weight;
+                                    item.weighted_target_sum += weighted_target;
+                                    item.weighted_target_square_sum += weighted_target_square;
+                                }
+                            }
+                        }
+                    } else {
+                        for &idx in indices {
+                            let weight = weights[idx];
+                            let value = target[idx];
+                            let weighted_target = weight * value;
+                            let weighted_target_square = weighted_target * value;
+                            let row_offset = idx * context.cols;
+                            for &feature in &context.histogram_feature_indices {
+                                let bin = context.histogram_row_bins[row_offset + feature];
+                                if bin == MISSING_BIN {
+                                    continue;
+                                }
+                                let item = &mut computed_stats[feature * bins + usize::from(bin)];
+                                item.count += 1;
+                                item.weight_sum += weight;
+                                item.weighted_target_sum += weighted_target;
+                                item.weighted_target_square_sum += weighted_target_square;
+                            }
+                        }
+                    }
+                });
+                &computed_stats
+            };
+
+            let mut histogram_candidate: Option<BestHistogramCandidate> = None;
+            profile::timed(profile::HIST_SCORE, || {
+                let common_total = context
+                    .histogram_all_features
+                    .then(|| histogram_node_stats(context, stats))
+                    .flatten();
+                for &feature in &context.histogram_feature_indices {
+                    let Some(histogram_feature) = context.histogram_feature(feature, bins) else {
+                        continue;
+                    };
+                    let feature_stats = &stats[feature * bins..(feature + 1) * bins];
+                    let total = common_total.unwrap_or_else(|| {
+                        feature_stats
+                            .iter()
+                            .fold(CandidateStats::default(), |mut total, item| {
+                                total.count += item.count;
+                                total.weight_sum += item.weight_sum;
+                                total.weighted_target_sum += item.weighted_target_sum;
+                                total.weighted_target_square_sum += item.weighted_target_square_sum;
+                                total
+                            })
+                    });
+                    if total.count < self.min_samples_leaf * 2 {
+                        continue;
+                    }
+
+                    let mut left_stats = CandidateStats::default();
+                    for (split_bin, bin_stats) in feature_stats.iter().enumerate().take(bins - 1) {
+                        left_stats.count += bin_stats.count;
+                        left_stats.weight_sum += bin_stats.weight_sum;
+                        left_stats.weighted_target_sum += bin_stats.weighted_target_sum;
+                        left_stats.weighted_target_square_sum +=
+                            bin_stats.weighted_target_square_sum;
+                        let right_stats = total.minus(&left_stats);
+                        if left_stats.count < self.min_samples_leaf
+                            || right_stats.count < self.min_samples_leaf
+                        {
+                            continue;
+                        }
+                        let threshold = histogram_feature.min_value
+                            + ((split_bin + 1) as f64 / histogram_feature.scale);
+                        if threshold >= histogram_feature.max_value {
+                            continue;
+                        }
+                        let parent_loss = if parent_sse == 0.0 {
+                            total.sse()
+                        } else {
+                            parent_sse
+                        };
+                        let gain = parent_loss - left_stats.sse() - right_stats.sse();
+                        let split = Split::Axis {
+                            feature,
+                            threshold,
+                            missing_goes_left: true,
+                        };
+                        if best
+                            .as_ref()
+                            .is_some_and(|old| !is_better_split(gain, &split, old))
+                        {
+                            continue;
+                        }
+                        if histogram_candidate.as_ref().is_none_or(|old| {
+                            is_better_split_candidate(gain, &split, old.gain, &old.split)
+                        }) {
+                            histogram_candidate = Some(BestHistogramCandidate {
+                                split,
+                                gain,
+                                split_bin,
+                                left_capacity: left_stats.count,
+                                right_capacity: right_stats.count,
+                                left_stats,
+                                right_stats,
+                            });
+                        }
+                    }
+                }
+            });
+            profile::add(profile::HISTOGRAM, started.elapsed());
+            materialize_histogram_candidate(
+                &mut histogram_candidate,
+                context,
+                bins,
+                indices,
+                target,
+                weights,
+                Some(stats),
+                build_child_histograms,
+                terminal_updates.as_deref_mut(),
+                best,
+            );
+            return;
+        }
+
+        let started = Instant::now();
+        let mut stats = vec![CandidateStats::default(); bins];
+        let mut histogram_candidate: Option<BestHistogramCandidate> = None;
         for feature in 0..x.n_cols() {
             if !dense_feature_allows_axis(x, feature) {
                 continue;
             }
             if let Some(histogram_feature) = context.histogram_feature(feature, bins) {
-                self.axis_histogram_prebinned_candidates(
+                let Some(candidate) = self.axis_histogram_prebinned_candidate(
                     feature,
                     histogram_feature,
                     target,
                     weights,
                     indices,
                     parent_sse,
-                    best,
-                );
+                    &mut stats,
+                ) else {
+                    continue;
+                };
+                if best
+                    .as_ref()
+                    .is_some_and(|old| !is_better_split(candidate.gain, &candidate.split, old))
+                {
+                    continue;
+                }
+                if histogram_candidate.as_ref().is_none_or(|old| {
+                    is_better_split_candidate(
+                        candidate.gain,
+                        &candidate.split,
+                        old.gain,
+                        &old.split,
+                    )
+                }) {
+                    histogram_candidate = Some(candidate);
+                }
                 continue;
             }
+            materialize_histogram_candidate(
+                &mut histogram_candidate,
+                context,
+                bins,
+                indices,
+                target,
+                weights,
+                None,
+                false,
+                None,
+                best,
+            );
             let mut min_value = f64::INFINITY;
             let mut max_value = f64::NEG_INFINITY;
             for &idx in indices {
@@ -389,7 +810,7 @@ impl TreeBuilder {
             }
 
             let scale = bins as f64 / (max_value - min_value);
-            let mut stats = vec![CandidateStats::default(); bins];
+            stats.fill(CandidateStats::default());
             for &idx in indices {
                 let value = x.get(idx, feature);
                 if !value.is_finite() {
@@ -428,7 +849,12 @@ impl TreeBuilder {
                 if threshold >= max_value {
                     continue;
                 }
-                let gain = parent_sse - left_stats.sse() - right_stats.sse();
+                let parent_loss = if parent_sse == 0.0 {
+                    total.sse()
+                } else {
+                    parent_sse
+                };
+                let gain = parent_loss - left_stats.sse() - right_stats.sse();
                 let split = Split::Axis {
                     feature,
                     threshold,
@@ -447,10 +873,23 @@ impl TreeBuilder {
                 }
             }
         }
+        profile::add(profile::HISTOGRAM, started.elapsed());
+        materialize_histogram_candidate(
+            &mut histogram_candidate,
+            context,
+            bins,
+            indices,
+            target,
+            weights,
+            None,
+            false,
+            terminal_updates,
+            best,
+        );
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn axis_histogram_prebinned_candidates(
+    fn axis_histogram_prebinned_candidate(
         &self,
         feature: usize,
         histogram_feature: &HistogramFeature,
@@ -458,77 +897,78 @@ impl TreeBuilder {
         weights: &[f64],
         indices: &[usize],
         parent_sse: f64,
-        best: &mut Option<BestSplit>,
-    ) {
+        stats: &mut [CandidateStats],
+    ) -> Option<BestHistogramCandidate> {
         let bins = histogram_feature.bin_count;
-        let mut stats = vec![CandidateStats::default(); bins];
+        stats.fill(CandidateStats::default());
         for &idx in indices {
-            if let Some(bin) = histogram_feature.bins[idx] {
-                stats[bin].add_row(idx, target, weights);
+            let bin = histogram_feature.bins[idx];
+            if bin != MISSING_BIN {
+                stats[usize::from(bin)].add_row(idx, target, weights);
             }
         }
 
-        let total = stats
-            .iter()
-            .fold(CandidateStats::default(), |mut total, item| {
-                total.count += item.count;
-                total.weight_sum += item.weight_sum;
-                total.weighted_target_sum += item.weighted_target_sum;
-                total.weighted_target_square_sum += item.weighted_target_square_sum;
-                total
-            });
-        if total.count < self.min_samples_leaf * 2 {
-            return;
-        }
-
-        let mut left_stats = CandidateStats::default();
-        for (split_bin, bin_stats) in stats.iter().enumerate().take(bins - 1) {
-            left_stats.count += bin_stats.count;
-            left_stats.weight_sum += bin_stats.weight_sum;
-            left_stats.weighted_target_sum += bin_stats.weighted_target_sum;
-            left_stats.weighted_target_square_sum += bin_stats.weighted_target_square_sum;
-            let right_stats = total.minus(&left_stats);
-            if left_stats.count < self.min_samples_leaf || right_stats.count < self.min_samples_leaf
-            {
-                continue;
-            }
-            let threshold =
-                histogram_feature.min_value + ((split_bin + 1) as f64 / histogram_feature.scale);
-            if threshold >= histogram_feature.max_value {
-                continue;
-            }
-            let gain = parent_sse - left_stats.sse() - right_stats.sse();
-            let split = Split::Axis {
-                feature,
-                threshold,
-                missing_goes_left: true,
-            };
-            if best
-                .as_ref()
-                .is_some_and(|old| !is_better_split(gain, &split, old))
-            {
-                continue;
+        profile::timed(profile::HIST_SCORE, || {
+            let total = stats
+                .iter()
+                .fold(CandidateStats::default(), |mut total, item| {
+                    total.count += item.count;
+                    total.weight_sum += item.weight_sum;
+                    total.weighted_target_sum += item.weighted_target_sum;
+                    total.weighted_target_square_sum += item.weighted_target_square_sum;
+                    total
+                });
+            if total.count < self.min_samples_leaf * 2 {
+                return None;
             }
 
-            let mut left = Vec::with_capacity(left_stats.count);
-            let mut right = Vec::with_capacity(right_stats.count);
-            for &idx in indices {
-                if histogram_feature.bins[idx].is_some_and(|bin| bin <= split_bin) {
-                    left.push(idx);
-                } else {
-                    right.push(idx);
+            let mut left_stats = CandidateStats::default();
+            let mut candidate: Option<BestHistogramCandidate> = None;
+            for (split_bin, bin_stats) in stats.iter().enumerate().take(bins - 1) {
+                left_stats.count += bin_stats.count;
+                left_stats.weight_sum += bin_stats.weight_sum;
+                left_stats.weighted_target_sum += bin_stats.weighted_target_sum;
+                left_stats.weighted_target_square_sum += bin_stats.weighted_target_square_sum;
+                let right_stats = total.minus(&left_stats);
+                if left_stats.count < self.min_samples_leaf
+                    || right_stats.count < self.min_samples_leaf
+                {
+                    continue;
                 }
+                let threshold = histogram_feature.min_value
+                    + ((split_bin + 1) as f64 / histogram_feature.scale);
+                if threshold >= histogram_feature.max_value {
+                    continue;
+                }
+                let parent_loss = if parent_sse == 0.0 {
+                    total.sse()
+                } else {
+                    parent_sse
+                };
+                let gain = parent_loss - left_stats.sse() - right_stats.sse();
+                let split = Split::Axis {
+                    feature,
+                    threshold,
+                    missing_goes_left: true,
+                };
+                if candidate.as_ref().is_some_and(|old| {
+                    !is_better_split_candidate(gain, &split, old.gain, &old.split)
+                }) {
+                    continue;
+                }
+                candidate = Some(BestHistogramCandidate {
+                    split,
+                    gain,
+                    split_bin,
+                    left_capacity: left_stats.count,
+                    right_capacity: right_stats.count,
+                    left_stats,
+                    right_stats,
+                });
             }
 
-            *best = Some(BestSplit {
-                split,
-                gain,
-                left,
-                right,
-                left_weights: None,
-                right_weights: None,
-            });
-        }
+            candidate
+        })
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -542,6 +982,10 @@ impl TreeBuilder {
         context: &FitContext,
         best: &mut Option<BestSplit>,
     ) {
+        if !self.uses_l2_split_score() || !self.monotonic_constraints.is_empty() {
+            self.axis_candidates_exact(x, target, weights, indices, parent_sse, context, best);
+            return;
+        }
         if !self.fuzzy || self.fuzzy_bandwidth <= 0.0 {
             self.axis_candidates_prefix(x, target, weights, indices, parent_sse, context, best);
             return;
@@ -583,7 +1027,7 @@ impl TreeBuilder {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn axis_candidates_prefix(
+    fn axis_candidates_exact(
         &self,
         x: &Dataset,
         target: &[f64],
@@ -610,41 +1054,143 @@ impl TreeBuilder {
                     value.is_finite().then_some((value, idx))
                 })
                 .collect::<Vec<_>>();
-            if pairs.len() < self.min_samples_leaf * 2 {
+
+            for window in pairs.windows(2) {
+                let (a, _) = window[0];
+                let (b, _) = window[1];
+                if a == b {
+                    continue;
+                }
+                let split = Split::Axis {
+                    feature,
+                    threshold: (a + b) / 2.0,
+                    missing_goes_left: true,
+                };
+                self.consider_split(split, x, target, weights, indices, parent_sse, best);
+            }
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn axis_histogram_exact_candidates(
+        &self,
+        x: &Dataset,
+        target: &[f64],
+        weights: &[f64],
+        indices: &[usize],
+        parent_sse: f64,
+        bins: usize,
+        context: &FitContext,
+        best: &mut Option<BestSplit>,
+    ) {
+        let bins = bins.clamp(2, 1024);
+        for feature in 0..x.n_cols() {
+            if !dense_feature_allows_axis(x, feature) {
                 continue;
             }
+            let (min_value, max_value) =
+                if let Some(histogram_feature) = context.histogram_feature(feature, bins) {
+                    (histogram_feature.min_value, histogram_feature.max_value)
+                } else {
+                    let mut min_value = f64::INFINITY;
+                    let mut max_value = f64::NEG_INFINITY;
+                    for &idx in indices {
+                        let value = x.get(idx, feature);
+                        if value.is_finite() {
+                            min_value = min_value.min(value);
+                            max_value = max_value.max(value);
+                        }
+                    }
+                    (min_value, max_value)
+                };
+            if !min_value.is_finite() || min_value >= max_value {
+                continue;
+            }
+            let scale = bins as f64 / (max_value - min_value);
+            for split_bin in 0..(bins - 1) {
+                let threshold = min_value + ((split_bin + 1) as f64 / scale);
+                if threshold >= max_value {
+                    continue;
+                }
+                let split = Split::Axis {
+                    feature,
+                    threshold,
+                    missing_goes_left: true,
+                };
+                self.consider_split(split, x, target, weights, indices, parent_sse, best);
+            }
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn axis_candidates_prefix(
+        &self,
+        x: &Dataset,
+        target: &[f64],
+        weights: &[f64],
+        indices: &[usize],
+        parent_sse: f64,
+        context: &FitContext,
+        best: &mut Option<BestSplit>,
+    ) {
+        let active = active_row_mask(x.n_rows(), indices);
+        let mut axis_candidate: Option<BestAxisCandidate> = None;
+        for feature in 0..x.n_cols() {
+            if !dense_feature_allows_axis(x, feature) {
+                continue;
+            }
+            let Some(sorted_rows) = context.sorted_rows(feature) else {
+                continue;
+            };
 
             let mut total_weight = 0.0;
             let mut total_weighted_target = 0.0;
             let mut total_weighted_target_sq = 0.0;
-            for &(_, idx) in &pairs {
+            let mut active_count = 0usize;
+            for &idx in sorted_rows {
+                if !active[idx] {
+                    continue;
+                }
                 let weight = weights[idx];
                 let value = target[idx];
                 total_weight += weight;
                 total_weighted_target += weight * value;
                 total_weighted_target_sq += weight * value * value;
+                active_count += 1;
+            }
+            if active_count < self.min_samples_leaf * 2 {
+                continue;
             }
 
             let mut left_weight = 0.0;
             let mut left_weighted_target = 0.0;
             let mut left_weighted_target_sq = 0.0;
-            for split_idx in 0..pairs.len() - 1 {
-                let (_, idx) = pairs[split_idx];
-                let weight = weights[idx];
-                let value = target[idx];
+            let mut left_count = 0usize;
+            let mut previous: Option<(f64, usize)> = None;
+            for &idx in sorted_rows {
+                if !active[idx] {
+                    continue;
+                }
+                let current_value = x.get(idx, feature);
+                let Some((previous_value, previous_idx)) = previous else {
+                    previous = Some((current_value, idx));
+                    continue;
+                };
+                let weight = weights[previous_idx];
+                let value = target[previous_idx];
                 left_weight += weight;
                 left_weighted_target += weight * value;
                 left_weighted_target_sq += weight * value * value;
+                left_count += 1;
 
-                let (current, _) = pairs[split_idx];
-                let (next, _) = pairs[split_idx + 1];
-                if current == next {
+                if previous_value == current_value {
+                    previous = Some((current_value, idx));
                     continue;
                 }
 
-                let left_count = split_idx + 1;
-                let right_count = pairs.len() - left_count;
+                let right_count = active_count - left_count;
                 if left_count < self.min_samples_leaf || right_count < self.min_samples_leaf {
+                    previous = Some((current_value, idx));
                     continue;
                 }
 
@@ -664,36 +1210,33 @@ impl TreeBuilder {
                     );
                 let split = Split::Axis {
                     feature,
-                    threshold: (current + next) / 2.0,
+                    threshold: (previous_value + current_value) / 2.0,
                     missing_goes_left: true,
                 };
                 if best
                     .as_ref()
                     .is_some_and(|old| !is_better_split(gain, &split, old))
                 {
+                    previous = Some((current_value, idx));
                     continue;
                 }
-
-                let mut left = Vec::with_capacity(left_count);
-                let mut right = Vec::with_capacity(right_count);
-                for (position, &(_, row_idx)) in pairs.iter().enumerate() {
-                    if position <= split_idx {
-                        left.push(row_idx);
-                    } else {
-                        right.push(row_idx);
-                    }
+                if axis_candidate
+                    .as_ref()
+                    .is_none_or(|old| is_better_split_candidate(gain, &split, old.gain, &old.split))
+                {
+                    axis_candidate = Some(BestAxisCandidate {
+                        split,
+                        gain,
+                        feature,
+                        split_position: left_count - 1,
+                        left_capacity: left_count,
+                        right_capacity: right_count,
+                    });
                 }
-
-                *best = Some(BestSplit {
-                    split,
-                    gain,
-                    left,
-                    right,
-                    left_weights: None,
-                    right_weights: None,
-                });
+                previous = Some((current_value, idx));
             }
         }
+        materialize_axis_candidate(&mut axis_candidate, context, &active, best);
     }
 
     fn diagonal_candidates(
@@ -891,7 +1434,7 @@ impl TreeBuilder {
         period: f64,
         best: &mut Option<BestSplit>,
     ) {
-        if !self.fuzzy || self.fuzzy_bandwidth <= 0.0 {
+        if self.uses_l2_split_score() && (!self.fuzzy || self.fuzzy_bandwidth <= 0.0) {
             self.periodic_candidates_grouped(x, target, weights, indices, parent_sse, period, best);
             return;
         }
@@ -1099,8 +1642,14 @@ impl TreeBuilder {
                         gain,
                         left,
                         right,
+                        left_direct_node: None,
+                        right_direct_node: None,
                         left_weights: None,
                         right_weights: None,
+                        left_node_stats: None,
+                        right_node_stats: None,
+                        left_histogram_stats: None,
+                        right_histogram_stats: None,
                     });
                 }
             }
@@ -1116,7 +1665,7 @@ impl TreeBuilder {
         parent_sse: f64,
         best: &mut Option<BestSplit>,
     ) {
-        if !self.fuzzy || self.fuzzy_bandwidth <= 0.0 {
+        if self.uses_l2_split_score() && (!self.fuzzy || self.fuzzy_bandwidth <= 0.0) {
             self.sparse_set_candidates_grouped(x, target, weights, indices, best);
             return;
         }
@@ -1270,9 +1819,138 @@ impl TreeBuilder {
             gain,
             left: Vec::with_capacity(left_stats.count),
             right: Vec::with_capacity(right_stats.count),
+            left_direct_node: None,
+            right_direct_node: None,
             left_weights: None,
             right_weights: None,
+            left_node_stats: Some(left_stats),
+            right_node_stats: Some(right_stats),
+            left_histogram_stats: None,
+            right_histogram_stats: None,
         });
+    }
+
+    fn uses_l2_split_score(&self) -> bool {
+        matches!(self.loss, LossConfig::L2)
+    }
+
+    fn node_loss(&self, target: &[f64], weights: &[f64], indices: &[usize]) -> f64 {
+        match self.loss {
+            LossConfig::L2 => sse(target, weights, indices),
+            LossConfig::Quantile(config) => {
+                weighted_pinball_loss(target, weights, indices, config.alpha)
+            }
+        }
+    }
+
+    fn leaf_value(
+        &self,
+        target: &[f64],
+        weights: &[f64],
+        indices: &[usize],
+        stats: Option<CandidateStats>,
+    ) -> f64 {
+        match self.loss {
+            LossConfig::L2 => stats.map_or_else(
+                || {
+                    let stats = candidate_stats(indices.iter().copied(), target, weights);
+                    constant_leaf_value(stats)
+                },
+                constant_leaf_value,
+            ),
+            LossConfig::Quantile(config) => {
+                let values = indices.iter().map(|&idx| target[idx]).collect::<Vec<_>>();
+                let selected_weights = indices.iter().map(|&idx| weights[idx]).collect::<Vec<_>>();
+                weighted_quantile(&values, &selected_weights, config.alpha)
+            }
+        }
+    }
+
+    fn leaf_training_loss(
+        &self,
+        target: &[f64],
+        weights: &[f64],
+        indices: &[usize],
+        value: f64,
+    ) -> f64 {
+        match self.loss {
+            LossConfig::L2 => indices
+                .iter()
+                .map(|&idx| weights[idx] * (target[idx] - value).powi(2))
+                .sum(),
+            LossConfig::Quantile(config) => indices
+                .iter()
+                .map(|&idx| weights[idx] * pinball_loss(target[idx], value, config.alpha))
+                .sum(),
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn monotonic_split_allowed(
+        &self,
+        split: &Split,
+        target: &[f64],
+        left_weights: &[f64],
+        right_weights: &[f64],
+        left: &[usize],
+        right: &[usize],
+    ) -> bool {
+        let Some((feature, direction)) = self.axis_monotonic_direction(split) else {
+            return true;
+        };
+        if direction == 0 {
+            return true;
+        }
+        let left_value = self.leaf_value(target, left_weights, left, None);
+        let right_value = self.leaf_value(target, right_weights, right, None);
+        let allowed = if direction > 0 {
+            left_value <= right_value + 1e-12
+        } else {
+            left_value + 1e-12 >= right_value
+        };
+        let _ = feature;
+        allowed
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn child_bounds(
+        &self,
+        split: &Split,
+        target: &[f64],
+        left_weights: &[f64],
+        right_weights: &[f64],
+        left: &[usize],
+        right: &[usize],
+        left_stats: Option<CandidateStats>,
+        right_stats: Option<CandidateStats>,
+        lower_bound: f64,
+        upper_bound: f64,
+    ) -> (f64, f64, f64, f64) {
+        let Some((_feature, direction)) = self.axis_monotonic_direction(split) else {
+            return (lower_bound, upper_bound, lower_bound, upper_bound);
+        };
+        if direction == 0 {
+            return (lower_bound, upper_bound, lower_bound, upper_bound);
+        }
+        let left_value = self.leaf_value(target, left_weights, left, left_stats);
+        let right_value = self.leaf_value(target, right_weights, right, right_stats);
+        let middle = ((left_value + right_value) / 2.0).clamp(lower_bound, upper_bound);
+        if direction > 0 {
+            (lower_bound, middle, middle, upper_bound)
+        } else {
+            (middle, upper_bound, lower_bound, middle)
+        }
+    }
+
+    fn axis_monotonic_direction(&self, split: &Split) -> Option<(usize, i8)> {
+        let feature = match split {
+            Split::Axis { feature, .. } => *feature,
+            _ => return None,
+        };
+        self.monotonic_constraints
+            .get(feature)
+            .copied()
+            .map(|direction| (feature, direction))
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1313,8 +1991,19 @@ impl TreeBuilder {
         if left.len() < self.min_samples_leaf || right.len() < self.min_samples_leaf {
             return;
         }
-        let gain =
-            parent_sse - sse(target, &left_weights, &left) - sse(target, &right_weights, &right);
+        if !self.monotonic_split_allowed(
+            &scoring_split,
+            target,
+            &left_weights,
+            &right_weights,
+            &left,
+            &right,
+        ) {
+            return;
+        }
+        let gain = parent_sse
+            - self.node_loss(target, &left_weights, &left)
+            - self.node_loss(target, &right_weights, &right);
         if best
             .as_ref()
             .is_none_or(|old| is_better_split(gain, &scoring_split, old))
@@ -1326,6 +2015,12 @@ impl TreeBuilder {
                 right_weights: Some(right_weights),
                 left,
                 right,
+                left_direct_node: None,
+                right_direct_node: None,
+                left_node_stats: None,
+                right_node_stats: None,
+                left_histogram_stats: None,
+                right_histogram_stats: None,
             });
         }
     }
@@ -1389,9 +2084,11 @@ fn prebinned_histogram_feature(
     let bins = (0..x.n_rows())
         .map(|row| {
             let value = x.get(row, feature);
-            value
-                .is_finite()
-                .then(|| (((value - min_value) * scale) as usize).min(bin_count - 1))
+            if value.is_finite() {
+                (((value - min_value) * scale) as usize).min(bin_count - 1) as u16
+            } else {
+                MISSING_BIN
+            }
         })
         .collect();
     Some(HistogramFeature {
@@ -1432,6 +2129,7 @@ fn dense_feature_allows_sparse_set(x: &Dataset, feature: usize) -> bool {
 }
 
 impl CandidateStats {
+    #[inline(always)]
     fn add_row(&mut self, idx: usize, target: &[f64], weights: &[f64]) {
         let weight = weights[idx];
         let value = target[idx];
@@ -1441,6 +2139,7 @@ impl CandidateStats {
         self.weighted_target_square_sum += weight * value * value;
     }
 
+    #[inline(always)]
     fn minus(&self, other: &Self) -> Self {
         Self {
             count: self.count - other.count,
@@ -1451,6 +2150,7 @@ impl CandidateStats {
         }
     }
 
+    #[inline(always)]
     fn sse(&self) -> f64 {
         weighted_sse_from_sums(
             self.weight_sum,
@@ -1458,6 +2158,102 @@ impl CandidateStats {
             self.weighted_target_square_sum,
         )
     }
+}
+
+#[inline(always)]
+fn constant_leaf_value(stats: CandidateStats) -> f64 {
+    if stats.weight_sum <= 0.0 {
+        0.0
+    } else {
+        stats.weighted_target_sum / stats.weight_sum
+    }
+}
+
+#[inline(always)]
+fn constant_leaf_node(stats: CandidateStats) -> Node {
+    Node::Leaf {
+        value: constant_leaf_value(stats),
+        sample_weight_sum: stats.weight_sum,
+        training_loss: stats.sse(),
+    }
+}
+
+#[inline(always)]
+fn add_histogram_stats_row(
+    context: &FitContext,
+    bins: usize,
+    target: &[f64],
+    weights: &[f64],
+    idx: usize,
+    stats: &mut [CandidateStats],
+) {
+    let weight = weights[idx];
+    let value = target[idx];
+    let weighted_target = weight * value;
+    let weighted_target_square = weighted_target * value;
+    let row_offset = idx * context.cols;
+    if context.cols == 3 {
+        let bin0 = usize::from(context.histogram_row_bins[row_offset]);
+        let item0 = &mut stats[bin0];
+        item0.count += 1;
+        item0.weight_sum += weight;
+        item0.weighted_target_sum += weighted_target;
+        item0.weighted_target_square_sum += weighted_target_square;
+
+        let bin1 = usize::from(context.histogram_row_bins[row_offset + 1]);
+        let item1 = &mut stats[bins + bin1];
+        item1.count += 1;
+        item1.weight_sum += weight;
+        item1.weighted_target_sum += weighted_target;
+        item1.weighted_target_square_sum += weighted_target_square;
+
+        let bin2 = usize::from(context.histogram_row_bins[row_offset + 2]);
+        let item2 = &mut stats[(2 * bins) + bin2];
+        item2.count += 1;
+        item2.weight_sum += weight;
+        item2.weighted_target_sum += weighted_target;
+        item2.weighted_target_square_sum += weighted_target_square;
+        return;
+    }
+    for (feature, &bin) in context.histogram_row_bins[row_offset..row_offset + context.cols]
+        .iter()
+        .enumerate()
+    {
+        let item = &mut stats[feature * bins + usize::from(bin)];
+        item.count += 1;
+        item.weight_sum += weight;
+        item.weighted_target_sum += weighted_target;
+        item.weighted_target_square_sum += weighted_target_square;
+    }
+}
+
+#[inline(always)]
+fn subtract_histogram_stats(
+    parent: &[CandidateStats],
+    child: &[CandidateStats],
+) -> Vec<CandidateStats> {
+    parent
+        .iter()
+        .zip(child)
+        .map(|(parent, child)| parent.minus(child))
+        .collect()
+}
+
+#[inline(always)]
+fn histogram_node_stats(context: &FitContext, stats: &[CandidateStats]) -> Option<CandidateStats> {
+    let bins = context.histogram_bins?;
+    let feature = *context.histogram_feature_indices.first()?;
+    let start = feature * bins;
+    Some(stats.get(start..start + bins)?.iter().fold(
+        CandidateStats::default(),
+        |mut total, stats| {
+            total.count += stats.count;
+            total.weight_sum += stats.weight_sum;
+            total.weighted_target_sum += stats.weighted_target_sum;
+            total.weighted_target_square_sum += stats.weighted_target_square_sum;
+            total
+        },
+    ))
 }
 
 fn candidate_stats(
@@ -1525,6 +2321,7 @@ fn materialize_axis_split(
     indices: &[usize],
     best: &mut Option<BestSplit>,
 ) {
+    let started = Instant::now();
     let mut left = Vec::new();
     let mut right = Vec::new();
     for &idx in indices {
@@ -1543,9 +2340,231 @@ fn materialize_axis_split(
         gain: 0.0,
         left,
         right,
+        left_direct_node: None,
+        right_direct_node: None,
         left_weights: None,
         right_weights: None,
+        left_node_stats: None,
+        right_node_stats: None,
+        left_histogram_stats: None,
+        right_histogram_stats: None,
     });
+    profile::add(profile::MATERIALIZE, started.elapsed());
+}
+
+fn materialize_axis_candidate(
+    candidate: &mut Option<BestAxisCandidate>,
+    context: &FitContext,
+    active: &[bool],
+    best: &mut Option<BestSplit>,
+) {
+    let started = Instant::now();
+    let Some(candidate) = candidate.take() else {
+        return;
+    };
+    if best
+        .as_ref()
+        .is_some_and(|old| !is_better_split(candidate.gain, &candidate.split, old))
+    {
+        return;
+    }
+    let Some(sorted_rows) = context.sorted_rows(candidate.feature) else {
+        return;
+    };
+    let mut left: Vec<usize> = Vec::with_capacity(candidate.left_capacity);
+    let mut right: Vec<usize> = Vec::with_capacity(candidate.right_capacity);
+    let mut position = 0usize;
+    for &idx in sorted_rows {
+        if !active[idx] {
+            continue;
+        }
+        if position <= candidate.split_position {
+            left.push(idx);
+        } else {
+            right.push(idx);
+        }
+        position += 1;
+    }
+
+    *best = Some(BestSplit {
+        split: candidate.split,
+        gain: candidate.gain,
+        left,
+        right,
+        left_direct_node: None,
+        right_direct_node: None,
+        left_weights: None,
+        right_weights: None,
+        left_node_stats: None,
+        right_node_stats: None,
+        left_histogram_stats: None,
+        right_histogram_stats: None,
+    });
+    profile::add(profile::MATERIALIZE, started.elapsed());
+}
+
+#[allow(clippy::too_many_arguments)]
+fn materialize_histogram_candidate(
+    candidate: &mut Option<BestHistogramCandidate>,
+    context: &FitContext,
+    bins: usize,
+    indices: &[usize],
+    target: &[f64],
+    weights: &[f64],
+    parent_histogram_stats: Option<&[CandidateStats]>,
+    build_child_histograms: bool,
+    terminal_updates: Option<&mut [f64]>,
+    best: &mut Option<BestSplit>,
+) {
+    let started = Instant::now();
+    let Some(candidate) = candidate.take() else {
+        return;
+    };
+    let Some(feature) = candidate.feature() else {
+        return;
+    };
+    let Some(_histogram_feature) = context.histogram_feature(feature, bins) else {
+        return;
+    };
+    if best
+        .as_ref()
+        .is_some_and(|old| !is_better_split(candidate.gain, &candidate.split, old))
+    {
+        return;
+    }
+
+    if let Some(updates) = terminal_updates.filter(|_| context.histogram_all_features) {
+        let left_value = constant_leaf_value(candidate.left_stats);
+        let right_value = constant_leaf_value(candidate.right_stats);
+        profile::timed(profile::MATERIALIZE_PARTITION, || {
+            let mut left_len = 0usize;
+            let mut right_len = 0usize;
+            for &idx in indices {
+                let bin = usize::from(context.histogram_row_bins[idx * context.cols + feature]);
+                if bin <= candidate.split_bin {
+                    updates[idx] = left_value;
+                    left_len += 1;
+                } else {
+                    updates[idx] = right_value;
+                    right_len += 1;
+                }
+            }
+            debug_assert_eq!(left_len, candidate.left_capacity);
+            debug_assert_eq!(right_len, candidate.right_capacity);
+        });
+        *best = Some(BestSplit {
+            split: candidate.split,
+            gain: candidate.gain,
+            left: Vec::new(),
+            right: Vec::new(),
+            left_direct_node: Some(constant_leaf_node(candidate.left_stats)),
+            right_direct_node: Some(constant_leaf_node(candidate.right_stats)),
+            left_weights: None,
+            right_weights: None,
+            left_node_stats: Some(candidate.left_stats),
+            right_node_stats: Some(candidate.right_stats),
+            left_histogram_stats: None,
+            right_histogram_stats: None,
+        });
+        profile::add(profile::MATERIALIZE, started.elapsed());
+        return;
+    }
+
+    let mut left: Vec<usize> = Vec::with_capacity(candidate.left_capacity);
+    let mut right: Vec<usize> = Vec::with_capacity(candidate.right_capacity);
+    let build_left_histogram = context.histogram_all_features
+        && build_child_histograms
+        && parent_histogram_stats.is_some()
+        && candidate.left_capacity <= candidate.right_capacity;
+    let build_right_histogram = context.histogram_all_features
+        && build_child_histograms
+        && parent_histogram_stats.is_some()
+        && candidate.right_capacity < candidate.left_capacity;
+    let mut smaller_histogram_stats = if build_left_histogram || build_right_histogram {
+        Some(profile::timed(profile::HIST_PREPARE, || {
+            vec![CandidateStats::default(); context.cols * bins]
+        }))
+    } else {
+        None
+    };
+    profile::timed(profile::MATERIALIZE_PARTITION, || {
+        if context.histogram_all_features {
+            // SAFETY: capacities come from the same histogram counts and split bin used here.
+            // Every input row is written exactly once to either `left` or `right`, and the
+            // final lengths are set to the number of initialized elements.
+            unsafe {
+                let left_ptr = left.as_mut_ptr();
+                let right_ptr = right.as_mut_ptr();
+                let mut left_len = 0;
+                let mut right_len = 0;
+                for &idx in indices {
+                    let bin = usize::from(context.histogram_row_bins[idx * context.cols + feature]);
+                    if bin <= candidate.split_bin {
+                        debug_assert!(left_len < candidate.left_capacity);
+                        left_ptr.add(left_len).write(idx);
+                        left_len += 1;
+                        if build_left_histogram {
+                            let stats = smaller_histogram_stats.as_mut().expect("stats allocated");
+                            add_histogram_stats_row(context, bins, target, weights, idx, stats);
+                        }
+                    } else {
+                        debug_assert!(right_len < candidate.right_capacity);
+                        right_ptr.add(right_len).write(idx);
+                        right_len += 1;
+                        if build_right_histogram {
+                            let stats = smaller_histogram_stats.as_mut().expect("stats allocated");
+                            add_histogram_stats_row(context, bins, target, weights, idx, stats);
+                        }
+                    }
+                }
+                debug_assert_eq!(left_len, candidate.left_capacity);
+                debug_assert_eq!(right_len, candidate.right_capacity);
+                left.set_len(left_len);
+                right.set_len(right_len);
+            }
+        } else {
+            for &idx in indices {
+                let bin = context.histogram_bin(idx, feature);
+                if bin != MISSING_BIN && usize::from(bin) <= candidate.split_bin {
+                    left.push(idx);
+                } else {
+                    right.push(idx);
+                }
+            }
+        }
+    });
+
+    let (left_histogram_stats, right_histogram_stats) =
+        profile::timed(profile::MATERIALIZE_CHILD_HIST, || {
+            match (parent_histogram_stats, smaller_histogram_stats) {
+                (Some(parent_stats), Some(smaller_stats)) => {
+                    if build_left_histogram {
+                        let right_stats = subtract_histogram_stats(parent_stats, &smaller_stats);
+                        (Some(smaller_stats), Some(right_stats))
+                    } else {
+                        let left_stats = subtract_histogram_stats(parent_stats, &smaller_stats);
+                        (Some(left_stats), Some(smaller_stats))
+                    }
+                }
+                _ => (None, None),
+            }
+        });
+
+    *best = Some(BestSplit {
+        split: candidate.split,
+        gain: candidate.gain,
+        left,
+        right,
+        left_direct_node: None,
+        right_direct_node: None,
+        left_weights: None,
+        right_weights: None,
+        left_node_stats: Some(candidate.left_stats),
+        right_node_stats: Some(candidate.right_stats),
+        left_histogram_stats,
+        right_histogram_stats,
+    });
+    profile::add(profile::MATERIALIZE, started.elapsed());
 }
 
 fn sparse_feature_allows_sparse_set(x: &Dataset, sparse_feature: usize) -> bool {
@@ -1575,13 +2594,17 @@ fn periodic_period_for_feature(
 }
 
 fn is_better_split(gain: f64, split: &Split, old: &BestSplit) -> bool {
-    if gain > old.gain + 1e-12 {
+    is_better_split_candidate(gain, split, old.gain, &old.split)
+}
+
+fn is_better_split_candidate(gain: f64, split: &Split, old_gain: f64, old_split: &Split) -> bool {
+    if gain > old_gain + 1e-12 {
         return true;
     }
-    if (gain - old.gain).abs() > 1e-12 {
+    if (gain - old_gain).abs() > 1e-12 {
         return false;
     }
-    match (periodic_width(split), periodic_width(&old.split)) {
+    match (periodic_width(split), periodic_width(old_split)) {
         (Some(width), Some(old_width)) => width < old_width - 1e-12,
         _ => false,
     }
@@ -1630,6 +2653,8 @@ mod tests {
             linear_lambda_l2: 1.0,
             fuzzy: false,
             fuzzy_bandwidth: 0.0,
+            loss: crate::loss::LossConfig::L2,
+            monotonic_constraints: Vec::new(),
         };
 
         let tree = builder.fit(&x, &y, &weights);
@@ -1682,6 +2707,8 @@ mod tests {
             linear_lambda_l2: 1.0,
             fuzzy: false,
             fuzzy_bandwidth: 0.0,
+            loss: crate::loss::LossConfig::L2,
+            monotonic_constraints: Vec::new(),
         };
 
         let tree = builder.fit(&x, &y, &weights);
@@ -1711,6 +2738,8 @@ mod tests {
             linear_lambda_l2: 1.0,
             fuzzy: true,
             fuzzy_bandwidth: 2.0,
+            loss: crate::loss::LossConfig::L2,
+            monotonic_constraints: Vec::new(),
         };
 
         let tree = builder.fit(&x, &y, &weights);
@@ -1755,6 +2784,8 @@ mod tests {
             linear_lambda_l2: 1.0,
             fuzzy: false,
             fuzzy_bandwidth: 0.0,
+            loss: crate::loss::LossConfig::L2,
+            monotonic_constraints: Vec::new(),
         };
 
         let tree = builder.fit(&x, &y, &weights);
@@ -1795,6 +2826,8 @@ mod tests {
             linear_lambda_l2: 1.0,
             fuzzy: false,
             fuzzy_bandwidth: 0.0,
+            loss: crate::loss::LossConfig::L2,
+            monotonic_constraints: Vec::new(),
         };
 
         let tree = builder.fit(&x, &y, &weights);
@@ -1840,6 +2873,8 @@ mod tests {
             linear_lambda_l2: 1.0,
             fuzzy: false,
             fuzzy_bandwidth: 0.0,
+            loss: crate::loss::LossConfig::L2,
+            monotonic_constraints: Vec::new(),
         };
 
         let tree = builder.fit(&x, &y, &weights);
@@ -1875,6 +2910,8 @@ mod tests {
             linear_lambda_l2: 1.0,
             fuzzy: false,
             fuzzy_bandwidth: 0.0,
+            loss: crate::loss::LossConfig::L2,
+            monotonic_constraints: Vec::new(),
         };
 
         let tree = builder.fit(&x, &y, &weights);

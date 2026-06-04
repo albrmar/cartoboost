@@ -4,6 +4,7 @@ pub mod explain;
 pub mod loss;
 pub mod metrics;
 pub mod predictors;
+pub(crate) mod profile;
 pub mod serialize;
 pub mod splitters;
 pub mod tree;

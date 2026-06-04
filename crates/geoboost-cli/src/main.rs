@@ -1,3 +1,4 @@
+use geoboost_core::loss::{LossConfig, QuantileLossConfig};
 use geoboost_core::tree::{LeafPredictorKind, SplitterKind};
 use geoboost_core::{Booster, BoosterConfig, Dataset, Model as CoreModel};
 use std::collections::BTreeMap;
@@ -326,11 +327,14 @@ struct Config {
     max_depth: Option<usize>,
     min_samples_leaf: Option<usize>,
     min_gain: Option<f64>,
+    loss: Option<String>,
+    quantile_alpha: Option<f64>,
     splitter: Option<String>,
     leaf_predictor: Option<String>,
     fuzzy: Option<bool>,
     fuzzy_bandwidth: Option<f64>,
     l2_regularization: Option<f64>,
+    monotonic_constraints: Option<Vec<i8>>,
 }
 
 impl Config {
@@ -349,6 +353,12 @@ impl Config {
             max_depth: self.max_depth.unwrap_or(defaults.max_depth),
             min_samples_leaf: self.min_samples_leaf.unwrap_or(defaults.min_samples_leaf),
             min_gain: self.min_gain.unwrap_or(defaults.min_gain),
+            loss: self
+                .loss
+                .as_deref()
+                .map(|loss| cli_loss(loss, self.quantile_alpha.unwrap_or(0.5)))
+                .transpose()?
+                .unwrap_or(defaults.loss),
             splitters: self
                 .splitter
                 .as_deref()
@@ -365,6 +375,10 @@ impl Config {
             linear_lambda_l2: self.l2_regularization.unwrap_or(defaults.linear_lambda_l2),
             fuzzy: self.fuzzy.unwrap_or(defaults.fuzzy),
             fuzzy_bandwidth: self.fuzzy_bandwidth.unwrap_or(defaults.fuzzy_bandwidth),
+            monotonic_constraints: self
+                .monotonic_constraints
+                .clone()
+                .unwrap_or(defaults.monotonic_constraints),
         })
     }
 }
@@ -407,6 +421,14 @@ fn read_config(path: &str) -> CliResult<Config> {
                 config.min_samples_leaf = Some(parse_config_value(key, value, line_number)?)
             }
             "min_gain" => config.min_gain = Some(parse_config_value(key, value, line_number)?),
+            "loss" => {
+                let loss = parse_config_string(key, value, line_number)?;
+                cli_loss(&loss, config.quantile_alpha.unwrap_or(0.5))?;
+                config.loss = Some(loss);
+            }
+            "quantile_alpha" => {
+                config.quantile_alpha = Some(parse_config_value(key, value, line_number)?)
+            }
             "splitter" | "splitters" => {
                 let splitters = parse_config_string(key, value, line_number)?;
                 cli_splitters(&splitters)?;
@@ -423,6 +445,10 @@ fn read_config(path: &str) -> CliResult<Config> {
             }
             "l2_regularization" => {
                 config.l2_regularization = Some(parse_config_value(key, value, line_number)?)
+            }
+            "monotonic_constraints" => {
+                config.monotonic_constraints =
+                    Some(parse_monotonic_constraints(value, line_number)?)
             }
             _ => {
                 return Err(format!("unknown config key '{key}' on line {line_number}").into());
@@ -518,6 +544,40 @@ fn cli_leaf_predictor(value: &str) -> CliResult<LeafPredictorKind> {
         "linear" => Ok(LeafPredictorKind::Linear),
         other => Err(format!("unknown leaf_predictor '{other}'").into()),
     }
+}
+
+fn cli_loss(value: &str, quantile_alpha: f64) -> CliResult<LossConfig> {
+    match value {
+        "l2" | "squared_error" => Ok(LossConfig::L2),
+        "quantile" | "pinball" => {
+            if !quantile_alpha.is_finite() || quantile_alpha <= 0.0 || quantile_alpha >= 1.0 {
+                return Err("quantile_alpha must be finite and in (0, 1)".into());
+            }
+            Ok(LossConfig::Quantile(QuantileLossConfig {
+                alpha: quantile_alpha,
+            }))
+        }
+        other => Err(format!("unknown loss '{other}'").into()),
+    }
+}
+
+fn parse_monotonic_constraints(value: &str, line_number: usize) -> CliResult<Vec<i8>> {
+    let value = parse_config_string("monotonic_constraints", value, line_number)?;
+    let mut constraints = Vec::new();
+    for raw in value.split(',') {
+        let item = raw.trim();
+        if item.is_empty() {
+            return Err("monotonic_constraints contains an empty value".into());
+        }
+        let constraint = item.parse::<i8>().map_err(|err| {
+            format!("invalid monotonic_constraints value on line {line_number}: {err}")
+        })?;
+        if !matches!(constraint, -1..=1) {
+            return Err("monotonic_constraints values must be -1, 0, or 1".into());
+        }
+        constraints.push(constraint);
+    }
+    Ok(constraints)
 }
 
 struct CsvData {

@@ -1,11 +1,13 @@
 use crate::data::{validate_weights, Dataset};
-use crate::loss::{L2Loss, Loss};
+use crate::loss::{L2Loss, Loss, LossConfig, QuantileLoss};
+use crate::profile;
 use crate::tree::{
     LeafPredictorKind, Model, SplitterKind, TrainingConfigMetadata, TreeBuilder,
     MODEL_ARTIFACT_VERSION,
 };
 use crate::{GeoBoostError, Result};
 use serde::{Deserialize, Serialize};
+use std::time::Instant;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BoosterConfig {
@@ -20,6 +22,8 @@ pub struct BoosterConfig {
     pub linear_lambda_l2: f64,
     pub fuzzy: bool,
     pub fuzzy_bandwidth: f64,
+    pub loss: LossConfig,
+    pub monotonic_constraints: Vec<i8>,
 }
 
 #[derive(Debug, Clone)]
@@ -41,6 +45,8 @@ impl Default for BoosterConfig {
             linear_lambda_l2: 1.0,
             fuzzy: false,
             fuzzy_bandwidth: 0.0,
+            loss: LossConfig::L2,
+            monotonic_constraints: Vec::new(),
         }
     }
 }
@@ -51,6 +57,11 @@ impl Booster {
     }
 
     pub fn fit(&self, x: &Dataset, y: &[f64], sample_weight: Option<&[f64]>) -> Result<Model> {
+        let profile_enabled = profile::enabled();
+        if profile_enabled {
+            profile::reset();
+        }
+        let profile_started = Instant::now();
         if !self.config.learning_rate.is_finite() {
             return Err(GeoBoostError::InvalidInput(
                 "learning_rate must be finite".to_string(),
@@ -67,8 +78,13 @@ impl Booster {
             ));
         }
         let weights = validate_weights(sample_weight, y.len())?;
-        let loss = L2Loss;
-        let init_prediction = loss.initial_prediction(y, Some(&weights));
+        validate_training_config(&self.config, x.n_cols())?;
+        let init_prediction = match self.config.loss {
+            LossConfig::L2 => L2Loss.initial_prediction(y, Some(&weights)),
+            LossConfig::Quantile(config) => {
+                QuantileLoss::new(config.alpha).initial_prediction(y, Some(&weights))
+            }
+        };
         let mut pred = vec![init_prediction; y.len()];
         let mut residuals = vec![0.0; y.len()];
         let mut trees = Vec::with_capacity(self.config.n_estimators);
@@ -82,33 +98,50 @@ impl Booster {
             linear_lambda_l2: self.config.linear_lambda_l2,
             fuzzy: self.config.fuzzy,
             fuzzy_bandwidth: self.config.fuzzy_bandwidth,
+            loss: self.config.loss.clone(),
+            monotonic_constraints: self.config.monotonic_constraints.clone(),
         };
+        let fit_context = profile::timed(profile::CONTEXT, || builder.fit_context(x));
 
         for _ in 0..self.config.n_estimators {
-            // For L2, the negative gradient is the residual. Each tree fits this
-            // target, then shrinkage applies learning_rate to the fitted update.
-            for ((residual, target), prediction) in residuals.iter_mut().zip(y).zip(&pred) {
-                *residual = target - prediction;
-            }
+            profile::timed(profile::RESIDUAL, || {
+                for ((residual, target), prediction) in residuals.iter_mut().zip(y).zip(&pred) {
+                    *residual = match self.config.loss {
+                        LossConfig::L2 => target - prediction,
+                        LossConfig::Quantile(_) => target - prediction,
+                    };
+                }
+            });
             let use_leaf_updates = !self.config.fuzzy
                 && matches!(self.config.leaf_predictor, LeafPredictorKind::Constant);
+            let use_leaf_updates = use_leaf_updates
+                && matches!(self.config.loss, LossConfig::L2)
+                && self.config.monotonic_constraints.is_empty();
             let tree = if use_leaf_updates {
-                let (tree, updates) = builder.fit_with_leaf_updates(x, &residuals, &weights);
-                for (prediction, update) in pred.iter_mut().zip(updates) {
-                    *prediction += self.config.learning_rate * update;
-                }
+                let (tree, updates) = profile::timed(profile::TREE_FIT, || {
+                    builder.fit_with_leaf_updates_in_context(x, &residuals, &weights, &fit_context)
+                });
+                profile::timed(profile::PRED_UPDATE, || {
+                    for (prediction, update) in pred.iter_mut().zip(updates) {
+                        *prediction += self.config.learning_rate * update;
+                    }
+                });
                 tree
             } else {
-                let tree = builder.fit(x, &residuals, &weights);
-                for (row, prediction) in pred.iter_mut().enumerate() {
-                    *prediction += self.config.learning_rate * tree.predict_dataset_row(x, row);
-                }
+                let tree = profile::timed(profile::TREE_FIT, || {
+                    builder.fit_in_context(x, &residuals, &weights, &fit_context)
+                });
+                profile::timed(profile::PRED_UPDATE, || {
+                    for (row, prediction) in pred.iter_mut().enumerate() {
+                        *prediction += self.config.learning_rate * tree.predict_dataset_row(x, row);
+                    }
+                });
                 tree
             };
             trees.push(tree);
         }
 
-        Ok(Model {
+        let model = Model {
             artifact_version: MODEL_ARTIFACT_VERSION,
             metadata: Some(Model::default_metadata()),
             init_prediction,
@@ -128,15 +161,73 @@ impl Booster {
                 linear_lambda_l2: self.config.linear_lambda_l2,
                 fuzzy: self.config.fuzzy,
                 fuzzy_bandwidth: self.config.fuzzy_bandwidth,
+                loss: self.config.loss.clone(),
+                monotonic_constraints: self.config.monotonic_constraints.clone(),
             }),
             trees,
-        })
+        };
+        profile::report("booster_fit", profile_started.elapsed());
+        Ok(model)
     }
+}
+
+fn validate_training_config(config: &BoosterConfig, feature_count: usize) -> Result<()> {
+    if let LossConfig::Quantile(loss) = config.loss {
+        if !loss.alpha.is_finite() || loss.alpha <= 0.0 || loss.alpha >= 1.0 {
+            return Err(GeoBoostError::InvalidInput(
+                "quantile alpha must be finite and in (0, 1)".to_string(),
+            ));
+        }
+        if config.leaf_predictor != LeafPredictorKind::Constant {
+            return Err(GeoBoostError::InvalidInput(
+                "quantile loss currently requires constant leaves".to_string(),
+            ));
+        }
+    }
+    if !config.monotonic_constraints.is_empty() {
+        if config.monotonic_constraints.len() != feature_count {
+            return Err(GeoBoostError::InvalidInput(format!(
+                "monotonic_constraints has length {}, but X has {feature_count} features",
+                config.monotonic_constraints.len()
+            )));
+        }
+        if config
+            .monotonic_constraints
+            .iter()
+            .any(|constraint| !matches!(*constraint, -1..=1))
+        {
+            return Err(GeoBoostError::InvalidInput(
+                "monotonic_constraints values must be -1, 0, or 1".to_string(),
+            ));
+        }
+        if config.leaf_predictor != LeafPredictorKind::Constant {
+            return Err(GeoBoostError::InvalidInput(
+                "monotonic constraints currently require constant leaves".to_string(),
+            ));
+        }
+        if config.fuzzy {
+            return Err(GeoBoostError::InvalidInput(
+                "monotonic constraints currently require hard routing".to_string(),
+            ));
+        }
+        if config.splitters.iter().any(|splitter| {
+            !matches!(
+                splitter,
+                SplitterKind::Axis | SplitterKind::AxisHistogram { .. }
+            )
+        }) {
+            return Err(GeoBoostError::InvalidInput(
+                "monotonic constraints currently support only axis splitters".to_string(),
+            ));
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::loss::{LossConfig, QuantileLossConfig};
     use crate::tree::{Split, MODEL_ARTIFACT_VERSION};
 
     #[test]
@@ -197,6 +288,66 @@ mod tests {
 
         assert_eq!(loaded.artifact_version, MODEL_ARTIFACT_VERSION);
         assert_eq!(loaded.predict(&x), predictions);
+    }
+
+    #[test]
+    fn quantile_booster_uses_weighted_quantile_initial_prediction_and_metadata() {
+        let x = Dataset::from_rows(vec![vec![0.0], vec![1.0], vec![2.0], vec![3.0]]).unwrap();
+        let y = vec![0.0, 10.0, 20.0, 30.0];
+        let weights = vec![1.0, 1.0, 10.0, 1.0];
+        let booster = Booster::new(BoosterConfig {
+            n_estimators: 1,
+            learning_rate: 1.0,
+            max_depth: 1,
+            min_samples_leaf: 1,
+            min_gain: 0.0,
+            loss: LossConfig::Quantile(QuantileLossConfig { alpha: 0.8 }),
+            splitters: vec![SplitterKind::Axis],
+            ..BoosterConfig::default()
+        });
+
+        let model = booster.fit(&x, &y, Some(&weights)).unwrap();
+
+        assert_eq!(model.init_prediction, 20.0);
+        assert_eq!(
+            model.training_config.as_ref().unwrap().loss,
+            LossConfig::Quantile(QuantileLossConfig { alpha: 0.8 })
+        );
+        assert!(model
+            .predict(&x)
+            .iter()
+            .all(|prediction| prediction.is_finite()));
+    }
+
+    #[test]
+    fn monotonic_constraints_reject_decreasing_axis_split_for_increasing_feature() {
+        let x = Dataset::from_rows(vec![vec![0.0], vec![1.0], vec![2.0], vec![3.0]]).unwrap();
+        let y = vec![10.0, 10.0, 0.0, 0.0];
+        let booster = Booster::new(BoosterConfig {
+            n_estimators: 1,
+            learning_rate: 1.0,
+            max_depth: 1,
+            min_samples_leaf: 1,
+            min_gain: 0.0,
+            splitters: vec![SplitterKind::Axis],
+            monotonic_constraints: vec![1],
+            ..BoosterConfig::default()
+        });
+
+        let model = booster.fit(&x, &y, None).unwrap();
+
+        assert!(matches!(
+            model.trees[0].root,
+            crate::tree::Node::Leaf { .. }
+        ));
+        assert_eq!(
+            model
+                .training_config
+                .as_ref()
+                .unwrap()
+                .monotonic_constraints,
+            vec![1]
+        );
     }
 
     #[test]

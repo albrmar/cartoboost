@@ -76,3 +76,16 @@ model-quality benchmark path. It writes tables and graphics under
 and compares GeoBoost with LightGBM/XGBoost when those optional packages are
 installed. It is intentionally outside `just validate` because it may download
 large data and depends on optional benchmark packages.
+
+The comparison dependency boundary is:
+
+- Required package/runtime tests: GeoBoost, NumPy, and scikit-learn estimator
+  compatibility.
+- Optional `bench` comparisons: pandas/pyarrow for NYC data loading, LightGBM
+  and XGBoost for baseline models, and matplotlib for plots.
+
+Benchmark docs and generated artifacts must state the exact feature handling and
+baseline configuration. The current NYC comparison uses comparable target-mean
+zone features for all boosting packages and records RMSE/R2 deltas against
+XGBoost, so quality regressions remain visible even when a speed gate passes or
+fails.

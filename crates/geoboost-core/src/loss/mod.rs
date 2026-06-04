@@ -1,6 +1,18 @@
 mod l2;
+mod quantile;
 
 pub use l2::L2Loss;
+pub use quantile::{
+    pinball_loss, weighted_pinball_loss, weighted_quantile, QuantileLoss, QuantileLossConfig,
+};
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub enum LossConfig {
+    #[default]
+    L2,
+    Quantile(QuantileLossConfig),
+}
 
 pub trait Loss {
     fn initial_prediction(&self, y: &[f64], w: Option<&[f64]>) -> f64;

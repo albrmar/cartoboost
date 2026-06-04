@@ -27,7 +27,9 @@ Supported public methods:
 - `fit(X, y, sample_weight=None, feature_schema=None, sparse_sets=None)`
 - `predict(X, sparse_sets=None)`
 - `save(path)`
+- `save_weights(path, format="auto")`
 - `GeoBoostRegressor.load(path)`
+- `GeoBoostRegressor.load_weights(path)`
 - `get_params(deep=True)`
 - `set_params(**params)`
 
@@ -68,6 +70,18 @@ the Python API.
 `sample_weight` must match `y` length and contain finite non-negative values.
 Weights are passed through to the Rust backend and used by the fallback for its
 supported dense path.
+
+## Model Weights Export
+
+`save_weights("model.weights.json")` writes a versioned JSON weights artifact
+that can be restored with `GeoBoostRegressor.load_weights(...)`. The artifact is
+plain JSON and includes enough model state for prediction, including tree
+structure, split parameters, leaf values, learning rate, initial prediction,
+feature schema, and training metadata when available.
+
+`save_weights("model.onnx")` exports ONNX when the optional `onnx` package is
+installed. ONNX support is limited to dense axis-tree models with constant
+leaves; use JSON weights for the full GeoBoost model surface.
 
 ## Sparse Features And Schema
 

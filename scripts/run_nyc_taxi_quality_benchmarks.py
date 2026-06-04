@@ -32,6 +32,7 @@ ROW_FEATURES = [
     "DOLocationID",
 ]
 DEMAND_FEATURES = ["PULocationID", "hour", "dayofweek"]
+ZONE_FEATURES = {"PULocationID", "DOLocationID"}
 
 
 @dataclass(frozen=True)
@@ -55,6 +56,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--sample-size", type=int, default=100_000)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument(
+        "--tasks",
+        default="",
+        help="Comma-separated task names to run, for example pickup_demand.",
+    )
     parser.add_argument("--no-download", action="store_true")
     parser.add_argument(
         "--models",
@@ -68,10 +74,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--geoboost-n-estimators",
         type=int,
-        default=1,
+        default=100,
         help=(
-            "Estimator count for the GeoBoost NYC speed preset. Baselines use "
-            "--n-estimators so quality regressions from this fast mode remain visible."
+            "Estimator count for the GeoBoost benchmark candidate. Baselines use "
+            "--n-estimators; geoboost_reference uses the baseline count."
         ),
     )
     parser.add_argument("--learning-rate", type=float, default=0.08)
@@ -79,11 +85,42 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--geoboost-max-depth",
         type=int,
-        default=0,
+        default=4,
         help=(
-            "Max depth for the GeoBoost NYC speed preset. Baselines use --max-depth "
-            "so any quality degradation is reported explicitly."
+            "Max depth for the GeoBoost benchmark candidate. Baselines use --max-depth; "
+            "geoboost_reference uses the baseline depth."
         ),
+    )
+    parser.add_argument(
+        "--geoboost-splitters",
+        default="axis_histogram:64",
+        help=(
+            "Comma-separated GeoBoost splitters for candidate and reference, "
+            "for example axis_histogram:64 or axis."
+        ),
+    )
+    parser.add_argument(
+        "--xgboost-tree-method",
+        default="hist",
+        choices=["auto", "exact", "approx", "hist"],
+        help="XGBoost tree_method for cross-comparable exact/exact or hist/hist runs.",
+    )
+    parser.add_argument("--xgboost-subsample", type=float, default=1.0)
+    parser.add_argument("--xgboost-colsample-bytree", type=float, default=1.0)
+    parser.add_argument(
+        "--zone-treatment",
+        default="target_mean",
+        choices=["raw", "target_mean"],
+        help=(
+            "Comparable handling for NYC taxi zone IDs. 'target_mean' appends "
+            "train-only smoothed zone target-mean features to every model, including XGBoost."
+        ),
+    )
+    parser.add_argument(
+        "--zone-target-smoothing",
+        type=float,
+        default=20.0,
+        help="Pseudo-count for train-only smoothed zone target-mean features.",
     )
     parser.add_argument("--n-threads", type=int, default=0)
     parser.add_argument(
@@ -99,6 +136,21 @@ def parse_months(value: str) -> list[int]:
     if not months or any(month < 1 or month > 12 for month in months):
         raise ValueError("--months must contain month numbers between 1 and 12")
     return months
+
+
+def parse_splitters(value: str) -> list[str]:
+    splitters = [part.strip() for part in value.split(",") if part.strip()]
+    if not splitters:
+        raise ValueError("splitter list must not be empty")
+    return splitters
+
+
+def splitters_need_sparse_sets(splitters: list[str]) -> bool:
+    return any("sparse" in splitter for splitter in splitters)
+
+
+def splitters_use_dense_id_sets(splitters: list[str]) -> bool:
+    return any(splitter == "sparse_set" for splitter in splitters)
 
 
 def month_url(taxi_type: str, year: int, month: int) -> str:
@@ -358,17 +410,118 @@ def metric_summary(actual: np.ndarray, predicted: np.ndarray) -> dict[str, float
     return {"rmse": rmse, "mae": mae, "r2": r2}
 
 
-def geoboost_schema(task: BenchmarkTask) -> dict[str, list[dict[str, Any]]]:
+def geoboost_schema(
+    task: BenchmarkTask,
+    *,
+    feature_names: list[str] | None = None,
+    dense_id_sets: bool = False,
+    include_sparse_sets: bool = True,
+) -> dict[str, list[dict[str, Any]]]:
     dense = []
-    for name in task.feature_names:
+    for name in feature_names or task.feature_names:
         if name == "hour":
             dense.append({"name": name, "kind": "periodic", "period": 24})
         elif name == "dayofweek":
             dense.append({"name": name, "kind": "periodic", "period": 7})
+        elif dense_id_sets and name in {"PULocationID", "DOLocationID"}:
+            dense.append({"name": name, "kind": "sparse_set"})
         else:
             dense.append({"name": name, "kind": "numeric"})
-    sparse_sets = [{"name": name, "kind": "sparse_set"} for name in task.sparse_sets]
+    sparse_sets = (
+        [{"name": name, "kind": "sparse_set"} for name in task.sparse_sets]
+        if include_sparse_sets
+        else []
+    )
     return {"dense": dense, "sparse_sets": sparse_sets}
+
+
+def transformed_split_features(
+    task: BenchmarkTask,
+    train_indices: np.ndarray,
+    test_indices: np.ndarray,
+    args: argparse.Namespace,
+) -> tuple[np.ndarray, np.ndarray, list[str]]:
+    train_x = task.features[train_indices]
+    test_x = task.features[test_indices]
+    if args.zone_treatment == "raw":
+        return train_x, test_x, list(task.feature_names)
+    if args.zone_treatment != "target_mean":
+        raise ValueError(f"unknown zone treatment: {args.zone_treatment}")
+    train_y = task.target[train_indices]
+    return append_zone_target_mean_features(
+        train_x,
+        test_x,
+        train_y,
+        task.feature_names,
+        smoothing=args.zone_target_smoothing,
+    )
+
+
+def append_zone_target_mean_features(
+    train_x: np.ndarray,
+    test_x: np.ndarray,
+    train_y: np.ndarray,
+    feature_names: list[str],
+    *,
+    smoothing: float,
+) -> tuple[np.ndarray, np.ndarray, list[str]]:
+    zone_feature_indices = [
+        index for index, name in enumerate(feature_names) if name in ZONE_FEATURES
+    ]
+    if not zone_feature_indices:
+        return train_x, test_x, list(feature_names)
+
+    global_mean = float(np.mean(train_y))
+    smoothing = max(0.0, float(smoothing))
+    train_columns = []
+    test_columns = []
+    new_names = list(feature_names)
+    for feature_index in zone_feature_indices:
+        train_column, test_column = smoothed_target_mean_column(
+            train_x[:, feature_index],
+            test_x[:, feature_index],
+            train_y,
+            global_mean=global_mean,
+            smoothing=smoothing,
+        )
+        train_columns.append(train_column)
+        test_columns.append(test_column)
+        new_names.append(f"{feature_names[feature_index]}_target_mean")
+
+    return (
+        np.column_stack([train_x, *train_columns]).astype(float, copy=False),
+        np.column_stack([test_x, *test_columns]).astype(float, copy=False),
+        new_names,
+    )
+
+
+def smoothed_target_mean_column(
+    train_ids: np.ndarray,
+    test_ids: np.ndarray,
+    train_y: np.ndarray,
+    *,
+    global_mean: float,
+    smoothing: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    sums: dict[int, float] = {}
+    counts: dict[int, int] = {}
+    for raw_id, target in zip(train_ids, train_y, strict=True):
+        zone_id = int(raw_id)
+        sums[zone_id] = sums.get(zone_id, 0.0) + float(target)
+        counts[zone_id] = counts.get(zone_id, 0) + 1
+    encoded: dict[int, float] = {
+        zone_id: (sums[zone_id] + smoothing * global_mean) / (counts[zone_id] + smoothing)
+        for zone_id in counts
+    }
+    train_encoded = np.asarray(
+        [encoded.get(int(zone_id), global_mean) for zone_id in train_ids],
+        dtype=float,
+    )
+    test_encoded = np.asarray(
+        [encoded.get(int(zone_id), global_mean) for zone_id in test_ids],
+        dtype=float,
+    )
+    return train_encoded, test_encoded
 
 
 def fit_predict_model(
@@ -379,8 +532,9 @@ def fit_predict_model(
     test_indices: np.ndarray,
     args: argparse.Namespace,
 ) -> dict[str, Any]:
-    train_x = task.features[train_indices]
-    test_x = task.features[test_indices]
+    train_x, test_x, effective_feature_names = transformed_split_features(
+        task, train_indices, test_indices, args
+    )
     train_y = task.target[train_indices]
     test_y = task.target[test_indices]
 
@@ -411,58 +565,36 @@ def fit_predict_model(
         is_speed_preset = model_name == "geoboost"
         n_estimators = args.geoboost_n_estimators if is_speed_preset else args.n_estimators
         max_depth = args.geoboost_max_depth if is_speed_preset else args.max_depth
-        if is_speed_preset and max_depth == 0:
-            try:
-                train_started = time.perf_counter()
-                constant_prediction = float(np.mean(train_y))
-                train_seconds = time.perf_counter() - train_started
-                predict_started = time.perf_counter()
-                prediction = np.broadcast_to(
-                    np.asarray(constant_prediction, dtype=float),
-                    (len(test_indices),),
-                )
-                predict_seconds = time.perf_counter() - predict_started
-            except Exception as exc:  # noqa: BLE001
-                return skipped(f"geoboost speed preset failed: {exc}")
-            return {
-                "status": "ok",
-                "metrics": metric_summary(test_y, prediction),
-                "timing": timing_summary(
-                    train_seconds=train_seconds,
-                    predict_seconds=predict_seconds,
-                    prediction_rows=len(test_indices),
-                ),
-                "backend": "constant_speed_preset",
-                "config": {
-                    "n_estimators": int(n_estimators),
-                    "learning_rate": float(args.learning_rate),
-                    "max_depth": int(max_depth),
-                    "min_samples_leaf": int(min_leaf),
-                    "splitters": ["axis_histogram:64"],
-                    "preset": "nyc_speed",
-                    "fit_path": "constant_mean",
-                    "predict_path": "constant_broadcast",
-                },
-                "predictions": np.asarray(prediction, dtype=float),
-            }
+        splitters = parse_splitters(args.geoboost_splitters)
+        use_dense_id_sets = splitters_use_dense_id_sets(splitters)
+        use_sparse_sets = splitters_need_sparse_sets(splitters) and not use_dense_id_sets
         model = GeoBoostRegressor(
             n_estimators=n_estimators,
             learning_rate=args.learning_rate,
             max_depth=max_depth,
             min_samples_leaf=min_leaf,
             min_gain=0.0,
-            splitters=["axis_histogram:64"],
+            splitters=splitters,
             backend="rust",
         )
-        train_sparse = sparse_subset(task.sparse_sets, train_indices)
-        test_sparse = sparse_subset(task.sparse_sets, test_indices)
+        train_sparse = sparse_subset(task.sparse_sets, train_indices) if use_sparse_sets else None
+        test_sparse = sparse_subset(task.sparse_sets, test_indices) if use_sparse_sets else None
+        feature_schema = (
+            geoboost_schema(
+                task,
+                feature_names=effective_feature_names,
+                include_sparse_sets=True,
+            )
+            if use_sparse_sets
+            else None
+        )
         try:
             train_started = time.perf_counter()
             model.fit(
                 train_x,
                 train_y,
                 sparse_sets=train_sparse,
-                feature_schema=geoboost_schema(task),
+                feature_schema=feature_schema,
             )
             train_seconds = time.perf_counter() - train_started
             predict_started = time.perf_counter()
@@ -492,8 +624,11 @@ def fit_predict_model(
                 "learning_rate": float(args.learning_rate),
                 "max_depth": int(max_depth),
                 "min_samples_leaf": int(min_leaf),
-                "splitters": ["axis_histogram:64"],
-                "preset": "nyc_speed" if is_speed_preset else "reference",
+                "splitters": splitters,
+                "sparse_sets": bool(use_sparse_sets),
+                "zone_treatment": args.zone_treatment,
+                "feature_count": int(train_x.shape[1]),
+                "preset": "candidate" if is_speed_preset else "reference",
                 "predict_path": predict_path,
             },
             "predictions": np.asarray(prediction, dtype=float),
@@ -532,6 +667,8 @@ def fit_predict_model(
                 "learning_rate": float(args.learning_rate),
                 "max_depth": int(args.max_depth),
                 "num_leaves": int(2**args.max_depth),
+                "zone_treatment": args.zone_treatment,
+                "feature_count": int(train_x.shape[1]),
             },
             "predictions": np.asarray(prediction, dtype=float),
         }
@@ -545,8 +682,9 @@ def fit_predict_model(
             n_estimators=args.n_estimators,
             learning_rate=args.learning_rate,
             max_depth=args.max_depth,
-            subsample=0.9,
-            colsample_bytree=0.9,
+            tree_method=args.xgboost_tree_method,
+            subsample=args.xgboost_subsample,
+            colsample_bytree=args.xgboost_colsample_bytree,
             random_state=args.seed,
             n_jobs=args.n_threads or 0,
         )
@@ -568,7 +706,11 @@ def fit_predict_model(
                 "n_estimators": int(args.n_estimators),
                 "learning_rate": float(args.learning_rate),
                 "max_depth": int(args.max_depth),
-                "tree_method": "hist",
+                "tree_method": args.xgboost_tree_method,
+                "subsample": float(args.xgboost_subsample),
+                "colsample_bytree": float(args.xgboost_colsample_bytree),
+                "zone_treatment": args.zone_treatment,
+                "feature_count": int(train_x.shape[1]),
             },
             "predictions": np.asarray(prediction, dtype=float),
         }
@@ -623,6 +765,8 @@ def run_benchmarks(tasks: list[BenchmarkTask], args: argparse.Namespace) -> dict
             "learning_rate": float(args.learning_rate),
             "baseline_max_depth": int(args.max_depth),
             "geoboost_max_depth": int(args.geoboost_max_depth),
+            "zone_treatment": args.zone_treatment,
+            "zone_target_smoothing": float(args.zone_target_smoothing),
         },
         "tasks": {},
     }
@@ -632,6 +776,7 @@ def run_benchmarks(tasks: list[BenchmarkTask], args: argparse.Namespace) -> dict
             "description": task.description,
             "row_count": len(task.target),
             "feature_names": task.feature_names,
+            "zone_treatment": args.zone_treatment,
             "splits": {},
         }
         for split_mode in ["random", "spatial_holdout"]:
@@ -667,6 +812,17 @@ def run_benchmarks(tasks: list[BenchmarkTask], args: argparse.Namespace) -> dict
             task_results["splits"][split_mode] = split_results
         results["tasks"][task.name] = task_results
     return results
+
+
+def filter_tasks(tasks: list[BenchmarkTask], value: str) -> list[BenchmarkTask]:
+    names = {part.strip() for part in value.split(",") if part.strip()}
+    if not names:
+        return tasks
+    known = {task.name for task in tasks}
+    unknown = sorted(names - known)
+    if unknown:
+        raise ValueError(f"unknown tasks: {', '.join(unknown)}")
+    return [task for task in tasks if task.name in names]
 
 
 def dataset_metadata(args: argparse.Namespace, tasks: list[BenchmarkTask]) -> dict[str, Any]:
@@ -816,9 +972,10 @@ def write_markdown(results: dict[str, Any], output_dir: Path) -> None:
         f"- dataset source: {results['dataset']['source']}",
         f"- models requested: {', '.join(results['models_requested'])}",
         f"- baseline estimators: {results['model_config']['baseline_n_estimators']}",
-        f"- GeoBoost speed-preset estimators: {results['model_config']['geoboost_n_estimators']}",
+        f"- GeoBoost candidate estimators: {results['model_config']['geoboost_n_estimators']}",
         f"- baseline max depth: {results['model_config']['baseline_max_depth']}",
-        f"- GeoBoost speed-preset max depth: {results['model_config']['geoboost_max_depth']}",
+        f"- GeoBoost candidate max depth: {results['model_config']['geoboost_max_depth']}",
+        f"- zone treatment: {results['model_config'].get('zone_treatment', 'raw')}",
         "",
     ]
     for task in results["tasks"].values():
@@ -883,6 +1040,7 @@ def main() -> None:
         )
         frame = clean_tlc_frame(load_tlc_frame(paths), sample_size=args.sample_size, seed=args.seed)
         tasks = build_real_tasks(frame)
+    tasks = filter_tasks(tasks, args.tasks)
 
     results = run_benchmarks(tasks, args)
     write_outputs(results, args.output_dir)

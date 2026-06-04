@@ -30,6 +30,34 @@ Native load restores public estimator parameters when training metadata is
 present, including splitters, leaf predictor, linear leaf features, fuzzy
 settings, regularization, learning rate, depth, and minimum split controls.
 
+## Weights Artifacts
+
+`save_weights(path)` writes a prediction-ready, versioned JSON artifact:
+
+```python
+model.save_weights("model.weights.json")
+loaded = GeoBoostRegressor.load_weights("model.weights.json")
+```
+
+The JSON wrapper uses:
+
+- `artifact_type: "geoboost.weights"`
+- `weights_artifact_version: 1`
+- `model_artifact_version`
+- `backend`
+- `model`
+
+The `model` field contains the same versioned model payload used by native
+GeoBoost artifacts, so the file is directly inspectable and can be loaded
+without relying on pickle or process-local Python classes. `load_weights` also
+accepts plain native model JSON for compatibility.
+
+`save_weights("model.onnx")` or `save_weights(path, format="onnx")` exports an
+ONNX `TreeEnsembleRegressor` when the optional `onnx` dependency is installed.
+ONNX export currently supports dense axis-tree models with constant leaves.
+Models using fuzzy, sparse-list, diagonal, Gaussian, periodic, or linear-leaf
+behavior should use the JSON weights artifact.
+
 ## Prediction Identity
 
 Save/load tests should assert prediction identity with strict tolerance:
@@ -46,6 +74,9 @@ floating-point operations.
 Artifact version `1` is the current supported native artifact version. Unknown
 future versions should fail clearly. Backward-compatible optional fields are
 allowed; multi-version migrations are future hardening.
+
+Weights artifact version `1` is the current supported weights wrapper version.
+Unknown future weights versions fail clearly before model loading.
 
 ## Dense And Sparse Prediction Safety
 

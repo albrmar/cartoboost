@@ -13,6 +13,7 @@ def make_shap_explainer(
     sparse_id_vocabulary: dict[str, list[int]] | None = None,
     algorithm: str = "auto",
     feature_names: list[str] | None = None,
+    decomposition: str = "features",
     **kwargs: Any,
 ) -> Any:
     """Build a SHAP explainer for GeoBoost predictions.
@@ -22,6 +23,21 @@ def make_shap_explainer(
     """
     shap = _import_shap()
     _validate_shap_model(model)
+    decomposition = _validate_decomposition(decomposition)
+    if decomposition == "weights":
+        adapter = _AdditiveWeightShapAdapter(
+            model,
+            background,
+            sparse_sets=sparse_sets,
+        )
+        explainer = shap.Explainer(
+            adapter.predict,
+            adapter.background,
+            algorithm=algorithm,
+            feature_names=adapter.feature_names,
+            **kwargs,
+        )
+        return _AdditiveWeightShapExplainer(explainer, adapter)
     if sparse_sets is not None:
         adapter = _SparseSetShapAdapter(
             model,
@@ -63,6 +79,7 @@ def explain_shap(
     sparse_id_vocabulary: dict[str, list[int]] | None = None,
     algorithm: str = "auto",
     feature_names: list[str] | None = None,
+    decomposition: str = "features",
     **kwargs: Any,
 ) -> Any:
     """Return a SHAP Explanation for GeoBoost predictions."""
@@ -83,8 +100,12 @@ def explain_shap(
         sparse_id_vocabulary=sparse_id_vocabulary,
         algorithm=algorithm,
         feature_names=feature_names,
+        decomposition=decomposition,
         **kwargs,
     )
+    additive_adapter = getattr(explainer, "geoboost_additive_adapter", None)
+    if additive_adapter is not None:
+        return explainer(X, sparse_sets=sparse_sets)
     adapter = getattr(explainer, "geoboost_sparse_adapter", None)
     if adapter is not None:
         return explainer(adapter.transform(X, sparse_sets))
@@ -107,6 +128,12 @@ def _validate_shap_model(model: Any) -> None:
         raise RuntimeError("GeoBoostRegressor is not fitted")
 
 
+def _validate_decomposition(decomposition: str) -> str:
+    if decomposition not in {"features", "weights"}:
+        raise ValueError("decomposition must be either 'features' or 'weights'")
+    return decomposition
+
+
 def _model_feature_names(model: Any) -> list[str] | None:
     names = getattr(model, "feature_names_in_", None)
     if names is not None:
@@ -120,6 +147,49 @@ def _model_feature_names(model: Any) -> list[str] | None:
             return [str(name) for name in schema_names[:feature_count]]
 
     return None
+
+
+class _AdditiveWeightShapExplainer:
+    def __init__(self, explainer: Any, adapter: _AdditiveWeightShapAdapter) -> None:
+        self.explainer = explainer
+        self.geoboost_additive_adapter = adapter
+
+    def __call__(self, X: Any, *, sparse_sets: Any | None = None, **kwargs: Any) -> Any:
+        return self.explainer(
+            self.geoboost_additive_adapter.transform(X, sparse_sets=sparse_sets),
+            **kwargs,
+        )
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.explainer, name)
+
+
+class _AdditiveWeightShapAdapter:
+    def __init__(
+        self,
+        model: Any,
+        background: Any,
+        *,
+        sparse_sets: Any | None,
+    ) -> None:
+        self.model = model
+        self.background = self.transform(background, sparse_sets=sparse_sets)
+        self.feature_names = ["init_prediction"] + [
+            f"tree_{idx}" for idx in range(max(0, self.background.shape[1] - 1))
+        ]
+
+    def transform(self, dense: Any, *, sparse_sets: Any | None = None) -> np.ndarray:
+        values = np.asarray(
+            self.model.predict_additive_values(dense, sparse_sets=sparse_sets),
+            dtype=float,
+        )
+        if values.ndim != 2:
+            raise ValueError("additive values must be a 2D matrix")
+        return values
+
+    def predict(self, additive_values: Any) -> np.ndarray:
+        values = _as_2d_array(additive_values)
+        return np.sum(values, axis=1)
 
 
 class _SparseSetShapAdapter:
@@ -253,6 +323,13 @@ def _normalize_sparse_columns_with_names(
         if missing:
             raise ValueError(f"sparse_sets is missing columns: {missing}")
         items = [(name, mapping[name]) for name in names]
+    elif hasattr(sparse_sets, "columns"):
+        mapping = {str(name): sparse_sets[name] for name in sparse_sets.columns}
+        names = list(expected_names or mapping.keys())
+        missing = [name for name in names if name not in mapping]
+        if missing:
+            raise ValueError(f"sparse_sets is missing columns: {missing}")
+        items = [(name, mapping[name]) for name in names]
     else:
         raw_columns = list(sparse_sets)
         if expected_names is not None:
@@ -265,8 +342,17 @@ def _normalize_sparse_columns_with_names(
             items = [(f"sparse_set_{idx}", column) for idx, column in enumerate(sparse_sets)]
         names = [name for name, _ in items]
     return [
-        [[_normalize_sparse_id(value) for value in row] for row in column] for _, column in items
+        [[_normalize_sparse_id(value) for value in row] for row in _sequence_values(column)]
+        for _, column in items
     ], names
+
+
+def _sequence_values(values: Any) -> Any:
+    if hasattr(values, "to_list"):
+        return values.to_list()
+    if hasattr(values, "tolist"):
+        return values.tolist()
+    return values
 
 
 def _normalize_sparse_id(value: Any) -> int:

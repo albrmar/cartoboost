@@ -1,4 +1,5 @@
 use geoboost_core::data::{FeatureSchema, SparseSetColumn};
+use geoboost_core::loss::{LossConfig, QuantileLossConfig};
 use geoboost_core::tree::{LeafPredictorKind, SplitterKind};
 use geoboost_core::{Booster, BoosterConfig, Dataset, GeoBoostError, Model};
 use numpy::{IntoPyArray, PyArray1, PyReadonlyArray1, PyReadonlyArray2, PyUntypedArrayMethods};
@@ -14,19 +15,22 @@ struct NativeGeoBoostRegressor {
     max_depth: usize,
     min_samples_leaf: usize,
     min_gain: f64,
+    loss: String,
+    quantile_alpha: f64,
     splitters: Vec<String>,
     leaf_predictor: String,
     linear_leaf_features: Vec<usize>,
     l2_regularization: f64,
     fuzzy: bool,
     fuzzy_bandwidth: f64,
+    monotonic_constraints: Vec<i8>,
     model: Option<Model>,
 }
 
 #[pymethods]
 impl NativeGeoBoostRegressor {
     #[new]
-    #[pyo3(signature = (n_estimators=100, learning_rate=0.05, max_depth=4, min_samples_leaf=20, min_gain=1e-8, splitters=None, leaf_predictor="constant", linear_leaf_features=None, l2_regularization=1.0, fuzzy=false, fuzzy_bandwidth=0.0))]
+    #[pyo3(signature = (n_estimators=100, learning_rate=0.05, max_depth=4, min_samples_leaf=20, min_gain=1e-8, loss="l2", quantile_alpha=0.5, splitters=None, leaf_predictor="constant", linear_leaf_features=None, l2_regularization=1.0, fuzzy=false, fuzzy_bandwidth=0.0, monotonic_constraints=None))]
     #[allow(clippy::too_many_arguments)]
     fn new(
         n_estimators: usize,
@@ -34,12 +38,15 @@ impl NativeGeoBoostRegressor {
         max_depth: usize,
         min_samples_leaf: usize,
         min_gain: f64,
+        loss: &str,
+        quantile_alpha: f64,
         splitters: Option<Vec<String>>,
         leaf_predictor: &str,
         linear_leaf_features: Option<Vec<usize>>,
         l2_regularization: f64,
         fuzzy: bool,
         fuzzy_bandwidth: f64,
+        monotonic_constraints: Option<Vec<i8>>,
     ) -> PyResult<Self> {
         validate_params(
             n_estimators,
@@ -49,7 +56,9 @@ impl NativeGeoBoostRegressor {
             min_gain,
             l2_regularization,
             fuzzy_bandwidth,
+            quantile_alpha,
         )?;
+        parse_loss(loss, quantile_alpha)?;
         let splitters = splitters.unwrap_or_else(|| vec!["axis".to_string()]);
         parse_splitters(&splitters)?;
         parse_leaf_predictor(leaf_predictor)?;
@@ -60,12 +69,15 @@ impl NativeGeoBoostRegressor {
             max_depth,
             min_samples_leaf,
             min_gain,
+            loss: loss.to_string(),
+            quantile_alpha,
             splitters,
             leaf_predictor: leaf_predictor.to_string(),
             linear_leaf_features: linear_leaf_features.unwrap_or_default(),
             l2_regularization,
             fuzzy,
             fuzzy_bandwidth,
+            monotonic_constraints: monotonic_constraints.unwrap_or_default(),
             model: None,
         })
     }
@@ -88,12 +100,14 @@ impl NativeGeoBoostRegressor {
             max_depth: self.max_depth,
             min_samples_leaf: self.min_samples_leaf,
             min_gain: self.min_gain,
+            loss: parse_loss(&self.loss, self.quantile_alpha)?,
             splitters,
             leaf_predictor,
             linear_leaf_features: self.linear_leaf_features.clone(),
             linear_lambda_l2: self.l2_regularization,
             fuzzy: self.fuzzy,
             fuzzy_bandwidth: self.fuzzy_bandwidth,
+            monotonic_constraints: self.monotonic_constraints.clone(),
         };
         self.model = Some(
             Booster::new(config)
@@ -180,6 +194,44 @@ impl NativeGeoBoostRegressor {
         self.predict(x, Some(sparse_sets))
     }
 
+    #[pyo3(signature = (x, sparse_sets=None))]
+    fn predict_additive(
+        &self,
+        x: Vec<Vec<f64>>,
+        sparse_sets: Option<Vec<Vec<Vec<u64>>>>,
+    ) -> PyResult<Vec<Vec<f64>>> {
+        let model = self
+            .model
+            .as_ref()
+            .ok_or_else(|| PyRuntimeError::new_err("GeoBoostRegressor is not fitted"))?;
+        let dataset = dataset_from_parts(x, sparse_sets, None)?;
+        model
+            .try_predict_additive(&dataset)
+            .map_err(to_py_value_error)
+    }
+
+    #[pyo3(signature = (x, sparse_offsets=None, sparse_ids=None))]
+    fn predict_additive_arrays(
+        &self,
+        x: PyReadonlyArray2<'_, f64>,
+        sparse_offsets: Option<Vec<Vec<usize>>>,
+        sparse_ids: Option<Vec<Vec<u64>>>,
+    ) -> PyResult<Vec<Vec<f64>>> {
+        let model = self
+            .model
+            .as_ref()
+            .ok_or_else(|| PyRuntimeError::new_err("GeoBoostRegressor is not fitted"))?;
+        let shape = x.shape();
+        let rows = shape[0];
+        let cols = shape[1];
+        let values = x.as_slice()?;
+        let offsets = sparse_offsets.unwrap_or_default();
+        let ids = sparse_ids.unwrap_or_default();
+        model
+            .try_predict_additive_flat(rows, cols, values, &offsets, &ids)
+            .map_err(to_py_value_error)
+    }
+
     fn save(&self, path: PathBuf) -> PyResult<()> {
         let model = self
             .model
@@ -188,59 +240,24 @@ impl NativeGeoBoostRegressor {
         model.save(path).map_err(to_py_error)
     }
 
+    fn save_weights(&self, path: PathBuf) -> PyResult<()> {
+        let model = self
+            .model
+            .as_ref()
+            .ok_or_else(|| PyRuntimeError::new_err("GeoBoostRegressor is not fitted"))?;
+        model.save_weights(path).map_err(to_py_error)
+    }
+
     #[staticmethod]
     fn load(path: PathBuf) -> PyResult<Self> {
         let model = Model::load(path).map_err(to_py_error)?;
-        let training_config = model.training_config.clone();
-        let (
-            max_depth,
-            min_samples_leaf,
-            min_gain,
-            splitters,
-            leaf_predictor,
-            linear_leaf_features,
-            l2_regularization,
-            fuzzy,
-            fuzzy_bandwidth,
-        ) = if let Some(config) = training_config {
-            (
-                config.max_depth,
-                config.min_samples_leaf,
-                config.min_gain,
-                splitter_names(&config.splitters),
-                leaf_predictor_name(&config.leaf_predictor).to_string(),
-                config.linear_leaf_features,
-                config.linear_lambda_l2,
-                config.fuzzy,
-                config.fuzzy_bandwidth,
-            )
-        } else {
-            (
-                1,
-                1,
-                0.0,
-                vec!["axis".to_string()],
-                "constant".to_string(),
-                Vec::new(),
-                1.0,
-                false,
-                0.0,
-            )
-        };
-        Ok(Self {
-            n_estimators: model.trees.len(),
-            learning_rate: model.learning_rate,
-            max_depth,
-            min_samples_leaf,
-            min_gain,
-            splitters,
-            leaf_predictor,
-            linear_leaf_features,
-            l2_regularization,
-            fuzzy,
-            fuzzy_bandwidth,
-            model: Some(model),
-        })
+        Self::from_model(model)
+    }
+
+    #[staticmethod]
+    fn load_weights(path: PathBuf) -> PyResult<Self> {
+        let model = Model::load_weights(path).map_err(to_py_error)?;
+        Self::from_model(model)
     }
 
     #[getter]
@@ -274,6 +291,16 @@ impl NativeGeoBoostRegressor {
     }
 
     #[getter]
+    fn loss(&self) -> String {
+        self.loss.clone()
+    }
+
+    #[getter]
+    fn quantile_alpha(&self) -> f64 {
+        self.quantile_alpha
+    }
+
+    #[getter]
     fn leaf_predictor(&self) -> String {
         self.leaf_predictor.clone()
     }
@@ -296,6 +323,11 @@ impl NativeGeoBoostRegressor {
     #[getter]
     fn fuzzy_bandwidth(&self) -> f64 {
         self.fuzzy_bandwidth
+    }
+
+    #[getter]
+    fn monotonic_constraints(&self) -> Vec<i8> {
+        self.monotonic_constraints.clone()
     }
 
     #[getter]
@@ -351,6 +383,71 @@ impl NativeGeoBoostRegressor {
 }
 
 impl NativeGeoBoostRegressor {
+    fn from_model(model: Model) -> PyResult<Self> {
+        let training_config = model.training_config.clone();
+        let (
+            max_depth,
+            min_samples_leaf,
+            min_gain,
+            loss,
+            quantile_alpha,
+            splitters,
+            leaf_predictor,
+            linear_leaf_features,
+            l2_regularization,
+            fuzzy,
+            fuzzy_bandwidth,
+            monotonic_constraints,
+        ) = if let Some(config) = training_config {
+            (
+                config.max_depth,
+                config.min_samples_leaf,
+                config.min_gain,
+                loss_name(&config.loss).to_string(),
+                quantile_alpha(&config.loss),
+                splitter_names(&config.splitters),
+                leaf_predictor_name(&config.leaf_predictor).to_string(),
+                config.linear_leaf_features,
+                config.linear_lambda_l2,
+                config.fuzzy,
+                config.fuzzy_bandwidth,
+                config.monotonic_constraints,
+            )
+        } else {
+            (
+                1,
+                1,
+                0.0,
+                "l2".to_string(),
+                0.5,
+                vec!["axis".to_string()],
+                "constant".to_string(),
+                Vec::new(),
+                1.0,
+                false,
+                0.0,
+                Vec::new(),
+            )
+        };
+        Ok(Self {
+            n_estimators: model.trees.len(),
+            learning_rate: model.learning_rate,
+            max_depth,
+            min_samples_leaf,
+            min_gain,
+            loss,
+            quantile_alpha,
+            splitters,
+            leaf_predictor,
+            linear_leaf_features,
+            l2_regularization,
+            fuzzy,
+            fuzzy_bandwidth,
+            monotonic_constraints,
+            model: Some(model),
+        })
+    }
+
     fn fit_dataset(
         &mut self,
         dataset: Dataset,
@@ -365,12 +462,14 @@ impl NativeGeoBoostRegressor {
             max_depth: self.max_depth,
             min_samples_leaf: self.min_samples_leaf,
             min_gain: self.min_gain,
+            loss: parse_loss(&self.loss, self.quantile_alpha)?,
             splitters,
             leaf_predictor,
             linear_leaf_features: self.linear_leaf_features.clone(),
             linear_lambda_l2: self.l2_regularization,
             fuzzy: self.fuzzy,
             fuzzy_bandwidth: self.fuzzy_bandwidth,
+            monotonic_constraints: self.monotonic_constraints.clone(),
         };
         self.model = Some(
             Booster::new(config)
@@ -434,6 +533,39 @@ fn parse_leaf_predictor(name: &str) -> PyResult<LeafPredictorKind> {
     }
 }
 
+fn parse_loss(name: &str, quantile_alpha: f64) -> PyResult<LossConfig> {
+    match name {
+        "l2" | "squared_error" => Ok(LossConfig::L2),
+        "quantile" | "pinball" => {
+            if !quantile_alpha.is_finite() || quantile_alpha <= 0.0 || quantile_alpha >= 1.0 {
+                return Err(PyValueError::new_err(
+                    "quantile_alpha must be finite and in (0, 1)",
+                ));
+            }
+            Ok(LossConfig::Quantile(QuantileLossConfig {
+                alpha: quantile_alpha,
+            }))
+        }
+        _ => Err(PyValueError::new_err(format!(
+            "unknown loss {name:?}; expected 'l2' or 'quantile'"
+        ))),
+    }
+}
+
+fn loss_name(loss: &LossConfig) -> &'static str {
+    match loss {
+        LossConfig::L2 => "l2",
+        LossConfig::Quantile(_) => "quantile",
+    }
+}
+
+fn quantile_alpha(loss: &LossConfig) -> f64 {
+    match loss {
+        LossConfig::L2 => 0.5,
+        LossConfig::Quantile(config) => config.alpha,
+    }
+}
+
 fn splitter_names(splitters: &[SplitterKind]) -> Vec<String> {
     splitters
         .iter()
@@ -458,6 +590,7 @@ fn leaf_predictor_name(leaf_predictor: &LeafPredictorKind) -> &'static str {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn validate_params(
     n_estimators: usize,
     learning_rate: f64,
@@ -466,6 +599,7 @@ fn validate_params(
     min_gain: f64,
     l2_regularization: f64,
     fuzzy_bandwidth: f64,
+    quantile_alpha: f64,
 ) -> PyResult<()> {
     if n_estimators == 0 {
         return Err(PyValueError::new_err("n_estimators must be positive"));
@@ -491,6 +625,11 @@ fn validate_params(
     if !fuzzy_bandwidth.is_finite() || fuzzy_bandwidth < 0.0 {
         return Err(PyValueError::new_err(
             "fuzzy_bandwidth must be finite and non-negative",
+        ));
+    }
+    if !quantile_alpha.is_finite() || quantile_alpha <= 0.0 || quantile_alpha >= 1.0 {
+        return Err(PyValueError::new_err(
+            "quantile_alpha must be finite and in (0, 1)",
         ));
     }
     Ok(())

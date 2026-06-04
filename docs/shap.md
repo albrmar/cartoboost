@@ -45,6 +45,28 @@ explanation = model.explain_shap(X_test, background=X_train)
 explainer = model.make_shap_explainer(X_train)
 ```
 
+## Additive Weight Decomposition
+
+By default, SHAP decomposes predictions over input features. GeoBoost can also
+decompose the fitted additive prediction weights: the initial prediction and one
+component per fitted tree.
+
+```python
+explanation = model.explain_shap(
+    X_test,
+    background=X_train,
+    decomposition="weights",
+)
+```
+
+The explanation feature names are `init_prediction`, `tree_0`, `tree_1`, and so
+on. The raw additive matrix is also available directly:
+
+```python
+additive = model.predict_additive_values(X_test)
+prediction = additive.sum(axis=1)
+```
+
 ## Sparse Sets
 
 Models trained with `sparse_sets=` can be explained through the GeoBoost helper.
