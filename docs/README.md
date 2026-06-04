@@ -31,9 +31,9 @@ the testing and artifact docs when changing behavior.
 - [Repository Plan](repo_plan.md) records the target product, architecture,
   milestone plan, and definition of done.
 - [v1 Release Checklist](v1_release_checklist.md) tracks release-candidate gates.
-- [NYC Taxi Quality Benchmarks](nyc_taxi_benchmarks.md) documents optional
-  real-data GeoBoost, XGBoost, LightGBM, and mean-baseline comparisons,
-  including benchmark-only dependencies and fair feature handling.
+- [Benchmarks](benchmarks/index.md) documents Criterion microbenchmarks,
+  validation artifacts, NYC taxi comparisons, lane-level acceptance checks, and
+  the generated artifact policy.
 - [Segmentation Proofs](assets/) contains generated PNGs showing learned
   spatial segmentation boundaries on deterministic synthetic datasets.
 

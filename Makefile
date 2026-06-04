@@ -14,16 +14,16 @@ test:
 	uv run --group dev pytest
 
 build:
-	uv run --group dev maturin build --release
+	uv run --group dev maturin build --release --locked --out dist
 
 develop:
 	uv run --group dev maturin develop
 
 sdist:
-	uv run --group dev maturin sdist
+	uv run --group dev maturin sdist --out dist
 
 wheel:
-	uv run --group dev maturin build --release
+	uv run --group dev maturin build --release --locked --out dist
 
 validate:
 	cargo fmt --all --check

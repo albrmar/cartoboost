@@ -1,9 +1,9 @@
 use crate::data::{validate_weights, Dataset};
-use crate::loss::{L2Loss, Loss, LossConfig, QuantileLoss};
+use crate::loss::{HuberLoss, L2Loss, Loss, LossConfig, QuantileLoss};
 use crate::profile;
 use crate::tree::{
-    LeafPredictorKind, Model, SplitterKind, TrainingConfigMetadata, TreeBuilder,
-    MODEL_ARTIFACT_VERSION,
+    LeafPredictorKind, Model, PredictionTransform, SplitterKind, TrainingConfigMetadata,
+    TreeBuilder, MODEL_ARTIFACT_VERSION,
 };
 use crate::{GeoBoostError, Result};
 use serde::{Deserialize, Serialize};
@@ -20,6 +20,7 @@ pub struct BoosterConfig {
     pub leaf_predictor: LeafPredictorKind,
     pub linear_leaf_features: Vec<usize>,
     pub linear_lambda_l2: f64,
+    pub constant_lambda_l2: f64,
     pub fuzzy: bool,
     pub fuzzy_bandwidth: f64,
     pub loss: LossConfig,
@@ -43,6 +44,7 @@ impl Default for BoosterConfig {
             leaf_predictor: LeafPredictorKind::Constant,
             linear_leaf_features: Vec::new(),
             linear_lambda_l2: 1.0,
+            constant_lambda_l2: 0.0,
             fuzzy: false,
             fuzzy_bandwidth: 0.0,
             loss: LossConfig::L2,
@@ -77,16 +79,42 @@ impl Booster {
                 "targets must be finite".to_string(),
             ));
         }
+        if let LossConfig::LogL2(config) = self.config.loss {
+            if y.iter().any(|value| *value + config.offset <= 0.0) {
+                return Err(GeoBoostError::InvalidInput(
+                    "log_l2 targets must be greater than -offset".to_string(),
+                ));
+            }
+        }
         let weights = validate_weights(sample_weight, y.len())?;
         validate_training_config(&self.config, x.n_cols())?;
-        let init_prediction = match self.config.loss {
-            LossConfig::L2 => L2Loss.initial_prediction(y, Some(&weights)),
-            LossConfig::Quantile(config) => {
-                QuantileLoss::new(config.alpha).initial_prediction(y, Some(&weights))
+        let transformed_y;
+        let training_targets = match self.config.loss {
+            LossConfig::LogL2(config) => {
+                transformed_y = y
+                    .iter()
+                    .map(|value| (*value + config.offset).ln())
+                    .collect::<Vec<_>>();
+                &transformed_y
             }
+            _ => y,
         };
-        let mut pred = vec![init_prediction; y.len()];
-        let mut residuals = vec![0.0; y.len()];
+        let init_prediction =
+            match self.config.loss {
+                LossConfig::L2 | LossConfig::LogL2(_) => {
+                    L2Loss.initial_prediction(training_targets, Some(&weights))
+                }
+                LossConfig::Huber(config) => HuberLoss::new(config.delta)
+                    .initial_prediction(training_targets, Some(&weights)),
+                LossConfig::Quantile(config) => QuantileLoss::new(config.alpha)
+                    .initial_prediction(training_targets, Some(&weights)),
+            };
+        let prediction_transform = match self.config.loss {
+            LossConfig::LogL2(_) => PredictionTransform::Expm1,
+            _ => PredictionTransform::Identity,
+        };
+        let mut pred = vec![init_prediction; training_targets.len()];
+        let mut residuals = vec![0.0; training_targets.len()];
         let mut trees = Vec::with_capacity(self.config.n_estimators);
         let builder = TreeBuilder {
             max_depth: self.config.max_depth,
@@ -96,6 +124,7 @@ impl Booster {
             leaf_predictor: self.config.leaf_predictor.clone(),
             linear_leaf_features: self.config.linear_leaf_features.clone(),
             linear_lambda_l2: self.config.linear_lambda_l2,
+            constant_lambda_l2: self.config.constant_lambda_l2,
             fuzzy: self.config.fuzzy,
             fuzzy_bandwidth: self.config.fuzzy_bandwidth,
             loss: self.config.loss.clone(),
@@ -105,9 +134,14 @@ impl Booster {
 
         for _ in 0..self.config.n_estimators {
             profile::timed(profile::RESIDUAL, || {
-                for ((residual, target), prediction) in residuals.iter_mut().zip(y).zip(&pred) {
+                for ((residual, target), prediction) in
+                    residuals.iter_mut().zip(training_targets).zip(&pred)
+                {
                     *residual = match self.config.loss {
-                        LossConfig::L2 => target - prediction,
+                        LossConfig::L2 | LossConfig::LogL2(_) => target - prediction,
+                        LossConfig::Huber(config) => {
+                            (target - prediction).clamp(-config.delta, config.delta)
+                        }
                         LossConfig::Quantile(_) => target - prediction,
                     };
                 }
@@ -115,7 +149,7 @@ impl Booster {
             let use_leaf_updates = !self.config.fuzzy
                 && matches!(self.config.leaf_predictor, LeafPredictorKind::Constant);
             let use_leaf_updates = use_leaf_updates
-                && matches!(self.config.loss, LossConfig::L2)
+                && matches!(self.config.loss, LossConfig::L2 | LossConfig::LogL2(_))
                 && self.config.monotonic_constraints.is_empty();
             let tree = if use_leaf_updates {
                 let (tree, updates) = profile::timed(profile::TREE_FIT, || {
@@ -159,11 +193,13 @@ impl Booster {
                 leaf_predictor: self.config.leaf_predictor.clone(),
                 linear_leaf_features: self.config.linear_leaf_features.clone(),
                 linear_lambda_l2: self.config.linear_lambda_l2,
+                constant_lambda_l2: self.config.constant_lambda_l2,
                 fuzzy: self.config.fuzzy,
                 fuzzy_bandwidth: self.config.fuzzy_bandwidth,
                 loss: self.config.loss.clone(),
                 monotonic_constraints: self.config.monotonic_constraints.clone(),
             }),
+            prediction_transform,
             trees,
         };
         profile::report("booster_fit", profile_started.elapsed());
@@ -172,16 +208,43 @@ impl Booster {
 }
 
 fn validate_training_config(config: &BoosterConfig, feature_count: usize) -> Result<()> {
-    if let LossConfig::Quantile(loss) = config.loss {
-        if !loss.alpha.is_finite() || loss.alpha <= 0.0 || loss.alpha >= 1.0 {
-            return Err(GeoBoostError::InvalidInput(
-                "quantile alpha must be finite and in (0, 1)".to_string(),
-            ));
+    match config.loss {
+        LossConfig::L2 => {}
+        LossConfig::Huber(loss) => {
+            if !loss.delta.is_finite() || loss.delta <= 0.0 {
+                return Err(GeoBoostError::InvalidInput(
+                    "huber delta must be positive and finite".to_string(),
+                ));
+            }
+            if config.leaf_predictor != LeafPredictorKind::Constant {
+                return Err(GeoBoostError::InvalidInput(
+                    "huber loss currently requires constant leaves".to_string(),
+                ));
+            }
         }
-        if config.leaf_predictor != LeafPredictorKind::Constant {
-            return Err(GeoBoostError::InvalidInput(
-                "quantile loss currently requires constant leaves".to_string(),
-            ));
+        LossConfig::LogL2(loss) => {
+            if (loss.offset - 1.0).abs() > 1e-12 {
+                return Err(GeoBoostError::InvalidInput(
+                    "log_l2 currently supports offset=1.0".to_string(),
+                ));
+            }
+            if config.leaf_predictor != LeafPredictorKind::Constant {
+                return Err(GeoBoostError::InvalidInput(
+                    "log_l2 loss currently requires constant leaves".to_string(),
+                ));
+            }
+        }
+        LossConfig::Quantile(loss) => {
+            if !loss.alpha.is_finite() || loss.alpha <= 0.0 || loss.alpha >= 1.0 {
+                return Err(GeoBoostError::InvalidInput(
+                    "quantile alpha must be finite and in (0, 1)".to_string(),
+                ));
+            }
+            if config.leaf_predictor != LeafPredictorKind::Constant {
+                return Err(GeoBoostError::InvalidInput(
+                    "quantile loss currently requires constant leaves".to_string(),
+                ));
+            }
         }
     }
     if !config.monotonic_constraints.is_empty() {

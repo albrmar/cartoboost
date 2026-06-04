@@ -373,6 +373,7 @@ impl Config {
                 .unwrap_or(defaults.leaf_predictor),
             linear_leaf_features: defaults.linear_leaf_features,
             linear_lambda_l2: self.l2_regularization.unwrap_or(defaults.linear_lambda_l2),
+            constant_lambda_l2: defaults.constant_lambda_l2,
             fuzzy: self.fuzzy.unwrap_or(defaults.fuzzy),
             fuzzy_bandwidth: self.fuzzy_bandwidth.unwrap_or(defaults.fuzzy_bandwidth),
             monotonic_constraints: self

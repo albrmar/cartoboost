@@ -1,6 +1,6 @@
 use geoboost_core::data::{FeatureSchema, SparseSetColumn};
-use geoboost_core::loss::{LossConfig, QuantileLossConfig};
-use geoboost_core::tree::{LeafPredictorKind, SplitterKind};
+use geoboost_core::loss::{HuberLossConfig, LogL2LossConfig, LossConfig, QuantileLossConfig};
+use geoboost_core::tree::{FlatAxisPredictor, LeafPredictorKind, SplitterKind};
 use geoboost_core::{Booster, BoosterConfig, Dataset, GeoBoostError, Model};
 use numpy::{IntoPyArray, PyArray1, PyReadonlyArray1, PyReadonlyArray2, PyUntypedArrayMethods};
 use pyo3::exceptions::{PyIOError, PyRuntimeError, PyValueError};
@@ -17,20 +17,24 @@ struct NativeGeoBoostRegressor {
     min_gain: f64,
     loss: String,
     quantile_alpha: f64,
+    huber_delta: f64,
+    log_offset: f64,
     splitters: Vec<String>,
     leaf_predictor: String,
     linear_leaf_features: Vec<usize>,
     l2_regularization: f64,
+    constant_l2_regularization: f64,
     fuzzy: bool,
     fuzzy_bandwidth: f64,
     monotonic_constraints: Vec<i8>,
     model: Option<Model>,
+    flat_axis_predictor: Option<FlatAxisPredictor>,
 }
 
 #[pymethods]
 impl NativeGeoBoostRegressor {
     #[new]
-    #[pyo3(signature = (n_estimators=100, learning_rate=0.05, max_depth=4, min_samples_leaf=20, min_gain=1e-8, loss="l2", quantile_alpha=0.5, splitters=None, leaf_predictor="constant", linear_leaf_features=None, l2_regularization=1.0, fuzzy=false, fuzzy_bandwidth=0.0, monotonic_constraints=None))]
+    #[pyo3(signature = (n_estimators=100, learning_rate=0.05, max_depth=4, min_samples_leaf=20, min_gain=1e-8, loss="l2", quantile_alpha=0.5, huber_delta=1.0, log_offset=1.0, splitters=None, leaf_predictor="constant", linear_leaf_features=None, l2_regularization=1.0, constant_l2_regularization=0.0, fuzzy=false, fuzzy_bandwidth=0.0, monotonic_constraints=None))]
     #[allow(clippy::too_many_arguments)]
     fn new(
         n_estimators: usize,
@@ -40,10 +44,13 @@ impl NativeGeoBoostRegressor {
         min_gain: f64,
         loss: &str,
         quantile_alpha: f64,
+        huber_delta: f64,
+        log_offset: f64,
         splitters: Option<Vec<String>>,
         leaf_predictor: &str,
         linear_leaf_features: Option<Vec<usize>>,
         l2_regularization: f64,
+        constant_l2_regularization: f64,
         fuzzy: bool,
         fuzzy_bandwidth: f64,
         monotonic_constraints: Option<Vec<i8>>,
@@ -55,10 +62,13 @@ impl NativeGeoBoostRegressor {
             min_samples_leaf,
             min_gain,
             l2_regularization,
+            constant_l2_regularization,
             fuzzy_bandwidth,
             quantile_alpha,
+            huber_delta,
+            log_offset,
         )?;
-        parse_loss(loss, quantile_alpha)?;
+        parse_loss(loss, quantile_alpha, huber_delta, log_offset)?;
         let splitters = splitters.unwrap_or_else(|| vec!["axis".to_string()]);
         parse_splitters(&splitters)?;
         parse_leaf_predictor(leaf_predictor)?;
@@ -71,14 +81,18 @@ impl NativeGeoBoostRegressor {
             min_gain,
             loss: loss.to_string(),
             quantile_alpha,
+            huber_delta,
+            log_offset,
             splitters,
             leaf_predictor: leaf_predictor.to_string(),
             linear_leaf_features: linear_leaf_features.unwrap_or_default(),
             l2_regularization,
+            constant_l2_regularization,
             fuzzy,
             fuzzy_bandwidth,
             monotonic_constraints: monotonic_constraints.unwrap_or_default(),
             model: None,
+            flat_axis_predictor: None,
         })
     }
 
@@ -100,16 +114,22 @@ impl NativeGeoBoostRegressor {
             max_depth: self.max_depth,
             min_samples_leaf: self.min_samples_leaf,
             min_gain: self.min_gain,
-            loss: parse_loss(&self.loss, self.quantile_alpha)?,
+            loss: parse_loss(
+                &self.loss,
+                self.quantile_alpha,
+                self.huber_delta,
+                self.log_offset,
+            )?,
             splitters,
             leaf_predictor,
             linear_leaf_features: self.linear_leaf_features.clone(),
             linear_lambda_l2: self.l2_regularization,
+            constant_lambda_l2: self.constant_l2_regularization,
             fuzzy: self.fuzzy,
             fuzzy_bandwidth: self.fuzzy_bandwidth,
             monotonic_constraints: self.monotonic_constraints.clone(),
         };
-        self.model = Some(
+        self.set_model(
             Booster::new(config)
                 .fit(&dataset, &y, sample_weight.as_deref())
                 .map_err(to_py_value_error)?,
@@ -179,9 +199,22 @@ impl NativeGeoBoostRegressor {
         let values = x.as_slice()?;
         let offsets = sparse_offsets.unwrap_or_default();
         let ids = sparse_ids.unwrap_or_default();
-        let predictions = model
-            .try_predict_flat(rows, cols, values, &offsets, &ids)
-            .map_err(to_py_value_error)?;
+        let predictions = if offsets.is_empty() && ids.is_empty() {
+            if let Some(predictor) = &self.flat_axis_predictor {
+                model
+                    .validate_dense_flat_prediction_inputs(rows, cols, values)
+                    .map_err(to_py_value_error)?;
+                predictor.predict_flat(rows, cols, values)
+            } else {
+                model
+                    .try_predict_flat(rows, cols, values, &offsets, &ids)
+                    .map_err(to_py_value_error)?
+            }
+        } else {
+            model
+                .try_predict_flat(rows, cols, values, &offsets, &ids)
+                .map_err(to_py_value_error)?
+        };
         Ok(predictions.into_pyarray(py))
     }
 
@@ -301,6 +334,16 @@ impl NativeGeoBoostRegressor {
     }
 
     #[getter]
+    fn huber_delta(&self) -> f64 {
+        self.huber_delta
+    }
+
+    #[getter]
+    fn log_offset(&self) -> f64 {
+        self.log_offset
+    }
+
+    #[getter]
     fn leaf_predictor(&self) -> String {
         self.leaf_predictor.clone()
     }
@@ -313,6 +356,11 @@ impl NativeGeoBoostRegressor {
     #[getter]
     fn l2_regularization(&self) -> f64 {
         self.l2_regularization
+    }
+
+    #[getter]
+    fn constant_l2_regularization(&self) -> f64 {
+        self.constant_l2_regularization
     }
 
     #[getter]
@@ -391,10 +439,13 @@ impl NativeGeoBoostRegressor {
             min_gain,
             loss,
             quantile_alpha,
+            huber_delta,
+            log_offset,
             splitters,
             leaf_predictor,
             linear_leaf_features,
             l2_regularization,
+            constant_l2_regularization,
             fuzzy,
             fuzzy_bandwidth,
             monotonic_constraints,
@@ -405,10 +456,13 @@ impl NativeGeoBoostRegressor {
                 config.min_gain,
                 loss_name(&config.loss).to_string(),
                 quantile_alpha(&config.loss),
+                huber_delta(&config.loss),
+                log_offset(&config.loss),
                 splitter_names(&config.splitters),
                 leaf_predictor_name(&config.leaf_predictor).to_string(),
                 config.linear_leaf_features,
                 config.linear_lambda_l2,
+                config.constant_lambda_l2,
                 config.fuzzy,
                 config.fuzzy_bandwidth,
                 config.monotonic_constraints,
@@ -420,10 +474,13 @@ impl NativeGeoBoostRegressor {
                 0.0,
                 "l2".to_string(),
                 0.5,
+                1.0,
+                1.0,
                 vec!["axis".to_string()],
                 "constant".to_string(),
                 Vec::new(),
                 1.0,
+                0.0,
                 false,
                 0.0,
                 Vec::new(),
@@ -437,14 +494,22 @@ impl NativeGeoBoostRegressor {
             min_gain,
             loss,
             quantile_alpha,
+            huber_delta,
+            log_offset,
             splitters,
             leaf_predictor,
             linear_leaf_features,
             l2_regularization,
+            constant_l2_regularization,
             fuzzy,
             fuzzy_bandwidth,
             monotonic_constraints,
             model: Some(model),
+            flat_axis_predictor: None,
+        })
+        .map(|mut regressor| {
+            regressor.refresh_prediction_cache();
+            regressor
         })
     }
 
@@ -462,21 +527,36 @@ impl NativeGeoBoostRegressor {
             max_depth: self.max_depth,
             min_samples_leaf: self.min_samples_leaf,
             min_gain: self.min_gain,
-            loss: parse_loss(&self.loss, self.quantile_alpha)?,
+            loss: parse_loss(
+                &self.loss,
+                self.quantile_alpha,
+                self.huber_delta,
+                self.log_offset,
+            )?,
             splitters,
             leaf_predictor,
             linear_leaf_features: self.linear_leaf_features.clone(),
             linear_lambda_l2: self.l2_regularization,
+            constant_lambda_l2: self.constant_l2_regularization,
             fuzzy: self.fuzzy,
             fuzzy_bandwidth: self.fuzzy_bandwidth,
             monotonic_constraints: self.monotonic_constraints.clone(),
         };
-        self.model = Some(
+        self.set_model(
             Booster::new(config)
                 .fit(&dataset, &y, sample_weight.as_deref())
                 .map_err(to_py_value_error)?,
         );
         Ok(())
+    }
+
+    fn set_model(&mut self, model: Model) {
+        self.model = Some(model);
+        self.refresh_prediction_cache();
+    }
+
+    fn refresh_prediction_cache(&mut self) {
+        self.flat_axis_predictor = self.model.as_ref().and_then(Model::flat_axis_predictor);
     }
 }
 
@@ -533,9 +613,35 @@ fn parse_leaf_predictor(name: &str) -> PyResult<LeafPredictorKind> {
     }
 }
 
-fn parse_loss(name: &str, quantile_alpha: f64) -> PyResult<LossConfig> {
+fn parse_loss(
+    name: &str,
+    quantile_alpha: f64,
+    huber_delta: f64,
+    log_offset: f64,
+) -> PyResult<LossConfig> {
     match name {
         "l2" | "squared_error" => Ok(LossConfig::L2),
+        "huber" => {
+            if !huber_delta.is_finite() || huber_delta <= 0.0 {
+                return Err(PyValueError::new_err(
+                    "huber_delta must be positive and finite",
+                ));
+            }
+            Ok(LossConfig::Huber(HuberLossConfig { delta: huber_delta }))
+        }
+        "log_l2" | "log" | "log_squared_error" => {
+            if !log_offset.is_finite() || log_offset <= 0.0 {
+                return Err(PyValueError::new_err(
+                    "log_offset must be positive and finite",
+                ));
+            }
+            if (log_offset - 1.0).abs() > 1e-12 {
+                return Err(PyValueError::new_err(
+                    "log_l2 currently supports log_offset=1.0",
+                ));
+            }
+            Ok(LossConfig::LogL2(LogL2LossConfig { offset: log_offset }))
+        }
         "quantile" | "pinball" => {
             if !quantile_alpha.is_finite() || quantile_alpha <= 0.0 || quantile_alpha >= 1.0 {
                 return Err(PyValueError::new_err(
@@ -547,7 +653,7 @@ fn parse_loss(name: &str, quantile_alpha: f64) -> PyResult<LossConfig> {
             }))
         }
         _ => Err(PyValueError::new_err(format!(
-            "unknown loss {name:?}; expected 'l2' or 'quantile'"
+            "unknown loss {name:?}; expected 'l2', 'huber', 'log_l2', or 'quantile'"
         ))),
     }
 }
@@ -555,14 +661,30 @@ fn parse_loss(name: &str, quantile_alpha: f64) -> PyResult<LossConfig> {
 fn loss_name(loss: &LossConfig) -> &'static str {
     match loss {
         LossConfig::L2 => "l2",
+        LossConfig::Huber(_) => "huber",
+        LossConfig::LogL2(_) => "log_l2",
         LossConfig::Quantile(_) => "quantile",
     }
 }
 
 fn quantile_alpha(loss: &LossConfig) -> f64 {
     match loss {
-        LossConfig::L2 => 0.5,
+        LossConfig::L2 | LossConfig::Huber(_) | LossConfig::LogL2(_) => 0.5,
         LossConfig::Quantile(config) => config.alpha,
+    }
+}
+
+fn huber_delta(loss: &LossConfig) -> f64 {
+    match loss {
+        LossConfig::Huber(config) => config.delta,
+        _ => 1.0,
+    }
+}
+
+fn log_offset(loss: &LossConfig) -> f64 {
+    match loss {
+        LossConfig::LogL2(config) => config.offset,
+        _ => 1.0,
     }
 }
 
@@ -598,8 +720,11 @@ fn validate_params(
     min_samples_leaf: usize,
     min_gain: f64,
     l2_regularization: f64,
+    constant_l2_regularization: f64,
     fuzzy_bandwidth: f64,
     quantile_alpha: f64,
+    huber_delta: f64,
+    log_offset: f64,
 ) -> PyResult<()> {
     if n_estimators == 0 {
         return Err(PyValueError::new_err("n_estimators must be positive"));
@@ -622,6 +747,11 @@ fn validate_params(
             "l2_regularization must be finite and non-negative",
         ));
     }
+    if !constant_l2_regularization.is_finite() || constant_l2_regularization < 0.0 {
+        return Err(PyValueError::new_err(
+            "constant_l2_regularization must be finite and non-negative",
+        ));
+    }
     if !fuzzy_bandwidth.is_finite() || fuzzy_bandwidth < 0.0 {
         return Err(PyValueError::new_err(
             "fuzzy_bandwidth must be finite and non-negative",
@@ -630,6 +760,16 @@ fn validate_params(
     if !quantile_alpha.is_finite() || quantile_alpha <= 0.0 || quantile_alpha >= 1.0 {
         return Err(PyValueError::new_err(
             "quantile_alpha must be finite and in (0, 1)",
+        ));
+    }
+    if !huber_delta.is_finite() || huber_delta <= 0.0 {
+        return Err(PyValueError::new_err(
+            "huber_delta must be positive and finite",
+        ));
+    }
+    if !log_offset.is_finite() || log_offset <= 0.0 {
+        return Err(PyValueError::new_err(
+            "log_offset must be positive and finite",
         ));
     }
     Ok(())

@@ -76,15 +76,21 @@ def test_native_load_restores_public_estimator_params(monkeypatch, tmp_path):
         "min_samples_leaf": 3,
         "min_gain": 0.125,
         "loss": "l2",
+        "quantile_alpha": 0.5,
+        "huber_delta": 1.0,
+        "log_offset": 1.0,
+        "loss_params": None,
         "splitters": ["gaussian_2d", "periodic:168"],
         "leaf_predictor": "linear",
         "linear_leaf_features": ["0", "2"],
         "fuzzy": True,
         "fuzzy_bandwidth": 1.5,
         "l2_regularization": 0.75,
+        "constant_l2_regularization": 0.0,
         "random_state": None,
         "n_threads": None,
         "backend": "auto",
+        "monotonic_constraints": None,
     }
     assert loaded.n_features_in_ == 3
     assert loaded.feature_schema_["names"] == ["x", "y", "hour"]

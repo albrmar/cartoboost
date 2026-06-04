@@ -1,7 +1,54 @@
 use super::Loss;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct L2Loss;
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct HuberLossConfig {
+    pub delta: f64,
+}
+
+impl HuberLossConfig {
+    pub fn new(delta: f64) -> Self {
+        Self { delta }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct LogL2LossConfig {
+    #[serde(default = "default_log_offset")]
+    pub offset: f64,
+}
+
+impl Default for LogL2LossConfig {
+    fn default() -> Self {
+        Self {
+            offset: default_log_offset(),
+        }
+    }
+}
+
+impl LogL2LossConfig {
+    pub fn new(offset: f64) -> Self {
+        Self { offset }
+    }
+}
+
+fn default_log_offset() -> f64 {
+    1.0
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct HuberLoss {
+    pub delta: f64,
+}
+
+impl HuberLoss {
+    pub fn new(delta: f64) -> Self {
+        Self { delta }
+    }
+}
 
 impl L2Loss {
     pub fn value(&self, y: &[f64], pred: &[f64]) -> f64 {
@@ -46,6 +93,24 @@ impl Loss for L2Loss {
 
     fn gradient(&self, y: f64, pred: f64) -> f64 {
         pred - y
+    }
+}
+
+impl Loss for HuberLoss {
+    fn initial_prediction(&self, y: &[f64], w: Option<&[f64]>) -> f64 {
+        L2Loss.initial_prediction(y, w)
+    }
+
+    fn gradient(&self, y: f64, pred: f64) -> f64 {
+        (pred - y).clamp(-self.delta, self.delta)
+    }
+
+    fn hessian(&self, y: f64, pred: f64) -> f64 {
+        if (pred - y).abs() <= self.delta {
+            1.0
+        } else {
+            0.0
+        }
     }
 }
 

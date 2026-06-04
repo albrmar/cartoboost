@@ -51,12 +51,16 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
         min_gain: float = 1e-8,
         loss: str = "l2",
         quantile_alpha: float = 0.5,
+        huber_delta: float = 1.0,
+        log_offset: float = 1.0,
+        loss_params: dict[str, Any] | None = None,
         splitters: list[str] | None = None,
         leaf_predictor: str = "constant",
         linear_leaf_features: list[str] | None = None,
         fuzzy: bool = False,
         fuzzy_bandwidth: float = 0.0,
         l2_regularization: float = 1.0,
+        constant_l2_regularization: float = 0.0,
         random_state: int | None = None,
         n_threads: int | None = None,
         backend: str = "auto",
@@ -69,12 +73,16 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
         self.min_gain = min_gain
         self.loss = loss
         self.quantile_alpha = quantile_alpha
+        self.huber_delta = huber_delta
+        self.log_offset = log_offset
+        self.loss_params = loss_params
         self.splitters = splitters
         self.leaf_predictor = leaf_predictor
         self.linear_leaf_features = linear_leaf_features
         self.fuzzy = fuzzy
         self.fuzzy_bandwidth = fuzzy_bandwidth
         self.l2_regularization = l2_regularization
+        self.constant_l2_regularization = constant_l2_regularization
         self.random_state = random_state
         self.n_threads = n_threads
         self.backend = backend
@@ -91,12 +99,16 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
             "min_gain": self.min_gain,
             "loss": self.loss,
             "quantile_alpha": self.quantile_alpha,
+            "huber_delta": self.huber_delta,
+            "log_offset": self.log_offset,
+            "loss_params": self.loss_params,
             "splitters": self.splitters,
             "leaf_predictor": self.leaf_predictor,
             "linear_leaf_features": self.linear_leaf_features,
             "fuzzy": self.fuzzy,
             "fuzzy_bandwidth": self.fuzzy_bandwidth,
             "l2_regularization": self.l2_regularization,
+            "constant_l2_regularization": self.constant_l2_regularization,
             "random_state": self.random_state,
             "n_threads": self.n_threads,
             "backend": self.backend,
@@ -135,6 +147,13 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
         if dense_array.shape[0] != targets_array.shape[0]:
             raise ValueError("X and y must contain the same number of rows")
         weights_array = _as_sample_weight_array(sample_weight, targets_array.shape[0])
+        loss_params = _resolved_loss_params(
+            self.loss,
+            self.quantile_alpha,
+            self.huber_delta,
+            self.log_offset,
+            self.loss_params,
+        )
         sparse_columns, sparse_names = _normalize_sparse_sets(sparse_sets, targets_array.shape[0])
         sparse_offsets, sparse_ids = _encode_sparse_columns(sparse_columns)
         schema_json = _rust_feature_schema_json(feature_schema, dense_array.shape[1], sparse_names)
@@ -162,7 +181,9 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
                 min_samples_leaf=int(self.min_samples_leaf),
                 min_gain=float(self.min_gain),
                 loss=str(self.loss),
-                quantile_alpha=float(self.quantile_alpha),
+                quantile_alpha=float(loss_params["quantile_alpha"]),
+                huber_delta=float(loss_params["huber_delta"]),
+                log_offset=float(loss_params["log_offset"]),
                 splitters=list(self.splitters or ["axis"]),
                 leaf_predictor=str(self.leaf_predictor),
                 linear_leaf_features=_resolve_linear_leaf_features(
@@ -170,6 +191,7 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
                     dense_array.shape[1],
                 ),
                 l2_regularization=float(self.l2_regularization),
+                constant_l2_regularization=float(self.constant_l2_regularization),
                 fuzzy=bool(self.fuzzy),
                 fuzzy_bandwidth=float(self.fuzzy_bandwidth),
                 monotonic_constraints=(
@@ -213,7 +235,7 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
                             targets_array.tolist(),
                             None,
                             self.loss,
-                            float(self.quantile_alpha),
+                            float(loss_params["quantile_alpha"]),
                         )
                     else:
                         weight_sum = float(np.sum(weights_array))
@@ -222,7 +244,7 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
                                 targets_array.tolist(),
                                 weights_array.tolist(),
                                 self.loss,
-                                float(self.quantile_alpha),
+                                float(loss_params["quantile_alpha"]),
                             )
                             if weight_sum > 0.0
                             else 0.0
@@ -251,7 +273,9 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
             min_samples_leaf=int(self.min_samples_leaf),
             min_gain=float(self.min_gain),
             loss=str(self.loss),
-            quantile_alpha=float(self.quantile_alpha),
+            quantile_alpha=float(loss_params["quantile_alpha"]),
+            huber_delta=float(loss_params["huber_delta"]),
+            log_offset=float(loss_params["log_offset"]),
             monotonic_constraints=(
                 None
                 if self.monotonic_constraints is None
@@ -545,6 +569,8 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
                     min_gain=native_model.min_gain,
                     loss=str(getattr(native_model, "loss", "l2")),
                     quantile_alpha=float(getattr(native_model, "quantile_alpha", 0.5)),
+                    huber_delta=float(getattr(native_model, "huber_delta", 1.0)),
+                    log_offset=float(getattr(native_model, "log_offset", 1.0)),
                     splitters=list(getattr(native_model, "splitters", ["axis"])),
                     leaf_predictor=str(getattr(native_model, "leaf_predictor", "constant")),
                     linear_leaf_features=[
@@ -554,6 +580,9 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
                     fuzzy=bool(getattr(native_model, "fuzzy", False)),
                     fuzzy_bandwidth=float(getattr(native_model, "fuzzy_bandwidth", 0.0)),
                     l2_regularization=float(getattr(native_model, "l2_regularization", 1.0)),
+                    constant_l2_regularization=float(
+                        getattr(native_model, "constant_l2_regularization", 0.0)
+                    ),
                     backend="auto",
                     monotonic_constraints=list(getattr(native_model, "monotonic_constraints", []))
                     or None,
@@ -641,6 +670,8 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
             min_gain=native_model.min_gain,
             loss=str(getattr(native_model, "loss", "l2")),
             quantile_alpha=float(getattr(native_model, "quantile_alpha", 0.5)),
+            huber_delta=float(getattr(native_model, "huber_delta", 1.0)),
+            log_offset=float(getattr(native_model, "log_offset", 1.0)),
             splitters=list(getattr(native_model, "splitters", ["axis"])),
             leaf_predictor=str(getattr(native_model, "leaf_predictor", "constant")),
             linear_leaf_features=[
@@ -649,6 +680,9 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
             fuzzy=bool(getattr(native_model, "fuzzy", False)),
             fuzzy_bandwidth=float(getattr(native_model, "fuzzy_bandwidth", 0.0)),
             l2_regularization=float(getattr(native_model, "l2_regularization", 1.0)),
+            constant_l2_regularization=float(
+                getattr(native_model, "constant_l2_regularization", 0.0)
+            ),
             backend="auto",
             monotonic_constraints=list(getattr(native_model, "monotonic_constraints", [])) or None,
         )
@@ -693,17 +727,49 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
         min_gain = float(self.min_gain)
         if not math.isfinite(min_gain) or min_gain < 0:
             raise ValueError("min_gain must be finite and non-negative")
-        if self.loss not in {"l2", "squared_error", "quantile", "pinball"}:
-            raise ValueError("loss must be 'l2' or 'quantile'")
-        quantile_alpha = float(self.quantile_alpha)
+        if self.loss not in {
+            "l2",
+            "squared_error",
+            "huber",
+            "log_l2",
+            "log",
+            "log_squared_error",
+            "quantile",
+            "pinball",
+        }:
+            raise ValueError("loss must be 'l2', 'huber', 'log_l2', or 'quantile'")
+        loss_params = _resolved_loss_params(
+            self.loss,
+            self.quantile_alpha,
+            self.huber_delta,
+            self.log_offset,
+            self.loss_params,
+        )
+        quantile_alpha = float(loss_params["quantile_alpha"])
         if not math.isfinite(quantile_alpha) or quantile_alpha <= 0.0 or quantile_alpha >= 1.0:
             raise ValueError("quantile_alpha must be finite and in (0, 1)")
+        huber_delta = float(loss_params["huber_delta"])
+        if not math.isfinite(huber_delta) or huber_delta <= 0.0:
+            raise ValueError("huber_delta must be positive and finite")
+        log_offset = float(loss_params["log_offset"])
+        if not math.isfinite(log_offset) or log_offset <= 0.0:
+            raise ValueError("log_offset must be positive and finite")
+        if self.loss in {"log_l2", "log", "log_squared_error"} and log_offset != 1.0:
+            raise ValueError("log_l2 currently supports log_offset=1.0")
         if self.leaf_predictor not in {"constant", "linear"}:
             raise ValueError("leaf_predictor must be 'constant' or 'linear'")
         if self.loss in {"quantile", "pinball"} and self.leaf_predictor != "constant":
             raise ValueError("quantile loss requires leaf_predictor='constant'")
+        if (
+            self.loss in {"huber", "log_l2", "log", "log_squared_error"}
+            and self.leaf_predictor != "constant"
+        ):
+            raise ValueError(f"{self.loss} loss requires leaf_predictor='constant'")
         if float(self.l2_regularization) < 0 or not math.isfinite(float(self.l2_regularization)):
             raise ValueError("l2_regularization must be finite and non-negative")
+        constant_l2 = float(self.constant_l2_regularization)
+        if constant_l2 < 0 or not math.isfinite(constant_l2):
+            raise ValueError("constant_l2_regularization must be finite and non-negative")
         if float(self.fuzzy_bandwidth) < 0 or not math.isfinite(float(self.fuzzy_bandwidth)):
             raise ValueError("fuzzy_bandwidth must be finite and non-negative")
         if self.backend not in {"auto", "rust", "python"}:
@@ -753,6 +819,8 @@ class _FallbackModel:
         min_gain: float,
         loss: str = "l2",
         quantile_alpha: float = 0.5,
+        huber_delta: float = 1.0,
+        log_offset: float = 1.0,
         monotonic_constraints: list[int] | None = None,
     ) -> None:
         self.n_estimators = n_estimators
@@ -762,6 +830,8 @@ class _FallbackModel:
         self.min_gain = min_gain
         self.loss = loss
         self.quantile_alpha = quantile_alpha
+        self.huber_delta = huber_delta
+        self.log_offset = log_offset
         self.monotonic_constraints = monotonic_constraints or []
         self.init_value = 0.0
         self.feature_count = 0
@@ -775,13 +845,22 @@ class _FallbackModel:
     ) -> None:
         self.feature_count = len(X[0])
         weights = sample_weight or [1.0 for _ in y]
-        self.init_value = _initial_value(y, weights, self.loss, self.quantile_alpha)
-        prediction = [self.init_value for _ in y]
+        training_targets = _training_targets(y, self.loss, self.log_offset)
+        self.init_value = _initial_value(
+            training_targets,
+            weights,
+            self.loss,
+            self.quantile_alpha,
+        )
+        prediction = [self.init_value for _ in training_targets]
         self.stumps = []
         if self.max_depth == 0:
             return
         for _ in range(self.n_estimators):
-            residuals = [target - pred for target, pred in zip(y, prediction, strict=True)]
+            residuals = [
+                _negative_gradient(target, pred, self.loss, self.huber_delta)
+                for target, pred in zip(training_targets, prediction, strict=True)
+            ]
             stump = _best_stump(
                 X,
                 residuals,
@@ -789,6 +868,7 @@ class _FallbackModel:
                 self.min_samples_leaf,
                 self.loss,
                 self.quantile_alpha,
+                self.huber_delta,
                 self.monotonic_constraints,
             )
             if stump is None:
@@ -815,7 +895,7 @@ class _FallbackModel:
                     else stump["right_value"]
                 )
                 pred += self.learning_rate * float(value)
-            predictions.append(pred)
+            predictions.append(_inverse_prediction(pred, self.loss))
         return predictions
 
     def predict_additive(self, X: list[list[float]]) -> list[list[float]]:
@@ -842,6 +922,8 @@ class _FallbackModel:
             "min_gain": self.min_gain,
             "loss": self.loss,
             "quantile_alpha": self.quantile_alpha,
+            "huber_delta": self.huber_delta,
+            "log_offset": self.log_offset,
             "monotonic_constraints": self.monotonic_constraints,
             "feature_count": self.feature_count,
             "init_value": self.init_value,
@@ -858,6 +940,8 @@ class _FallbackModel:
             min_gain=float(payload.get("min_gain", 0.0)),
             loss=str(payload.get("loss", "l2")),
             quantile_alpha=float(payload.get("quantile_alpha", 0.5)),
+            huber_delta=float(payload.get("huber_delta", 1.0)),
+            log_offset=float(payload.get("log_offset", 1.0)),
             monotonic_constraints=list(payload.get("monotonic_constraints", [])),
         )
         model.init_value = float(payload["init_value"])
@@ -1530,6 +1614,7 @@ def _best_stump(
     min_samples_leaf: int,
     loss: str,
     quantile_alpha: float,
+    huber_delta: float,
     monotonic_constraints: list[int],
 ) -> dict[str, float | int] | None:
     best_loss: float | None = None
@@ -1560,12 +1645,14 @@ def _best_stump(
                 left_value,
                 loss,
                 quantile_alpha,
+                huber_delta,
             ) + _leaf_loss(
                 right,
                 right_weights,
                 right_value,
                 loss,
                 quantile_alpha,
+                huber_delta,
             )
             if best_loss is None or candidate_loss < best_loss:
                 best_loss = candidate_loss
@@ -1576,6 +1663,42 @@ def _best_stump(
                     "right_value": right_value,
                 }
     return best
+
+
+def _resolved_loss_params(
+    loss: str,
+    quantile_alpha: float,
+    huber_delta: float,
+    log_offset: float,
+    loss_params: dict[str, Any] | None,
+) -> dict[str, float]:
+    params = dict(loss_params or {})
+    return {
+        "quantile_alpha": float(params.get("alpha", params.get("quantile_alpha", quantile_alpha))),
+        "huber_delta": float(params.get("delta", params.get("huber_delta", huber_delta))),
+        "log_offset": float(params.get("offset", params.get("log_offset", log_offset))),
+    }
+
+
+def _training_targets(values: list[float], loss: str, log_offset: float) -> list[float]:
+    if loss not in {"log_l2", "log", "log_squared_error"}:
+        return values
+    if any(value + log_offset <= 0.0 for value in values):
+        raise ValueError("log_l2 targets must be greater than -log_offset")
+    return [math.log(value + log_offset) for value in values]
+
+
+def _negative_gradient(target: float, prediction: float, loss: str, huber_delta: float) -> float:
+    residual = target - prediction
+    if loss == "huber":
+        return max(-huber_delta, min(huber_delta, residual))
+    return residual
+
+
+def _inverse_prediction(prediction: float, loss: str) -> float:
+    if loss in {"log_l2", "log", "log_squared_error"}:
+        return math.expm1(prediction)
+    return prediction
 
 
 def _initial_value(
@@ -1602,13 +1725,27 @@ def _leaf_loss(
     center: float,
     loss: str,
     quantile_alpha: float,
+    huber_delta: float,
 ) -> float:
     if loss in {"quantile", "pinball"}:
         return sum(
             weight * _pinball_loss(value, center, quantile_alpha)
             for value, weight in zip(values, weights, strict=True)
         )
+    if loss == "huber":
+        return sum(
+            weight * _huber_loss(value, center, huber_delta)
+            for value, weight in zip(values, weights, strict=True)
+        )
     return _squared_error(values, weights, center)
+
+
+def _huber_loss(value: float, center: float, delta: float) -> float:
+    residual = value - center
+    abs_residual = abs(residual)
+    if abs_residual <= delta:
+        return 0.5 * residual * residual
+    return delta * (abs_residual - 0.5 * delta)
 
 
 def _weighted_quantile(values: list[float], weights: list[float], alpha: float) -> float:

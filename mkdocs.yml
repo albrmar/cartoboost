@@ -1,0 +1,100 @@
+site_name: GeoBoost
+site_description: Developer and user documentation for GeoBoost regression tooling.
+site_url: https://theculliganman.github.io/geoboost/
+repo_url: https://github.com/theculliganman/geoboost
+repo_name: theculliganman/geoboost
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  language: en
+  features:
+    - content.action.edit
+    - content.code.copy
+    - navigation.footer
+    - navigation.indexes
+    - navigation.sections
+    - navigation.tabs
+    - search.highlight
+    - search.suggest
+    - toc.follow
+  palette:
+    - scheme: default
+      primary: teal
+      accent: deep orange
+    - scheme: slate
+      primary: teal
+      accent: amber
+      toggle:
+        icon: material/weather-night
+        name: Switch to light mode
+  font:
+    text: Inter
+    code: JetBrains Mono
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+
+plugins:
+  - search
+
+exclude_docs: |
+  README.md
+  AGENTS.md
+  */AGENTS.md
+  */*/AGENTS.md
+  */*/*/AGENTS.md
+
+not_in_nav: |
+  nyc_taxi_benchmarks.md
+  assets/lane_level_tests/acceptance_metrics.md
+  assets/nyc_taxi_benchmarks/repeated_results.md
+  assets/nyc_taxi_benchmarks/results.md
+
+nav:
+  - Home: index.md
+  - Getting Started: getting-started.md
+  - User Guide:
+      - Python Estimator: user-guide/python-estimator.md
+      - Parameters: user-guide/parameters.md
+      - Modeling v2 Alpha: modeling_v2_alpha.md
+      - Objectives: objectives.md
+      - Constraints: constraints.md
+      - Spatial Modeling: spatial_modeling.md
+      - Evaluation Protocol: evaluation_protocol.md
+      - Feature Schema: feature_schema.md
+      - Sparse Features: sparse_features.md
+      - SHAP Support: shap.md
+      - CLI: user-guide/cli.md
+      - Model Artifacts: model_artifact.md
+      - Limitations: limitations.md
+  - Reference:
+      - v1 API Contract: v1_api.md
+      - Python API: reference/python-api.md
+      - CLI Reference: reference/cli.md
+      - Integration Contract: integration-contract.md
+  - Developer Guide:
+      - Overview: developer-guide/index.md
+      - Architecture: developer-guide/architecture.md
+      - Build And Test: developer-guide/build-test.md
+      - Extending GeoBoost: developer-guide/extending.md
+      - Documentation: developer-guide/documentation.md
+      - Release Process: developer-guide/release.md
+      - Testing Strategy: testing_strategy.md
+      - Fixture Contract: fixture-contract.md
+      - Golden Data Workflow: golden-data-workflow.md
+      - Implementation Status: implementation_status.md
+      - Repository Plan: repo_plan.md
+      - v1 Release Checklist: v1_release_checklist.md
+  - Benchmarks:
+      - Overview: benchmarks/index.md
+      - Artifact Policy: benchmarks/artifacts.md
+      - Criterion Microbenchmarks: benchmarks/criterion.md
+      - NYC Taxi Benchmarks: benchmarks/nyc-taxi.md
+      - Optimization Loop: benchmarks/optimization-loop.md
+      - Lane-Level Acceptance: benchmarks/lane-level.md

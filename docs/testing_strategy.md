@@ -75,7 +75,9 @@ model-quality benchmark path. It writes tables and graphics under
 `docs/assets/nyc_taxi_benchmarks/`, supports official NYC TLC Parquet inputs,
 and compares GeoBoost with LightGBM/XGBoost when those optional packages are
 installed. It is intentionally outside `just validate` because it may download
-large data and depends on optional benchmark packages.
+large data and depends on optional benchmark packages. See
+[Benchmarks](benchmarks/index.md) for the consolidated runbooks and artifact
+policy.
 
 The comparison dependency boundary is:
 
