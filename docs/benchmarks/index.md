@@ -9,6 +9,23 @@ runbooks, reports, and PR summaries.
 | Validation artifacts | Deterministic synthetic behavior checks and proof images. | `target/validation/` plus selected committed docs assets | Commit only intentionally refreshed docs assets. |
 | NYC taxi benchmarks | Optional real-data model-quality and speed comparisons against benchmark-only packages. | `docs/assets/nyc_taxi_benchmarks/` and `target/nyc_taxi_repeated/` | Commit summary artifacts only when the benchmark was intentionally refreshed. |
 
+## v2 Modeling Utility Checks
+
+The v2 alpha helpers add objective, calibration, spatial-diagnostic, and
+blocked-validation utility surfaces. Those utilities are validated by Python
+tests, not by Criterion timing numbers:
+
+```sh
+uv run --group dev pytest \
+  tests/python/test_objectives_v2.py \
+  tests/python/test_modeling_metrics.py \
+  tests/python/test_evaluation_protocol.py
+```
+
+Prediction speed remains covered by the Rust prediction benchmark. The cached
+flat-axis benchmark exercises the fast dense path used by native Python
+prediction after `maturin develop`.
+
 ## Quick Commands
 
 Compile benchmarks without running them:

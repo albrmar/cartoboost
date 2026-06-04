@@ -183,10 +183,6 @@ impl FitContext {
             .flatten()
             .and_then(Option::as_ref)
     }
-
-    fn histogram_bin(&self, row: usize, feature: usize) -> u16 {
-        self.histogram_row_bins[row * self.cols + feature]
-    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -310,15 +306,20 @@ impl TreeBuilder {
                     stats
                 });
             let weight_sum = node_stats.weight_sum;
-            let value = self
-                .leaf_value(target, weights, indices, Some(node_stats))
-                .clamp(lower_bound, upper_bound);
+            let raw_value = self.leaf_value(target, weights, indices, Some(node_stats));
+            let value = raw_value.clamp(lower_bound, upper_bound);
             if let Some(updates) = updates {
                 for &idx in indices {
                     updates[idx] = value;
                 }
             }
-            let training_loss = self.leaf_training_loss(target, weights, indices, value);
+            let training_loss = if matches!(self.loss, LossConfig::L2 | LossConfig::LogL2(_))
+                && value == raw_value
+            {
+                node_stats.sse()
+            } else {
+                self.leaf_training_loss(target, weights, indices, value)
+            };
             match self.leaf_predictor {
                 LeafPredictorKind::Constant => {
                     profile::add(profile::LEAF, started.elapsed());
@@ -397,9 +398,8 @@ impl TreeBuilder {
             left_histogram_stats,
             right_histogram_stats,
         } = best;
-        let sample_weight_sum = node_histogram_stats
-            .and_then(|stats| histogram_node_stats(context, stats))
-            .or(node_stats)
+        let sample_weight_sum = node_stats
+            .or_else(|| node_histogram_stats.and_then(|stats| histogram_node_stats(context, stats)))
             .map(|stats| stats.weight_sum)
             .unwrap_or_else(|| indices.iter().map(|&idx| weights[idx]).sum());
         let left_weight_values = left_weights.as_deref().unwrap_or(weights);
@@ -502,14 +502,11 @@ impl TreeBuilder {
     ) -> Option<BestSplit> {
         let mut best: Option<BestSplit> = None;
 
-        let splitters = if self.splitters.is_empty() {
-            vec![SplitterKind::Axis]
-        } else {
-            self.splitters.clone()
-        };
-        let pure_histogram = splitters
-            .iter()
-            .all(|splitter| matches!(splitter, SplitterKind::AxisHistogram { .. }));
+        let splitters = self.splitters.as_slice();
+        let pure_histogram = !splitters.is_empty()
+            && splitters
+                .iter()
+                .all(|splitter| matches!(splitter, SplitterKind::AxisHistogram { .. }));
         let mut terminal_histogram_updates = if !build_child_histograms
             && pure_histogram
             && self.leaf_predictor == LeafPredictorKind::Constant
@@ -527,6 +524,10 @@ impl TreeBuilder {
                 self.node_loss(target, weights, indices)
             })
         };
+        if splitters.is_empty() {
+            self.axis_candidates(x, target, weights, indices, parent_sse, context, &mut best);
+            return best;
+        }
         for splitter in splitters {
             match splitter {
                 SplitterKind::Axis => self
@@ -539,7 +540,7 @@ impl TreeBuilder {
                             weights,
                             indices,
                             parent_sse,
-                            bins,
+                            *bins,
                             context,
                             node_histogram_stats,
                             build_child_histograms,
@@ -548,7 +549,7 @@ impl TreeBuilder {
                         )
                     } else {
                         self.axis_histogram_exact_candidates(
-                            x, target, weights, indices, parent_sse, bins, context, &mut best,
+                            x, target, weights, indices, parent_sse, *bins, context, &mut best,
                         )
                     }
                 }
@@ -559,7 +560,7 @@ impl TreeBuilder {
                     self.gaussian_candidates(x, target, weights, indices, parent_sse, &mut best)
                 }
                 SplitterKind::Periodic { period } => self.periodic_candidates(
-                    x, target, weights, indices, parent_sse, period, &mut best,
+                    x, target, weights, indices, parent_sse, *period, &mut best,
                 ),
                 SplitterKind::SparseSet => {
                     self.sparse_set_candidates(x, target, weights, indices, parent_sse, &mut best)
@@ -633,14 +634,20 @@ impl TreeBuilder {
 
             let mut histogram_candidate: Option<BestHistogramCandidate> = None;
             profile::timed(profile::HIST_SCORE, || {
-                let common_total = context
-                    .histogram_all_features
-                    .then(|| histogram_node_stats(context, stats))
-                    .flatten();
+                let common_total = context.histogram_all_features.then(|| {
+                    histogram_node_stats_from_feature(
+                        *context
+                            .histogram_feature_indices
+                            .first()
+                            .expect("histogram_all_features requires at least one feature"),
+                        bins,
+                        stats,
+                    )
+                });
                 for &feature in &context.histogram_feature_indices {
-                    let Some(histogram_feature) = context.histogram_feature(feature, bins) else {
-                        continue;
-                    };
+                    let histogram_feature = context.histogram_features[feature]
+                        .as_ref()
+                        .expect("histogram_feature_indices contains prebinned features");
                     let feature_stats = &stats[feature * bins..(feature + 1) * bins];
                     let total = common_total.unwrap_or_else(|| {
                         feature_stats
@@ -657,6 +664,11 @@ impl TreeBuilder {
                         continue;
                     }
 
+                    let parent_loss = if parent_sse == 0.0 {
+                        total.sse()
+                    } else {
+                        parent_sse
+                    };
                     let mut left_stats = CandidateStats::default();
                     for (split_bin, bin_stats) in feature_stats.iter().enumerate().take(bins - 1) {
                         left_stats.count += bin_stats.count;
@@ -664,21 +676,25 @@ impl TreeBuilder {
                         left_stats.weighted_target_sum += bin_stats.weighted_target_sum;
                         left_stats.weighted_target_square_sum +=
                             bin_stats.weighted_target_square_sum;
-                        let right_stats = total.minus(&left_stats);
+                        let right_count = total.count - left_stats.count;
                         if left_stats.count < self.min_samples_leaf
-                            || right_stats.count < self.min_samples_leaf
+                            || right_count < self.min_samples_leaf
                         {
                             continue;
                         }
-                        let Some(&threshold) = histogram_feature.thresholds.get(split_bin) else {
-                            continue;
-                        };
-                        let parent_loss = if parent_sse == 0.0 {
-                            total.sse()
-                        } else {
-                            parent_sse
-                        };
-                        let gain = parent_loss - left_stats.sse() - right_stats.sse();
+                        let right_weight_sum = total.weight_sum - left_stats.weight_sum;
+                        let right_target_sum =
+                            total.weighted_target_sum - left_stats.weighted_target_sum;
+                        let right_target_square_sum = total.weighted_target_square_sum
+                            - left_stats.weighted_target_square_sum;
+                        let threshold = histogram_feature.thresholds[split_bin];
+                        let gain = parent_loss
+                            - left_stats.sse()
+                            - weighted_sse_from_sums(
+                                right_weight_sum,
+                                right_target_sum,
+                                right_target_square_sum,
+                            );
                         let split = Split::Axis {
                             feature,
                             threshold,
@@ -698,9 +714,14 @@ impl TreeBuilder {
                                 gain,
                                 split_bin,
                                 left_capacity: left_stats.count,
-                                right_capacity: right_stats.count,
+                                right_capacity: right_count,
                                 left_stats,
-                                right_stats,
+                                right_stats: CandidateStats {
+                                    count: right_count,
+                                    weight_sum: right_weight_sum,
+                                    weighted_target_sum: right_target_sum,
+                                    weighted_target_square_sum: right_target_square_sum,
+                                },
                             });
                         }
                     }
@@ -716,6 +737,7 @@ impl TreeBuilder {
                 weights,
                 Some(stats),
                 self.constant_lambda_l2,
+                self.min_samples_leaf,
                 build_child_histograms,
                 terminal_updates.as_deref_mut(),
                 best,
@@ -769,6 +791,7 @@ impl TreeBuilder {
                 weights,
                 None,
                 self.constant_lambda_l2,
+                self.min_samples_leaf,
                 false,
                 None,
                 best,
@@ -810,28 +833,36 @@ impl TreeBuilder {
                 continue;
             }
 
+            let parent_loss = if parent_sse == 0.0 {
+                total.sse()
+            } else {
+                parent_sse
+            };
             let mut left_stats = CandidateStats::default();
             for (split_bin, bin_stats) in stats.iter().enumerate().take(bins - 1) {
                 left_stats.count += bin_stats.count;
                 left_stats.weight_sum += bin_stats.weight_sum;
                 left_stats.weighted_target_sum += bin_stats.weighted_target_sum;
                 left_stats.weighted_target_square_sum += bin_stats.weighted_target_square_sum;
-                let right_stats = total.minus(&left_stats);
-                if left_stats.count < self.min_samples_leaf
-                    || right_stats.count < self.min_samples_leaf
-                {
+                let right_count = total.count - left_stats.count;
+                if left_stats.count < self.min_samples_leaf || right_count < self.min_samples_leaf {
                     continue;
                 }
+                let right_weight_sum = total.weight_sum - left_stats.weight_sum;
+                let right_target_sum = total.weighted_target_sum - left_stats.weighted_target_sum;
+                let right_target_square_sum =
+                    total.weighted_target_square_sum - left_stats.weighted_target_square_sum;
                 let threshold = min_value + ((split_bin + 1) as f64 / scale);
                 if threshold >= max_value {
                     continue;
                 }
-                let parent_loss = if parent_sse == 0.0 {
-                    total.sse()
-                } else {
-                    parent_sse
-                };
-                let gain = parent_loss - left_stats.sse() - right_stats.sse();
+                let gain = parent_loss
+                    - left_stats.sse()
+                    - weighted_sse_from_sums(
+                        right_weight_sum,
+                        right_target_sum,
+                        right_target_square_sum,
+                    );
                 let split = Split::Axis {
                     feature,
                     threshold,
@@ -860,6 +891,7 @@ impl TreeBuilder {
             weights,
             None,
             self.constant_lambda_l2,
+            self.min_samples_leaf,
             false,
             terminal_updates,
             best,
@@ -900,6 +932,11 @@ impl TreeBuilder {
                 return None;
             }
 
+            let parent_loss = if parent_sse == 0.0 {
+                total.sse()
+            } else {
+                parent_sse
+            };
             let mut left_stats = CandidateStats::default();
             let mut candidate: Option<BestHistogramCandidate> = None;
             for (split_bin, bin_stats) in stats.iter().enumerate().take(bins - 1) {
@@ -907,21 +944,22 @@ impl TreeBuilder {
                 left_stats.weight_sum += bin_stats.weight_sum;
                 left_stats.weighted_target_sum += bin_stats.weighted_target_sum;
                 left_stats.weighted_target_square_sum += bin_stats.weighted_target_square_sum;
-                let right_stats = total.minus(&left_stats);
-                if left_stats.count < self.min_samples_leaf
-                    || right_stats.count < self.min_samples_leaf
-                {
+                let right_count = total.count - left_stats.count;
+                if left_stats.count < self.min_samples_leaf || right_count < self.min_samples_leaf {
                     continue;
                 }
-                let Some(&threshold) = histogram_feature.thresholds.get(split_bin) else {
-                    continue;
-                };
-                let parent_loss = if parent_sse == 0.0 {
-                    total.sse()
-                } else {
-                    parent_sse
-                };
-                let gain = parent_loss - left_stats.sse() - right_stats.sse();
+                let right_weight_sum = total.weight_sum - left_stats.weight_sum;
+                let right_target_sum = total.weighted_target_sum - left_stats.weighted_target_sum;
+                let right_target_square_sum =
+                    total.weighted_target_square_sum - left_stats.weighted_target_square_sum;
+                let threshold = histogram_feature.thresholds[split_bin];
+                let gain = parent_loss
+                    - left_stats.sse()
+                    - weighted_sse_from_sums(
+                        right_weight_sum,
+                        right_target_sum,
+                        right_target_square_sum,
+                    );
                 let split = Split::Axis {
                     feature,
                     threshold,
@@ -937,9 +975,14 @@ impl TreeBuilder {
                     gain,
                     split_bin,
                     left_capacity: left_stats.count,
-                    right_capacity: right_stats.count,
+                    right_capacity: right_count,
                     left_stats,
-                    right_stats,
+                    right_stats: CandidateStats {
+                        count: right_count,
+                        weight_sum: right_weight_sum,
+                        weighted_target_sum: right_target_sum,
+                        weighted_target_square_sum: right_target_square_sum,
+                    },
                 });
             }
 
@@ -1800,12 +1843,19 @@ impl TreeBuilder {
     }
 
     fn uses_l2_split_score(&self) -> bool {
-        matches!(self.loss, LossConfig::L2)
+        matches!(self.loss, LossConfig::L2 | LossConfig::LogL2(_))
     }
 
     fn node_loss(&self, target: &[f64], weights: &[f64], indices: &[usize]) -> f64 {
         match self.loss {
-            LossConfig::L2 => sse(target, weights, indices),
+            LossConfig::L2 | LossConfig::LogL2(_) => sse(target, weights, indices),
+            LossConfig::Huber(config) => {
+                let value = self.leaf_value(target, weights, indices, None);
+                indices
+                    .iter()
+                    .map(|&idx| weights[idx] * huber_loss(target[idx], value, config.delta))
+                    .sum()
+            }
             LossConfig::Quantile(config) => {
                 weighted_pinball_loss(target, weights, indices, config.alpha)
             }
@@ -1820,7 +1870,7 @@ impl TreeBuilder {
         stats: Option<CandidateStats>,
     ) -> f64 {
         match self.loss {
-            LossConfig::L2 => stats.map_or_else(
+            LossConfig::L2 | LossConfig::LogL2(_) | LossConfig::Huber(_) => stats.map_or_else(
                 || {
                     let stats = candidate_stats(indices.iter().copied(), target, weights);
                     self.constant_leaf_value(stats)
@@ -1847,9 +1897,13 @@ impl TreeBuilder {
         value: f64,
     ) -> f64 {
         match self.loss {
-            LossConfig::L2 => indices
+            LossConfig::L2 | LossConfig::LogL2(_) => indices
                 .iter()
                 .map(|&idx| weights[idx] * (target[idx] - value).powi(2))
+                .sum(),
+            LossConfig::Huber(config) => indices
+                .iter()
+                .map(|&idx| weights[idx] * huber_loss(target[idx], value, config.delta))
                 .sum(),
             LossConfig::Quantile(config) => indices
                 .iter()
@@ -2261,6 +2315,15 @@ fn add_histogram_stats_row(
             add_feature!(3);
             return;
         }
+        6 => {
+            add_feature!(0);
+            add_feature!(1);
+            add_feature!(2);
+            add_feature!(3);
+            add_feature!(4);
+            add_feature!(5);
+            return;
+        }
         8 => {
             add_feature!(0);
             add_feature!(1);
@@ -2303,16 +2366,25 @@ fn histogram_node_stats(context: &FitContext, stats: &[CandidateStats]) -> Optio
     let bins = context.histogram_bins?;
     let feature = *context.histogram_feature_indices.first()?;
     let start = feature * bins;
-    Some(stats.get(start..start + bins)?.iter().fold(
-        CandidateStats::default(),
-        |mut total, stats| {
+    (start + bins <= stats.len()).then(|| histogram_node_stats_from_feature(feature, bins, stats))
+}
+
+#[inline(always)]
+fn histogram_node_stats_from_feature(
+    feature: usize,
+    bins: usize,
+    stats: &[CandidateStats],
+) -> CandidateStats {
+    let start = feature * bins;
+    stats[start..start + bins]
+        .iter()
+        .fold(CandidateStats::default(), |mut total, stats| {
             total.count += stats.count;
             total.weight_sum += stats.weight_sum;
             total.weighted_target_sum += stats.weighted_target_sum;
             total.weighted_target_square_sum += stats.weighted_target_square_sum;
             total
-        },
-    ))
+        })
 }
 
 fn candidate_stats(
@@ -2472,6 +2544,7 @@ fn materialize_histogram_candidate(
     weights: &[f64],
     parent_histogram_stats: Option<&[CandidateStats]>,
     constant_lambda_l2: f64,
+    min_samples_leaf: usize,
     build_child_histograms: bool,
     terminal_updates: Option<&mut [f64]>,
     best: &mut Option<BestSplit>,
@@ -2483,7 +2556,11 @@ fn materialize_histogram_candidate(
     let Some(feature) = candidate.feature() else {
         return;
     };
-    let Some(_histogram_feature) = context.histogram_feature(feature, bins) else {
+    let Some(histogram_feature) = context
+        .histogram_features
+        .get(feature)
+        .and_then(Option::as_ref)
+    else {
         return;
     };
     if best
@@ -2496,12 +2573,13 @@ fn materialize_histogram_candidate(
     if let Some(updates) = terminal_updates.filter(|_| context.histogram_all_features) {
         let left_value = constant_leaf_value(candidate.left_stats, constant_lambda_l2);
         let right_value = constant_leaf_value(candidate.right_stats, constant_lambda_l2);
+        let split_bin = candidate.split_bin as u16;
         profile::timed(profile::MATERIALIZE_PARTITION, || {
             let mut left_len = 0usize;
             let mut right_len = 0usize;
             for &idx in indices {
-                let bin = usize::from(context.histogram_row_bins[idx * context.cols + feature]);
-                if bin <= candidate.split_bin {
+                let bin = histogram_feature.bins[idx];
+                if bin <= split_bin {
                     updates[idx] = left_value;
                     left_len += 1;
                 } else {
@@ -2535,13 +2613,19 @@ fn materialize_histogram_candidate(
 
     let mut left: Vec<usize> = Vec::with_capacity(candidate.left_capacity);
     let mut right: Vec<usize> = Vec::with_capacity(candidate.right_capacity);
+    let left_can_split = candidate.left_capacity >= min_samples_leaf * 2;
+    let right_can_split = candidate.right_capacity >= min_samples_leaf * 2;
     let build_left_histogram = context.histogram_all_features
         && build_child_histograms
         && parent_histogram_stats.is_some()
+        && left_can_split
+        && right_can_split
         && candidate.left_capacity <= candidate.right_capacity;
     let build_right_histogram = context.histogram_all_features
         && build_child_histograms
         && parent_histogram_stats.is_some()
+        && left_can_split
+        && right_can_split
         && candidate.right_capacity < candidate.left_capacity;
     let mut smaller_histogram_stats = if build_left_histogram || build_right_histogram {
         Some(profile::timed(profile::HIST_PREPARE, || {
@@ -2552,6 +2636,7 @@ fn materialize_histogram_candidate(
     };
     profile::timed(profile::MATERIALIZE_PARTITION, || {
         if context.histogram_all_features {
+            let split_bin = candidate.split_bin as u16;
             // SAFETY: capacities come from the same histogram counts and split bin used here.
             // Every input row is written exactly once to either `left` or `right`, and the
             // final lengths are set to the number of initialized elements.
@@ -2561,8 +2646,8 @@ fn materialize_histogram_candidate(
                 let mut left_len = 0;
                 let mut right_len = 0;
                 for &idx in indices {
-                    let bin = usize::from(context.histogram_row_bins[idx * context.cols + feature]);
-                    if bin <= candidate.split_bin {
+                    let bin = histogram_feature.bins[idx];
+                    if bin <= split_bin {
                         debug_assert!(left_len < candidate.left_capacity);
                         left_ptr.add(left_len).write(idx);
                         left_len += 1;
@@ -2579,7 +2664,7 @@ fn materialize_histogram_candidate(
             }
         } else {
             for &idx in indices {
-                let bin = context.histogram_bin(idx, feature);
+                let bin = histogram_feature.bins[idx];
                 if bin != MISSING_BIN && usize::from(bin) <= candidate.split_bin {
                     left.push(idx);
                 } else {
@@ -2683,6 +2768,16 @@ fn weighted_sse_from_sums(weight_sum: f64, weighted_sum: f64, weighted_square_su
         0.0
     } else {
         weighted_square_sum - (weighted_sum * weighted_sum / weight_sum)
+    }
+}
+
+fn huber_loss(target: f64, prediction: f64, delta: f64) -> f64 {
+    let residual = target - prediction;
+    let abs = residual.abs();
+    if abs <= delta {
+        0.5 * residual * residual
+    } else {
+        delta * (abs - 0.5 * delta)
     }
 }
 

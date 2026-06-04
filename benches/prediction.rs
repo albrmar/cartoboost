@@ -1,5 +1,5 @@
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
-use geoboost_core::tree::{Node, Split, Tree, MODEL_ARTIFACT_VERSION};
+use geoboost_core::tree::{Node, PredictionTransform, Split, Tree, MODEL_ARTIFACT_VERSION};
 use geoboost_core::{Dataset, Model};
 
 fn synthetic_values(rows: usize, cols: usize) -> Vec<f64> {
@@ -45,6 +45,7 @@ fn synthetic_model(trees: usize) -> Model {
         feature_schema: None,
         target_name: None,
         training_config: None,
+        prediction_transform: PredictionTransform::Identity,
         trees,
     }
 }
@@ -88,6 +89,7 @@ fn synthetic_axis_model(trees: usize, feature_count: usize) -> Model {
         feature_schema: None,
         target_name: None,
         training_config: None,
+        prediction_transform: PredictionTransform::Identity,
         trees,
     }
 }

@@ -47,6 +47,10 @@ def normalize_feature_kind(kind: Any, entry: dict[str, Any] | None = None) -> An
         return "Numeric"
     if kind in {"SparseSet", "sparse_set", "sparse"}:
         return "SparseSet"
+    if kind in {"H3SparseSet", "h3_sparse_set", "h3_sparse"}:
+        if entry is not None:
+            _validate_h3_sparse_set_entry(entry)
+        return "SparseSet"
     if kind in {"Periodic", "periodic"}:
         period = 24 if entry is None else entry.get("period", 24)
         return {"Periodic": {"period": _positive_period(period)}}
@@ -79,6 +83,42 @@ def _positive_period(period: Any) -> int:
     if not math.isfinite(value) or value <= 0 or not value.is_integer():
         raise ValueError("periodic feature_schema entries require a positive integer period")
     return int(value)
+
+
+def _h3_resolution(value: Any, field_name: str) -> int:
+    if isinstance(value, bool):
+        raise ValueError(f"h3_sparse_set feature_schema entries require integer {field_name}")
+    try:
+        resolution = int(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            f"h3_sparse_set feature_schema entries require integer {field_name}"
+        ) from exc
+    if resolution != value and not (
+        isinstance(value, float) and math.isfinite(value) and value.is_integer()
+    ):
+        raise ValueError(f"h3_sparse_set feature_schema entries require integer {field_name}")
+    if resolution < 0 or resolution > 15:
+        raise ValueError(f"h3_sparse_set {field_name} must be between 0 and 15")
+    return resolution
+
+
+def _validate_h3_sparse_set_entry(entry: dict[str, Any]) -> None:
+    if "resolution" not in entry:
+        raise ValueError("h3_sparse_set feature_schema entries require resolution")
+    resolution = _h3_resolution(entry["resolution"], "resolution")
+    parent_resolutions = entry.get("parent_resolutions", [])
+    if parent_resolutions is None:
+        parent_resolutions = []
+    if isinstance(parent_resolutions, str) or not isinstance(
+        parent_resolutions,
+        list | tuple,
+    ):
+        raise ValueError("h3_sparse_set parent_resolutions must be a list of integer resolutions")
+    for parent_resolution in parent_resolutions:
+        parent = _h3_resolution(parent_resolution, "parent_resolutions")
+        if parent >= resolution:
+            raise ValueError("h3_sparse_set parent_resolutions must be less than resolution")
 
 
 def _validate_length(

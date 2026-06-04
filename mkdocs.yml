@@ -62,6 +62,11 @@ nav:
   - User Guide:
       - Python Estimator: user-guide/python-estimator.md
       - Parameters: user-guide/parameters.md
+      - Modeling v2 Alpha: modeling_v2_alpha.md
+      - Objectives: objectives.md
+      - Constraints: constraints.md
+      - Spatial Modeling: spatial_modeling.md
+      - Evaluation Protocol: evaluation_protocol.md
       - Feature Schema: feature_schema.md
       - Sparse Features: sparse_features.md
       - SHAP Support: shap.md
@@ -91,4 +96,5 @@ nav:
       - Artifact Policy: benchmarks/artifacts.md
       - Criterion Microbenchmarks: benchmarks/criterion.md
       - NYC Taxi Benchmarks: benchmarks/nyc-taxi.md
+      - Optimization Loop: benchmarks/optimization-loop.md
       - Lane-Level Acceptance: benchmarks/lane-level.md

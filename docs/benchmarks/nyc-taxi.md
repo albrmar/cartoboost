@@ -141,15 +141,36 @@ Repeated-run summaries:
 
 ## Current Snapshot
 
-The committed repeated 25k report uses target-mean zone treatment. In the
-current artifact, GeoBoost beats XGBoost on RMSE and R2 for every task/split but
-misses the all-task speed gate against XGBoost `hist`. The repeated gate
-requires:
+The committed repeated 25k report was refreshed on June 4, 2026 with
+target-mean zone treatment through `just nyc-quality-benchmark-repeated`. In
+the current artifact, GeoBoost beats XGBoost on RMSE and R2 for every
+task/split and has higher median prediction throughput for every task/split,
+but still misses the all-task speed gate because training remains slower than
+XGBoost `hist`. The repeated gate requires:
 
 - GeoBoost train time no slower than XGBoost.
 - GeoBoost prediction throughput no slower than XGBoost.
 - GeoBoost RMSE lower than XGBoost.
 - GeoBoost R2 no worse than XGBoost.
 
+Observed medians in the refreshed report:
+
+| task/split | train ratio vs XGBoost | prediction throughput ratio vs XGBoost | RMSE delta vs XGBoost | R2 delta vs XGBoost |
+| --- | ---: | ---: | ---: | ---: |
+| duration/random | 1.76x | 1.161x | -0.004507 | 0.005453 |
+| duration/spatial_holdout | 1.73x | 1.524x | -0.001197 | 0.001594 |
+| fare/random | 1.70x | 1.920x | -0.000148 | 0.000163 |
+| fare/spatial_holdout | 1.73x | 1.626x | -0.003096 | 0.003472 |
+| pickup_demand/random | 1.91x | 1.515x | -0.012370 | 0.025518 |
+| pickup_demand/spatial_holdout | 1.49x | 1.015x | -0.002626 | 0.008206 |
+
 The committed results are setup-specific evidence for this maintained preset.
 They are not a general claim about production accuracy or package superiority.
+
+For the current v2 alpha work:
+
+- Utility is verified by focused unit tests for objectives, conformal intervals,
+  spatial diagnostics, and blocked validation split helpers.
+- Prediction speed is smoke-tested by Criterion synthetic prediction benches.
+- NYC taxi qualitative and speed claims are limited to the refreshed repeated
+  benchmark artifact and its documented preset.

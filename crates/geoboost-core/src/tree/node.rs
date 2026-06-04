@@ -23,6 +23,8 @@ pub struct Model {
     pub target_name: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub training_config: Option<TrainingConfigMetadata>,
+    #[serde(default)]
+    pub prediction_transform: PredictionTransform,
     pub trees: Vec<Tree>,
 }
 
@@ -53,6 +55,22 @@ pub struct TrainingConfigMetadata {
     pub loss: crate::loss::LossConfig,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub monotonic_constraints: Vec<i8>,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Serialize, Deserialize)]
+pub enum PredictionTransform {
+    #[default]
+    Identity,
+    Expm1,
+}
+
+impl PredictionTransform {
+    fn apply(self, value: f64) -> f64 {
+        match self {
+            PredictionTransform::Identity => value,
+            PredictionTransform::Expm1 => value.exp_m1(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -153,6 +171,7 @@ pub struct FlatAxisPredictor {
     init_prediction: f64,
     learning_rate: f64,
     trees: Vec<Vec<FlatAxisNode>>,
+    prediction_transform: PredictionTransform,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
@@ -182,6 +201,10 @@ impl Model {
     }
 
     pub fn predict_one(&self, row: &[f64]) -> f64 {
+        self.transform_prediction(self.raw_predict_one(row))
+    }
+
+    fn raw_predict_one(&self, row: &[f64]) -> f64 {
         self.init_prediction
             + self
                 .trees
@@ -201,6 +224,10 @@ impl Model {
     }
 
     pub fn predict_dataset_row(&self, x: &Dataset, row: usize) -> f64 {
+        self.transform_prediction(self.raw_predict_dataset_row(x, row))
+    }
+
+    fn raw_predict_dataset_row(&self, x: &Dataset, row: usize) -> f64 {
         self.init_prediction
             + self
                 .trees
@@ -319,6 +346,7 @@ impl Model {
             if let Some(trees) = self.flat_axis_trees() {
                 return Ok(
                     FlatAxisPredictor::new(self.init_prediction, self.learning_rate, trees)
+                        .with_transform(self.prediction_transform)
                         .predict_flat(rows, cols, values),
                 );
             }
@@ -446,11 +474,14 @@ impl Model {
         if self.requires_sparse_sets() {
             return None;
         }
-        Some(FlatAxisPredictor::new(
-            self.init_prediction,
-            self.learning_rate,
-            self.flat_axis_trees()?,
-        ))
+        Some(
+            FlatAxisPredictor::new(
+                self.init_prediction,
+                self.learning_rate,
+                self.flat_axis_trees()?,
+            )
+            .with_transform(self.prediction_transform),
+        )
     }
 
     fn constant_prediction(&self) -> Option<f64> {
@@ -458,7 +489,7 @@ impl Model {
         for tree in &self.trees {
             prediction += self.learning_rate * tree.constant_value()?;
         }
-        Some(prediction)
+        Some(self.transform_prediction(prediction))
     }
 
     fn predict_axis_stumps_flat(
@@ -489,6 +520,13 @@ impl Model {
             }
         }
         predictions
+            .into_iter()
+            .map(|prediction| self.transform_prediction(prediction))
+            .collect()
+    }
+
+    fn transform_prediction(&self, prediction: f64) -> f64 {
+        self.prediction_transform.apply(prediction)
     }
 }
 
@@ -498,7 +536,13 @@ impl FlatAxisPredictor {
             init_prediction,
             learning_rate,
             trees,
+            prediction_transform: PredictionTransform::Identity,
         }
+    }
+
+    fn with_transform(mut self, prediction_transform: PredictionTransform) -> Self {
+        self.prediction_transform = prediction_transform;
+        self
     }
 
     pub fn predict_flat(&self, rows: usize, cols: usize, values: &[f64]) -> Vec<f64> {
@@ -511,7 +555,7 @@ impl FlatAxisPredictor {
                     prediction +=
                         self.learning_rate * predict_flat_axis_tree(tree, values, row_offset);
                 }
-                prediction
+                self.prediction_transform.apply(prediction)
             })
             .collect()
     }
@@ -526,15 +570,17 @@ impl Model {
         sparse_ids: &[Vec<u64>],
         row: usize,
     ) -> f64 {
-        self.init_prediction
-            + self
-                .trees
-                .iter()
-                .map(|tree| {
-                    self.learning_rate
-                        * tree.predict_flat_row(cols, values, sparse_offsets, sparse_ids, row)
-                })
-                .sum::<f64>()
+        self.transform_prediction(
+            self.init_prediction
+                + self
+                    .trees
+                    .iter()
+                    .map(|tree| {
+                        self.learning_rate
+                            * tree.predict_flat_row(cols, values, sparse_offsets, sparse_ids, row)
+                    })
+                    .sum::<f64>(),
+        )
     }
 
     pub fn requires_sparse_sets(&self) -> bool {

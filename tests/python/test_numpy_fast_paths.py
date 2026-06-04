@@ -1,6 +1,5 @@
 import numpy as np
 import pytest
-
 from geoboost import FeatureSchema, GeoBoostRegressor
 from geoboost.regressor import _encode_sparse_columns, _rust_feature_schema_json
 

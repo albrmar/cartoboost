@@ -218,6 +218,7 @@ fn dense_predict_errors_for_sparse_list_model() {
         feature_schema: None,
         target_name: None,
         training_config: None,
+        prediction_transform: super::PredictionTransform::Identity,
         trees: vec![Tree {
             root: Node::Branch {
                 split: Split::SparseListContainsAny {
@@ -261,6 +262,7 @@ fn sparse_list_save_load_prediction_identity() {
         feature_schema: Some(x.feature_schema_or_default()),
         target_name: None,
         training_config: None,
+        prediction_transform: super::PredictionTransform::Identity,
         trees: vec![Tree {
             root: Node::Branch {
                 split: Split::SparseListContainsAny {
