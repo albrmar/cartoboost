@@ -21,6 +21,7 @@ struct NativeGeoBoostRegressor {
     leaf_predictor: String,
     linear_leaf_features: Vec<usize>,
     l2_regularization: f64,
+    constant_l2_regularization: f64,
     fuzzy: bool,
     fuzzy_bandwidth: f64,
     monotonic_constraints: Vec<i8>,
@@ -31,7 +32,7 @@ struct NativeGeoBoostRegressor {
 #[pymethods]
 impl NativeGeoBoostRegressor {
     #[new]
-    #[pyo3(signature = (n_estimators=100, learning_rate=0.05, max_depth=4, min_samples_leaf=20, min_gain=1e-8, loss="l2", quantile_alpha=0.5, splitters=None, leaf_predictor="constant", linear_leaf_features=None, l2_regularization=1.0, fuzzy=false, fuzzy_bandwidth=0.0, monotonic_constraints=None))]
+    #[pyo3(signature = (n_estimators=100, learning_rate=0.05, max_depth=4, min_samples_leaf=20, min_gain=1e-8, loss="l2", quantile_alpha=0.5, splitters=None, leaf_predictor="constant", linear_leaf_features=None, l2_regularization=1.0, constant_l2_regularization=0.0, fuzzy=false, fuzzy_bandwidth=0.0, monotonic_constraints=None))]
     #[allow(clippy::too_many_arguments)]
     fn new(
         n_estimators: usize,
@@ -45,6 +46,7 @@ impl NativeGeoBoostRegressor {
         leaf_predictor: &str,
         linear_leaf_features: Option<Vec<usize>>,
         l2_regularization: f64,
+        constant_l2_regularization: f64,
         fuzzy: bool,
         fuzzy_bandwidth: f64,
         monotonic_constraints: Option<Vec<i8>>,
@@ -56,6 +58,7 @@ impl NativeGeoBoostRegressor {
             min_samples_leaf,
             min_gain,
             l2_regularization,
+            constant_l2_regularization,
             fuzzy_bandwidth,
             quantile_alpha,
         )?;
@@ -76,6 +79,7 @@ impl NativeGeoBoostRegressor {
             leaf_predictor: leaf_predictor.to_string(),
             linear_leaf_features: linear_leaf_features.unwrap_or_default(),
             l2_regularization,
+            constant_l2_regularization,
             fuzzy,
             fuzzy_bandwidth,
             monotonic_constraints: monotonic_constraints.unwrap_or_default(),
@@ -107,6 +111,7 @@ impl NativeGeoBoostRegressor {
             leaf_predictor,
             linear_leaf_features: self.linear_leaf_features.clone(),
             linear_lambda_l2: self.l2_regularization,
+            constant_lambda_l2: self.constant_l2_regularization,
             fuzzy: self.fuzzy,
             fuzzy_bandwidth: self.fuzzy_bandwidth,
             monotonic_constraints: self.monotonic_constraints.clone(),
@@ -331,6 +336,11 @@ impl NativeGeoBoostRegressor {
     }
 
     #[getter]
+    fn constant_l2_regularization(&self) -> f64 {
+        self.constant_l2_regularization
+    }
+
+    #[getter]
     fn fuzzy(&self) -> bool {
         self.fuzzy
     }
@@ -410,6 +420,7 @@ impl NativeGeoBoostRegressor {
             leaf_predictor,
             linear_leaf_features,
             l2_regularization,
+            constant_l2_regularization,
             fuzzy,
             fuzzy_bandwidth,
             monotonic_constraints,
@@ -424,6 +435,7 @@ impl NativeGeoBoostRegressor {
                 leaf_predictor_name(&config.leaf_predictor).to_string(),
                 config.linear_leaf_features,
                 config.linear_lambda_l2,
+                config.constant_lambda_l2,
                 config.fuzzy,
                 config.fuzzy_bandwidth,
                 config.monotonic_constraints,
@@ -439,6 +451,7 @@ impl NativeGeoBoostRegressor {
                 "constant".to_string(),
                 Vec::new(),
                 1.0,
+                0.0,
                 false,
                 0.0,
                 Vec::new(),
@@ -456,6 +469,7 @@ impl NativeGeoBoostRegressor {
             leaf_predictor,
             linear_leaf_features,
             l2_regularization,
+            constant_l2_regularization,
             fuzzy,
             fuzzy_bandwidth,
             monotonic_constraints,
@@ -487,6 +501,7 @@ impl NativeGeoBoostRegressor {
             leaf_predictor,
             linear_leaf_features: self.linear_leaf_features.clone(),
             linear_lambda_l2: self.l2_regularization,
+            constant_lambda_l2: self.constant_l2_regularization,
             fuzzy: self.fuzzy,
             fuzzy_bandwidth: self.fuzzy_bandwidth,
             monotonic_constraints: self.monotonic_constraints.clone(),
@@ -627,6 +642,7 @@ fn validate_params(
     min_samples_leaf: usize,
     min_gain: f64,
     l2_regularization: f64,
+    constant_l2_regularization: f64,
     fuzzy_bandwidth: f64,
     quantile_alpha: f64,
 ) -> PyResult<()> {
@@ -649,6 +665,11 @@ fn validate_params(
     if !l2_regularization.is_finite() || l2_regularization < 0.0 {
         return Err(PyValueError::new_err(
             "l2_regularization must be finite and non-negative",
+        ));
+    }
+    if !constant_l2_regularization.is_finite() || constant_l2_regularization < 0.0 {
+        return Err(PyValueError::new_err(
+            "constant_l2_regularization must be finite and non-negative",
         ));
     }
     if !fuzzy_bandwidth.is_finite() || fuzzy_bandwidth < 0.0 {

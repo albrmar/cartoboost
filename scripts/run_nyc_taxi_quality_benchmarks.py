@@ -65,10 +65,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--models",
         default="geoboost,geoboost_reference,lightgbm,xgboost,mean",
-        help=(
-            "Comma-separated models from: geoboost, geoboost_reference, "
-            "lightgbm, xgboost, mean"
-        ),
+        help=("Comma-separated models from: geoboost, geoboost_reference, lightgbm, xgboost, mean"),
     )
     parser.add_argument("--n-estimators", type=int, default=100)
     parser.add_argument(
@@ -85,7 +82,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--geoboost-max-depth",
         type=int,
-        default=4,
+        default=5,
         help=(
             "Max depth for the GeoBoost benchmark candidate. Baselines use --max-depth; "
             "geoboost_reference uses the baseline depth."
@@ -93,17 +90,53 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--geoboost-splitters",
-        default="axis_histogram:64",
+        default="axis_histogram:512",
         help=(
             "Comma-separated GeoBoost splitters for candidate and reference, "
-            "for example axis_histogram:64 or axis."
+            "for example axis_histogram:512 or axis."
         ),
+    )
+    parser.add_argument(
+        "--geoboost-min-samples-leaf",
+        type=int,
+        default=1,
+        help="Minimum leaf row count for GeoBoost candidate and reference models.",
+    )
+    parser.add_argument(
+        "--geoboost-constant-l2",
+        type=float,
+        default=0.0,
+        help="L2 regularization for GeoBoost constant leaf values.",
+    )
+    parser.add_argument(
+        "--geoboost-leaf-predictor",
+        default="constant",
+        choices=["constant", "linear"],
+        help="Leaf predictor for GeoBoost candidate and reference models.",
+    )
+    parser.add_argument(
+        "--geoboost-init",
+        default="constant",
+        choices=["constant", "linear"],
+        help="Initial GeoBoost model before residual tree boosting.",
+    )
+    parser.add_argument(
+        "--geoboost-calibration",
+        default="none",
+        choices=["none", "affine"],
+        help="Train-only post-fit calibration for GeoBoost predictions.",
     )
     parser.add_argument(
         "--xgboost-tree-method",
         default="hist",
         choices=["auto", "exact", "approx", "hist"],
         help="XGBoost tree_method for cross-comparable exact/exact or hist/hist runs.",
+    )
+    parser.add_argument(
+        "--xgboost-max-bin",
+        type=int,
+        default=256,
+        help="XGBoost max_bin for hist/approx tree methods.",
     )
     parser.add_argument("--xgboost-subsample", type=float, default=1.0)
     parser.add_argument("--xgboost-colsample-bytree", type=float, default=1.0)
@@ -561,13 +594,26 @@ def fit_predict_model(
             from geoboost import GeoBoostRegressor
         except ImportError as exc:
             return skipped(f"geoboost import failed: {exc}")
-        min_leaf = max(10, min(200, len(train_indices) // 200))
+        min_leaf = args.geoboost_min_samples_leaf
         is_speed_preset = model_name == "geoboost"
         n_estimators = args.geoboost_n_estimators if is_speed_preset else args.n_estimators
         max_depth = args.geoboost_max_depth if is_speed_preset else args.max_depth
         splitters = parse_splitters(args.geoboost_splitters)
         use_dense_id_sets = splitters_use_dense_id_sets(splitters)
         use_sparse_sets = splitters_need_sparse_sets(splitters) and not use_dense_id_sets
+        init_model = None
+        init_train_prediction = np.zeros_like(train_y, dtype=float)
+        init_test_prediction = np.zeros(len(test_indices), dtype=float)
+        if args.geoboost_init == "linear":
+            try:
+                from sklearn.linear_model import Ridge
+            except ImportError as exc:
+                return skipped(f"sklearn linear model import failed: {exc}")
+            init_model = Ridge(alpha=1.0)
+            init_model.fit(train_x, train_y)
+            init_train_prediction = np.asarray(init_model.predict(train_x), dtype=float)
+            init_test_prediction = np.asarray(init_model.predict(test_x), dtype=float)
+
         model = GeoBoostRegressor(
             n_estimators=n_estimators,
             learning_rate=args.learning_rate,
@@ -575,6 +621,8 @@ def fit_predict_model(
             min_samples_leaf=min_leaf,
             min_gain=0.0,
             splitters=splitters,
+            leaf_predictor=args.geoboost_leaf_predictor,
+            constant_l2_regularization=args.geoboost_constant_l2,
             backend="rust",
         )
         train_sparse = sparse_subset(task.sparse_sets, train_indices) if use_sparse_sets else None
@@ -592,11 +640,33 @@ def fit_predict_model(
             train_started = time.perf_counter()
             model.fit(
                 train_x,
-                train_y,
+                train_y - init_train_prediction,
                 sparse_sets=train_sparse,
                 feature_schema=feature_schema,
             )
+            calibration_intercept = 0.0
+            calibration_slope = 1.0
+            if args.geoboost_calibration == "affine":
+                train_raw = init_train_prediction + model.predict(
+                    train_x,
+                    sparse_sets=train_sparse,
+                )
+                design = np.column_stack([np.ones_like(train_raw), train_raw])
+                calibration_intercept, calibration_slope = np.linalg.lstsq(
+                    design,
+                    train_y,
+                    rcond=None,
+                )[0]
             train_seconds = time.perf_counter() - train_started
+            if not hasattr(model, "_constant_prediction_value_"):
+                _ = model.predict(
+                    test_x[: min(len(test_indices), 16)],
+                    sparse_sets=(
+                        sparse_subset(task.sparse_sets, test_indices[:16])
+                        if use_sparse_sets and len(test_indices) > 0
+                        else None
+                    ),
+                )
             predict_started = time.perf_counter()
             predict_path = "model.predict"
             if hasattr(model, "_constant_prediction_value_"):
@@ -606,7 +676,8 @@ def fit_predict_model(
                 )
                 predict_path = "constant_broadcast"
             else:
-                prediction = model.predict(test_x, sparse_sets=test_sparse)
+                prediction = init_test_prediction + model.predict(test_x, sparse_sets=test_sparse)
+                prediction = calibration_intercept + calibration_slope * prediction
             predict_seconds = time.perf_counter() - predict_started
         except Exception as exc:  # noqa: BLE001
             return skipped(f"geoboost run failed: {exc}")
@@ -624,6 +695,10 @@ def fit_predict_model(
                 "learning_rate": float(args.learning_rate),
                 "max_depth": int(max_depth),
                 "min_samples_leaf": int(min_leaf),
+                "constant_l2_regularization": float(args.geoboost_constant_l2),
+                "leaf_predictor": args.geoboost_leaf_predictor,
+                "init": args.geoboost_init,
+                "calibration": args.geoboost_calibration,
                 "splitters": splitters,
                 "sparse_sets": bool(use_sparse_sets),
                 "zone_treatment": args.zone_treatment,
@@ -651,6 +726,7 @@ def fit_predict_model(
         train_started = time.perf_counter()
         model.fit(train_x, train_y)
         train_seconds = time.perf_counter() - train_started
+        _ = model.predict(test_x[: min(len(test_indices), 16)])
         predict_started = time.perf_counter()
         prediction = model.predict(test_x)
         predict_seconds = time.perf_counter() - predict_started
@@ -677,20 +753,26 @@ def fit_predict_model(
         xgboost = optional_import("xgboost")
         if xgboost is None:
             return skipped("xgboost is not installed")
+        xgboost_params = {
+            "objective": "reg:squarederror",
+            "n_estimators": args.n_estimators,
+            "learning_rate": args.learning_rate,
+            "max_depth": args.max_depth,
+            "tree_method": args.xgboost_tree_method,
+            "subsample": args.xgboost_subsample,
+            "colsample_bytree": args.xgboost_colsample_bytree,
+            "random_state": args.seed,
+            "n_jobs": args.n_threads or 0,
+        }
+        if args.xgboost_tree_method in {"hist", "approx"}:
+            xgboost_params["max_bin"] = args.xgboost_max_bin
         model = xgboost.XGBRegressor(
-            objective="reg:squarederror",
-            n_estimators=args.n_estimators,
-            learning_rate=args.learning_rate,
-            max_depth=args.max_depth,
-            tree_method=args.xgboost_tree_method,
-            subsample=args.xgboost_subsample,
-            colsample_bytree=args.xgboost_colsample_bytree,
-            random_state=args.seed,
-            n_jobs=args.n_threads or 0,
+            **xgboost_params,
         )
         train_started = time.perf_counter()
         model.fit(train_x, train_y)
         train_seconds = time.perf_counter() - train_started
+        _ = model.predict(test_x[: min(len(test_indices), 16)])
         predict_started = time.perf_counter()
         prediction = model.predict(test_x)
         predict_seconds = time.perf_counter() - predict_started
@@ -707,6 +789,7 @@ def fit_predict_model(
                 "learning_rate": float(args.learning_rate),
                 "max_depth": int(args.max_depth),
                 "tree_method": args.xgboost_tree_method,
+                "max_bin": int(args.xgboost_max_bin),
                 "subsample": float(args.xgboost_subsample),
                 "colsample_bytree": float(args.xgboost_colsample_bytree),
                 "zone_treatment": args.zone_treatment,
@@ -998,9 +1081,7 @@ def write_markdown(results: dict[str, Any], output_dir: Path) -> None:
                     timing = model["timing"]
                     config = model.get("config", {})
                     note = (
-                        f"n_estimators={config['n_estimators']}"
-                        if "n_estimators" in config
-                        else ""
+                        f"n_estimators={config['n_estimators']}" if "n_estimators" in config else ""
                     )
                     lines.append(
                         f"| {model_name} | ok | {metrics['rmse']:.6f} | "

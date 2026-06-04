@@ -35,13 +35,21 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--geoboost-n-estimators", type=int, default=100)
     parser.add_argument("--learning-rate", type=float, default=0.08)
     parser.add_argument("--max-depth", type=int, default=4)
-    parser.add_argument("--geoboost-max-depth", type=int, default=4)
-    parser.add_argument("--geoboost-splitters", default="axis_histogram:64")
+    parser.add_argument("--geoboost-max-depth", type=int, default=5)
+    parser.add_argument("--geoboost-splitters", default="axis_histogram:512")
+    parser.add_argument("--geoboost-min-samples-leaf", type=int, default=1)
+    parser.add_argument("--geoboost-constant-l2", type=float, default=0.0)
+    parser.add_argument(
+        "--geoboost-leaf-predictor", default="constant", choices=["constant", "linear"]
+    )
+    parser.add_argument("--geoboost-init", default="constant", choices=["constant", "linear"])
+    parser.add_argument("--geoboost-calibration", default="none", choices=["none", "affine"])
     parser.add_argument(
         "--xgboost-tree-method",
         default="hist",
         choices=["auto", "exact", "approx", "hist"],
     )
+    parser.add_argument("--xgboost-max-bin", type=int, default=256)
     parser.add_argument("--xgboost-subsample", type=float, default=1.0)
     parser.add_argument("--xgboost-colsample-bytree", type=float, default=1.0)
     parser.add_argument("--zone-treatment", default="target_mean", choices=["raw", "target_mean"])
@@ -77,8 +85,20 @@ def benchmark_command(args: argparse.Namespace, output_dir: Path) -> list[str]:
         str(args.geoboost_max_depth),
         "--geoboost-splitters",
         args.geoboost_splitters,
+        "--geoboost-min-samples-leaf",
+        str(args.geoboost_min_samples_leaf),
+        "--geoboost-constant-l2",
+        str(args.geoboost_constant_l2),
+        "--geoboost-leaf-predictor",
+        args.geoboost_leaf_predictor,
+        "--geoboost-init",
+        args.geoboost_init,
+        "--geoboost-calibration",
+        args.geoboost_calibration,
         "--xgboost-tree-method",
         args.xgboost_tree_method,
+        "--xgboost-max-bin",
+        str(args.xgboost_max_bin),
         "--xgboost-subsample",
         str(args.xgboost_subsample),
         "--xgboost-colsample-bytree",
@@ -311,7 +331,13 @@ def main() -> None:
             "baseline_max_depth": args.max_depth,
             "geoboost_max_depth": args.geoboost_max_depth,
             "geoboost_splitters": args.geoboost_splitters,
+            "geoboost_min_samples_leaf": args.geoboost_min_samples_leaf,
+            "geoboost_constant_l2": args.geoboost_constant_l2,
+            "geoboost_leaf_predictor": args.geoboost_leaf_predictor,
+            "geoboost_init": args.geoboost_init,
+            "geoboost_calibration": args.geoboost_calibration,
             "xgboost_tree_method": args.xgboost_tree_method,
+            "xgboost_max_bin": args.xgboost_max_bin,
             "xgboost_subsample": args.xgboost_subsample,
             "xgboost_colsample_bytree": args.xgboost_colsample_bytree,
             "zone_treatment": args.zone_treatment,

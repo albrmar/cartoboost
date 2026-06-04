@@ -16,6 +16,7 @@ pub struct TreeBuilder {
     pub leaf_predictor: LeafPredictorKind,
     pub linear_leaf_features: Vec<usize>,
     pub linear_lambda_l2: f64,
+    pub constant_lambda_l2: f64,
     pub fuzzy: bool,
     pub fuzzy_bandwidth: f64,
     pub loss: LossConfig,
@@ -596,37 +597,15 @@ impl TreeBuilder {
                 });
                 profile::timed(profile::HIST_ACCUMULATE, || {
                     if context.histogram_all_features {
-                        if context.cols == 3 {
-                            for &idx in indices {
-                                add_histogram_stats_row(
-                                    context,
-                                    bins,
-                                    target,
-                                    weights,
-                                    idx,
-                                    &mut computed_stats,
-                                );
-                            }
-                        } else {
-                            for &idx in indices {
-                                let weight = weights[idx];
-                                let value = target[idx];
-                                let weighted_target = weight * value;
-                                let weighted_target_square = weighted_target * value;
-                                let row_offset = idx * context.cols;
-                                for (feature, &bin) in context.histogram_row_bins
-                                    [row_offset..row_offset + context.cols]
-                                    .iter()
-                                    .enumerate()
-                                {
-                                    let item =
-                                        &mut computed_stats[feature * bins + usize::from(bin)];
-                                    item.count += 1;
-                                    item.weight_sum += weight;
-                                    item.weighted_target_sum += weighted_target;
-                                    item.weighted_target_square_sum += weighted_target_square;
-                                }
-                            }
+                        for &idx in indices {
+                            add_histogram_stats_row(
+                                context,
+                                bins,
+                                target,
+                                weights,
+                                idx,
+                                &mut computed_stats,
+                            );
                         }
                     } else {
                         for &idx in indices {
@@ -736,6 +715,7 @@ impl TreeBuilder {
                 target,
                 weights,
                 Some(stats),
+                self.constant_lambda_l2,
                 build_child_histograms,
                 terminal_updates.as_deref_mut(),
                 best,
@@ -788,6 +768,7 @@ impl TreeBuilder {
                 target,
                 weights,
                 None,
+                self.constant_lambda_l2,
                 false,
                 None,
                 best,
@@ -878,6 +859,7 @@ impl TreeBuilder {
             target,
             weights,
             None,
+            self.constant_lambda_l2,
             false,
             terminal_updates,
             best,
@@ -1841,9 +1823,9 @@ impl TreeBuilder {
             LossConfig::L2 => stats.map_or_else(
                 || {
                     let stats = candidate_stats(indices.iter().copied(), target, weights);
-                    constant_leaf_value(stats)
+                    self.constant_leaf_value(stats)
                 },
-                constant_leaf_value,
+                |stats| self.constant_leaf_value(stats),
             ),
             LossConfig::Quantile(config) => {
                 let values = indices.iter().map(|&idx| target[idx]).collect::<Vec<_>>();
@@ -1851,6 +1833,10 @@ impl TreeBuilder {
                 weighted_quantile(&values, &selected_weights, config.alpha)
             }
         }
+    }
+
+    fn constant_leaf_value(&self, stats: CandidateStats) -> f64 {
+        constant_leaf_value(stats, self.constant_lambda_l2)
     }
 
     fn leaf_training_loss(
@@ -2220,18 +2206,18 @@ impl CandidateStats {
 }
 
 #[inline(always)]
-fn constant_leaf_value(stats: CandidateStats) -> f64 {
+fn constant_leaf_value(stats: CandidateStats, lambda_l2: f64) -> f64 {
     if stats.weight_sum <= 0.0 {
         0.0
     } else {
-        stats.weighted_target_sum / stats.weight_sum
+        stats.weighted_target_sum / (stats.weight_sum + lambda_l2.max(0.0))
     }
 }
 
 #[inline(always)]
-fn constant_leaf_node(stats: CandidateStats) -> Node {
+fn constant_leaf_node(stats: CandidateStats, lambda_l2: f64) -> Node {
     Node::Leaf {
-        value: constant_leaf_value(stats),
+        value: constant_leaf_value(stats, lambda_l2),
         sample_weight_sum: stats.weight_sum,
         training_loss: stats.sse(),
     }
@@ -2251,28 +2237,42 @@ fn add_histogram_stats_row(
     let weighted_target = weight * value;
     let weighted_target_square = weighted_target * value;
     let row_offset = idx * context.cols;
-    if context.cols == 3 {
-        let bin0 = usize::from(context.histogram_row_bins[row_offset]);
-        let item0 = &mut stats[bin0];
-        item0.count += 1;
-        item0.weight_sum += weight;
-        item0.weighted_target_sum += weighted_target;
-        item0.weighted_target_square_sum += weighted_target_square;
-
-        let bin1 = usize::from(context.histogram_row_bins[row_offset + 1]);
-        let item1 = &mut stats[bins + bin1];
-        item1.count += 1;
-        item1.weight_sum += weight;
-        item1.weighted_target_sum += weighted_target;
-        item1.weighted_target_square_sum += weighted_target_square;
-
-        let bin2 = usize::from(context.histogram_row_bins[row_offset + 2]);
-        let item2 = &mut stats[(2 * bins) + bin2];
-        item2.count += 1;
-        item2.weight_sum += weight;
-        item2.weighted_target_sum += weighted_target;
-        item2.weighted_target_square_sum += weighted_target_square;
-        return;
+    macro_rules! add_feature {
+        ($feature:expr) => {{
+            let bin = usize::from(context.histogram_row_bins[row_offset + $feature]);
+            let item = &mut stats[($feature * bins) + bin];
+            item.count += 1;
+            item.weight_sum += weight;
+            item.weighted_target_sum += weighted_target;
+            item.weighted_target_square_sum += weighted_target_square;
+        }};
+    }
+    match context.cols {
+        3 => {
+            add_feature!(0);
+            add_feature!(1);
+            add_feature!(2);
+            return;
+        }
+        4 => {
+            add_feature!(0);
+            add_feature!(1);
+            add_feature!(2);
+            add_feature!(3);
+            return;
+        }
+        8 => {
+            add_feature!(0);
+            add_feature!(1);
+            add_feature!(2);
+            add_feature!(3);
+            add_feature!(4);
+            add_feature!(5);
+            add_feature!(6);
+            add_feature!(7);
+            return;
+        }
+        _ => {}
     }
     for (feature, &bin) in context.histogram_row_bins[row_offset..row_offset + context.cols]
         .iter()
@@ -2471,6 +2471,7 @@ fn materialize_histogram_candidate(
     target: &[f64],
     weights: &[f64],
     parent_histogram_stats: Option<&[CandidateStats]>,
+    constant_lambda_l2: f64,
     build_child_histograms: bool,
     terminal_updates: Option<&mut [f64]>,
     best: &mut Option<BestSplit>,
@@ -2493,8 +2494,8 @@ fn materialize_histogram_candidate(
     }
 
     if let Some(updates) = terminal_updates.filter(|_| context.histogram_all_features) {
-        let left_value = constant_leaf_value(candidate.left_stats);
-        let right_value = constant_leaf_value(candidate.right_stats);
+        let left_value = constant_leaf_value(candidate.left_stats, constant_lambda_l2);
+        let right_value = constant_leaf_value(candidate.right_stats, constant_lambda_l2);
         profile::timed(profile::MATERIALIZE_PARTITION, || {
             let mut left_len = 0usize;
             let mut right_len = 0usize;
@@ -2516,8 +2517,11 @@ fn materialize_histogram_candidate(
             gain: candidate.gain,
             left: Vec::new(),
             right: Vec::new(),
-            left_direct_node: Some(constant_leaf_node(candidate.left_stats)),
-            right_direct_node: Some(constant_leaf_node(candidate.right_stats)),
+            left_direct_node: Some(constant_leaf_node(candidate.left_stats, constant_lambda_l2)),
+            right_direct_node: Some(constant_leaf_node(
+                candidate.right_stats,
+                constant_lambda_l2,
+            )),
             left_weights: None,
             right_weights: None,
             left_node_stats: Some(candidate.left_stats),
@@ -2562,18 +2566,10 @@ fn materialize_histogram_candidate(
                         debug_assert!(left_len < candidate.left_capacity);
                         left_ptr.add(left_len).write(idx);
                         left_len += 1;
-                        if build_left_histogram {
-                            let stats = smaller_histogram_stats.as_mut().expect("stats allocated");
-                            add_histogram_stats_row(context, bins, target, weights, idx, stats);
-                        }
                     } else {
                         debug_assert!(right_len < candidate.right_capacity);
                         right_ptr.add(right_len).write(idx);
                         right_len += 1;
-                        if build_right_histogram {
-                            let stats = smaller_histogram_stats.as_mut().expect("stats allocated");
-                            add_histogram_stats_row(context, bins, target, weights, idx, stats);
-                        }
                     }
                 }
                 debug_assert_eq!(left_len, candidate.left_capacity);
@@ -2595,6 +2591,19 @@ fn materialize_histogram_candidate(
 
     let (left_histogram_stats, right_histogram_stats) =
         profile::timed(profile::MATERIALIZE_CHILD_HIST, || {
+            if build_left_histogram || build_right_histogram {
+                let stats = smaller_histogram_stats
+                    .as_mut()
+                    .expect("stats allocated for smaller child");
+                let histogram_rows = if build_left_histogram {
+                    left.as_slice()
+                } else {
+                    right.as_slice()
+                };
+                for &idx in histogram_rows {
+                    add_histogram_stats_row(context, bins, target, weights, idx, stats);
+                }
+            }
             match (parent_histogram_stats, smaller_histogram_stats) {
                 (Some(parent_stats), Some(smaller_stats)) => {
                     if build_left_histogram {
@@ -2766,6 +2775,7 @@ mod tests {
             leaf_predictor: LeafPredictorKind::Constant,
             linear_leaf_features: Vec::new(),
             linear_lambda_l2: 1.0,
+            constant_lambda_l2: 0.0,
             fuzzy: false,
             fuzzy_bandwidth: 0.0,
             loss: crate::loss::LossConfig::L2,
@@ -2820,6 +2830,7 @@ mod tests {
             leaf_predictor: LeafPredictorKind::Constant,
             linear_leaf_features: Vec::new(),
             linear_lambda_l2: 1.0,
+            constant_lambda_l2: 0.0,
             fuzzy: false,
             fuzzy_bandwidth: 0.0,
             loss: crate::loss::LossConfig::L2,
@@ -2851,6 +2862,7 @@ mod tests {
             leaf_predictor: LeafPredictorKind::Constant,
             linear_leaf_features: Vec::new(),
             linear_lambda_l2: 1.0,
+            constant_lambda_l2: 0.0,
             fuzzy: true,
             fuzzy_bandwidth: 2.0,
             loss: crate::loss::LossConfig::L2,
@@ -2897,6 +2909,7 @@ mod tests {
             leaf_predictor: LeafPredictorKind::Constant,
             linear_leaf_features: Vec::new(),
             linear_lambda_l2: 1.0,
+            constant_lambda_l2: 0.0,
             fuzzy: false,
             fuzzy_bandwidth: 0.0,
             loss: crate::loss::LossConfig::L2,
@@ -2939,6 +2952,7 @@ mod tests {
             leaf_predictor: LeafPredictorKind::Constant,
             linear_leaf_features: Vec::new(),
             linear_lambda_l2: 1.0,
+            constant_lambda_l2: 0.0,
             fuzzy: false,
             fuzzy_bandwidth: 0.0,
             loss: crate::loss::LossConfig::L2,
@@ -2986,6 +3000,7 @@ mod tests {
             leaf_predictor: LeafPredictorKind::Constant,
             linear_leaf_features: Vec::new(),
             linear_lambda_l2: 1.0,
+            constant_lambda_l2: 0.0,
             fuzzy: false,
             fuzzy_bandwidth: 0.0,
             loss: crate::loss::LossConfig::L2,
@@ -3023,6 +3038,7 @@ mod tests {
             leaf_predictor: LeafPredictorKind::Constant,
             linear_leaf_features: Vec::new(),
             linear_lambda_l2: 1.0,
+            constant_lambda_l2: 0.0,
             fuzzy: false,
             fuzzy_bandwidth: 0.0,
             loss: crate::loss::LossConfig::L2,

@@ -45,6 +45,8 @@ pub struct TrainingConfigMetadata {
     pub leaf_predictor: LeafPredictorKind,
     pub linear_leaf_features: Vec<usize>,
     pub linear_lambda_l2: f64,
+    #[serde(default)]
+    pub constant_lambda_l2: f64,
     pub fuzzy: bool,
     pub fuzzy_bandwidth: f64,
     #[serde(default)]

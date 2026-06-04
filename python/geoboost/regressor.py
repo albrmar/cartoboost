@@ -57,6 +57,7 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
         fuzzy: bool = False,
         fuzzy_bandwidth: float = 0.0,
         l2_regularization: float = 1.0,
+        constant_l2_regularization: float = 0.0,
         random_state: int | None = None,
         n_threads: int | None = None,
         backend: str = "auto",
@@ -75,6 +76,7 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
         self.fuzzy = fuzzy
         self.fuzzy_bandwidth = fuzzy_bandwidth
         self.l2_regularization = l2_regularization
+        self.constant_l2_regularization = constant_l2_regularization
         self.random_state = random_state
         self.n_threads = n_threads
         self.backend = backend
@@ -97,6 +99,7 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
             "fuzzy": self.fuzzy,
             "fuzzy_bandwidth": self.fuzzy_bandwidth,
             "l2_regularization": self.l2_regularization,
+            "constant_l2_regularization": self.constant_l2_regularization,
             "random_state": self.random_state,
             "n_threads": self.n_threads,
             "backend": self.backend,
@@ -170,6 +173,7 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
                     dense_array.shape[1],
                 ),
                 l2_regularization=float(self.l2_regularization),
+                constant_l2_regularization=float(self.constant_l2_regularization),
                 fuzzy=bool(self.fuzzy),
                 fuzzy_bandwidth=float(self.fuzzy_bandwidth),
                 monotonic_constraints=(
@@ -554,6 +558,9 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
                     fuzzy=bool(getattr(native_model, "fuzzy", False)),
                     fuzzy_bandwidth=float(getattr(native_model, "fuzzy_bandwidth", 0.0)),
                     l2_regularization=float(getattr(native_model, "l2_regularization", 1.0)),
+                    constant_l2_regularization=float(
+                        getattr(native_model, "constant_l2_regularization", 0.0)
+                    ),
                     backend="auto",
                     monotonic_constraints=list(getattr(native_model, "monotonic_constraints", []))
                     or None,
@@ -649,6 +656,9 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
             fuzzy=bool(getattr(native_model, "fuzzy", False)),
             fuzzy_bandwidth=float(getattr(native_model, "fuzzy_bandwidth", 0.0)),
             l2_regularization=float(getattr(native_model, "l2_regularization", 1.0)),
+            constant_l2_regularization=float(
+                getattr(native_model, "constant_l2_regularization", 0.0)
+            ),
             backend="auto",
             monotonic_constraints=list(getattr(native_model, "monotonic_constraints", [])) or None,
         )
@@ -704,6 +714,9 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
             raise ValueError("quantile loss requires leaf_predictor='constant'")
         if float(self.l2_regularization) < 0 or not math.isfinite(float(self.l2_regularization)):
             raise ValueError("l2_regularization must be finite and non-negative")
+        constant_l2 = float(self.constant_l2_regularization)
+        if constant_l2 < 0 or not math.isfinite(constant_l2):
+            raise ValueError("constant_l2_regularization must be finite and non-negative")
         if float(self.fuzzy_bandwidth) < 0 or not math.isfinite(float(self.fuzzy_bandwidth)):
             raise ValueError("fuzzy_bandwidth must be finite and non-negative")
         if self.backend not in {"auto", "rust", "python"}:

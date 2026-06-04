@@ -49,6 +49,14 @@ just nyc-quality-benchmark-repeated
 The repeated target writes per-run outputs under `target/nyc_taxi_repeated/`
 and committed summaries under `docs/assets/nyc_taxi_benchmarks/`.
 
+The maintained repeated preset uses:
+
+- GeoBoost candidate: `n_estimators=100`, `max_depth=5`,
+  `splitters=axis_histogram:512`, `min_samples_leaf=1`.
+- XGBoost baseline: `n_estimators=100`, `max_depth=4`,
+  `tree_method=hist`, `subsample=1.0`, `colsample_bytree=1.0`.
+- Zone IDs: `--zone-treatment target_mean`.
+
 ## Smaller Diagnostics
 
 Run one 25k-row month:
@@ -133,13 +141,15 @@ Repeated-run summaries:
 
 ## Current Snapshot
 
-The committed repeated 25k report uses target-mean zone treatment. In that
-setup, GeoBoost misses the all-task XGBoost gate. The repeated gate requires:
+The committed repeated 25k report uses target-mean zone treatment. In the
+current artifact, GeoBoost beats XGBoost on RMSE and R2 for every task/split but
+misses the all-task speed gate against XGBoost `hist`. The repeated gate
+requires:
 
 - GeoBoost train time no slower than XGBoost.
 - GeoBoost prediction throughput no slower than XGBoost.
 - GeoBoost RMSE lower than XGBoost.
 - GeoBoost R2 no worse than XGBoost.
 
-The committed results are setup-specific evidence. They are not a general claim
-about production accuracy or package superiority.
+The committed results are setup-specific evidence for this maintained preset.
+They are not a general claim about production accuracy or package superiority.
