@@ -146,6 +146,13 @@ struct FlatAxisNode {
     is_leaf: bool,
 }
 
+#[derive(Debug, Clone)]
+pub struct FlatAxisPredictor {
+    init_prediction: f64,
+    learning_rate: f64,
+    trees: Vec<Vec<FlatAxisNode>>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct BranchWeights {
     pub left: f64,
@@ -308,7 +315,10 @@ impl Model {
         }
         if !self.requires_sparse_sets() {
             if let Some(trees) = self.flat_axis_trees() {
-                return Ok(self.predict_flat_axis_trees(rows, cols, values, &trees));
+                return Ok(
+                    FlatAxisPredictor::new(self.init_prediction, self.learning_rate, trees)
+                        .predict_flat(rows, cols, values),
+                );
             }
         }
         Ok((0..rows)
@@ -340,7 +350,7 @@ impl Model {
             .collect())
     }
 
-    fn validate_flat_prediction_inputs(
+    pub fn validate_flat_prediction_inputs(
         &self,
         rows: usize,
         cols: usize,
@@ -396,12 +406,49 @@ impl Model {
         Ok(())
     }
 
+    pub fn validate_dense_flat_prediction_inputs(
+        &self,
+        rows: usize,
+        cols: usize,
+        values: &[f64],
+    ) -> Result<()> {
+        if rows.checked_mul(cols) != Some(values.len()) {
+            return Err(GeoBoostError::InvalidInput(format!(
+                "matrix shape {rows}x{cols} does not match {} values",
+                values.len()
+            )));
+        }
+        if cols != self.feature_count {
+            return Err(GeoBoostError::InvalidInput(format!(
+                "X has {cols} features, but model expects {}",
+                self.feature_count
+            )));
+        }
+        if values.iter().any(|value| !value.is_finite()) {
+            return Err(GeoBoostError::InvalidInput(
+                "dataset values must be finite".to_string(),
+            ));
+        }
+        Ok(())
+    }
+
     fn axis_stumps(&self) -> Option<Vec<AxisStump>> {
         self.trees.iter().map(Tree::axis_stump).collect()
     }
 
     fn flat_axis_trees(&self) -> Option<Vec<Vec<FlatAxisNode>>> {
         self.trees.iter().map(Tree::flat_axis_tree).collect()
+    }
+
+    pub fn flat_axis_predictor(&self) -> Option<FlatAxisPredictor> {
+        if self.requires_sparse_sets() {
+            return None;
+        }
+        Some(FlatAxisPredictor::new(
+            self.init_prediction,
+            self.learning_rate,
+            self.flat_axis_trees()?,
+        ))
     }
 
     fn constant_prediction(&self) -> Option<f64> {
@@ -441,20 +488,24 @@ impl Model {
         }
         predictions
     }
+}
 
-    fn predict_flat_axis_trees(
-        &self,
-        rows: usize,
-        cols: usize,
-        values: &[f64],
-        trees: &[Vec<FlatAxisNode>],
-    ) -> Vec<f64> {
+impl FlatAxisPredictor {
+    fn new(init_prediction: f64, learning_rate: f64, trees: Vec<Vec<FlatAxisNode>>) -> Self {
+        Self {
+            init_prediction,
+            learning_rate,
+            trees,
+        }
+    }
+
+    pub fn predict_flat(&self, rows: usize, cols: usize, values: &[f64]) -> Vec<f64> {
         (0..rows)
             .into_par_iter()
             .map(|row| {
                 let row_offset = row * cols;
                 let mut prediction = self.init_prediction;
-                for tree in trees {
+                for tree in &self.trees {
                     prediction +=
                         self.learning_rate * predict_flat_axis_tree(tree, values, row_offset);
                 }
@@ -462,7 +513,9 @@ impl Model {
             })
             .collect()
     }
+}
 
+impl Model {
     fn predict_flat_row(
         &self,
         cols: usize,

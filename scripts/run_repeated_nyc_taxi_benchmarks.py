@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import statistics
 import subprocess
 import sys
@@ -48,6 +49,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--n-threads", type=int, default=1)
     parser.add_argument("--no-download", action="store_true")
     parser.add_argument("--synthetic-smoke", action="store_true")
+    parser.add_argument(
+        "--profile-fit",
+        action="store_true",
+        help="Set GEOBOOST_PROFILE_FIT=1 for each benchmark subprocess.",
+    )
     return parser.parse_args()
 
 
@@ -109,7 +115,10 @@ def benchmark_command(args: argparse.Namespace, output_dir: Path) -> list[str]:
 def run_once(args: argparse.Namespace, run_index: int) -> dict[str, Any]:
     output_dir = args.run_dir / f"run_{run_index:02d}"
     output_dir.mkdir(parents=True, exist_ok=True)
-    subprocess.run(benchmark_command(args, output_dir), cwd=ROOT, check=True)
+    env = None
+    if args.profile_fit:
+        env = {**os.environ, "GEOBOOST_PROFILE_FIT": "1"}
+    subprocess.run(benchmark_command(args, output_dir), cwd=ROOT, check=True, env=env)
     return json.loads((output_dir / "results.json").read_text(encoding="utf-8"))
 
 
@@ -132,8 +141,7 @@ def collect_ratios(results: list[dict[str, Any]]) -> dict[str, Any]:
                 xgb_metrics = xgboost["metrics"]
                 reference_metrics = (
                     geoboost_reference["metrics"]
-                    if geoboost_reference is not None
-                    and geoboost_reference["status"] == "ok"
+                    if geoboost_reference is not None and geoboost_reference["status"] == "ok"
                     else None
                 )
                 key = f"{task_name}/{split_name}"
@@ -144,14 +152,10 @@ def collect_ratios(results: list[dict[str, Any]]) -> dict[str, Any]:
                         geo_timing["predict_rows_per_second"]
                     ),
                     "xgboost_train_seconds": float(xgb_timing["train_seconds"]),
-                    "xgboost_predict_rows_per_second": float(
-                        xgb_timing["predict_rows_per_second"]
-                    ),
+                    "xgboost_predict_rows_per_second": float(xgb_timing["predict_rows_per_second"]),
                     "train_ratio_vs_xgboost": float(geo_timing["train_seconds"])
                     / float(xgb_timing["train_seconds"]),
-                    "predict_rps_ratio_vs_xgboost": float(
-                        geo_timing["predict_rows_per_second"]
-                    )
+                    "predict_rps_ratio_vs_xgboost": float(geo_timing["predict_rows_per_second"])
                     / float(xgb_timing["predict_rows_per_second"]),
                     "rmse_delta_vs_xgboost": float(geo_metrics["rmse"])
                     - float(xgb_metrics["rmse"]),
@@ -223,6 +227,18 @@ def same_quality(row: dict[str, Any], tolerance: float = 1e-9) -> bool:
     return abs(rmse_ref) <= tolerance and abs(r2_ref) <= tolerance
 
 
+def beats_xgboost_quality(row: dict[str, Any]) -> bool:
+    return row["median_rmse_delta_vs_xgboost"] < 0.0 and row["median_r2_delta_vs_xgboost"] >= 0.0
+
+
+def passes_xgboost_gate(row: dict[str, Any]) -> bool:
+    return (
+        row["median_train_ratio_vs_xgboost"] <= 1.0
+        and row["median_predict_rps_ratio_vs_xgboost"] >= 1.0
+        and beats_xgboost_quality(row)
+    )
+
+
 def write_markdown(summary: dict[str, Any], output: Path) -> None:
     lines = [
         "# Repeated NYC Taxi Speed Benchmark",
@@ -240,21 +256,21 @@ def write_markdown(summary: dict[str, Any], output: Path) -> None:
             f"XGBoost tree_method: {summary['model_config']['xgboost_tree_method']}"
         ),
         f"- zone treatment: {summary['model_config'].get('zone_treatment', 'raw')}",
-        "- gate requires train <= XGBoost, predict rows/sec >= XGBoost, and same quality as GeoBoost reference.",
+        (
+            "- gate requires train <= XGBoost, predict rows/sec >= XGBoost, "
+            "lower RMSE than XGBoost, and R2 no worse than XGBoost."
+        ),
         "",
         "| task/split | train ratio vs XGBoost median | train ratio min-max | "
         "predict rps ratio vs XGBoost median | predict rps ratio min-max | "
-        "RMSE delta vs Geo ref | R2 delta vs Geo ref | RMSE delta vs XGB | R2 delta vs XGB | gate |",
+        "RMSE delta vs Geo ref | R2 delta vs Geo ref | "
+        "RMSE delta vs XGB | R2 delta vs XGB | gate |",
         "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
     ]
     for key, row in summary["ratios"].items():
         train_median = row["median_train_ratio_vs_xgboost"]
         predict_median = row["median_predict_rps_ratio_vs_xgboost"]
-        gate = (
-            "pass"
-            if train_median <= 1.0 and predict_median >= 1.0 and same_quality(row)
-            else "miss"
-        )
+        gate = "pass" if passes_xgboost_gate(row) else "miss"
         rmse_ref = row["median_rmse_delta_vs_geoboost_reference"]
         r2_ref = row["median_r2_delta_vs_geoboost_reference"]
         lines.append(
@@ -285,6 +301,8 @@ def main() -> None:
         "target": {
             "train_ratio_vs_xgboost_max": 1.0,
             "predict_rps_ratio_vs_xgboost_min": 1.0,
+            "rmse_delta_vs_xgboost_max_exclusive": 0.0,
+            "r2_delta_vs_xgboost_min": 0.0,
             "quality_delta_vs_geoboost_reference_abs_max": 1e-9,
         },
         "model_config": {
@@ -301,6 +319,7 @@ def main() -> None:
         },
         "ratios": ratios,
     }
+    summary["all_gates_pass"] = all(passes_xgboost_gate(row) for row in ratios.values())
     args.summary_json.parent.mkdir(parents=True, exist_ok=True)
     args.summary_json.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     write_markdown(summary, args.summary_md)

@@ -17,16 +17,16 @@ test:
     uv run --group dev pytest
 
 build:
-    uv run --group dev maturin build --release
+    uv run --group dev maturin build --release --locked --out dist
 
 develop:
     uv run --group dev maturin develop
 
 sdist:
-    uv run --group dev maturin sdist
+    uv run --group dev maturin sdist --out dist
 
 wheel:
-    uv run --group dev maturin build --release
+    uv run --group dev maturin build --release --locked --out dist
 
 validate:
     uv sync --group dev
@@ -44,6 +44,9 @@ validate:
 nyc-quality-benchmark:
     uv run --group dev maturin develop --release
     PYTHONPATH=python uv run --group dev --group bench python scripts/run_nyc_taxi_quality_benchmarks.py
+
+nyc-quality-benchmark-smoke:
+    PYTHONPATH=python uv run --group dev --group bench python scripts/run_nyc_taxi_quality_benchmarks.py --synthetic-smoke --models mean
 
 nyc-quality-benchmark-repeated:
     uv run --group dev maturin develop --release

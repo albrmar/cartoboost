@@ -9,6 +9,6 @@ pub use builder::{LeafPredictorKind, SplitterKind, TreeBuilder};
 pub use gain::sse;
 pub use node::{
     fuzzy_weights, normalize_periodic, periodic_contains, periodic_signed_distance,
-    sparse_set_value_contains_any, BranchWeights, FuzzyKernel, Model, ModelMetadata, Node, Split,
-    TrainingConfigMetadata, Tree, MODEL_ARTIFACT_VERSION,
+    sparse_set_value_contains_any, BranchWeights, FlatAxisPredictor, FuzzyKernel, Model,
+    ModelMetadata, Node, Split, TrainingConfigMetadata, Tree, MODEL_ARTIFACT_VERSION,
 };

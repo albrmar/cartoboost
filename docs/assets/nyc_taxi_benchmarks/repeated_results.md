@@ -4,7 +4,7 @@
 - baseline max depth: 4; GeoBoost candidate max depth: 4
 - GeoBoost splitters: axis_histogram:64; XGBoost tree_method: hist
 - zone treatment: target_mean
-- gate requires train <= XGBoost, predict rows/sec >= XGBoost, and same quality as GeoBoost reference.
+- gate requires train <= XGBoost, predict rows/sec >= XGBoost, lower RMSE than XGBoost, and R2 no worse than XGBoost.
 
 | task/split | train ratio vs XGBoost median | train ratio min-max | predict rps ratio vs XGBoost median | predict rps ratio min-max | RMSE delta vs Geo ref | R2 delta vs Geo ref | RMSE delta vs XGB | R2 delta vs XGB | gate |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |

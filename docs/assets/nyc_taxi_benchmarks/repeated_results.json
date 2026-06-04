@@ -4,6 +4,8 @@
   "target": {
     "train_ratio_vs_xgboost_max": 1.0,
     "predict_rps_ratio_vs_xgboost_min": 1.0,
+    "rmse_delta_vs_xgboost_max_exclusive": 0.0,
+    "r2_delta_vs_xgboost_min": 0.0,
     "quality_delta_vs_geoboost_reference_abs_max": 1e-09
   },
   "model_config": {
@@ -181,5 +183,6 @@
       "median_rmse_delta_vs_geoboost_reference": 0.0,
       "median_r2_delta_vs_geoboost_reference": 0.0
     }
-  }
+  },
+  "all_gates_pass": false
 }

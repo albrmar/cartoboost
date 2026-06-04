@@ -40,6 +40,13 @@ fn booster_config(n_estimators: usize, max_depth: usize) -> BoosterConfig {
     }
 }
 
+fn histogram_booster_config(n_estimators: usize, max_depth: usize) -> BoosterConfig {
+    BoosterConfig {
+        splitters: vec![SplitterKind::AxisHistogram { bins: 64 }],
+        ..booster_config(n_estimators, max_depth)
+    }
+}
+
 fn bench_training(c: &mut Criterion) {
     let mut group = c.benchmark_group("training");
     for &(rows, cols, estimators, depth) in &[(32, 3, 1, 1), (96, 4, 3, 2)] {
@@ -48,6 +55,24 @@ fn bench_training(c: &mut Criterion) {
         group.bench_with_input(
             BenchmarkId::new(
                 "booster_fit",
+                format!("{rows}x{cols}_{estimators}trees_depth{depth}"),
+            ),
+            &(booster, dataset, target),
+            |bench, (booster, dataset, target)| {
+                bench.iter(|| {
+                    black_box(booster)
+                        .fit(black_box(dataset), black_box(target), None)
+                        .expect("benchmark fixture trains")
+                });
+            },
+        );
+    }
+    for &(rows, cols, estimators, depth) in &[(25_000, 8, 100, 4), (25_000, 3, 100, 4)] {
+        let (dataset, target) = training_fixture(rows, cols);
+        let booster = Booster::new(histogram_booster_config(estimators, depth));
+        group.bench_with_input(
+            BenchmarkId::new(
+                "booster_fit_axis_histogram",
                 format!("{rows}x{cols}_{estimators}trees_depth{depth}"),
             ),
             &(booster, dataset, target),

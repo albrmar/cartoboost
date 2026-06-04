@@ -1,6 +1,6 @@
 use geoboost_core::data::{FeatureSchema, SparseSetColumn};
 use geoboost_core::loss::{LossConfig, QuantileLossConfig};
-use geoboost_core::tree::{LeafPredictorKind, SplitterKind};
+use geoboost_core::tree::{FlatAxisPredictor, LeafPredictorKind, SplitterKind};
 use geoboost_core::{Booster, BoosterConfig, Dataset, GeoBoostError, Model};
 use numpy::{IntoPyArray, PyArray1, PyReadonlyArray1, PyReadonlyArray2, PyUntypedArrayMethods};
 use pyo3::exceptions::{PyIOError, PyRuntimeError, PyValueError};
@@ -25,6 +25,7 @@ struct NativeGeoBoostRegressor {
     fuzzy_bandwidth: f64,
     monotonic_constraints: Vec<i8>,
     model: Option<Model>,
+    flat_axis_predictor: Option<FlatAxisPredictor>,
 }
 
 #[pymethods]
@@ -79,6 +80,7 @@ impl NativeGeoBoostRegressor {
             fuzzy_bandwidth,
             monotonic_constraints: monotonic_constraints.unwrap_or_default(),
             model: None,
+            flat_axis_predictor: None,
         })
     }
 
@@ -109,7 +111,7 @@ impl NativeGeoBoostRegressor {
             fuzzy_bandwidth: self.fuzzy_bandwidth,
             monotonic_constraints: self.monotonic_constraints.clone(),
         };
-        self.model = Some(
+        self.set_model(
             Booster::new(config)
                 .fit(&dataset, &y, sample_weight.as_deref())
                 .map_err(to_py_value_error)?,
@@ -179,9 +181,22 @@ impl NativeGeoBoostRegressor {
         let values = x.as_slice()?;
         let offsets = sparse_offsets.unwrap_or_default();
         let ids = sparse_ids.unwrap_or_default();
-        let predictions = model
-            .try_predict_flat(rows, cols, values, &offsets, &ids)
-            .map_err(to_py_value_error)?;
+        let predictions = if offsets.is_empty() && ids.is_empty() {
+            if let Some(predictor) = &self.flat_axis_predictor {
+                model
+                    .validate_dense_flat_prediction_inputs(rows, cols, values)
+                    .map_err(to_py_value_error)?;
+                predictor.predict_flat(rows, cols, values)
+            } else {
+                model
+                    .try_predict_flat(rows, cols, values, &offsets, &ids)
+                    .map_err(to_py_value_error)?
+            }
+        } else {
+            model
+                .try_predict_flat(rows, cols, values, &offsets, &ids)
+                .map_err(to_py_value_error)?
+        };
         Ok(predictions.into_pyarray(py))
     }
 
@@ -445,6 +460,11 @@ impl NativeGeoBoostRegressor {
             fuzzy_bandwidth,
             monotonic_constraints,
             model: Some(model),
+            flat_axis_predictor: None,
+        })
+        .map(|mut regressor| {
+            regressor.refresh_prediction_cache();
+            regressor
         })
     }
 
@@ -471,12 +491,21 @@ impl NativeGeoBoostRegressor {
             fuzzy_bandwidth: self.fuzzy_bandwidth,
             monotonic_constraints: self.monotonic_constraints.clone(),
         };
-        self.model = Some(
+        self.set_model(
             Booster::new(config)
                 .fit(&dataset, &y, sample_weight.as_deref())
                 .map_err(to_py_value_error)?,
         );
         Ok(())
+    }
+
+    fn set_model(&mut self, model: Model) {
+        self.model = Some(model);
+        self.refresh_prediction_cache();
+    }
+
+    fn refresh_prediction_cache(&mut self) {
+        self.flat_axis_predictor = self.model.as_ref().and_then(Model::flat_axis_predictor);
     }
 }
 
