@@ -32,6 +32,12 @@ uv run --group dev maturin develop
 `maturin develop` builds the native extension used by the Python estimator.
 Training and prediction require that extension.
 
+To tune GeoBoost with Optuna, install the optional dependency:
+
+```sh
+uv sync --group dev --extra optuna
+```
+
 ## Basic Regression
 
 ```python
@@ -51,6 +57,37 @@ predictions = model.predict(X_test)
 
 The estimator supports sklearn-style `get_params`, `set_params`, `clone`,
 `Pipeline`, `GridSearchCV`, and NumPy-array predictions.
+
+Optuna works with the estimator through the standard sklearn contract:
+
+```python
+import optuna
+from sklearn.model_selection import cross_val_score
+
+from geoboost import GeoBoostRegressor
+
+
+def objective(trial):
+  model = GeoBoostRegressor(
+    n_estimators=trial.suggest_int("n_estimators", 50, 300),
+    learning_rate=trial.suggest_float("learning_rate", 0.01, 0.2, log=True),
+    max_depth=trial.suggest_int("max_depth", 1, 6),
+    min_samples_leaf=trial.suggest_int("min_samples_leaf", 1, 32),
+  )
+  scores = cross_val_score(
+    model,
+    X_train,
+    y_train,
+    cv=3,
+    scoring="neg_mean_squared_error",
+  )
+  return float(-scores.mean())
+
+
+study = optuna.create_study(direction="minimize")
+study.optimize(objective, n_trials=30)
+best_model = GeoBoostRegressor(**study.best_params).fit(X_train, y_train)
+```
 
 ## Temporal-Spatial Example
 

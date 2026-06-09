@@ -36,7 +36,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--learning-rate", type=float, default=0.08)
     parser.add_argument("--max-depth", type=int, default=4)
     parser.add_argument("--geoboost-max-depth", type=int, default=5)
-    parser.add_argument("--geoboost-splitters", default="axis_histogram:512")
+    parser.add_argument(
+        "--geoboost-splitters",
+        default="axis_histogram:512,periodic:24,periodic:7,sparse_set",
+    )
     parser.add_argument("--geoboost-min-samples-leaf", type=int, default=1)
     parser.add_argument("--geoboost-constant-l2", type=float, default=0.0)
     parser.add_argument(

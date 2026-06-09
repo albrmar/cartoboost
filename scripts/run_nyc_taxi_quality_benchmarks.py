@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import importlib
 import json
 import math
@@ -22,6 +23,7 @@ DEFAULT_CACHE_DIR = ROOT / "data" / "nyc_taxi"
 DEFAULT_OUTPUT_DIR = ROOT / "docs" / "assets" / "nyc_taxi_benchmarks"
 TLC_TRIP_RECORD_PAGE = "https://www.nyc.gov/site/tlc/about/tlc-trip-record-data.page"
 TLC_PARQUET_BASE = "https://d37ci6vzurychx.cloudfront.net/trip-data"
+TAXI_ZONE_LOOKUP_URL = "https://d37ci6vzurychx.cloudfront.net/misc/taxi_zone_lookup.csv"
 
 ROW_FEATURES = [
     "trip_distance",
@@ -33,6 +35,23 @@ ROW_FEATURES = [
 ]
 DEMAND_FEATURES = ["PULocationID", "hour", "dayofweek"]
 ZONE_FEATURES = {"PULocationID", "DOLocationID"}
+BASIC_BOROUGH_CODES = {
+    "Bronx": 1,
+    "Brooklyn": 2,
+    "EWR": 3,
+    "Manhattan": 4,
+    "Queens": 5,
+    "Staten Island": 6,
+    "Unknown": 7,
+}
+SERVICE_ZONE_CODES = {
+    "Airports": 1,
+    "Boro Zone": 2,
+    "EWR": 3,
+    "Yellow Zone": 4,
+    "N/A": 5,
+    "Unknown": 6,
+}
 
 
 @dataclass(frozen=True)
@@ -45,6 +64,12 @@ class BenchmarkTask:
     pickup_zones: np.ndarray
     feature_names: list[str]
     sparse_sets: dict[str, list[list[int]]]
+
+
+@dataclass(frozen=True)
+class ZoneContext:
+    borough_code: int
+    service_zone_code: int
 
 
 def parse_args() -> argparse.Namespace:
@@ -90,7 +115,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--geoboost-splitters",
-        default="axis_histogram:512",
+        default="axis_histogram:512,periodic:24,periodic:7,sparse_set",
         help=(
             "Comma-separated GeoBoost splitters for candidate and reference, "
             "for example axis_histogram:512 or axis."
@@ -217,6 +242,34 @@ def ensure_parquet_files(
     return paths
 
 
+def ensure_zone_lookup(*, cache_dir: Path, no_download: bool) -> dict[int, ZoneContext]:
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    path = cache_dir / "taxi_zone_lookup.csv"
+    if not path.exists():
+        if no_download:
+            raise FileNotFoundError(
+                f"{path} is missing and --no-download was passed. "
+                f"Download it from {TAXI_ZONE_LOOKUP_URL}."
+            )
+        urllib.request.urlretrieve(TAXI_ZONE_LOOKUP_URL, path)
+
+    with path.open("r", encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle)
+        lookup: dict[int, ZoneContext] = {}
+        for row in reader:
+            location_id = int(row["LocationID"])
+            borough = row.get("Borough", "Unknown") or "Unknown"
+            service_zone = row.get("service_zone", "Unknown") or "Unknown"
+            lookup[location_id] = ZoneContext(
+                borough_code=BASIC_BOROUGH_CODES.get(borough, BASIC_BOROUGH_CODES["Unknown"]),
+                service_zone_code=SERVICE_ZONE_CODES.get(
+                    service_zone,
+                    SERVICE_ZONE_CODES["Unknown"],
+                ),
+            )
+    return lookup
+
+
 def load_tlc_frame(paths: list[Path]) -> Any:
     pandas = optional_import("pandas")
     if pandas is None:
@@ -269,10 +322,11 @@ def clean_tlc_frame(frame: Any, *, sample_size: int, seed: int) -> Any:
     return data.reset_index(drop=True)
 
 
-def build_real_tasks(frame: Any) -> list[BenchmarkTask]:
+def build_real_tasks(frame: Any, zone_lookup: dict[int, ZoneContext]) -> list[BenchmarkTask]:
     return [
         row_task(
             frame,
+            zone_lookup=zone_lookup,
             name="duration",
             display_name="Trip duration",
             description="Predict log trip duration from zone, trip, passenger, and time features.",
@@ -280,18 +334,20 @@ def build_real_tasks(frame: Any) -> list[BenchmarkTask]:
         ),
         row_task(
             frame,
+            zone_lookup=zone_lookup,
             name="fare",
             display_name="Fare amount",
             description="Predict log total amount from zone, trip, passenger, and time features.",
             target_column="log_total_amount",
         ),
-        demand_task(frame),
+        demand_task(frame, zone_lookup=zone_lookup),
     ]
 
 
 def row_task(
     frame: Any,
     *,
+    zone_lookup: dict[int, ZoneContext],
     name: str,
     display_name: str,
     description: str,
@@ -303,6 +359,18 @@ def row_task(
     sparse_sets = {
         "pickup_zone": [[int(value)] for value in frame["PULocationID"].to_numpy(dtype=int)],
         "dropoff_zone": [[int(value)] for value in frame["DOLocationID"].to_numpy(dtype=int)],
+        "pickup_borough": zone_sparse_set(
+            frame["PULocationID"].to_numpy(dtype=int), zone_lookup, "borough"
+        ),
+        "dropoff_borough": zone_sparse_set(
+            frame["DOLocationID"].to_numpy(dtype=int), zone_lookup, "borough"
+        ),
+        "pickup_service_zone": zone_sparse_set(
+            frame["PULocationID"].to_numpy(dtype=int), zone_lookup, "service_zone"
+        ),
+        "dropoff_service_zone": zone_sparse_set(
+            frame["DOLocationID"].to_numpy(dtype=int), zone_lookup, "service_zone"
+        ),
     }
     return BenchmarkTask(
         name=name,
@@ -316,7 +384,7 @@ def row_task(
     )
 
 
-def demand_task(frame: Any) -> BenchmarkTask:
+def demand_task(frame: Any, *, zone_lookup: dict[int, ZoneContext]) -> BenchmarkTask:
     grouped = (
         frame.groupby(["PULocationID", "hour", "dayofweek"], as_index=False)
         .size()
@@ -326,7 +394,9 @@ def demand_task(frame: Any) -> BenchmarkTask:
     target = np.log1p(grouped["trip_count"].to_numpy(dtype=float))
     pickup_zones = grouped["PULocationID"].to_numpy(dtype=int)
     sparse_sets = {
-        "pickup_zone": [[int(value)] for value in grouped["PULocationID"].to_numpy(dtype=int)]
+        "pickup_zone": [[int(value)] for value in grouped["PULocationID"].to_numpy(dtype=int)],
+        "pickup_borough": zone_sparse_set(pickup_zones, zone_lookup, "borough"),
+        "pickup_service_zone": zone_sparse_set(pickup_zones, zone_lookup, "service_zone"),
     }
     return BenchmarkTask(
         name="pickup_demand",
@@ -407,6 +477,27 @@ def synthetic_tasks() -> list[BenchmarkTask]:
         sparse_sets={"pickup_zone": [[int(value)] for value in demand_pickups]},
     )
     return [duration, fare, demand]
+
+
+def zone_sparse_set(
+    zone_ids: np.ndarray,
+    zone_lookup: dict[int, ZoneContext],
+    kind: str,
+) -> list[list[int]]:
+    rows: list[list[int]] = []
+    for raw_zone_id in zone_ids:
+        zone_id = int(raw_zone_id)
+        context = zone_lookup.get(zone_id)
+        if context is None:
+            rows.append([])
+            continue
+        if kind == "borough":
+            rows.append([int(context.borough_code)])
+        elif kind == "service_zone":
+            rows.append([int(context.service_zone_code)])
+        else:
+            raise ValueError(f"unknown zone sparse-set kind: {kind}")
+    return rows
 
 
 def optional_import(module_name: str) -> Any | None:
@@ -1118,8 +1209,9 @@ def main() -> None:
             cache_dir=args.cache_dir,
             no_download=args.no_download,
         )
+        zone_lookup = ensure_zone_lookup(cache_dir=args.cache_dir, no_download=args.no_download)
         frame = clean_tlc_frame(load_tlc_frame(paths), sample_size=args.sample_size, seed=args.seed)
-        tasks = build_real_tasks(frame)
+        tasks = build_real_tasks(frame, zone_lookup)
     tasks = filter_tasks(tasks, args.tasks)
 
     results = run_benchmarks(tasks, args)

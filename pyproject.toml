@@ -38,6 +38,9 @@ explain = [
 onnx = [
     "onnx>=1.16",
 ]
+optuna = [
+    "optuna>=4.0",
+]
 polars = [
     "polars>=1.0",
 ]
@@ -45,7 +48,7 @@ polars = [
 [dependency-groups]
 bench = [
     "lightgbm>=4.0",
-    "pandas>=2.0",
+    "pandas>=2.0,<3",
     "pyarrow>=14.0",
     "xgboost>=2.0",
 ]
@@ -53,6 +56,7 @@ dev = [
     "hypothesis>=6.100",
     "maturin>=1.7,<2",
     "matplotlib>=3.7",
+    "optuna>=4.0",
     "polars>=1.0",
     "pytest>=8",
     "ruff>=0.6",

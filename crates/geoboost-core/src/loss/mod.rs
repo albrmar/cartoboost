@@ -3,7 +3,8 @@ mod quantile;
 
 pub use l2::{HuberLoss, HuberLossConfig, L2Loss, LogL2LossConfig};
 pub use quantile::{
-    pinball_loss, weighted_pinball_loss, weighted_quantile, QuantileLoss, QuantileLossConfig,
+    absolute_loss, pinball_loss, weighted_absolute_loss, weighted_pinball_loss, weighted_quantile,
+    L1Loss, QuantileLoss, QuantileLossConfig,
 };
 use serde::{Deserialize, Serialize};
 
@@ -11,6 +12,7 @@ use serde::{Deserialize, Serialize};
 pub enum LossConfig {
     #[default]
     L2,
+    L1,
     Huber(HuberLossConfig),
     LogL2(LogL2LossConfig),
     Quantile(QuantileLossConfig),

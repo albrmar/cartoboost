@@ -17,9 +17,34 @@ pub struct QuantileLoss {
     pub alpha: f64,
 }
 
+#[derive(Debug, Clone, Copy, Default)]
+pub struct L1Loss;
+
 impl QuantileLoss {
     pub fn new(alpha: f64) -> Self {
         Self { alpha }
+    }
+}
+
+impl Loss for L1Loss {
+    fn initial_prediction(&self, y: &[f64], w: Option<&[f64]>) -> f64 {
+        let unit_weights;
+        let weights = match w {
+            Some(weights) => weights,
+            None => {
+                unit_weights = vec![1.0; y.len()];
+                &unit_weights
+            }
+        };
+        weighted_quantile(y, weights, 0.5)
+    }
+
+    fn gradient(&self, y: f64, pred: f64) -> f64 {
+        if y > pred {
+            -1.0
+        } else {
+            1.0
+        }
     }
 }
 
@@ -52,6 +77,23 @@ pub fn pinball_loss(value: f64, prediction: f64, alpha: f64) -> f64 {
     } else {
         (alpha - 1.0) * residual
     }
+}
+
+pub fn absolute_loss(value: f64, prediction: f64) -> f64 {
+    (value - prediction).abs()
+}
+
+pub fn weighted_absolute_loss(values: &[f64], weights: &[f64], indices: &[usize]) -> f64 {
+    if indices.is_empty() {
+        return 0.0;
+    }
+    let selected_values = indices.iter().map(|&idx| values[idx]).collect::<Vec<_>>();
+    let selected_weights = indices.iter().map(|&idx| weights[idx]).collect::<Vec<_>>();
+    let prediction = weighted_quantile(&selected_values, &selected_weights, 0.5);
+    indices
+        .iter()
+        .map(|&idx| weights[idx] * absolute_loss(values[idx], prediction))
+        .sum()
 }
 
 pub fn weighted_pinball_loss(
@@ -117,5 +159,16 @@ mod tests {
     fn pinball_loss_is_asymmetric() {
         assert_eq!(pinball_loss(10.0, 8.0, 0.8), 1.6);
         assert_eq!(pinball_loss(8.0, 10.0, 0.8), 0.3999999999999999);
+    }
+
+    #[test]
+    fn l1_initial_prediction_is_weighted_median() {
+        let loss = L1Loss;
+
+        assert_eq!(loss.initial_prediction(&[0.0, 10.0, 20.0], None), 10.0);
+        assert_eq!(
+            loss.initial_prediction(&[0.0, 10.0, 20.0], Some(&[10.0, 1.0, 1.0])),
+            0.0
+        );
     }
 }

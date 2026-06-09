@@ -1,5 +1,5 @@
 use geoboost_core::loss::{LossConfig, QuantileLossConfig};
-use geoboost_core::tree::{LeafPredictorKind, SplitterKind};
+use geoboost_core::tree::{FuzzyKernel, LeafPredictorKind, SplitterKind};
 use geoboost_core::{Booster, BoosterConfig, Dataset, Model as CoreModel};
 use std::collections::BTreeMap;
 use std::env;
@@ -333,6 +333,7 @@ struct Config {
     leaf_predictor: Option<String>,
     fuzzy: Option<bool>,
     fuzzy_bandwidth: Option<f64>,
+    fuzzy_kernel: Option<String>,
     l2_regularization: Option<f64>,
     monotonic_constraints: Option<Vec<i8>>,
 }
@@ -376,6 +377,12 @@ impl Config {
             constant_lambda_l2: defaults.constant_lambda_l2,
             fuzzy: self.fuzzy.unwrap_or(defaults.fuzzy),
             fuzzy_bandwidth: self.fuzzy_bandwidth.unwrap_or(defaults.fuzzy_bandwidth),
+            fuzzy_kernel: self
+                .fuzzy_kernel
+                .as_deref()
+                .map(cli_fuzzy_kernel)
+                .transpose()?
+                .unwrap_or(defaults.fuzzy_kernel),
             monotonic_constraints: self
                 .monotonic_constraints
                 .clone()
@@ -443,6 +450,11 @@ fn read_config(path: &str) -> CliResult<Config> {
             "fuzzy" => config.fuzzy = Some(parse_config_value(key, value, line_number)?),
             "fuzzy_bandwidth" => {
                 config.fuzzy_bandwidth = Some(parse_config_value(key, value, line_number)?)
+            }
+            "fuzzy_kernel" => {
+                let fuzzy_kernel = parse_config_string(key, value, line_number)?;
+                cli_fuzzy_kernel(&fuzzy_kernel)?;
+                config.fuzzy_kernel = Some(fuzzy_kernel);
             }
             "l2_regularization" => {
                 config.l2_regularization = Some(parse_config_value(key, value, line_number)?)
@@ -550,6 +562,7 @@ fn cli_leaf_predictor(value: &str) -> CliResult<LeafPredictorKind> {
 fn cli_loss(value: &str, quantile_alpha: f64) -> CliResult<LossConfig> {
     match value {
         "l2" | "squared_error" => Ok(LossConfig::L2),
+        "l1" | "mae" | "absolute_error" | "least_absolute_deviation" | "lad" => Ok(LossConfig::L1),
         "quantile" | "pinball" => {
             if !quantile_alpha.is_finite() || quantile_alpha <= 0.0 || quantile_alpha >= 1.0 {
                 return Err("quantile_alpha must be finite and in (0, 1)".into());
@@ -559,6 +572,18 @@ fn cli_loss(value: &str, quantile_alpha: f64) -> CliResult<LossConfig> {
             }))
         }
         other => Err(format!("unknown loss '{other}'").into()),
+    }
+}
+
+fn cli_fuzzy_kernel(value: &str) -> CliResult<FuzzyKernel> {
+    match value {
+        "linear" | "triangular" => Ok(FuzzyKernel::Linear),
+        "gaussian" => Ok(FuzzyKernel::Gaussian),
+        "exponential" => Ok(FuzzyKernel::Exponential),
+        "bisquare" => Ok(FuzzyKernel::Bisquare),
+        "epanechnikov" => Ok(FuzzyKernel::Epanechnikov),
+        "tricube" => Ok(FuzzyKernel::Tricube),
+        other => Err(format!("unknown fuzzy_kernel '{other}'").into()),
     }
 }
 

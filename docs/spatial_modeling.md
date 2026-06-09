@@ -28,7 +28,7 @@ diagonal 2D, Gaussian/radial, sparse-set, and fuzzy split behavior.
 | Hour-of-day, weekday, seasonality | Dense periodic feature with `periodic:<period>` | Preserves wraparound adjacency. |
 | Latitude/longitude or projected x/y | Dense numeric features with `diagonal_2d` or `gaussian_2d` | Learns spatial boundaries and neighborhoods without only stair-step axis cuts. |
 | Route cells, zones, encoded H3 cells | `sparse_sets={...}` with `splitters=["sparse_set"]` | Uses list-valued memberships directly. |
-| Smooth transitions near a boundary | `fuzzy=True` with `fuzzy_bandwidth` | Routes samples fractionally instead of forcing a hard left/right decision. |
+| Smooth transitions near a boundary | `fuzzy=True` with `fuzzy_bandwidth` and optional `fuzzy_kernel` | Routes samples fractionally instead of forcing a hard left/right decision. |
 | Local trend inside a region | `leaf_predictor="linear"` | Fits a ridge residual model inside leaves. |
 
 ## Example
@@ -56,6 +56,7 @@ model = GeoBoostRegressor(
     splitters=["axis", "diagonal_2d", "gaussian_2d", "periodic:24", "sparse_set"],
     fuzzy=True,
     fuzzy_bandwidth=0.05,
+  fuzzy_kernel="tricube",
 )
 
 model.fit(

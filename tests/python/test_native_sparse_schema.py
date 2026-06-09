@@ -1,7 +1,7 @@
 from pathlib import Path
 
 import pytest
-from geoboost import GeoBoostRegressor
+from geoboost import FeatureKind, GeoBoostRegressor
 
 
 def _fit_or_skip(model, *args, **kwargs):
@@ -78,7 +78,7 @@ def test_python_native_sparse_list_save_load_identity(tmp_path: Path):
 def test_python_schema_periodic_feature_used_without_full_period_coverage():
     x = [[7.0], [8.0], [9.0], [10.0]]
     y = [3.0, 3.0, -1.0, -1.0]
-    schema = {"dense": [{"name": "hour", "kind": "periodic", "period": 24}]}
+    schema = {"dense": [{"name": "hour", "kind": FeatureKind.PERIODIC, "period": 24}]}
     model = GeoBoostRegressor(
         n_estimators=1,
         learning_rate=1.0,
@@ -101,7 +101,7 @@ def test_python_schema_rejects_length_mismatch():
         model.fit(
             [[0.0, 1.0], [2.0, 3.0]],
             [1.0, 2.0],
-            feature_schema={"dense": [{"name": "only_one", "kind": "numeric"}]},
+            feature_schema={"dense": [{"name": "only_one", "kind": FeatureKind.NUMERIC}]},
         )
 
 
@@ -117,6 +117,7 @@ def test_real_native_save_load_restores_public_params(tmp_path: Path):
         splitters=["gaussian_2d"],
         fuzzy=True,
         fuzzy_bandwidth=0.5,
+        fuzzy_kernel="tricube",
         leaf_predictor="constant",
     )
     _fit_or_skip(model, x, y)
@@ -128,6 +129,7 @@ def test_real_native_save_load_restores_public_params(tmp_path: Path):
     assert loaded.splitters == ["gaussian_2d"]
     assert loaded.fuzzy is True
     assert loaded.fuzzy_bandwidth == 0.5
+    assert loaded.fuzzy_kernel == "tricube"
     assert loaded.learning_rate == 0.25
     assert loaded.n_estimators == 2
     assert loaded.predict(x) == pytest.approx(model.predict(x))

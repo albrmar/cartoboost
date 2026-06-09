@@ -11,16 +11,8 @@ from typing import Any
 import numpy as np
 from sklearn.base import BaseEstimator, RegressorMixin
 
-from .schema import normalize_feature_kind
-
-try:
-    from ._native import GeoBoostRegressor as _NativeGeoBoostRegressor
-except ImportError:  # pragma: no cover - exercised when extension is unavailable
-    try:
-        from ._geoboost import GeoBoostRegressor as _NativeGeoBoostRegressor
-    except ImportError:
-        _NativeGeoBoostRegressor = None
-
+from ._native import GeoBoostRegressor as _NativeRegressorModel
+from .schema import FeatureKind, normalize_feature_kind
 
 _VALID_SPLITTERS = {
     "axis",
@@ -59,6 +51,7 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
         linear_leaf_features: list[str] | None = None,
         fuzzy: bool = False,
         fuzzy_bandwidth: float = 0.0,
+        fuzzy_kernel: str = "linear",
         l2_regularization: float = 1.0,
         constant_l2_regularization: float = 0.0,
         random_state: int | None = None,
@@ -80,6 +73,7 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
         self.linear_leaf_features = linear_leaf_features
         self.fuzzy = fuzzy
         self.fuzzy_bandwidth = fuzzy_bandwidth
+        self.fuzzy_kernel = fuzzy_kernel
         self.l2_regularization = l2_regularization
         self.constant_l2_regularization = constant_l2_regularization
         self.random_state = random_state
@@ -105,6 +99,7 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
             "linear_leaf_features": self.linear_leaf_features,
             "fuzzy": self.fuzzy,
             "fuzzy_bandwidth": self.fuzzy_bandwidth,
+            "fuzzy_kernel": self.fuzzy_kernel,
             "l2_regularization": self.l2_regularization,
             "constant_l2_regularization": self.constant_l2_regularization,
             "random_state": self.random_state,
@@ -137,7 +132,6 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
         if hasattr(self, "_constant_prediction_value_"):
             delattr(self, "_constant_prediction_value_")
         feature_names = _feature_names(X)
-        native_cls = _require_native_backend()
         dense_array = _as_2d_float_array(X, check_finite=False)
         targets_array = _as_1d_float_array(y)
         if dense_array.shape[0] != targets_array.shape[0]:
@@ -169,7 +163,7 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
         if feature_names is not None:
             self.feature_names_in_ = np.asarray(feature_names, dtype=object)
 
-        model = native_cls(
+        model = _NativeRegressorModel(
             n_estimators=int(self.n_estimators),
             learning_rate=float(self.learning_rate),
             max_depth=int(self.max_depth),
@@ -189,6 +183,7 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
             constant_l2_regularization=float(self.constant_l2_regularization),
             fuzzy=bool(self.fuzzy),
             fuzzy_bandwidth=float(self.fuzzy_bandwidth),
+            fuzzy_kernel=str(self.fuzzy_kernel),
             monotonic_constraints=(
                 None
                 if self.monotonic_constraints is None
@@ -478,13 +473,13 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
     @classmethod
     def load(cls, path: str | Path) -> GeoBoostRegressor:
         path = Path(path)
-        native_model = _require_native_backend().load(path)
+        native_model = _NativeRegressorModel.load(path)
         return cls._from_native_model(native_model)
 
     @classmethod
     def load_weights(cls, path: str | Path) -> GeoBoostRegressor:
         path = Path(path)
-        native_model = _require_native_backend().load_weights(path)
+        native_model = _NativeRegressorModel.load_weights(path)
         return cls._from_native_model(native_model)
 
     @classmethod
@@ -506,6 +501,7 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
             ],
             fuzzy=bool(getattr(native_model, "fuzzy", False)),
             fuzzy_bandwidth=float(getattr(native_model, "fuzzy_bandwidth", 0.0)),
+            fuzzy_kernel=str(getattr(native_model, "fuzzy_kernel", "linear")),
             l2_regularization=float(getattr(native_model, "l2_regularization", 1.0)),
             constant_l2_regularization=float(
                 getattr(native_model, "constant_l2_regularization", 0.0)
@@ -548,6 +544,11 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
         if self.loss not in {
             "l2",
             "squared_error",
+            "l1",
+            "mae",
+            "absolute_error",
+            "least_absolute_deviation",
+            "lad",
             "huber",
             "log_l2",
             "log",
@@ -555,7 +556,7 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
             "quantile",
             "pinball",
         }:
-            raise ValueError("loss must be 'l2', 'huber', 'log_l2', or 'quantile'")
+            raise ValueError("loss must be 'l2', 'l1', 'huber', 'log_l2', or 'quantile'")
         loss_params = _resolved_loss_params(
             self.loss,
             self.quantile_alpha,
@@ -576,6 +577,11 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
             raise ValueError("log_l2 currently supports log_offset=1.0")
         if self.leaf_predictor not in {"constant", "linear"}:
             raise ValueError("leaf_predictor must be 'constant' or 'linear'")
+        if (
+            self.loss in {"l1", "mae", "absolute_error", "least_absolute_deviation", "lad"}
+            and self.leaf_predictor != "constant"
+        ):
+            raise ValueError(f"{self.loss} loss requires leaf_predictor='constant'")
         if self.loss in {"quantile", "pinball"} and self.leaf_predictor != "constant":
             raise ValueError("quantile loss requires leaf_predictor='constant'")
         if (
@@ -590,6 +596,19 @@ class GeoBoostRegressor(RegressorMixin, BaseEstimator):
             raise ValueError("constant_l2_regularization must be finite and non-negative")
         if float(self.fuzzy_bandwidth) < 0 or not math.isfinite(float(self.fuzzy_bandwidth)):
             raise ValueError("fuzzy_bandwidth must be finite and non-negative")
+        if self.fuzzy_kernel not in {
+            "linear",
+            "triangular",
+            "gaussian",
+            "exponential",
+            "bisquare",
+            "epanechnikov",
+            "tricube",
+        }:
+            raise ValueError(
+                "fuzzy_kernel must be 'linear', 'gaussian', 'exponential', "
+                "'bisquare', 'epanechnikov', or 'tricube'"
+            )
         if self.monotonic_constraints is not None:
             constraints = list(self.monotonic_constraints)
             if any(int(value) not in {-1, 0, 1} for value in constraints):
@@ -853,7 +872,8 @@ def _rust_feature_schema_json(
             return None
         payload = {
             "names": [f"feature_{idx}" for idx in range(dense_width)] + sparse_names,
-            "kinds": ["Numeric" for _ in range(dense_width)] + ["SparseSet" for _ in sparse_names],
+            "kinds": [FeatureKind.NUMERIC for _ in range(dense_width)]
+            + [FeatureKind.SPARSE_SET for _ in sparse_names],
         }
         return json.dumps(payload)
     payload = _rust_feature_schema_payload(feature_schema, dense_width, sparse_names)
@@ -886,11 +906,11 @@ def _rust_feature_schema_payload(
         names = [
             _schema_entry_name(entry, idx, "feature") for idx, entry in enumerate(dense_entries)
         ]
-        kinds = [_schema_entry_kind(entry, "numeric") for entry in dense_entries]
+        kinds = [_schema_entry_kind(entry, FeatureKind.NUMERIC) for entry in dense_entries]
         names.extend(
             _schema_entry_name(entry, idx, "sparse_set") for idx, entry in enumerate(sparse_entries)
         )
-        kinds.extend(_schema_entry_kind(entry, "sparse_set") for entry in sparse_entries)
+        kinds.extend(_schema_entry_kind(entry, FeatureKind.SPARSE_SET) for entry in sparse_entries)
         _validate_schema_length(names, kinds, dense_width, sparse_names)
         return {"names": names, "kinds": kinds}
 
@@ -899,9 +919,9 @@ def _rust_feature_schema_payload(
         kinds = []
         for value in feature_schema.values():
             if isinstance(value, dict):
-                kinds.append(_schema_entry_kind(value, "numeric"))
+                kinds.append(_schema_entry_kind(value, FeatureKind.NUMERIC))
             else:
-                kinds.append("Numeric")
+                kinds.append(FeatureKind.NUMERIC)
         _validate_schema_length(names, kinds, dense_width, sparse_names)
         return {"names": names, "kinds": kinds}
 
@@ -919,14 +939,16 @@ def _schema_entry_name(entry: Any, idx: int, prefix: str) -> str:
     return str(entry)
 
 
-def _schema_entry_kind(entry: Any, default: str) -> Any:
-    if isinstance(entry, dict):
-        return _rust_feature_kind(entry.get("kind", entry.get("role", default)), entry)
-    if isinstance(entry, tuple) and len(entry) == 2:
-        return _rust_feature_kind(entry[1])
-    if default == "sparse_set":
-        return "SparseSet"
-    return "Numeric"
+def _schema_entry_kind(entry: Any, default: FeatureKind) -> Any:
+    match entry:
+        case dict():
+            return _rust_feature_kind(entry.get("kind", entry.get("role", default)), entry)
+        case tuple() if len(entry) == 2:
+            return _rust_feature_kind(entry[1])
+        case _ if default is FeatureKind.SPARSE_SET:
+            return FeatureKind.SPARSE_SET
+        case _:
+            return FeatureKind.NUMERIC
 
 
 def _rust_feature_kind(kind: Any, entry: dict[str, Any] | None = None) -> Any:
@@ -965,16 +987,18 @@ def _sparse_names_from_feature_schema(feature_schema: Any | None) -> list[str]:
     return [
         str(name)
         for name, kind in zip(names, kinds, strict=False)
-        if kind == "SparseSet" or kind == {"SparseSet": {}}
+        if _is_sparse_set_schema_kind(kind)
     ]
 
 
-def _require_native_backend() -> type[Any]:
-    if _NativeGeoBoostRegressor is None:
-        raise ImportError("geoboost._native is required; build it with maturin first")
-    return _NativeGeoBoostRegressor
-
-
+def _is_sparse_set_schema_kind(kind: Any) -> bool:
+    match kind:
+        case FeatureKind.SPARSE_SET:
+            return True
+        case {FeatureKind.SPARSE_SET: dict()}:
+            return True
+        case _:
+            return False
 def _looks_like_native_artifact(payload: Any) -> bool:
     return isinstance(payload, dict) and "artifact_version" in payload and "trees" in payload
 
@@ -1258,6 +1282,8 @@ def _leaf_value(
 ) -> float:
     if loss in {"quantile", "pinball"}:
         return _weighted_quantile(values, weights, quantile_alpha)
+    if loss in {"l1", "mae", "absolute_error", "least_absolute_deviation", "lad"}:
+        return _weighted_quantile(values, weights, 0.5)
     return _weighted_mean(values, weights)
 
 

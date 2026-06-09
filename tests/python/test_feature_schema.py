@@ -1,7 +1,7 @@
 from pathlib import Path
 
 import pytest
-from geoboost import FeatureSchema, GeoBoostRegressor
+from geoboost import FeatureKind, FeatureSchema, GeoBoostRegressor
 
 
 def _fit_or_skip(model, *args, **kwargs):
@@ -20,6 +20,23 @@ def test_feature_schema_helper_builds_rust_payload():
             ("hour_of_day", {"periodic": 24}),
         ],
         sparse_sets=[("route_cells", "sparse_set")],
+    )
+
+    payload = schema.to_rust_payload(dense_width=2, sparse_names=["route_cells"])
+
+    assert payload == {
+        "names": ["distance_m", "hour_of_day", "route_cells"],
+        "kinds": ["Numeric", {"Periodic": {"period": 24}}, "SparseSet"],
+    }
+
+
+def test_feature_schema_helper_accepts_feature_kind_enum():
+    schema = FeatureSchema(
+        dense=[
+            ("distance_m", FeatureKind.NUMERIC),
+            {"name": "hour_of_day", "kind": FeatureKind.PERIODIC, "period": 24},
+        ],
+        sparse_sets=[("route_cells", FeatureKind.H3_SPARSE_SET)],
     )
 
     payload = schema.to_rust_payload(dense_width=2, sparse_names=["route_cells"])

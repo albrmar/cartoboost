@@ -52,6 +52,8 @@ pub struct TrainingConfigMetadata {
     pub fuzzy: bool,
     pub fuzzy_bandwidth: f64,
     #[serde(default)]
+    pub fuzzy_kernel: FuzzyKernel,
+    #[serde(default)]
     pub loss: crate::loss::LossConfig,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub monotonic_constraints: Vec<i8>,
@@ -182,7 +184,19 @@ pub struct BranchWeights {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum FuzzyKernel {
+    #[serde(alias = "triangular")]
     Linear,
+    Gaussian,
+    Exponential,
+    Bisquare,
+    Epanechnikov,
+    Tricube,
+}
+
+impl Default for FuzzyKernel {
+    fn default() -> Self {
+        Self::Linear
+    }
 }
 
 impl Model {
@@ -855,10 +869,13 @@ impl Split {
     pub fn branch_weights(&self, row: &[f64]) -> BranchWeights {
         match self {
             Split::Fuzzy {
-                base, bandwidth, ..
+                base,
+                bandwidth,
+                kernel,
+                ..
             } => base
                 .signed_distance(row)
-                .map(|distance| fuzzy_weights(distance, *bandwidth))
+                .map(|distance| fuzzy_weights(distance, *bandwidth, *kernel))
                 .unwrap_or_else(|| base.hard_branch_weights(row)),
             _ => self.hard_branch_weights(row),
         }
@@ -867,11 +884,14 @@ impl Split {
     pub fn branch_weights_dataset_row(&self, x: &Dataset, row: usize) -> BranchWeights {
         match self {
             Split::Fuzzy {
-                base, bandwidth, ..
+                base,
+                bandwidth,
+                kernel,
+                ..
             } => {
                 let dense = dense_row(x, row);
                 base.signed_distance_dataset_row(x, row, &dense)
-                    .map(|distance| fuzzy_weights(distance, *bandwidth))
+                    .map(|distance| fuzzy_weights(distance, *bandwidth, *kernel))
                     .unwrap_or_else(|| base.hard_branch_weights_dataset_row(x, row))
             }
             _ => self.hard_branch_weights_dataset_row(x, row),
@@ -888,10 +908,13 @@ impl Split {
     ) -> BranchWeights {
         match self {
             Split::Fuzzy {
-                base, bandwidth, ..
+                base,
+                bandwidth,
+                kernel,
+                ..
             } => base
                 .signed_distance_flat(cols, values, row)
-                .map(|distance| fuzzy_weights(distance, *bandwidth))
+                .map(|distance| fuzzy_weights(distance, *bandwidth, *kernel))
                 .unwrap_or_else(|| {
                     base.hard_branch_weights_flat(cols, values, sparse_offsets, sparse_ids, row)
                 }),
@@ -1358,7 +1381,7 @@ pub fn normalize_periodic(value: f64, period: f64) -> f64 {
     value.rem_euclid(period)
 }
 
-pub fn fuzzy_weights(distance: f64, bandwidth: f64) -> BranchWeights {
+pub fn fuzzy_weights(distance: f64, bandwidth: f64, kernel: FuzzyKernel) -> BranchWeights {
     if bandwidth <= 0.0 || !bandwidth.is_finite() || distance.abs() >= bandwidth {
         return if distance <= 0.0 {
             BranchWeights {
@@ -1372,7 +1395,19 @@ pub fn fuzzy_weights(distance: f64, bandwidth: f64) -> BranchWeights {
             }
         };
     }
-    let left = (0.5 - distance / (2.0 * bandwidth)).clamp(0.0, 1.0);
+    let ratio = (distance / bandwidth).clamp(-1.0, 1.0);
+    let magnitude = ratio.abs();
+    let blend = match kernel {
+        FuzzyKernel::Linear => 1.0 - magnitude,
+        FuzzyKernel::Gaussian => (-0.5 * (2.5 * magnitude).powi(2)).exp(),
+        FuzzyKernel::Exponential => (-3.0 * magnitude).exp(),
+        FuzzyKernel::Bisquare => (1.0 - magnitude.powi(2)).powi(2),
+        FuzzyKernel::Epanechnikov => 1.0 - magnitude.powi(2),
+        FuzzyKernel::Tricube => (1.0 - magnitude.powi(3)).powi(3),
+    }
+    .clamp(0.0, 1.0);
+    let hard_left = if distance <= 0.0 { 1.0 } else { 0.0 };
+    let left = 0.5 * blend + (1.0 - blend) * hard_left;
     BranchWeights {
         left,
         right: 1.0 - left,

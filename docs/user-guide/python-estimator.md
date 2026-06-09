@@ -4,6 +4,11 @@
 conventions for parameter inspection, cloning, pipelines, and grid search over
 the supported API surface.
 
+Optuna tuning works through the same estimator contract. Install the optional
+dependency with `geoboost[optuna]` or `uv sync --group dev --extra optuna` from
+a source checkout, then optimize an objective that constructs a fresh
+`GeoBoostRegressor` for each trial.
+
 ## Basic Usage
 
 ```python
@@ -35,12 +40,17 @@ model = GeoBoostRegressor(
     splitters=["axis", "diagonal_2d", "gaussian_2d", "periodic:24", "sparse_set"],
     fuzzy=True,
     fuzzy_bandwidth=0.05,
+    fuzzy_kernel="gaussian",
 )
 ```
 
 Use dense columns for coordinates, projected x/y values, distances, and
 periodic time features. Use `sparse_sets=` for route cells, zones, grid cells,
 or encoded H3 cells when a row can belong to multiple locations.
+
+For robust residuals, set `loss="mae"` or `loss="huber"`. For asymmetric
+intervals or service-level targets, use `loss="quantile"` with
+`quantile_alpha`.
 
 ## Native Extension
 
@@ -106,6 +116,41 @@ model.fit(X_train, y_train, sample_weight=weights)
 ```
 
 Weights are passed to the native trainer.
+
+## Optuna Tuning
+
+```python
+import optuna
+from sklearn.model_selection import cross_val_score
+
+from geoboost import GeoBoostRegressor
+
+
+def objective(trial):
+    model = GeoBoostRegressor(
+        n_estimators=trial.suggest_int("n_estimators", 50, 300),
+        learning_rate=trial.suggest_float("learning_rate", 0.01, 0.2, log=True),
+        max_depth=trial.suggest_int("max_depth", 1, 6),
+        min_samples_leaf=trial.suggest_int("min_samples_leaf", 1, 32),
+    )
+    scores = cross_val_score(
+        model,
+        X_train,
+        y_train,
+        cv=3,
+        scoring="neg_mean_squared_error",
+    )
+    return float(-scores.mean())
+
+
+study = optuna.create_study(direction="minimize")
+study.optimize(objective, n_trials=30)
+best_model = GeoBoostRegressor(**study.best_params).fit(X_train, y_train)
+```
+
+This pattern works because GeoBoost exposes sklearn-compatible constructor
+parameters and cloning behavior. Keep each trial self-contained: create the
+estimator inside the objective and fit it only on that trial's data split.
 
 ## Additive Values And SHAP
 

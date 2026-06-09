@@ -1,6 +1,6 @@
 import numpy as np
 import pytest
-from geoboost import FeatureSchema, GeoBoostRegressor
+from geoboost import FeatureKind, FeatureSchema, GeoBoostRegressor
 from geoboost.regressor import _encode_sparse_columns, _rust_feature_schema_json
 
 try:
@@ -136,10 +136,10 @@ def test_native_numpy_fast_paths_match_native_list_paths_exactly():
     schema_json = _rust_feature_schema_json(
         {
             "dense": [
-                {"name": "hour", "kind": "periodic", "period": 24},
-                {"name": "dummy", "kind": "numeric"},
+                {"name": "hour", "kind": FeatureKind.PERIODIC, "period": 24},
+                {"name": "dummy", "kind": FeatureKind.NUMERIC},
             ],
-            "sparse_sets": [{"name": "route_cells", "kind": "sparse_set"}],
+            "sparse_sets": [{"name": "route_cells", "kind": FeatureKind.SPARSE_SET}],
         },
         dense_width=2,
         sparse_names=["route_cells"],

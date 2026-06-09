@@ -1,9 +1,9 @@
 use crate::data::{validate_weights, Dataset};
-use crate::loss::{HuberLoss, L2Loss, Loss, LossConfig, QuantileLoss};
+use crate::loss::{HuberLoss, L1Loss, L2Loss, Loss, LossConfig, QuantileLoss};
 use crate::profile;
 use crate::tree::{
-    LeafPredictorKind, Model, PredictionTransform, SplitterKind, TrainingConfigMetadata,
-    TreeBuilder, MODEL_ARTIFACT_VERSION,
+    FuzzyKernel, LeafPredictorKind, Model, PredictionTransform, SplitterKind,
+    TrainingConfigMetadata, TreeBuilder, MODEL_ARTIFACT_VERSION,
 };
 use crate::{GeoBoostError, Result};
 use serde::{Deserialize, Serialize};
@@ -23,6 +23,7 @@ pub struct BoosterConfig {
     pub constant_lambda_l2: f64,
     pub fuzzy: bool,
     pub fuzzy_bandwidth: f64,
+    pub fuzzy_kernel: FuzzyKernel,
     pub loss: LossConfig,
     pub monotonic_constraints: Vec<i8>,
 }
@@ -47,6 +48,7 @@ impl Default for BoosterConfig {
             constant_lambda_l2: 0.0,
             fuzzy: false,
             fuzzy_bandwidth: 0.0,
+            fuzzy_kernel: FuzzyKernel::Linear,
             loss: LossConfig::L2,
             monotonic_constraints: Vec::new(),
         }
@@ -104,6 +106,7 @@ impl Booster {
                 LossConfig::L2 | LossConfig::LogL2(_) => {
                     L2Loss.initial_prediction(training_targets, Some(&weights))
                 }
+                LossConfig::L1 => L1Loss.initial_prediction(training_targets, Some(&weights)),
                 LossConfig::Huber(config) => HuberLoss::new(config.delta)
                     .initial_prediction(training_targets, Some(&weights)),
                 LossConfig::Quantile(config) => QuantileLoss::new(config.alpha)
@@ -127,6 +130,7 @@ impl Booster {
             constant_lambda_l2: self.config.constant_lambda_l2,
             fuzzy: self.config.fuzzy,
             fuzzy_bandwidth: self.config.fuzzy_bandwidth,
+            fuzzy_kernel: self.config.fuzzy_kernel,
             loss: self.config.loss.clone(),
             monotonic_constraints: self.config.monotonic_constraints.clone(),
         };
@@ -139,6 +143,7 @@ impl Booster {
                 {
                     *residual = match self.config.loss {
                         LossConfig::L2 | LossConfig::LogL2(_) => target - prediction,
+                        LossConfig::L1 => target - prediction,
                         LossConfig::Huber(config) => {
                             (target - prediction).clamp(-config.delta, config.delta)
                         }
@@ -196,6 +201,7 @@ impl Booster {
                 constant_lambda_l2: self.config.constant_lambda_l2,
                 fuzzy: self.config.fuzzy,
                 fuzzy_bandwidth: self.config.fuzzy_bandwidth,
+                fuzzy_kernel: self.config.fuzzy_kernel,
                 loss: self.config.loss.clone(),
                 monotonic_constraints: self.config.monotonic_constraints.clone(),
             }),
@@ -210,6 +216,13 @@ impl Booster {
 fn validate_training_config(config: &BoosterConfig, feature_count: usize) -> Result<()> {
     match config.loss {
         LossConfig::L2 => {}
+        LossConfig::L1 => {
+            if config.leaf_predictor != LeafPredictorKind::Constant {
+                return Err(GeoBoostError::InvalidInput(
+                    "l1 loss currently requires constant leaves".to_string(),
+                ));
+            }
+        }
         LossConfig::Huber(loss) => {
             if !loss.delta.is_finite() || loss.delta <= 0.0 {
                 return Err(GeoBoostError::InvalidInput(
@@ -380,6 +393,29 @@ mod tests {
             .predict(&x)
             .iter()
             .all(|prediction| prediction.is_finite()));
+    }
+
+    #[test]
+    fn l1_booster_uses_weighted_median_initial_prediction_and_predictions_are_finite() {
+        let x = Dataset::from_rows(vec![vec![0.0], vec![1.0], vec![2.0], vec![3.0]]).unwrap();
+        let y = vec![0.0, 10.0, 20.0, 30.0];
+        let weights = vec![1.0, 1.0, 10.0, 1.0];
+        let booster = Booster::new(BoosterConfig {
+            n_estimators: 1,
+            learning_rate: 1.0,
+            max_depth: 0,
+            min_samples_leaf: 1,
+            min_gain: 0.0,
+            loss: LossConfig::L1,
+            splitters: vec![SplitterKind::Axis],
+            ..BoosterConfig::default()
+        });
+
+        let model = booster.fit(&x, &y, Some(&weights)).unwrap();
+
+        assert_eq!(model.init_prediction, 20.0);
+        assert_eq!(model.training_config.as_ref().unwrap().loss, LossConfig::L1);
+        assert_eq!(model.predict(&x), vec![20.0; 4]);
     }
 
     #[test]

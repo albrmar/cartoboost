@@ -3,7 +3,21 @@ from __future__ import annotations
 import json
 import math
 from dataclasses import dataclass
+from enum import Enum
 from typing import Any
+
+
+class FeatureKind(str, Enum):
+    NUMERIC = "Numeric"
+    SPARSE_SET = "SparseSet"
+    H3_SPARSE_SET = "H3SparseSet"
+    PERIODIC = "Periodic"
+
+
+_NUMERIC_KIND_ALIASES = frozenset({FeatureKind.NUMERIC, "numeric"})
+_SPARSE_SET_KIND_ALIASES = frozenset({FeatureKind.SPARSE_SET, "sparse_set", "sparse"})
+_H3_SPARSE_SET_KIND_ALIASES = frozenset({FeatureKind.H3_SPARSE_SET, "h3_sparse_set", "h3_sparse"})
+_PERIODIC_KIND_ALIASES = frozenset({FeatureKind.PERIODIC, "periodic"})
 
 
 @dataclass(frozen=True)
@@ -23,11 +37,11 @@ class FeatureSchema:
         dense_entries = list(self.dense)
         sparse_entries = list(self.sparse_sets or [])
         names = [_entry_name(entry, idx, "feature") for idx, entry in enumerate(dense_entries)]
-        kinds = [_entry_kind(entry, "numeric") for entry in dense_entries]
+        kinds = [_entry_kind(entry, FeatureKind.NUMERIC) for entry in dense_entries]
         names.extend(
             _entry_name(entry, idx, "sparse_set") for idx, entry in enumerate(sparse_entries)
         )
-        kinds.extend(_entry_kind(entry, "sparse_set") for entry in sparse_entries)
+        kinds.extend(_entry_kind(entry, FeatureKind.SPARSE_SET) for entry in sparse_entries)
         _validate_length(names, kinds, dense_width, sparse_names)
         return {"names": names, "kinds": kinds}
 
@@ -36,25 +50,38 @@ class FeatureSchema:
 
 
 def normalize_feature_kind(kind: Any, entry: dict[str, Any] | None = None) -> Any:
-    if isinstance(kind, dict):
-        if "Periodic" in kind:
-            return {"Periodic": {"period": _positive_period(kind["Periodic"]["period"])}}
-        if "periodic" in kind:
-            value = kind["periodic"]
-            period = value.get("period", 24) if isinstance(value, dict) else value
-            return {"Periodic": {"period": _positive_period(period)}}
-    if kind in {"Numeric", "numeric"}:
-        return "Numeric"
-    if kind in {"SparseSet", "sparse_set", "sparse"}:
-        return "SparseSet"
-    if kind in {"H3SparseSet", "h3_sparse_set", "h3_sparse"}:
-        if entry is not None:
-            _validate_h3_sparse_set_entry(entry)
-        return "SparseSet"
-    if kind in {"Periodic", "periodic"}:
-        period = 24 if entry is None else entry.get("period", 24)
-        return {"Periodic": {"period": _positive_period(period)}}
-    raise ValueError(f"unknown feature kind {kind!r}")
+    match kind:
+        case dict():
+            return _normalize_mapping_feature_kind(kind)
+        case _ if kind in _NUMERIC_KIND_ALIASES:
+            return FeatureKind.NUMERIC
+        case _ if kind in _SPARSE_SET_KIND_ALIASES:
+            return FeatureKind.SPARSE_SET
+        case _ if kind in _H3_SPARSE_SET_KIND_ALIASES:
+            if entry is not None:
+                _validate_h3_sparse_set_entry(entry)
+            return FeatureKind.SPARSE_SET
+        case _ if kind in _PERIODIC_KIND_ALIASES:
+            period = 24 if entry is None else entry.get("period", 24)
+            return _periodic_kind_payload(period)
+        case _:
+            raise ValueError(f"unknown feature kind {kind!r}")
+
+
+def _normalize_mapping_feature_kind(kind: dict[str, Any]) -> Any:
+    match kind:
+        case {FeatureKind.PERIODIC: {"period": period}}:
+            return _periodic_kind_payload(period)
+        case {"periodic": {"period": period}}:
+            return _periodic_kind_payload(period)
+        case {"periodic": period}:
+            return _periodic_kind_payload(period)
+        case _:
+            raise ValueError(f"unknown feature kind {kind!r}")
+
+
+def _periodic_kind_payload(period: Any) -> dict[str, dict[str, int]]:
+    return {FeatureKind.PERIODIC: {"period": _positive_period(period)}}
 
 
 def _entry_name(entry: Any, idx: int, prefix: str) -> str:
@@ -65,14 +92,16 @@ def _entry_name(entry: Any, idx: int, prefix: str) -> str:
     return str(entry)
 
 
-def _entry_kind(entry: Any, default: str) -> Any:
-    if isinstance(entry, dict):
-        return normalize_feature_kind(entry.get("kind", entry.get("role", default)), entry)
-    if isinstance(entry, tuple) and len(entry) == 2:
-        return normalize_feature_kind(entry[1])
-    if default == "sparse_set":
-        return "SparseSet"
-    return "Numeric"
+def _entry_kind(entry: Any, default: FeatureKind) -> Any:
+    match entry:
+        case dict():
+            return normalize_feature_kind(entry.get("kind", entry.get("role", default)), entry)
+        case tuple() if len(entry) == 2:
+            return normalize_feature_kind(entry[1])
+        case _ if default is FeatureKind.SPARSE_SET:
+            return FeatureKind.SPARSE_SET
+        case _:
+            return FeatureKind.NUMERIC
 
 
 def _positive_period(period: Any) -> int:

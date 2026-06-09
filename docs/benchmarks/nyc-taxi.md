@@ -31,6 +31,8 @@ uv run --group dev maturin develop --release
 ```
 
 The TLC data cache lives under `data/nyc_taxi/` and must not be committed.
+The benchmark also caches `taxi_zone_lookup.csv` there so demand and row tasks
+can use borough and service-zone context for spatial holdouts.
 
 ## Maintained Targets
 
@@ -52,7 +54,8 @@ and summary reports under `docs/assets/nyc_taxi_benchmarks/`.
 The maintained repeated preset uses:
 
 - GeoBoost candidate: `n_estimators=100`, `max_depth=5`,
-  `splitters=axis_histogram:512`, `min_samples_leaf=1`.
+  `splitters=axis_histogram:512,periodic:24,periodic:7,sparse_set`,
+  `min_samples_leaf=1`.
 - XGBoost baseline: `n_estimators=100`, `max_depth=4`,
   `tree_method=hist`, `subsample=1.0`, `colsample_bytree=1.0`.
 - Zone IDs: `--zone-treatment target_mean`.

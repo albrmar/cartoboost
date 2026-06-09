@@ -16,14 +16,17 @@ from .metrics import (
     pinball_loss,
     residual_morans_i,
 )
+from .overlay import OverlayConfig, weighted_overlay
 from .regressor import GeoBoostRegressor
-from .schema import FeatureSchema
+from .schema import FeatureKind, FeatureSchema
 
 __version__ = "0.1.0"
 
 __all__ = [
     "FeatureSchema",
+    "FeatureKind",
     "GeoBoostRegressor",
+    "OverlayConfig",
     "__version__",
     "calibrated_intervals",
     "conformal_residual_quantile",
@@ -38,4 +41,5 @@ __all__ = [
     "residual_morans_i",
     "spatial_blocked_cv",
     "temporal_blocked_cv",
+    "weighted_overlay",
 ]

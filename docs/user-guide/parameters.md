@@ -20,10 +20,12 @@ regression.
 
 | Parameter | Default | Notes |
 | --- | --- | --- |
-| `loss` | `"l2"` | Accepts `"l2"`, `"squared_error"`, `"quantile"`, or `"pinball"`. |
+| `loss` | `"l2"` | Accepts `"l2"`, `"squared_error"`, `"l1"`, `"mae"`, `"absolute_error"`, `"huber"`, `"log_l2"`, `"quantile"`, or `"pinball"`. |
 | `quantile_alpha` | `0.5` | Required to be finite and in `(0, 1)` for quantile loss. |
+| `huber_delta` | `1.0` | Positive clipping threshold for Huber loss. |
+| `log_offset` | `1.0` | Positive offset for `log_l2`; the current backend supports `1.0`. |
 
-Quantile loss currently requires `leaf_predictor="constant"`.
+`l1`, `huber`, `log_l2`, and quantile loss currently require `leaf_predictor="constant"`.
 
 ## Splitters
 
@@ -67,12 +69,17 @@ remaining residual trend inside that region is still approximately linear.
 | --- | --- | --- |
 | `fuzzy` | `False` | Enables fractional branch assignment during training and weighted prediction recursion. |
 | `fuzzy_bandwidth` | `0.0` | Split transition bandwidth. Must be finite and non-negative. |
+| `fuzzy_kernel` | `"linear"` | Transition shape. Accepts `"linear"`, `"gaussian"`, `"exponential"`, `"bisquare"`, `"epanechnikov"`, or `"tricube"`. |
 
 Fuzzy routing is not compatible with monotonic constraints.
 
 Use fuzzy routing for temporal-spatial features where nearby values should not
 change abruptly at a learned boundary. Set `fuzzy_bandwidth` in the same units
-as the feature values, such as projected coordinate units or hours.
+as the feature values, such as projected coordinate units or hours. Use
+`fuzzy_kernel="linear"` for simple piecewise interpolation, `"gaussian"` or
+`"tricube"` for smoother transitions, and compact-support kernels like
+`"bisquare"` or `"epanechnikov"` when you want the blend to drop off faster
+near the edge of the band.
 
 ## Monotonic Constraints
 

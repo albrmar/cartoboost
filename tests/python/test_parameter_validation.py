@@ -1,5 +1,5 @@
 import pytest
-from geoboost import GeoBoostRegressor
+from geoboost import FeatureKind, GeoBoostRegressor
 from geoboost import regressor as regressor_module
 
 
@@ -18,7 +18,7 @@ def test_splitters_must_be_a_sequence_of_names():
 
 
 def test_feature_schema_metadata_is_retained(tmp_path):
-    schema = {"distance": {"role": "numeric"}}
+    schema = {"distance": {"role": FeatureKind.NUMERIC}}
     model = GeoBoostRegressor(max_depth=0)
 
     model.fit([[0.0], [1.0]], [2.0, 4.0], feature_schema=schema)
@@ -51,6 +51,7 @@ def test_native_load_restores_public_estimator_params(monkeypatch, tmp_path):
         l2_regularization = 0.75
         fuzzy = True
         fuzzy_bandwidth = 1.5
+        fuzzy_kernel = "gaussian"
         feature_count = 3
         feature_schema_json = (
             '{"names":["x","y","hour"],"kinds":["Numeric","Numeric",{"Periodic":{"period":168}}]}'
@@ -65,7 +66,7 @@ def test_native_load_restores_public_estimator_params(monkeypatch, tmp_path):
         def predict(self, rows):
             return [0.0 for _ in rows]
 
-    monkeypatch.setattr(regressor_module, "_NativeGeoBoostRegressor", FakeNativeModel)
+    monkeypatch.setattr(regressor_module, "_NativeRegressorModel", FakeNativeModel)
 
     loaded = GeoBoostRegressor.load(tmp_path / "native.json")
 
@@ -85,6 +86,7 @@ def test_native_load_restores_public_estimator_params(monkeypatch, tmp_path):
         "linear_leaf_features": ["0", "2"],
         "fuzzy": True,
         "fuzzy_bandwidth": 1.5,
+        "fuzzy_kernel": "gaussian",
         "l2_regularization": 0.75,
         "constant_l2_regularization": 0.0,
         "random_state": None,
@@ -94,3 +96,10 @@ def test_native_load_restores_public_estimator_params(monkeypatch, tmp_path):
     assert loaded.n_features_in_ == 3
     assert loaded.feature_schema_["names"] == ["x", "y", "hour"]
     assert loaded.metadata_["library_name"] == "geoboost-core"
+
+
+def test_fuzzy_kernel_validation_rejects_unknown_name():
+    model = GeoBoostRegressor(fuzzy=True, fuzzy_kernel="unknown")
+
+    with pytest.raises(ValueError, match="fuzzy_kernel"):
+        model.fit([[0.0], [1.0]], [0.0, 1.0])

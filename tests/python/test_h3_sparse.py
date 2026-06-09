@@ -1,5 +1,5 @@
 import pytest
-from geoboost import FeatureSchema
+from geoboost import FeatureKind, FeatureSchema
 from geoboost.h3 import (
     expand_h3_sparse_set,
     normalize_h3_id,
@@ -10,11 +10,11 @@ from geoboost.h3 import (
 def test_h3_sparse_schema_serializes_as_rust_sparse_set_and_keeps_metadata():
     entry = {
         "name": "route_h3",
-        "kind": "h3_sparse_set",
+        "kind": FeatureKind.H3_SPARSE_SET,
         "resolution": 9,
         "parent_resolutions": [5, 7],
     }
-    schema = FeatureSchema(dense=[("distance_m", "numeric")], sparse_sets=[entry])
+    schema = FeatureSchema(dense=[("distance_m", FeatureKind.NUMERIC)], sparse_sets=[entry])
 
     assert schema.to_rust_payload(dense_width=1, sparse_names=["route_h3"]) == {
         "names": ["distance_m", "route_h3"],
@@ -70,13 +70,13 @@ def test_expand_h3_sparse_set_adds_deterministic_scaffold_parents():
         {"name": "route_h3", "kind": "h3_sparse_set"},
         {
             "name": "route_h3",
-            "kind": "h3_sparse_set",
+            "kind": FeatureKind.H3_SPARSE_SET,
             "resolution": 9,
             "parent_resolutions": [9],
         },
         {
             "name": "route_h3",
-            "kind": "h3_sparse_set",
+            "kind": FeatureKind.H3_SPARSE_SET,
             "resolution": 16,
             "parent_resolutions": [],
         },

@@ -44,12 +44,13 @@ The config file is a simple TOML-like `key = value` file. Supported keys:
 | `max_depth` | Maximum tree depth. |
 | `min_samples_leaf` | Minimum rows per leaf. |
 | `min_gain` | Minimum gain required to split. |
-| `loss` | `l2`, `squared_error`, `quantile`, or `pinball`. |
+| `loss` | `l2`, `squared_error`, `l1`, `mae`, `absolute_error`, `quantile`, or `pinball`. |
 | `quantile_alpha` | Quantile alpha in `(0, 1)`. |
 | `splitter` or `splitters` | Comma-separated splitter names. |
 | `leaf_predictor` | `constant` or `linear`. |
 | `fuzzy` | Boolean fuzzy routing flag. |
 | `fuzzy_bandwidth` | Non-negative fuzzy transition bandwidth. |
+| `fuzzy_kernel` | `linear`, `gaussian`, `exponential`, `bisquare`, `epanechnikov`, or `tricube`. |
 | `l2_regularization` | Linear-leaf ridge penalty. |
 | `monotonic_constraints` | Comma-separated `-1`, `0`, and `1` values. |
 
@@ -64,6 +65,7 @@ min_samples_leaf = 20
 loss = "l2"
 splitter = "axis,periodic_24"
 leaf_predictor = "constant"
+fuzzy_kernel = "linear"
 ```
 
 For a dense temporal-spatial CSV, include periodic or spatial splitters in the

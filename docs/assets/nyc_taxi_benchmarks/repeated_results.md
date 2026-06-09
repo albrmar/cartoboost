@@ -8,9 +8,9 @@
 
 | task/split | train ratio vs XGBoost median | train ratio min-max | predict rps ratio vs XGBoost median | predict rps ratio min-max | RMSE delta vs Geo ref | R2 delta vs Geo ref | RMSE delta vs XGB | R2 delta vs XGB | gate |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| duration/random | 1.76x | 1.66x-1.84x | 1.161x | 0.552x-2.009x | -0.005611 | 0.006801 | -0.004507 | 0.005453 | miss |
-| duration/spatial_holdout | 1.73x | 1.70x-1.79x | 1.524x | 1.395x-1.944x | -0.004058 | 0.005427 | -0.001197 | 0.001594 | miss |
-| fare/random | 1.70x | 1.67x-1.72x | 1.920x | 0.640x-2.208x | -0.001132 | 0.001246 | -0.000148 | 0.000163 | miss |
-| fare/spatial_holdout | 1.73x | 1.56x-1.75x | 1.626x | 0.349x-1.838x | -0.003043 | 0.003412 | -0.003096 | 0.003472 | miss |
-| pickup_demand/random | 1.91x | 1.80x-1.99x | 1.515x | 0.144x-2.135x | -0.013793 | 0.028507 | -0.012370 | 0.025518 | miss |
-| pickup_demand/spatial_holdout | 1.49x | 0.76x-1.50x | 1.015x | 0.056x-2.112x | -0.006504 | 0.020389 | -0.002626 | 0.008206 | miss |
+| duration/random | 18.78x | 16.01x-20.79x | 0.287x | 0.076x-0.357x | -0.005611 | 0.006801 | -0.004507 | 0.005453 | miss |
+| duration/spatial_holdout | 18.08x | 17.85x-18.35x | 0.361x | 0.128x-0.419x | -0.004058 | 0.005427 | -0.001197 | 0.001594 | miss |
+| fare/random | 17.45x | 14.54x-18.69x | 0.234x | 0.134x-0.292x | -0.001132 | 0.001246 | -0.000148 | 0.000163 | miss |
+| fare/spatial_holdout | 17.68x | 8.13x-17.91x | 0.319x | 0.077x-0.367x | -0.003043 | 0.003412 | -0.003096 | 0.003472 | miss |
+| pickup_demand/random | 17.59x | 16.74x-20.49x | 0.297x | 0.016x-0.385x | -0.013793 | 0.028507 | -0.012370 | 0.025518 | miss |
+| pickup_demand/spatial_holdout | 15.83x | 11.00x-16.22x | 0.310x | 0.095x-0.336x | -0.006504 | 0.020389 | -0.002626 | 0.008206 | miss |

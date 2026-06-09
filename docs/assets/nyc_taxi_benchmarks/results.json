@@ -8,17 +8,14 @@
     "months": [
       1
     ],
-    "sample_size": 25000,
+    "sample_size": 100000,
     "task_rows": {
-      "duration": 25000,
-      "fare": 25000,
-      "pickup_demand": 6515
+      "pickup_demand": 9743
     }
   },
   "models_requested": [
     "geoboost",
     "geoboost_reference",
-    "lightgbm",
     "xgboost",
     "mean"
   ],
@@ -27,875 +24,15 @@
     "geoboost_n_estimators": 100,
     "learning_rate": 0.08,
     "baseline_max_depth": 4,
-    "geoboost_max_depth": 4,
+    "geoboost_max_depth": 5,
     "zone_treatment": "target_mean",
     "zone_target_smoothing": 20.0
   },
   "tasks": {
-    "duration": {
-      "display_name": "Trip duration",
-      "description": "Predict log trip duration from zone, trip, passenger, and time features.",
-      "row_count": 25000,
-      "feature_names": [
-        "trip_distance",
-        "passenger_count",
-        "hour",
-        "dayofweek",
-        "PULocationID",
-        "DOLocationID"
-      ],
-      "zone_treatment": "target_mean",
-      "splits": {
-        "random": {
-          "train_rows": 20000,
-          "test_rows": 5000,
-          "holdout_pickup_zones": [
-            4,
-            7,
-            10,
-            12,
-            13,
-            24,
-            25,
-            28,
-            29,
-            32,
-            35,
-            36,
-            37,
-            39,
-            40,
-            41,
-            42,
-            43,
-            45,
-            47,
-            48,
-            49,
-            50,
-            51,
-            53,
-            56,
-            59,
-            60,
-            65,
-            68,
-            69,
-            70,
-            74,
-            75,
-            79,
-            82,
-            86,
-            87,
-            88,
-            89,
-            90,
-            97,
-            98,
-            100,
-            107,
-            112,
-            113,
-            114,
-            116,
-            122,
-            124,
-            125,
-            130,
-            132,
-            134,
-            137,
-            138,
-            140,
-            141,
-            142,
-            143,
-            144,
-            146,
-            147,
-            148,
-            151,
-            152,
-            157,
-            158,
-            159,
-            161,
-            162,
-            163,
-            164,
-            166,
-            167,
-            168,
-            170,
-            179,
-            181,
-            186,
-            189,
-            197,
-            202,
-            209,
-            211,
-            215,
-            216,
-            218,
-            219,
-            222,
-            223,
-            224,
-            226,
-            229,
-            230,
-            231,
-            232,
-            233,
-            234,
-            235,
-            236,
-            237,
-            238,
-            239,
-            244,
-            246,
-            249,
-            255,
-            256,
-            259,
-            261,
-            262,
-            263
-          ],
-          "models": {
-            "geoboost": {
-              "status": "ok",
-              "metrics": {
-                "rmse": 0.31838540964994166,
-                "mae": 0.2419756242988472,
-                "r2": 0.7942588784771412
-              },
-              "timing": {
-                "train_seconds": 0.8781318749533966,
-                "predict_seconds": 0.0071031249826774,
-                "fit_predict_seconds": 0.885234999936074,
-                "prediction_rows": 5000.0,
-                "predict_rows_per_second": 703915.5318530431
-              },
-              "backend": "rust",
-              "config": {
-                "n_estimators": 100,
-                "learning_rate": 0.08,
-                "max_depth": 4,
-                "min_samples_leaf": 100,
-                "splitters": [
-                  "axis_histogram:64"
-                ],
-                "sparse_sets": false,
-                "zone_treatment": "target_mean",
-                "feature_count": 8,
-                "preset": "candidate",
-                "predict_path": "model.predict"
-              }
-            },
-            "geoboost_reference": {
-              "status": "ok",
-              "metrics": {
-                "rmse": 0.31838540964994166,
-                "mae": 0.2419756242988472,
-                "r2": 0.7942588784771412
-              },
-              "timing": {
-                "train_seconds": 0.70869241602486,
-                "predict_seconds": 0.009526000008918345,
-                "fit_predict_seconds": 0.7182184160337783,
-                "prediction_rows": 5000.0,
-                "predict_rows_per_second": 524879.2772747161
-              },
-              "backend": "rust",
-              "config": {
-                "n_estimators": 100,
-                "learning_rate": 0.08,
-                "max_depth": 4,
-                "min_samples_leaf": 100,
-                "splitters": [
-                  "axis_histogram:64"
-                ],
-                "sparse_sets": false,
-                "zone_treatment": "target_mean",
-                "feature_count": 8,
-                "preset": "reference",
-                "predict_path": "model.predict"
-              }
-            },
-            "lightgbm": {
-              "status": "ok",
-              "metrics": {
-                "rmse": 0.29995970731681454,
-                "mae": 0.22712062445298903,
-                "r2": 0.8173832412686689
-              },
-              "timing": {
-                "train_seconds": 0.21907779201865196,
-                "predict_seconds": 0.002539625042118132,
-                "fit_predict_seconds": 0.2216174170607701,
-                "prediction_rows": 5000.0,
-                "predict_rows_per_second": 1968794.5728515233
-              },
-              "config": {
-                "n_estimators": 100,
-                "learning_rate": 0.08,
-                "max_depth": 4,
-                "num_leaves": 16,
-                "zone_treatment": "target_mean",
-                "feature_count": 8
-              }
-            },
-            "xgboost": {
-              "status": "ok",
-              "metrics": {
-                "rmse": 0.30026688391010353,
-                "mae": 0.22781376234544515,
-                "r2": 0.8170090288990143
-              },
-              "timing": {
-                "train_seconds": 0.11482987500494346,
-                "predict_seconds": 0.0012887089978903532,
-                "fit_predict_seconds": 0.11611858400283381,
-                "prediction_rows": 5000.0,
-                "predict_rows_per_second": 3879851.8580883015
-              },
-              "config": {
-                "n_estimators": 100,
-                "learning_rate": 0.08,
-                "max_depth": 4,
-                "tree_method": "hist",
-                "subsample": 1.0,
-                "colsample_bytree": 1.0,
-                "zone_treatment": "target_mean",
-                "feature_count": 8
-              }
-            },
-            "mean": {
-              "status": "ok",
-              "metrics": {
-                "rmse": 0.7019758578551573,
-                "mae": 0.5590779086669497,
-                "r2": -0.00013618506046242373
-              },
-              "timing": {
-                "train_seconds": 1.3999990187585354e-05,
-                "predict_seconds": 4.958012141287327e-06,
-                "fit_predict_seconds": 1.895800232887268e-05,
-                "prediction_rows": 5000.0,
-                "predict_rows_per_second": 1008468688.1589143
-              }
-            }
-          }
-        },
-        "spatial_holdout": {
-          "train_rows": 19058,
-          "test_rows": 5942,
-          "holdout_pickup_zones": [
-            3,
-            13,
-            21,
-            28,
-            35,
-            41,
-            48,
-            53,
-            61,
-            68,
-            74,
-            80,
-            87,
-            92,
-            98,
-            108,
-            117,
-            125,
-            133,
-            138,
-            143,
-            148,
-            158,
-            163,
-            168,
-            179,
-            185,
-            194,
-            202,
-            212,
-            219,
-            225,
-            231,
-            236,
-            242,
-            248,
-            255,
-            262
-          ],
-          "models": {
-            "geoboost": {
-              "status": "ok",
-              "metrics": {
-                "rmse": 0.3390315219436759,
-                "mae": 0.26056013389058125,
-                "r2": 0.7628051798238551
-              },
-              "timing": {
-                "train_seconds": 0.5663069160073064,
-                "predict_seconds": 0.006561457994394004,
-                "fit_predict_seconds": 0.5728683740017004,
-                "prediction_rows": 5942.0,
-                "predict_rows_per_second": 905591.410487843
-              },
-              "backend": "rust",
-              "config": {
-                "n_estimators": 100,
-                "learning_rate": 0.08,
-                "max_depth": 4,
-                "min_samples_leaf": 95,
-                "splitters": [
-                  "axis_histogram:64"
-                ],
-                "sparse_sets": false,
-                "zone_treatment": "target_mean",
-                "feature_count": 8,
-                "preset": "candidate",
-                "predict_path": "model.predict"
-              }
-            },
-            "geoboost_reference": {
-              "status": "ok",
-              "metrics": {
-                "rmse": 0.3390315219436759,
-                "mae": 0.26056013389058125,
-                "r2": 0.7628051798238551
-              },
-              "timing": {
-                "train_seconds": 0.5555873750126921,
-                "predict_seconds": 0.005953208019491285,
-                "fit_predict_seconds": 0.5615405830321833,
-                "prediction_rows": 5942.0,
-                "predict_rows_per_second": 998117.3143195083
-              },
-              "backend": "rust",
-              "config": {
-                "n_estimators": 100,
-                "learning_rate": 0.08,
-                "max_depth": 4,
-                "min_samples_leaf": 95,
-                "splitters": [
-                  "axis_histogram:64"
-                ],
-                "sparse_sets": false,
-                "zone_treatment": "target_mean",
-                "feature_count": 8,
-                "preset": "reference",
-                "predict_path": "model.predict"
-              }
-            },
-            "lightgbm": {
-              "status": "ok",
-              "metrics": {
-                "rmse": 0.32304668676039006,
-                "mae": 0.2478774950063911,
-                "r2": 0.7846446701518722
-              },
-              "timing": {
-                "train_seconds": 0.2079889160231687,
-                "predict_seconds": 0.0023488749866373837,
-                "fit_predict_seconds": 0.2103377910098061,
-                "prediction_rows": 5942.0,
-                "predict_rows_per_second": 2529721.689661519
-              },
-              "config": {
-                "n_estimators": 100,
-                "learning_rate": 0.08,
-                "max_depth": 4,
-                "num_leaves": 16,
-                "zone_treatment": "target_mean",
-                "feature_count": 8
-              }
-            },
-            "xgboost": {
-              "status": "ok",
-              "metrics": {
-                "rmse": 0.32320672703677306,
-                "mae": 0.2476853931124455,
-                "r2": 0.7844312393061742
-              },
-              "timing": {
-                "train_seconds": 0.11116550001315773,
-                "predict_seconds": 0.0008645000052638352,
-                "fit_predict_seconds": 0.11203000001842156,
-                "prediction_rows": 5942.0,
-                "predict_rows_per_second": 6873337.1472757505
-              },
-              "config": {
-                "n_estimators": 100,
-                "learning_rate": 0.08,
-                "max_depth": 4,
-                "tree_method": "hist",
-                "subsample": 1.0,
-                "colsample_bytree": 1.0,
-                "zone_treatment": "target_mean",
-                "feature_count": 8
-              }
-            },
-            "mean": {
-              "status": "ok",
-              "metrics": {
-                "rmse": 0.6971916291569443,
-                "mae": 0.5621860838164973,
-                "r2": -0.0030656782615481326
-              },
-              "timing": {
-                "train_seconds": 1.2832984793931246e-05,
-                "predict_seconds": 4.416971933096647e-06,
-                "fit_predict_seconds": 1.7249956727027893e-05,
-                "prediction_rows": 5942.0,
-                "predict_rows_per_second": 1345265509.9472609
-              }
-            }
-          }
-        }
-      }
-    },
-    "fare": {
-      "display_name": "Fare amount",
-      "description": "Predict log total amount from zone, trip, passenger, and time features.",
-      "row_count": 25000,
-      "feature_names": [
-        "trip_distance",
-        "passenger_count",
-        "hour",
-        "dayofweek",
-        "PULocationID",
-        "DOLocationID"
-      ],
-      "zone_treatment": "target_mean",
-      "splits": {
-        "random": {
-          "train_rows": 20000,
-          "test_rows": 5000,
-          "holdout_pickup_zones": [
-            4,
-            7,
-            10,
-            12,
-            13,
-            24,
-            25,
-            28,
-            29,
-            32,
-            35,
-            36,
-            37,
-            39,
-            40,
-            41,
-            42,
-            43,
-            45,
-            47,
-            48,
-            49,
-            50,
-            51,
-            53,
-            56,
-            59,
-            60,
-            65,
-            68,
-            69,
-            70,
-            74,
-            75,
-            79,
-            82,
-            86,
-            87,
-            88,
-            89,
-            90,
-            97,
-            98,
-            100,
-            107,
-            112,
-            113,
-            114,
-            116,
-            122,
-            124,
-            125,
-            130,
-            132,
-            134,
-            137,
-            138,
-            140,
-            141,
-            142,
-            143,
-            144,
-            146,
-            147,
-            148,
-            151,
-            152,
-            157,
-            158,
-            159,
-            161,
-            162,
-            163,
-            164,
-            166,
-            167,
-            168,
-            170,
-            179,
-            181,
-            186,
-            189,
-            197,
-            202,
-            209,
-            211,
-            215,
-            216,
-            218,
-            219,
-            222,
-            223,
-            224,
-            226,
-            229,
-            230,
-            231,
-            232,
-            233,
-            234,
-            235,
-            236,
-            237,
-            238,
-            239,
-            244,
-            246,
-            249,
-            255,
-            256,
-            259,
-            261,
-            262,
-            263
-          ],
-          "models": {
-            "geoboost": {
-              "status": "ok",
-              "metrics": {
-                "rmse": 0.15760501800256152,
-                "mae": 0.11550935023820398,
-                "r2": 0.9089594811976148
-              },
-              "timing": {
-                "train_seconds": 0.5702687909943052,
-                "predict_seconds": 0.004328167007770389,
-                "fit_predict_seconds": 0.5745969580020756,
-                "prediction_rows": 5000.0,
-                "predict_rows_per_second": 1155223.4447107664
-              },
-              "backend": "rust",
-              "config": {
-                "n_estimators": 100,
-                "learning_rate": 0.08,
-                "max_depth": 4,
-                "min_samples_leaf": 100,
-                "splitters": [
-                  "axis_histogram:64"
-                ],
-                "sparse_sets": false,
-                "zone_treatment": "target_mean",
-                "feature_count": 8,
-                "preset": "candidate",
-                "predict_path": "model.predict"
-              }
-            },
-            "geoboost_reference": {
-              "status": "ok",
-              "metrics": {
-                "rmse": 0.15760501800256152,
-                "mae": 0.11550935023820398,
-                "r2": 0.9089594811976148
-              },
-              "timing": {
-                "train_seconds": 0.556144584028516,
-                "predict_seconds": 0.005756500002462417,
-                "fit_predict_seconds": 0.5619010840309784,
-                "prediction_rows": 5000.0,
-                "predict_rows_per_second": 868583.3401999802
-              },
-              "backend": "rust",
-              "config": {
-                "n_estimators": 100,
-                "learning_rate": 0.08,
-                "max_depth": 4,
-                "min_samples_leaf": 100,
-                "splitters": [
-                  "axis_histogram:64"
-                ],
-                "sparse_sets": false,
-                "zone_treatment": "target_mean",
-                "feature_count": 8,
-                "preset": "reference",
-                "predict_path": "model.predict"
-              }
-            },
-            "lightgbm": {
-              "status": "ok",
-              "metrics": {
-                "rmse": 0.14952585743753424,
-                "mae": 0.10881184521334912,
-                "r2": 0.9180540970394959
-              },
-              "timing": {
-                "train_seconds": 0.23400133399991319,
-                "predict_seconds": 0.0023304999922402203,
-                "fit_predict_seconds": 0.2363318339921534,
-                "prediction_rows": 5000.0,
-                "predict_rows_per_second": 2145462.3542794744
-              },
-              "config": {
-                "n_estimators": 100,
-                "learning_rate": 0.08,
-                "max_depth": 4,
-                "num_leaves": 16,
-                "zone_treatment": "target_mean",
-                "feature_count": 8
-              }
-            },
-            "xgboost": {
-              "status": "ok",
-              "metrics": {
-                "rmse": 0.1497207051718321,
-                "mae": 0.10894637708321243,
-                "r2": 0.9178403898304053
-              },
-              "timing": {
-                "train_seconds": 0.11630804202286527,
-                "predict_seconds": 0.0008521670242771506,
-                "fit_predict_seconds": 0.11716020904714242,
-                "prediction_rows": 5000.0,
-                "predict_rows_per_second": 5867394.369362324
-              },
-              "config": {
-                "n_estimators": 100,
-                "learning_rate": 0.08,
-                "max_depth": 4,
-                "tree_method": "hist",
-                "subsample": 1.0,
-                "colsample_bytree": 1.0,
-                "zone_treatment": "target_mean",
-                "feature_count": 8
-              }
-            },
-            "mean": {
-              "status": "ok",
-              "metrics": {
-                "rmse": 0.5223684240344992,
-                "mae": 0.40023686193014635,
-                "r2": -0.00011162635491368533
-              },
-              "timing": {
-                "train_seconds": 1.087499549612403e-05,
-                "predict_seconds": 4.375004209578037e-06,
-                "fit_predict_seconds": 1.5249999705702066e-05,
-                "prediction_rows": 5000.0,
-                "predict_rows_per_second": 1142856043.213326
-              }
-            }
-          }
-        },
-        "spatial_holdout": {
-          "train_rows": 19058,
-          "test_rows": 5942,
-          "holdout_pickup_zones": [
-            3,
-            13,
-            21,
-            28,
-            35,
-            41,
-            48,
-            53,
-            61,
-            68,
-            74,
-            80,
-            87,
-            92,
-            98,
-            108,
-            117,
-            125,
-            133,
-            138,
-            143,
-            148,
-            158,
-            163,
-            168,
-            179,
-            185,
-            194,
-            202,
-            212,
-            219,
-            225,
-            231,
-            236,
-            242,
-            248,
-            255,
-            262
-          ],
-          "models": {
-            "geoboost": {
-              "status": "ok",
-              "metrics": {
-                "rmse": 0.1748234195387848,
-                "mae": 0.13205679407591603,
-                "r2": 0.8993580738403357
-              },
-              "timing": {
-                "train_seconds": 0.4995290419901721,
-                "predict_seconds": 0.018587625003419816,
-                "fit_predict_seconds": 0.5181166669935919,
-                "prediction_rows": 5942.0,
-                "predict_rows_per_second": 319675.05256356153
-              },
-              "backend": "rust",
-              "config": {
-                "n_estimators": 100,
-                "learning_rate": 0.08,
-                "max_depth": 4,
-                "min_samples_leaf": 95,
-                "splitters": [
-                  "axis_histogram:64"
-                ],
-                "sparse_sets": false,
-                "zone_treatment": "target_mean",
-                "feature_count": 8,
-                "preset": "candidate",
-                "predict_path": "model.predict"
-              }
-            },
-            "geoboost_reference": {
-              "status": "ok",
-              "metrics": {
-                "rmse": 0.1748234195387848,
-                "mae": 0.13205679407591603,
-                "r2": 0.8993580738403357
-              },
-              "timing": {
-                "train_seconds": 0.483133582980372,
-                "predict_seconds": 0.004123374994378537,
-                "fit_predict_seconds": 0.48725695797475055,
-                "prediction_rows": 5942.0,
-                "predict_rows_per_second": 1441052.537812065
-              },
-              "backend": "rust",
-              "config": {
-                "n_estimators": 100,
-                "learning_rate": 0.08,
-                "max_depth": 4,
-                "min_samples_leaf": 95,
-                "splitters": [
-                  "axis_histogram:64"
-                ],
-                "sparse_sets": false,
-                "zone_treatment": "target_mean",
-                "feature_count": 8,
-                "preset": "reference",
-                "predict_path": "model.predict"
-              }
-            },
-            "lightgbm": {
-              "status": "ok",
-              "metrics": {
-                "rmse": 0.17028776926048278,
-                "mae": 0.12706496095134756,
-                "r2": 0.9045124762228322
-              },
-              "timing": {
-                "train_seconds": 0.18825166602618992,
-                "predict_seconds": 0.0024529160000383854,
-                "fit_predict_seconds": 0.1907045820262283,
-                "prediction_rows": 5942.0,
-                "predict_rows_per_second": 2422422.9447347624
-              },
-              "config": {
-                "n_estimators": 100,
-                "learning_rate": 0.08,
-                "max_depth": 4,
-                "num_leaves": 16,
-                "zone_treatment": "target_mean",
-                "feature_count": 8
-              }
-            },
-            "xgboost": {
-              "status": "ok",
-              "metrics": {
-                "rmse": 0.17181937520562035,
-                "mae": 0.12774099843050546,
-                "r2": 0.9027870797499135
-              },
-              "timing": {
-                "train_seconds": 0.1275547919794917,
-                "predict_seconds": 0.001074249972589314,
-                "fit_predict_seconds": 0.12862904195208102,
-                "prediction_rows": 5942.0,
-                "predict_rows_per_second": 5531301.048747271
-              },
-              "config": {
-                "n_estimators": 100,
-                "learning_rate": 0.08,
-                "max_depth": 4,
-                "tree_method": "hist",
-                "subsample": 1.0,
-                "colsample_bytree": 1.0,
-                "zone_treatment": "target_mean",
-                "feature_count": 8
-              }
-            },
-            "mean": {
-              "status": "ok",
-              "metrics": {
-                "rmse": 0.5559858616469351,
-                "mae": 0.4284713287436547,
-                "r2": -0.0179049218461651
-              },
-              "timing": {
-                "train_seconds": 1.4209013897925615e-05,
-                "predict_seconds": 5.875015631318092e-06,
-                "fit_predict_seconds": 2.0084029529243708e-05,
-                "prediction_rows": 5942.0,
-                "predict_rows_per_second": 1011401564.33369
-              }
-            }
-          }
-        }
-      }
-    },
     "pickup_demand": {
       "display_name": "Pickup-zone demand",
       "description": "Predict log pickup trip count for a pickup zone, hour, and weekday bucket.",
-      "row_count": 6515,
+      "row_count": 9743,
       "feature_names": [
         "PULocationID",
         "hour",
@@ -904,8 +41,8 @@
       "zone_treatment": "target_mean",
       "splits": {
         "random": {
-          "train_rows": 5212,
-          "test_rows": 1303,
+          "train_rows": 7795,
+          "test_rows": 1948,
           "holdout_pickup_zones": [
             4,
             7,
@@ -913,50 +50,87 @@
             12,
             13,
             14,
-            18,
+            17,
+            19,
+            20,
+            21,
             24,
+            25,
+            26,
+            28,
             29,
+            33,
+            34,
             35,
+            36,
+            37,
+            38,
+            39,
             40,
             41,
             42,
             43,
             45,
             48,
+            49,
             50,
+            51,
+            53,
+            54,
+            55,
+            56,
             61,
             62,
+            63,
             65,
+            66,
             68,
             69,
             70,
+            71,
             72,
             74,
             75,
             76,
             77,
             79,
+            80,
+            82,
             83,
+            85,
+            86,
             87,
             88,
             89,
             90,
+            91,
+            93,
+            95,
+            96,
             97,
             100,
-            106,
+            101,
             107,
-            108,
             112,
             113,
             114,
             116,
-            124,
+            117,
+            119,
+            121,
+            123,
             125,
-            127,
+            126,
             129,
+            130,
+            131,
             132,
+            133,
+            134,
+            136,
             137,
             138,
+            139,
             140,
             141,
             142,
@@ -967,18 +141,23 @@
             148,
             151,
             152,
+            157,
             158,
             159,
             161,
             162,
             163,
             164,
+            165,
             166,
+            167,
             168,
             169,
             170,
+            174,
             177,
             179,
+            180,
             181,
             186,
             188,
@@ -986,33 +165,51 @@
             193,
             196,
             197,
+            198,
+            200,
+            202,
+            203,
+            205,
             209,
+            210,
             211,
             212,
+            213,
             215,
+            216,
+            217,
+            218,
             219,
-            222,
+            223,
             224,
             225,
             226,
+            228,
             229,
             230,
             231,
             232,
             233,
             234,
-            235,
             236,
             237,
             238,
             239,
             241,
             242,
+            243,
             244,
             246,
+            247,
+            248,
             249,
+            254,
             255,
+            256,
+            257,
+            258,
             259,
+            260,
             261,
             262,
             263
@@ -1021,25 +218,32 @@
             "geoboost": {
               "status": "ok",
               "metrics": {
-                "rmse": 0.3983237363717189,
-                "mae": 0.3176301378207118,
-                "r2": 0.5765308094480819
+                "rmse": 0.4023776868765231,
+                "mae": 0.3073308843467261,
+                "r2": 0.8470199374072096
               },
               "timing": {
-                "train_seconds": 0.1298735830350779,
-                "predict_seconds": 0.001420375017914921,
-                "fit_predict_seconds": 0.13129395805299282,
-                "prediction_rows": 1303.0,
-                "predict_rows_per_second": 917363.360778321
+                "train_seconds": 7.495296417007921,
+                "predict_seconds": 0.016674499987857416,
+                "fit_predict_seconds": 7.511970916995779,
+                "prediction_rows": 1948.0,
+                "predict_rows_per_second": 116825.0922917364
               },
               "backend": "rust",
               "config": {
                 "n_estimators": 100,
                 "learning_rate": 0.08,
-                "max_depth": 4,
-                "min_samples_leaf": 26,
+                "max_depth": 5,
+                "min_samples_leaf": 1,
+                "constant_l2_regularization": 0.0,
+                "leaf_predictor": "constant",
+                "init": "constant",
+                "calibration": "none",
                 "splitters": [
-                  "axis_histogram:64"
+                  "axis_histogram:512",
+                  "periodic:24",
+                  "periodic:7",
+                  "sparse_set"
                 ],
                 "sparse_sets": false,
                 "zone_treatment": "target_mean",
@@ -1051,25 +255,32 @@
             "geoboost_reference": {
               "status": "ok",
               "metrics": {
-                "rmse": 0.3983237363717189,
-                "mae": 0.3176301378207118,
-                "r2": 0.5765308094480819
+                "rmse": 0.43252088944885336,
+                "mae": 0.3327874765068757,
+                "r2": 0.8232411246272949
               },
               "timing": {
-                "train_seconds": 0.11688012501690537,
-                "predict_seconds": 0.0013510840362869203,
-                "fit_predict_seconds": 0.11823120905319229,
-                "prediction_rows": 1303.0,
-                "predict_rows_per_second": 964410.7731306885
+                "train_seconds": 5.951209167018533,
+                "predict_seconds": 0.014181583013851196,
+                "fit_predict_seconds": 5.965390750032384,
+                "prediction_rows": 1948.0,
+                "predict_rows_per_second": 137361.25213224662
               },
               "backend": "rust",
               "config": {
                 "n_estimators": 100,
                 "learning_rate": 0.08,
                 "max_depth": 4,
-                "min_samples_leaf": 26,
+                "min_samples_leaf": 1,
+                "constant_l2_regularization": 0.0,
+                "leaf_predictor": "constant",
+                "init": "constant",
+                "calibration": "none",
                 "splitters": [
-                  "axis_histogram:64"
+                  "axis_histogram:512",
+                  "periodic:24",
+                  "periodic:7",
+                  "sparse_set"
                 ],
                 "sparse_sets": false,
                 "zone_treatment": "target_mean",
@@ -1078,48 +289,26 @@
                 "predict_path": "model.predict"
               }
             },
-            "lightgbm": {
-              "status": "ok",
-              "metrics": {
-                "rmse": 0.3956951516965705,
-                "mae": 0.31542666563688904,
-                "r2": 0.5821014129744573
-              },
-              "timing": {
-                "train_seconds": 0.17568654101341963,
-                "predict_seconds": 0.0013315830146893859,
-                "fit_predict_seconds": 0.17701812402810901,
-                "prediction_rows": 1303.0,
-                "predict_rows_per_second": 978534.5604636949
-              },
-              "config": {
-                "n_estimators": 100,
-                "learning_rate": 0.08,
-                "max_depth": 4,
-                "num_leaves": 16,
-                "zone_treatment": "target_mean",
-                "feature_count": 4
-              }
-            },
             "xgboost": {
               "status": "ok",
               "metrics": {
-                "rmse": 0.39264355083548286,
-                "mae": 0.3135092229031787,
-                "r2": 0.588522225973811
+                "rmse": 0.412935156831712,
+                "mae": 0.319783438576313,
+                "r2": 0.8388869295305712
               },
               "timing": {
-                "train_seconds": 0.10307270800694823,
-                "predict_seconds": 0.0006072910036891699,
-                "fit_predict_seconds": 0.1036799990106374,
-                "prediction_rows": 1303.0,
-                "predict_rows_per_second": 2145594.109058983
+                "train_seconds": 0.1611720419896301,
+                "predict_seconds": 0.0006156250019557774,
+                "fit_predict_seconds": 0.16178766699158587,
+                "prediction_rows": 1948.0,
+                "predict_rows_per_second": 3164263.949338321
               },
               "config": {
                 "n_estimators": 100,
                 "learning_rate": 0.08,
                 "max_depth": 4,
                 "tree_method": "hist",
+                "max_bin": 256,
                 "subsample": 1.0,
                 "colsample_bytree": 1.0,
                 "zone_treatment": "target_mean",
@@ -1129,86 +318,100 @@
             "mean": {
               "status": "ok",
               "metrics": {
-                "rmse": 0.6123148877750066,
-                "mae": 0.5214873446241887,
-                "r2": -0.0006889002293557489
+                "rmse": 1.0288496224043122,
+                "mae": 0.9051695164822903,
+                "r2": -0.0001631743112295858
               },
               "timing": {
-                "train_seconds": 6.208952981978655e-06,
-                "predict_seconds": 3.917026333510876e-06,
-                "fit_predict_seconds": 1.012597931548953e-05,
-                "prediction_rows": 1303.0,
-                "predict_rows_per_second": 332650303.8421256
+                "train_seconds": 2.1374988136813045e-05,
+                "predict_seconds": 6.417016265913844e-06,
+                "fit_predict_seconds": 2.779200440272689e-05,
+                "prediction_rows": 1948.0,
+                "predict_rows_per_second": 303567876.29594487
               }
             }
           }
         },
         "spatial_holdout": {
-          "train_rows": 4922,
-          "test_rows": 1593,
+          "train_rows": 7436,
+          "test_rows": 2307,
           "holdout_pickup_zones": [
-            3,
-            13,
+            1,
+            10,
+            16,
             21,
             28,
-            35,
-            41,
-            48,
-            53,
-            61,
+            34,
+            39,
+            45,
+            51,
+            56,
+            63,
             68,
             74,
-            80,
-            87,
-            92,
-            98,
-            108,
-            117,
+            79,
+            85,
+            90,
+            95,
+            101,
+            112,
+            119,
             125,
-            133,
-            138,
-            143,
-            148,
-            158,
-            163,
-            168,
-            179,
-            185,
-            194,
-            202,
+            130,
+            135,
+            140,
+            145,
+            150,
+            157,
+            162,
+            167,
+            174,
+            180,
+            186,
+            193,
+            198,
+            205,
             212,
-            219,
-            225,
-            231,
-            236,
-            242,
-            248,
-            255,
+            218,
+            224,
+            229,
+            234,
+            239,
+            244,
+            250,
+            257,
             262
           ],
           "models": {
             "geoboost": {
               "status": "ok",
               "metrics": {
-                "rmse": 0.6039386825507486,
-                "mae": 0.504712911828405,
-                "r2": 0.045199408507337724
+                "rmse": 1.0259978533272127,
+                "mae": 0.8757324168108362,
+                "r2": 0.046687971003453566
               },
               "timing": {
-                "train_seconds": 0.1098595000221394,
-                "predict_seconds": 0.0013474579900503159,
-                "fit_predict_seconds": 0.11120695801218972,
-                "prediction_rows": 1593.0,
-                "predict_rows_per_second": 1182226.09666704
+                "train_seconds": 6.725871750008082,
+                "predict_seconds": 0.021499541006051004,
+                "fit_predict_seconds": 6.747371291014133,
+                "prediction_rows": 2307.0,
+                "predict_rows_per_second": 107304.61637998222
               },
               "backend": "rust",
               "config": {
                 "n_estimators": 100,
                 "learning_rate": 0.08,
-                "max_depth": 4,
-                "min_samples_leaf": 24,
+                "max_depth": 5,
+                "min_samples_leaf": 1,
+                "constant_l2_regularization": 0.0,
+                "leaf_predictor": "constant",
+                "init": "constant",
+                "calibration": "none",
                 "splitters": [
-                  "axis_histogram:64"
+                  "axis_histogram:512",
+                  "periodic:24",
+                  "periodic:7",
+                  "sparse_set"
                 ],
                 "sparse_sets": false,
                 "zone_treatment": "target_mean",
@@ -1220,25 +423,32 @@
             "geoboost_reference": {
               "status": "ok",
               "metrics": {
-                "rmse": 0.6039386825507486,
-                "mae": 0.504712911828405,
-                "r2": 0.045199408507337724
+                "rmse": 1.004021465221848,
+                "mae": 0.8714531320304293,
+                "r2": 0.08708957949626428
               },
               "timing": {
-                "train_seconds": 0.10487191600259393,
-                "predict_seconds": 0.0015361669939011335,
-                "fit_predict_seconds": 0.10640808299649507,
-                "prediction_rows": 1593.0,
-                "predict_rows_per_second": 1036996.6327388259
+                "train_seconds": 5.41009520800435,
+                "predict_seconds": 0.06008966700755991,
+                "fit_predict_seconds": 5.47018487501191,
+                "prediction_rows": 2307.0,
+                "predict_rows_per_second": 38392.62413801952
               },
               "backend": "rust",
               "config": {
                 "n_estimators": 100,
                 "learning_rate": 0.08,
                 "max_depth": 4,
-                "min_samples_leaf": 24,
+                "min_samples_leaf": 1,
+                "constant_l2_regularization": 0.0,
+                "leaf_predictor": "constant",
+                "init": "constant",
+                "calibration": "none",
                 "splitters": [
-                  "axis_histogram:64"
+                  "axis_histogram:512",
+                  "periodic:24",
+                  "periodic:7",
+                  "sparse_set"
                 ],
                 "sparse_sets": false,
                 "zone_treatment": "target_mean",
@@ -1247,48 +457,26 @@
                 "predict_path": "model.predict"
               }
             },
-            "lightgbm": {
-              "status": "ok",
-              "metrics": {
-                "rmse": 0.5928593166959644,
-                "mae": 0.49435842905575733,
-                "r2": 0.07991005822415675
-              },
-              "timing": {
-                "train_seconds": 0.17304095899453387,
-                "predict_seconds": 0.0010922080255113542,
-                "fit_predict_seconds": 0.17413316702004522,
-                "prediction_rows": 1593.0,
-                "predict_rows_per_second": 1458513.3626482766
-              },
-              "config": {
-                "n_estimators": 100,
-                "learning_rate": 0.08,
-                "max_depth": 4,
-                "num_leaves": 16,
-                "zone_treatment": "target_mean",
-                "feature_count": 4
-              }
-            },
             "xgboost": {
               "status": "ok",
               "metrics": {
-                "rmse": 0.5981578957978149,
-                "mae": 0.48959263163928074,
-                "r2": 0.06339027116187224
+                "rmse": 1.0293757923725209,
+                "mae": 0.888706052419091,
+                "r2": 0.04040037309314648
               },
               "timing": {
-                "train_seconds": 0.1059294999577105,
-                "predict_seconds": 0.0006021250155754387,
-                "fit_predict_seconds": 0.10653162497328594,
-                "prediction_rows": 1593.0,
-                "predict_rows_per_second": 2645629.9917677427
+                "train_seconds": 0.1998227090225555,
+                "predict_seconds": 0.0009018330019898713,
+                "fit_predict_seconds": 0.20072454202454537,
+                "prediction_rows": 2307.0,
+                "predict_rows_per_second": 2558123.2832571706
               },
               "config": {
                 "n_estimators": 100,
                 "learning_rate": 0.08,
                 "max_depth": 4,
                 "tree_method": "hist",
+                "max_bin": 256,
                 "subsample": 1.0,
                 "colsample_bytree": 1.0,
                 "zone_treatment": "target_mean",
@@ -1298,16 +486,16 @@
             "mean": {
               "status": "ok",
               "metrics": {
-                "rmse": 0.6187533271815722,
-                "mae": 0.5243479156304008,
-                "r2": -0.0022177251104547047
+                "rmse": 1.0610050999848661,
+                "mae": 0.9518753884324751,
+                "r2": -0.019476247470104013
               },
               "timing": {
-                "train_seconds": 5.499983672052622e-06,
-                "predict_seconds": 4.375004209578037e-06,
-                "fit_predict_seconds": 9.874987881630659e-06,
-                "prediction_rows": 1593.0,
-                "predict_rows_per_second": 364113935.3677656
+                "train_seconds": 1.5124998753890395e-05,
+                "predict_seconds": 1.0459014447405934e-05,
+                "fit_predict_seconds": 2.558401320129633e-05,
+                "prediction_rows": 2307.0,
+                "predict_rows_per_second": 220575276.15063068
               }
             }
           }

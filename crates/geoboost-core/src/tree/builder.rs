@@ -1,6 +1,9 @@
-use super::{sse, Node, Split, Tree};
+use super::{sse, FuzzyKernel, Node, Split, Tree};
 use crate::data::{Dataset, FeatureKind};
-use crate::loss::{pinball_loss, weighted_pinball_loss, weighted_quantile, LossConfig};
+use crate::loss::{
+    absolute_loss, pinball_loss, weighted_absolute_loss, weighted_pinball_loss, weighted_quantile,
+    LossConfig,
+};
 use crate::predictors::LinearLeafPredictor;
 use crate::profile;
 use serde::{Deserialize, Serialize};
@@ -19,6 +22,7 @@ pub struct TreeBuilder {
     pub constant_lambda_l2: f64,
     pub fuzzy: bool,
     pub fuzzy_bandwidth: f64,
+    pub fuzzy_kernel: FuzzyKernel,
     pub loss: LossConfig,
     pub monotonic_constraints: Vec<i8>,
 }
@@ -1849,6 +1853,7 @@ impl TreeBuilder {
     fn node_loss(&self, target: &[f64], weights: &[f64], indices: &[usize]) -> f64 {
         match self.loss {
             LossConfig::L2 | LossConfig::LogL2(_) => sse(target, weights, indices),
+            LossConfig::L1 => weighted_absolute_loss(target, weights, indices),
             LossConfig::Huber(config) => {
                 let value = self.leaf_value(target, weights, indices, None);
                 indices
@@ -1877,6 +1882,11 @@ impl TreeBuilder {
                 },
                 |stats| self.constant_leaf_value(stats),
             ),
+            LossConfig::L1 => {
+                let values = indices.iter().map(|&idx| target[idx]).collect::<Vec<_>>();
+                let selected_weights = indices.iter().map(|&idx| weights[idx]).collect::<Vec<_>>();
+                weighted_quantile(&values, &selected_weights, 0.5)
+            }
             LossConfig::Quantile(config) => {
                 let values = indices.iter().map(|&idx| target[idx]).collect::<Vec<_>>();
                 let selected_weights = indices.iter().map(|&idx| weights[idx]).collect::<Vec<_>>();
@@ -1900,6 +1910,10 @@ impl TreeBuilder {
             LossConfig::L2 | LossConfig::LogL2(_) => indices
                 .iter()
                 .map(|&idx| weights[idx] * (target[idx] - value).powi(2))
+                .sum(),
+            LossConfig::L1 => indices
+                .iter()
+                .map(|&idx| weights[idx] * absolute_loss(target[idx], value))
                 .sum(),
             LossConfig::Huber(config) => indices
                 .iter()
@@ -1995,7 +2009,7 @@ impl TreeBuilder {
             Split::Fuzzy {
                 base: Box::new(split),
                 bandwidth: self.fuzzy_bandwidth,
-                kernel: super::FuzzyKernel::Linear,
+                kernel: self.fuzzy_kernel,
             }
         } else {
             split
@@ -2873,6 +2887,7 @@ mod tests {
             constant_lambda_l2: 0.0,
             fuzzy: false,
             fuzzy_bandwidth: 0.0,
+            fuzzy_kernel: FuzzyKernel::Linear,
             loss: crate::loss::LossConfig::L2,
             monotonic_constraints: Vec::new(),
         };
@@ -2928,6 +2943,7 @@ mod tests {
             constant_lambda_l2: 0.0,
             fuzzy: false,
             fuzzy_bandwidth: 0.0,
+            fuzzy_kernel: FuzzyKernel::Linear,
             loss: crate::loss::LossConfig::L2,
             monotonic_constraints: Vec::new(),
         };
@@ -2960,6 +2976,7 @@ mod tests {
             constant_lambda_l2: 0.0,
             fuzzy: true,
             fuzzy_bandwidth: 2.0,
+            fuzzy_kernel: FuzzyKernel::Linear,
             loss: crate::loss::LossConfig::L2,
             monotonic_constraints: Vec::new(),
         };
@@ -3007,6 +3024,7 @@ mod tests {
             constant_lambda_l2: 0.0,
             fuzzy: false,
             fuzzy_bandwidth: 0.0,
+            fuzzy_kernel: FuzzyKernel::Linear,
             loss: crate::loss::LossConfig::L2,
             monotonic_constraints: Vec::new(),
         };
@@ -3050,6 +3068,7 @@ mod tests {
             constant_lambda_l2: 0.0,
             fuzzy: false,
             fuzzy_bandwidth: 0.0,
+            fuzzy_kernel: FuzzyKernel::Linear,
             loss: crate::loss::LossConfig::L2,
             monotonic_constraints: Vec::new(),
         };
@@ -3098,6 +3117,7 @@ mod tests {
             constant_lambda_l2: 0.0,
             fuzzy: false,
             fuzzy_bandwidth: 0.0,
+            fuzzy_kernel: FuzzyKernel::Linear,
             loss: crate::loss::LossConfig::L2,
             monotonic_constraints: Vec::new(),
         };
@@ -3136,6 +3156,7 @@ mod tests {
             constant_lambda_l2: 0.0,
             fuzzy: false,
             fuzzy_bandwidth: 0.0,
+            fuzzy_kernel: FuzzyKernel::Linear,
             loss: crate::loss::LossConfig::L2,
             monotonic_constraints: Vec::new(),
         };

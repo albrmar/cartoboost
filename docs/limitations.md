@@ -9,7 +9,7 @@ splitters match the structure in your data.
 
 - Regression only; classification, ranking, and survival objectives are not
   supported.
-- L2 and quantile regression are the public objectives.
+- Public regression objectives are L2, L1, Huber, LogL2, and quantile.
 - GeoBoost should not be described as generally superior to other boosters.
   Compare on the same data, split strategy, features, and metrics.
 
@@ -36,6 +36,8 @@ splitters match the structure in your data.
   passed as sparse integer IDs.
 - Fuzzy bandwidth is on the scale of your input features, so coordinate system
   and units matter.
+- Fuzzy kernels change only the interpolation shape inside the fuzzy band; they
+  do not learn a bandwidth automatically.
 
 ## Artifact Scope
 

@@ -60,14 +60,33 @@ fn periodic_signed_distance_is_negative_inside_and_positive_outside() {
 
 #[test]
 fn fuzzy_weights_conserve_mass_and_interpolate_at_boundary() {
-    let weights = fuzzy_weights(0.0, 2.0);
+    let weights = fuzzy_weights(0.0, 2.0, FuzzyKernel::Linear);
     assert_close(weights.left, 0.5);
     assert_close(weights.right, 0.5);
     assert_close(weights.left + weights.right, 1.0);
 
-    let hard = fuzzy_weights(3.0, 2.0);
+    let hard = fuzzy_weights(3.0, 2.0, FuzzyKernel::Linear);
     assert_close(hard.left, 0.0);
     assert_close(hard.right, 1.0);
+}
+
+#[test]
+fn fuzzy_kernels_change_boundary_blend_shape() {
+    let linear = fuzzy_weights(0.5, 2.0, FuzzyKernel::Linear);
+    let gaussian = fuzzy_weights(0.5, 2.0, FuzzyKernel::Gaussian);
+    let tricube = fuzzy_weights(0.5, 2.0, FuzzyKernel::Tricube);
+
+    assert!(gaussian.left > linear.left);
+    assert!(tricube.left > linear.left);
+    assert_close(gaussian.left + gaussian.right, 1.0);
+    assert_close(tricube.left + tricube.right, 1.0);
+}
+
+#[test]
+fn fuzzy_kernel_alias_deserializes_to_linear() {
+    let kernel: FuzzyKernel = serde_json::from_str("\"triangular\"").unwrap();
+
+    assert_eq!(kernel, FuzzyKernel::Linear);
 }
 
 #[test]

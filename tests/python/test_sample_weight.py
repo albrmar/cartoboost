@@ -33,7 +33,7 @@ def test_sample_weight_is_passed_to_native_when_supported(monkeypatch):
         def predict(self, rows):
             return [0.0 for _ in rows]
 
-    monkeypatch.setattr(regressor_module, "_NativeGeoBoostRegressor", NativeWithWeights)
+    monkeypatch.setattr(regressor_module, "_NativeRegressorModel", NativeWithWeights)
 
     model = GeoBoostRegressor(n_estimators=1)
     model.fit([[0.0], [1.0]], [0.0, 1.0], sample_weight=[0.25, 0.75])
@@ -50,7 +50,7 @@ def test_native_backend_requires_sample_weight_support(monkeypatch):
         def fit(self, rows, targets):
             pass
 
-    monkeypatch.setattr(regressor_module, "_NativeGeoBoostRegressor", NativeWithoutWeights)
+    monkeypatch.setattr(regressor_module, "_NativeRegressorModel", NativeWithoutWeights)
 
     model = GeoBoostRegressor(max_depth=1)
 

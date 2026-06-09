@@ -58,6 +58,26 @@ def test_quantile_native_backend_uses_quantile_initial_prediction_and_roundtrips
     assert loaded.predict([[0.0], [3.0]]) == pytest.approx([30.0, 30.0])
 
 
+def test_l1_native_backend_uses_weighted_median_initial_prediction_and_roundtrips(tmp_path: Path):
+    X = [[0.0], [1.0], [2.0], [3.0]]
+    y = [0.0, 10.0, 20.0, 30.0]
+    regressor = GeoBoostRegressor(
+        n_estimators=1,
+        learning_rate=1.0,
+        max_depth=0,
+        loss="mae",
+    ).fit(X, y, sample_weight=[1.0, 1.0, 10.0, 1.0])
+
+    assert regressor.predict([[0.0], [3.0]]) == pytest.approx([20.0, 20.0])
+
+    model_path = tmp_path / "l1.json"
+    regressor.save(model_path)
+    loaded = GeoBoostRegressor.load(model_path)
+
+    assert loaded.loss == "l1"
+    assert loaded.predict([[0.0], [3.0]]) == pytest.approx([20.0, 20.0])
+
+
 def test_native_backend_monotonic_constraint_blocks_decreasing_stump():
     model = GeoBoostRegressor(
         n_estimators=1,
@@ -167,6 +187,29 @@ def test_rust_backend_accepts_linear_fuzzy_and_sparse_options():
     assert linear.predict([[0.0], [3.0]]) == pytest.approx([4.5, 7.5])
     assert sparse.predict([[7.0], [3.0]]) == pytest.approx([25.0, -5.0])
     assert fuzzy.predict([[1.5]]) == pytest.approx([5.0])
+
+
+def test_rust_backend_preserves_fuzzy_kernel_roundtrip(tmp_path: Path):
+    model = GeoBoostRegressor(
+        n_estimators=1,
+        learning_rate=1.0,
+        max_depth=1,
+        min_samples_leaf=1,
+        fuzzy=True,
+        fuzzy_bandwidth=1.0,
+        fuzzy_kernel="gaussian",
+    )
+    try:
+        model.fit([[0.0], [1.0], [2.0], [3.0]], [0.0, 0.0, 10.0, 10.0])
+    except ImportError as exc:
+        pytest.skip(str(exc))
+
+    path = tmp_path / "fuzzy-kernel.json"
+    model.save(path)
+    loaded = GeoBoostRegressor.load(path)
+
+    assert loaded.fuzzy_kernel == "gaussian"
+    assert loaded.predict([[1.5]]) == pytest.approx(model.predict([[1.5]]))
 
 
 def test_rust_backend_quantile_and_monotonic_roundtrip(tmp_path: Path):

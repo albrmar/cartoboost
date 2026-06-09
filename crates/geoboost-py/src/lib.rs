@@ -1,10 +1,13 @@
 use geoboost_core::data::{FeatureSchema, SparseSetColumn};
 use geoboost_core::loss::{HuberLossConfig, LogL2LossConfig, LossConfig, QuantileLossConfig};
-use geoboost_core::tree::{FlatAxisPredictor, LeafPredictorKind, SplitterKind};
+use geoboost_core::tree::{FlatAxisPredictor, FuzzyKernel, LeafPredictorKind, SplitterKind};
 use geoboost_core::{Booster, BoosterConfig, Dataset, GeoBoostError, Model};
 use numpy::{IntoPyArray, PyArray1, PyReadonlyArray1, PyReadonlyArray2, PyUntypedArrayMethods};
 use pyo3::exceptions::{PyIOError, PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
+use pyo3::types::PyModule;
+use serde_json::{json, Value};
+use std::cmp::Ordering;
 use std::path::PathBuf;
 
 #[pyclass(name = "GeoBoostRegressor")]
@@ -26,6 +29,7 @@ struct NativeGeoBoostRegressor {
     constant_l2_regularization: f64,
     fuzzy: bool,
     fuzzy_bandwidth: f64,
+    fuzzy_kernel: String,
     monotonic_constraints: Vec<i8>,
     model: Option<Model>,
     flat_axis_predictor: Option<FlatAxisPredictor>,
@@ -34,7 +38,7 @@ struct NativeGeoBoostRegressor {
 #[pymethods]
 impl NativeGeoBoostRegressor {
     #[new]
-    #[pyo3(signature = (n_estimators=100, learning_rate=0.05, max_depth=4, min_samples_leaf=20, min_gain=1e-8, loss="l2", quantile_alpha=0.5, huber_delta=1.0, log_offset=1.0, splitters=None, leaf_predictor="constant", linear_leaf_features=None, l2_regularization=1.0, constant_l2_regularization=0.0, fuzzy=false, fuzzy_bandwidth=0.0, monotonic_constraints=None))]
+    #[pyo3(signature = (n_estimators=100, learning_rate=0.05, max_depth=4, min_samples_leaf=20, min_gain=1e-8, loss="l2", quantile_alpha=0.5, huber_delta=1.0, log_offset=1.0, splitters=None, leaf_predictor="constant", linear_leaf_features=None, l2_regularization=1.0, constant_l2_regularization=0.0, fuzzy=false, fuzzy_bandwidth=0.0, fuzzy_kernel="linear", monotonic_constraints=None))]
     #[allow(clippy::too_many_arguments)]
     fn new(
         n_estimators: usize,
@@ -53,6 +57,7 @@ impl NativeGeoBoostRegressor {
         constant_l2_regularization: f64,
         fuzzy: bool,
         fuzzy_bandwidth: f64,
+        fuzzy_kernel: &str,
         monotonic_constraints: Option<Vec<i8>>,
     ) -> PyResult<Self> {
         validate_params(
@@ -72,6 +77,7 @@ impl NativeGeoBoostRegressor {
         let splitters = splitters.unwrap_or_else(|| vec!["axis".to_string()]);
         parse_splitters(&splitters)?;
         parse_leaf_predictor(leaf_predictor)?;
+        parse_fuzzy_kernel(fuzzy_kernel)?;
 
         Ok(Self {
             n_estimators,
@@ -90,6 +96,7 @@ impl NativeGeoBoostRegressor {
             constant_l2_regularization,
             fuzzy,
             fuzzy_bandwidth,
+            fuzzy_kernel: fuzzy_kernel.to_string(),
             monotonic_constraints: monotonic_constraints.unwrap_or_default(),
             model: None,
             flat_axis_predictor: None,
@@ -127,6 +134,7 @@ impl NativeGeoBoostRegressor {
             constant_lambda_l2: self.constant_l2_regularization,
             fuzzy: self.fuzzy,
             fuzzy_bandwidth: self.fuzzy_bandwidth,
+            fuzzy_kernel: parse_fuzzy_kernel(&self.fuzzy_kernel)?,
             monotonic_constraints: self.monotonic_constraints.clone(),
         };
         self.set_model(
@@ -374,6 +382,11 @@ impl NativeGeoBoostRegressor {
     }
 
     #[getter]
+    fn fuzzy_kernel(&self) -> String {
+        self.fuzzy_kernel.clone()
+    }
+
+    #[getter]
     fn monotonic_constraints(&self) -> Vec<i8> {
         self.monotonic_constraints.clone()
     }
@@ -448,6 +461,7 @@ impl NativeGeoBoostRegressor {
             constant_l2_regularization,
             fuzzy,
             fuzzy_bandwidth,
+            fuzzy_kernel,
             monotonic_constraints,
         ) = if let Some(config) = training_config {
             (
@@ -465,6 +479,7 @@ impl NativeGeoBoostRegressor {
                 config.constant_lambda_l2,
                 config.fuzzy,
                 config.fuzzy_bandwidth,
+                fuzzy_kernel_name(config.fuzzy_kernel).to_string(),
                 config.monotonic_constraints,
             )
         } else {
@@ -483,6 +498,7 @@ impl NativeGeoBoostRegressor {
                 0.0,
                 false,
                 0.0,
+                "linear".to_string(),
                 Vec::new(),
             )
         };
@@ -503,6 +519,7 @@ impl NativeGeoBoostRegressor {
             constant_l2_regularization,
             fuzzy,
             fuzzy_bandwidth,
+            fuzzy_kernel,
             monotonic_constraints,
             model: Some(model),
             flat_axis_predictor: None,
@@ -540,6 +557,7 @@ impl NativeGeoBoostRegressor {
             constant_lambda_l2: self.constant_l2_regularization,
             fuzzy: self.fuzzy,
             fuzzy_bandwidth: self.fuzzy_bandwidth,
+            fuzzy_kernel: parse_fuzzy_kernel(&self.fuzzy_kernel)?,
             monotonic_constraints: self.monotonic_constraints.clone(),
         };
         self.set_model(
@@ -613,6 +631,31 @@ fn parse_leaf_predictor(name: &str) -> PyResult<LeafPredictorKind> {
     }
 }
 
+fn parse_fuzzy_kernel(name: &str) -> PyResult<FuzzyKernel> {
+    match name {
+        "linear" | "triangular" => Ok(FuzzyKernel::Linear),
+        "gaussian" => Ok(FuzzyKernel::Gaussian),
+        "exponential" => Ok(FuzzyKernel::Exponential),
+        "bisquare" => Ok(FuzzyKernel::Bisquare),
+        "epanechnikov" => Ok(FuzzyKernel::Epanechnikov),
+        "tricube" => Ok(FuzzyKernel::Tricube),
+        _ => Err(PyValueError::new_err(format!(
+            "unknown fuzzy_kernel {name:?}; expected 'linear', 'gaussian', 'exponential', 'bisquare', 'epanechnikov', or 'tricube'"
+        ))),
+    }
+}
+
+fn fuzzy_kernel_name(kernel: FuzzyKernel) -> &'static str {
+    match kernel {
+        FuzzyKernel::Linear => "linear",
+        FuzzyKernel::Gaussian => "gaussian",
+        FuzzyKernel::Exponential => "exponential",
+        FuzzyKernel::Bisquare => "bisquare",
+        FuzzyKernel::Epanechnikov => "epanechnikov",
+        FuzzyKernel::Tricube => "tricube",
+    }
+}
+
 fn parse_loss(
     name: &str,
     quantile_alpha: f64,
@@ -621,6 +664,7 @@ fn parse_loss(
 ) -> PyResult<LossConfig> {
     match name {
         "l2" | "squared_error" => Ok(LossConfig::L2),
+        "l1" | "mae" | "absolute_error" | "least_absolute_deviation" | "lad" => Ok(LossConfig::L1),
         "huber" => {
             if !huber_delta.is_finite() || huber_delta <= 0.0 {
                 return Err(PyValueError::new_err(
@@ -653,7 +697,7 @@ fn parse_loss(
             }))
         }
         _ => Err(PyValueError::new_err(format!(
-            "unknown loss {name:?}; expected 'l2', 'huber', 'log_l2', or 'quantile'"
+            "unknown loss {name:?}; expected 'l2', 'l1', 'huber', 'log_l2', or 'quantile'"
         ))),
     }
 }
@@ -661,6 +705,7 @@ fn parse_loss(
 fn loss_name(loss: &LossConfig) -> &'static str {
     match loss {
         LossConfig::L2 => "l2",
+        LossConfig::L1 => "l1",
         LossConfig::Huber(_) => "huber",
         LossConfig::LogL2(_) => "log_l2",
         LossConfig::Quantile(_) => "quantile",
@@ -669,7 +714,7 @@ fn loss_name(loss: &LossConfig) -> &'static str {
 
 fn quantile_alpha(loss: &LossConfig) -> f64 {
     match loss {
-        LossConfig::L2 | LossConfig::Huber(_) | LossConfig::LogL2(_) => 0.5,
+        LossConfig::L2 | LossConfig::L1 | LossConfig::Huber(_) | LossConfig::LogL2(_) => 0.5,
         LossConfig::Quantile(config) => config.alpha,
     }
 }
@@ -891,6 +936,449 @@ fn encoded_sparse_sets(
     Ok(columns)
 }
 
+#[derive(Clone)]
+struct OverlayPoint {
+    id: String,
+    coordinates: (f64, f64),
+    properties: serde_json::Map<String, Value>,
+}
+
+struct OverlayZone {
+    id: String,
+    priority: f64,
+    bbox: (f64, f64, f64, f64),
+    ring: Vec<(f64, f64)>,
+}
+
+#[pyfunction(signature = (points, zones, weights, origin=None, zone_priority_multiplier=true, kernel="none", bandwidth_meters=None, distance_alpha=0.0, precision=6, include_debug=false))]
+#[allow(clippy::too_many_arguments)]
+fn weighted_overlay(
+    py: Python<'_>,
+    points: Bound<'_, PyAny>,
+    zones: Bound<'_, PyAny>,
+    weights: Bound<'_, PyAny>,
+    origin: Option<(f64, f64)>,
+    zone_priority_multiplier: bool,
+    kernel: &str,
+    bandwidth_meters: Option<f64>,
+    distance_alpha: f64,
+    precision: usize,
+    include_debug: bool,
+) -> PyResult<Py<PyAny>> {
+    let json_module = PyModule::import(py, "json")?;
+    let points_payload = json_module
+        .call_method1("dumps", (points,))?
+        .extract::<String>()?;
+    let zones_payload = json_module
+        .call_method1("dumps", (zones,))?
+        .extract::<String>()?;
+    let weights_payload = json_module
+        .call_method1("dumps", (weights,))?
+        .extract::<String>()?;
+
+    let points_value = serde_json::from_str::<Value>(&points_payload)
+        .map_err(|err| PyValueError::new_err(format!("invalid points payload: {err}")))?;
+    let zones_value = serde_json::from_str::<Value>(&zones_payload)
+        .map_err(|err| PyValueError::new_err(format!("invalid zones payload: {err}")))?;
+    let weights_value = serde_json::from_str::<Value>(&weights_payload)
+        .map_err(|err| PyValueError::new_err(format!("invalid weights payload: {err}")))?;
+
+    let result = weighted_overlay_impl(
+        &points_value,
+        &zones_value,
+        &weights_value,
+        origin,
+        zone_priority_multiplier,
+        kernel,
+        bandwidth_meters,
+        distance_alpha,
+        precision,
+        include_debug,
+    )
+    .map_err(PyValueError::new_err)?;
+
+    let payload = serde_json::to_string(&result).map_err(|err| {
+        PyValueError::new_err(format!("failed to serialize overlay result: {err}"))
+    })?;
+    Ok(json_module.call_method1("loads", (payload,))?.unbind())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn weighted_overlay_impl(
+    points: &Value,
+    zones: &Value,
+    weights: &Value,
+    origin: Option<(f64, f64)>,
+    zone_priority_multiplier: bool,
+    kernel: &str,
+    bandwidth_meters: Option<f64>,
+    distance_alpha: f64,
+    precision: usize,
+    include_debug: bool,
+) -> Result<Value, String> {
+    let overlay_points = parse_overlay_points(points)?;
+    let overlay_zones = parse_overlay_zones(zones)?;
+    let weight_map = weights
+        .as_object()
+        .ok_or_else(|| "weights must be a JSON object".to_string())?;
+
+    let mut features = Vec::with_capacity(overlay_points.len());
+    for point in &overlay_points {
+        let zone = locate_zone(&overlay_zones, point.coordinates)?;
+        let linear_score = weight_map.iter().try_fold(0.0, |score, (name, weight)| {
+            let weight_value = weight
+                .as_f64()
+                .ok_or_else(|| format!("weight {name:?} must be numeric"))?;
+            let property_value = point
+                .properties
+                .get(name)
+                .and_then(Value::as_f64)
+                .unwrap_or(0.0);
+            Ok::<f64, String>(score + weight_value * property_value)
+        })?;
+
+        let priority = if zone_priority_multiplier {
+            zone.priority
+        } else {
+            1.0
+        };
+
+        let spatial_term = if origin.is_some() && kernel != "none" && distance_alpha != 0.0 {
+            let bandwidth =
+                resolve_bandwidth(bandwidth_meters, point.coordinates, &overlay_points)?;
+            let distance = haversine_meters(origin.unwrap(), point.coordinates);
+            distance_alpha * kernel_weight(distance, bandwidth, kernel)?
+        } else {
+            0.0
+        };
+
+        let mut feature = json!({
+            "id": point.id,
+            "zone_id": zone.id,
+            "boost_score": round_half_even(linear_score * priority * (1.0 + spatial_term), precision),
+        });
+        if include_debug {
+            feature["debug"] = json!({
+                "linear": round_half_even(linear_score, precision),
+                "priority": round_half_even(priority, precision),
+                "spatial_term": round_half_even(spatial_term, precision),
+            });
+        }
+        features.push(feature);
+    }
+
+    features.sort_by(|left, right| {
+        let right_score = right["boost_score"].as_f64().unwrap_or(f64::NEG_INFINITY);
+        let left_score = left["boost_score"].as_f64().unwrap_or(f64::NEG_INFINITY);
+        right_score
+            .partial_cmp(&left_score)
+            .unwrap_or(Ordering::Equal)
+            .then_with(|| {
+                left["id"]
+                    .as_str()
+                    .unwrap_or("")
+                    .cmp(right["id"].as_str().unwrap_or(""))
+            })
+    });
+    for (rank, feature) in features.iter_mut().enumerate() {
+        feature["rank"] = json!(rank + 1);
+    }
+
+    let points_name = points
+        .get("name")
+        .and_then(Value::as_str)
+        .or_else(|| points.get("type").and_then(Value::as_str))
+        .unwrap_or("points");
+    let zones_name = zones
+        .get("name")
+        .and_then(Value::as_str)
+        .or_else(|| zones.get("type").and_then(Value::as_str))
+        .unwrap_or("zones");
+
+    let mut config = json!({
+        "algorithm": "weighted_overlay",
+        "weights": weights.clone(),
+        "zone_priority_multiplier": zone_priority_multiplier,
+        "rounding": {
+            "places": precision,
+            "mode": "half_even",
+        },
+    });
+    if origin.is_some() || kernel != "none" || distance_alpha != 0.0 {
+        config["distance_term"] = json!({
+            "enabled": origin.is_some() && kernel != "none" && distance_alpha != 0.0,
+            "source": if origin.is_some() { Value::String("origin".to_string()) } else { Value::Null },
+            "kernel": kernel,
+            "bandwidth_meters": bandwidth_meters,
+            "distance_alpha": distance_alpha,
+        });
+    }
+
+    Ok(json!({
+        "schema_version": 1,
+        "scenario": format!("{points_name}_x_{zones_name}"),
+        "config": config,
+        "features": features,
+    }))
+}
+
+fn parse_overlay_points(points: &Value) -> Result<Vec<OverlayPoint>, String> {
+    let features = points
+        .get("features")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "points must contain a features array".to_string())?;
+    features
+        .iter()
+        .map(|feature| {
+            let id = feature
+                .get("id")
+                .and_then(Value::as_str)
+                .ok_or_else(|| "point features must provide an id".to_string())?;
+            let geometry = feature
+                .get("geometry")
+                .ok_or_else(|| format!("point feature {id:?} is missing geometry"))?;
+            let geometry_type = geometry
+                .get("type")
+                .and_then(Value::as_str)
+                .ok_or_else(|| format!("point feature {id:?} geometry is missing type"))?;
+            if geometry_type != "Point" {
+                return Err(format!("point feature {id:?} must use Point geometry"));
+            }
+            let coordinates = geometry
+                .get("coordinates")
+                .and_then(Value::as_array)
+                .ok_or_else(|| format!("point feature {id:?} is missing coordinates"))?;
+            if coordinates.len() < 2 {
+                return Err(format!(
+                    "point feature {id:?} must provide [x, y] coordinates"
+                ));
+            }
+            let x = coordinates[0]
+                .as_f64()
+                .ok_or_else(|| format!("point feature {id:?} x coordinate must be numeric"))?;
+            let y = coordinates[1]
+                .as_f64()
+                .ok_or_else(|| format!("point feature {id:?} y coordinate must be numeric"))?;
+            let properties = feature
+                .get("properties")
+                .and_then(Value::as_object)
+                .cloned()
+                .unwrap_or_default();
+            Ok(OverlayPoint {
+                id: id.to_string(),
+                coordinates: (x, y),
+                properties,
+            })
+        })
+        .collect()
+}
+
+fn parse_overlay_zones(zones: &Value) -> Result<Vec<OverlayZone>, String> {
+    let features = zones
+        .get("features")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "zones must contain a features array".to_string())?;
+    features
+        .iter()
+        .map(|feature| {
+            let id = feature
+                .get("id")
+                .and_then(Value::as_str)
+                .ok_or_else(|| "zone features must provide an id".to_string())?;
+            let geometry = feature
+                .get("geometry")
+                .ok_or_else(|| format!("zone feature {id:?} is missing geometry"))?;
+            let geometry_type = geometry
+                .get("type")
+                .and_then(Value::as_str)
+                .ok_or_else(|| format!("zone feature {id:?} geometry is missing type"))?;
+            if geometry_type != "Polygon" {
+                return Err(format!("zone feature {id:?} must use Polygon geometry"));
+            }
+            let rings = geometry
+                .get("coordinates")
+                .and_then(Value::as_array)
+                .ok_or_else(|| format!("zone feature {id:?} is missing polygon coordinates"))?;
+            let outer_ring = rings
+                .first()
+                .and_then(Value::as_array)
+                .ok_or_else(|| format!("zone feature {id:?} is missing an outer ring"))?;
+            let ring = outer_ring
+                .iter()
+                .map(|coordinate| {
+                    let pair = coordinate.as_array().ok_or_else(|| {
+                        format!("zone feature {id:?} ring coordinates must be arrays")
+                    })?;
+                    if pair.len() < 2 {
+                        return Err(format!(
+                            "zone feature {id:?} ring coordinates must have two values"
+                        ));
+                    }
+                    let x = pair[0].as_f64().ok_or_else(|| {
+                        format!("zone feature {id:?} x coordinate must be numeric")
+                    })?;
+                    let y = pair[1].as_f64().ok_or_else(|| {
+                        format!("zone feature {id:?} y coordinate must be numeric")
+                    })?;
+                    Ok((x, y))
+                })
+                .collect::<Result<Vec<_>, String>>()?;
+            let bbox = bounding_box(&ring)?;
+            let priority = feature
+                .get("properties")
+                .and_then(Value::as_object)
+                .and_then(|properties| properties.get("priority"))
+                .and_then(Value::as_f64)
+                .unwrap_or(1.0);
+            Ok(OverlayZone {
+                id: id.to_string(),
+                priority,
+                bbox,
+                ring,
+            })
+        })
+        .collect()
+}
+
+fn locate_zone(zones: &[OverlayZone], point: (f64, f64)) -> Result<&OverlayZone, String> {
+    let (x, y) = point;
+    zones
+        .iter()
+        .find(|zone| {
+            let (min_x, min_y, max_x, max_y) = zone.bbox;
+            min_x <= x
+                && x <= max_x
+                && min_y <= y
+                && y <= max_y
+                && point_in_polygon(point, &zone.ring)
+        })
+        .ok_or_else(|| format!("point ({x}, {y}) does not belong to any zone"))
+}
+
+fn bounding_box(ring: &[(f64, f64)]) -> Result<(f64, f64, f64, f64), String> {
+    if ring.is_empty() {
+        return Err("polygon ring must not be empty".to_string());
+    }
+    let mut min_x = f64::INFINITY;
+    let mut min_y = f64::INFINITY;
+    let mut max_x = f64::NEG_INFINITY;
+    let mut max_y = f64::NEG_INFINITY;
+    for (x, y) in ring {
+        min_x = min_x.min(*x);
+        min_y = min_y.min(*y);
+        max_x = max_x.max(*x);
+        max_y = max_y.max(*y);
+    }
+    Ok((min_x, min_y, max_x, max_y))
+}
+
+fn point_in_polygon(point: (f64, f64), ring: &[(f64, f64)]) -> bool {
+    if ring.len() < 2 {
+        return false;
+    }
+    let (x, y) = point;
+    let mut inside = false;
+    for index in 0..(ring.len() - 1) {
+        let start = ring[index];
+        let end = ring[index + 1];
+        if point_on_segment(point, start, end) {
+            return true;
+        }
+        let intersects = (start.1 > y) != (end.1 > y);
+        if intersects {
+            let slope_x =
+                (end.0 - start.0) * (y - start.1) / ((end.1 - start.1).abs().max(1e-12)) + start.0;
+            if x <= slope_x {
+                inside = !inside;
+            }
+        }
+    }
+    inside
+}
+
+fn point_on_segment(point: (f64, f64), start: (f64, f64), end: (f64, f64)) -> bool {
+    let cross = (point.0 - start.0) * (end.1 - start.1) - (point.1 - start.1) * (end.0 - start.0);
+    if cross.abs() > 1e-9 {
+        return false;
+    }
+    let min_x = start.0.min(end.0) - 1e-9;
+    let max_x = start.0.max(end.0) + 1e-9;
+    let min_y = start.1.min(end.1) - 1e-9;
+    let max_y = start.1.max(end.1) + 1e-9;
+    min_x <= point.0 && point.0 <= max_x && min_y <= point.1 && point.1 <= max_y
+}
+
+fn resolve_bandwidth(
+    bandwidth_meters: Option<f64>,
+    point: (f64, f64),
+    points: &[OverlayPoint],
+) -> Result<f64, String> {
+    if let Some(bandwidth) = bandwidth_meters {
+        if !bandwidth.is_finite() || bandwidth <= 0.0 {
+            return Err("bandwidth_meters must be positive and finite".to_string());
+        }
+        return Ok(bandwidth);
+    }
+    let mut distances = points
+        .iter()
+        .filter(|candidate| candidate.coordinates != point)
+        .map(|candidate| haversine_meters(point, candidate.coordinates))
+        .collect::<Vec<_>>();
+    if distances.is_empty() {
+        return Ok(1.0);
+    }
+    distances.sort_by(|left, right| left.partial_cmp(right).unwrap_or(Ordering::Equal));
+    Ok(distances[distances.len().min(3) - 1].max(1.0))
+}
+
+fn kernel_weight(distance_meters: f64, bandwidth_meters: f64, kernel: &str) -> Result<f64, String> {
+    if !bandwidth_meters.is_finite() || bandwidth_meters <= 0.0 {
+        return Err("bandwidth_meters must be positive and finite".to_string());
+    }
+    let ratio = distance_meters / bandwidth_meters;
+    match kernel {
+        "none" => Ok(0.0),
+        "gaussian" => Ok((-0.5 * ratio * ratio).exp()),
+        "bisquare" => {
+            if ratio >= 1.0 {
+                Ok(0.0)
+            } else {
+                Ok((1.0 - ratio * ratio).powi(2))
+            }
+        }
+        "exponential" => Ok((-ratio).exp()),
+        _ => Err(format!("unknown kernel {kernel:?}")),
+    }
+}
+
+fn haversine_meters(origin: (f64, f64), destination: (f64, f64)) -> f64 {
+    let lon1 = origin.0.to_radians();
+    let lat1 = origin.1.to_radians();
+    let lon2 = destination.0.to_radians();
+    let lat2 = destination.1.to_radians();
+    let dlon = lon2 - lon1;
+    let dlat = lat2 - lat1;
+    let a = (dlat / 2.0).sin().powi(2) + lat1.cos() * lat2.cos() * (dlon / 2.0).sin().powi(2);
+    2.0 * 6_371_000.0 * a.sqrt().asin()
+}
+
+fn round_half_even(value: f64, precision: usize) -> f64 {
+    let factor = 10_f64.powi(precision as i32);
+    let scaled = value * factor;
+    let sign = if scaled.is_sign_negative() { -1.0 } else { 1.0 };
+    let scaled_abs = scaled.abs();
+    let lower = scaled_abs.floor();
+    let fraction = scaled_abs - lower;
+    let rounded = if fraction > 0.5 + 1e-12 {
+        lower + 1.0
+    } else if fraction < 0.5 - 1e-12 || (lower as i64) % 2 == 0 {
+        lower
+    } else {
+        lower + 1.0
+    };
+    sign * rounded / factor
+}
+
 fn to_py_value_error(err: GeoBoostError) -> PyErr {
     PyValueError::new_err(err.to_string())
 }
@@ -905,5 +1393,6 @@ fn to_py_error(err: GeoBoostError) -> PyErr {
 #[pymodule]
 fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<NativeGeoBoostRegressor>()?;
+    m.add_function(wrap_pyfunction!(weighted_overlay, m)?)?;
     Ok(())
 }

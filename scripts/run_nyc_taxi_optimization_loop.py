@@ -29,7 +29,7 @@ class Preset:
     n_estimators: int = 100
     learning_rate: float = 0.08
     max_depth: int = 5
-    splitters: str = "axis_histogram:512"
+    splitters: str = "axis_histogram:512,periodic:24,periodic:7,sparse_set"
     min_samples_leaf: int = 1
     constant_l2: float = 0.0
 
@@ -37,9 +37,13 @@ class Preset:
 BASELINE = Preset(name="baseline")
 
 
+def splitters_with_bins(bins: int) -> str:
+    return f"axis_histogram:{bins},periodic:24,periodic:7,sparse_set"
+
+
 PRESETS = [
-    Preset(name="01_bins_256", splitters="axis_histogram:256"),
-    Preset(name="02_bins_128", splitters="axis_histogram:128"),
+    Preset(name="01_bins_256", splitters=splitters_with_bins(256)),
+    Preset(name="02_bins_128", splitters=splitters_with_bins(128)),
     Preset(name="03_estimators_80_lr_010", n_estimators=80, learning_rate=0.10),
     Preset(name="04_estimators_75_lr_011", n_estimators=75, learning_rate=0.11),
     Preset(name="05_depth_4", max_depth=4),
@@ -47,14 +51,18 @@ PRESETS = [
         name="06_depth_4_estimators_80_lr_010", n_estimators=80, learning_rate=0.10, max_depth=4
     ),
     Preset(name="07_min_leaf_5", min_samples_leaf=5),
-    Preset(name="08_bins_256_min_leaf_5", splitters="axis_histogram:256", min_samples_leaf=5),
+    Preset(
+        name="08_bins_256_min_leaf_5",
+        splitters=splitters_with_bins(256),
+        min_samples_leaf=5,
+    ),
     Preset(name="09_estimators_60_lr_013", n_estimators=60, learning_rate=0.13),
     Preset(
         name="10_depth_4_estimators_60_lr_013_bins_256",
         n_estimators=60,
         learning_rate=0.13,
         max_depth=4,
-        splitters="axis_histogram:256",
+        splitters=splitters_with_bins(256),
     ),
 ]
 

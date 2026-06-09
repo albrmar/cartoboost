@@ -94,6 +94,7 @@ def test_real_native_save_load_restores_public_params_and_metadata(tmp_path):
         "linear_leaf_features": [],
         "fuzzy": True,
         "fuzzy_bandwidth": 0.5,
+        "fuzzy_kernel": "linear",
         "l2_regularization": 1.0,
         "constant_l2_regularization": 0.0,
         "random_state": None,
@@ -164,9 +165,6 @@ def test_native_sparse_list_prediction_requires_sparse_sets_after_load(tmp_path)
 
 
 def test_native_artifact_version_mismatch_errors_clearly(tmp_path):
-    if regressor_module._NativeGeoBoostRegressor is None:
-        pytest.skip("native extension is not installed")
-
     path = tmp_path / "future-native-artifact.json"
     path.write_text(
         json.dumps(
@@ -188,7 +186,7 @@ def test_native_artifact_version_mismatch_errors_clearly(tmp_path):
 
 def test_python_api_rejects_unsupported_objectives():
     with pytest.raises(ValueError, match="loss"):
-        GeoBoostRegressor(loss="l1").fit([[0.0], [1.0]], [0.0, 1.0])
+        GeoBoostRegressor(loss="poisson").fit([[0.0], [1.0]], [0.0, 1.0])
     with pytest.raises(ValueError, match="quantile_alpha"):
         GeoBoostRegressor(loss="quantile", quantile_alpha=1.0).fit([[0.0], [1.0]], [0.0, 1.0])
     with pytest.raises(ValueError, match="leaf_predictor"):
