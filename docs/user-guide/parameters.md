@@ -1,7 +1,7 @@
 # Parameters
 
 This page summarizes the public training controls exposed by
-`GeoBoostRegressor`, with emphasis on choosing splitters for temporal-spatial
+`CartoBoostRegressor`, with emphasis on choosing splitters for temporal-spatial
 regression.
 
 ## Core Boosting
@@ -29,7 +29,7 @@ regression.
 
 ## Splitters
 
-The splitter list is the main GeoBoost modeling choice. Start with `axis` as a
+The splitter list is the main CartoBoost modeling choice. Start with `axis` as a
 baseline, then add the splitters that match your data:
 
 | Name | Purpose |
@@ -95,5 +95,5 @@ splitters.
 
 ## Native Extension Requirement
 
-All training and prediction through `GeoBoostRegressor` uses the native
-extension. Build `geoboost._native` before fitting or loading models.
+All training and prediction through `CartoBoostRegressor` uses the native
+extension. Build `cartoboost._native` before fitting or loading models.

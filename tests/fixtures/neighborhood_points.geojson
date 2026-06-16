@@ -11,7 +11,7 @@
         "traffic_index": 0.82,
         "population_index": 0.74
       },
-      "geometry": {
+      "cartometry": {
         "type": "Point",
         "coordinates": [10.0, 10.0]
       }
@@ -25,7 +25,7 @@
         "traffic_index": 0.55,
         "population_index": 0.91
       },
-      "geometry": {
+      "cartometry": {
         "type": "Point",
         "coordinates": [20.0, 10.0]
       }
@@ -39,7 +39,7 @@
         "traffic_index": 0.22,
         "population_index": 0.36
       },
-      "geometry": {
+      "cartometry": {
         "type": "Point",
         "coordinates": [10.0, 30.0]
       }

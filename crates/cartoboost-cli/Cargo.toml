@@ -1,0 +1,13 @@
+[package]
+name = "cartoboost-cli"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Command-line smoke-test interface for CartoBoost workflows"
+
+[[bin]]
+name = "cartoboost"
+path = "src/main.rs"
+
+[dependencies]
+cartoboost-core = { path = "../cartoboost-core" }

@@ -10,7 +10,7 @@ def _repo_root() -> Path:
 
 def _run_cli(*args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        ["cargo", "run", "--quiet", "-p", "geoboost-cli", "--", *args],
+        ["cargo", "run", "--quiet", "-p", "cartoboost-cli", "--", *args],
         cwd=_repo_root(),
         text=True,
         capture_output=True,
@@ -30,7 +30,7 @@ def test_cli_train_accepts_max_depth_zero(tmp_path: Path) -> None:
     data = _write_training_csv(tmp_path)
     config = tmp_path / "config.toml"
     config.write_text('target = "target"\nmax_depth = 0\n', encoding="utf-8")
-    model = tmp_path / "model.geoboost"
+    model = tmp_path / "model.cartoboost"
 
     result = _run_cli(
         "train",
@@ -48,7 +48,7 @@ def test_cli_train_accepts_max_depth_zero(tmp_path: Path) -> None:
 
 def test_cli_dense_train_predict_eval_roundtrip(tmp_path: Path) -> None:
     data = _write_training_csv(tmp_path)
-    model = tmp_path / "model.geoboost"
+    model = tmp_path / "model.cartoboost"
     predictions = tmp_path / "predictions.csv"
     predict_input = tmp_path / "predict.csv"
     predict_input.write_text("x1,x2\n0,0\n1,1\n", encoding="utf-8")
@@ -84,7 +84,7 @@ def test_cli_help_exits_zero() -> None:
 
 def test_cli_predict_rejects_wrong_feature_count(tmp_path: Path) -> None:
     data = _write_training_csv(tmp_path)
-    model = tmp_path / "model.geoboost"
+    model = tmp_path / "model.cartoboost"
     train = _run_cli("train", "--data", str(data), "--model-out", str(model))
     assert train.returncode == 0, train.stderr
     input_csv = tmp_path / "predict.csv"

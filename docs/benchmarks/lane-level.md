@@ -24,20 +24,20 @@ Generated outputs live under `docs/assets/lane_level_tests/`:
 
 - `acceptance_metrics.json`
 - `acceptance_metrics.md`
-- `route_midpoint_geometry.png`
+- `route_midpoint_cartometry.png`
 - `hour_profile.png`
 - `lane_heatmap.png`
 
-Use these files to inspect route geometry, hour effects, lane-level residuals,
+Use these files to inspect route cartometry, hour effects, lane-level residuals,
 and combined split behavior.
 
 ## What The Check Proves
 
-The lane-level dataset is intended to show whether GeoBoost captures:
+The lane-level dataset is intended to show whether CartoBoost captures:
 
 - Route-cell sparse-set encoding.
 - Temporal profile behavior.
-- Spatial route geometry behavior.
+- Spatial route cartometry behavior.
 - Combined split behavior when several feature families are present.
 
 It is not a production quality benchmark. Any broader benchmark claim needs a

@@ -1,6 +1,6 @@
+use cartoboost_core::tree::{Node, PredictionTransform, Split, Tree, MODEL_ARTIFACT_VERSION};
+use cartoboost_core::{Dataset, Model};
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
-use geoboost_core::tree::{Node, PredictionTransform, Split, Tree, MODEL_ARTIFACT_VERSION};
-use geoboost_core::{Dataset, Model};
 
 fn synthetic_values(rows: usize, cols: usize) -> Vec<f64> {
     (0..rows * cols)

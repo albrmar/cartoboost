@@ -48,7 +48,7 @@ def write_plot(estimates: list[dict[str, float | str]], output: Path) -> None:
     _, axis = plt.subplots(figsize=(max(8, len(labels) * 0.8), 4.5))
     axis.bar(labels, values, color="#2f6f73")
     axis.set_ylabel("mean time (ms)")
-    axis.set_title("GeoBoost benchmark summary")
+    axis.set_title("CartoBoost benchmark summary")
     axis.tick_params(axis="x", rotation=35)
     axis.grid(axis="y", alpha=0.25)
     plt.tight_layout()

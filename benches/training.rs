@@ -1,6 +1,6 @@
+use cartoboost_core::tree::SplitterKind;
+use cartoboost_core::{Booster, BoosterConfig, Dataset};
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
-use geoboost_core::tree::SplitterKind;
-use geoboost_core::{Booster, BoosterConfig, Dataset};
 
 fn training_fixture(rows: usize, cols: usize) -> (Dataset, Vec<f64>) {
     let values = (0..rows * cols)

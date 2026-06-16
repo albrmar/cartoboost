@@ -1,8 +1,8 @@
-site_name: GeoBoost
-site_description: User documentation for GeoBoost regression tooling.
-site_url: https://theculliganman.github.io/geoboost/
-repo_url: https://github.com/theculliganman/geoboost
-repo_name: theculliganman/geoboost
+site_name: CartoBoost
+site_description: User documentation for CartoBoost regression tooling.
+site_url: https://theculliganman.github.io/cartoboost/
+repo_url: https://github.com/theculliganman/cartoboost
+repo_name: theculliganman/cartoboost
 edit_uri: edit/main/docs/
 
 theme:

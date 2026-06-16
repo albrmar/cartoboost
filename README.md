@@ -1,11 +1,11 @@
-# geoboost
+# cartoboost
 
-GeoBoost is a Rust-backed Python regressor for temporal-spatial problems:
+CartoBoost is a Rust-backed Python regressor for temporal-spatial problems:
 demand by zone and time, route or lane performance, delivery ETA residuals,
 pickup/dropoff pricing effects, and other targets where place, time, and sparse
 location memberships matter.
 
-GeoBoost is useful when a plain tabular booster needs a lot of manual feature
+CartoBoost is useful when a plain tabular booster needs a lot of manual feature
 engineering to see the structure in the data. It can train with:
 
 - Periodic splitters for hour-of-day, weekday, seasonality, or other wraparound
@@ -32,7 +32,7 @@ uv run --group dev maturin develop
 `maturin develop` builds the native extension used by the Python estimator.
 Training and prediction require that extension.
 
-To tune GeoBoost with Optuna, install the optional dependency:
+To tune CartoBoost with Optuna, install the optional dependency:
 
 ```sh
 uv sync --group dev --extra optuna
@@ -41,9 +41,9 @@ uv sync --group dev --extra optuna
 ## Basic Regression
 
 ```python
-from geoboost import GeoBoostRegressor
+from cartoboost import CartoBoostRegressor
 
-model = GeoBoostRegressor(
+model = CartoBoostRegressor(
     n_estimators=100,
     learning_rate=0.05,
     max_depth=4,
@@ -64,11 +64,11 @@ Optuna works with the estimator through the standard sklearn contract:
 import optuna
 from sklearn.model_selection import cross_val_score
 
-from geoboost import GeoBoostRegressor
+from cartoboost import CartoBoostRegressor
 
 
 def objective(trial):
-  model = GeoBoostRegressor(
+  model = CartoBoostRegressor(
     n_estimators=trial.suggest_int("n_estimators", 50, 300),
     learning_rate=trial.suggest_float("learning_rate", 0.01, 0.2, log=True),
     max_depth=trial.suggest_int("max_depth", 1, 6),
@@ -86,7 +86,7 @@ def objective(trial):
 
 study = optuna.create_study(direction="minimize")
 study.optimize(objective, n_trials=30)
-best_model = GeoBoostRegressor(**study.best_params).fit(X_train, y_train)
+best_model = CartoBoostRegressor(**study.best_params).fit(X_train, y_train)
 ```
 
 ## Temporal-Spatial Example
@@ -95,7 +95,7 @@ Use dense columns for numeric location and time features, and sparse-set columns
 for memberships such as route cells or zones.
 
 ```python
-from geoboost import GeoBoostRegressor
+from cartoboost import CartoBoostRegressor
 
 schema = {
     "dense": [
@@ -109,7 +109,7 @@ schema = {
     ],
 }
 
-model = GeoBoostRegressor(
+model = CartoBoostRegressor(
     n_estimators=200,
     learning_rate=0.04,
     max_depth=5,
@@ -146,8 +146,8 @@ Why this helps:
 ## Save, Load, And Explain
 
 ```python
-model.save("model.geoboost.json")
-loaded = GeoBoostRegressor.load("model.geoboost.json")
+model.save("model.cartoboost.json")
+loaded = CartoBoostRegressor.load("model.cartoboost.json")
 
 explanation = loaded.explain_shap(
     X_test_dense,
@@ -167,9 +167,9 @@ The CLI handles dense numeric CSV train, predict, eval, and inspect workflows.
 Use the Python API for list-valued sparse route-cell features.
 
 ```sh
-geoboost train --data train.csv --config configs/regression.toml --model-out model.json
-geoboost predict --model model.json --input test.csv --predictions-out predictions.csv
-geoboost eval --model model.json --data test_with_target.csv
+cartoboost train --data train.csv --config configs/regression.toml --model-out model.json
+cartoboost predict --model model.json --input test.csv --predictions-out predictions.csv
+cartoboost eval --model model.json --data test_with_target.csv
 ```
 
 ## Documentation

@@ -4,8 +4,7 @@ import json
 
 import numpy as np
 import pytest
-from geoboost import GeoBoostRegressor
-from geoboost import regressor as regressor_module
+from cartoboost import CartoBoostRegressor
 
 
 def _radial_fixture() -> tuple[np.ndarray, np.ndarray]:
@@ -18,7 +17,7 @@ def _radial_fixture() -> tuple[np.ndarray, np.ndarray]:
 
 def test_native_fuzzy_gaussian_serialization_preserves_predictions(tmp_path):
     x, y = _radial_fixture()
-    model = GeoBoostRegressor(
+    model = CartoBoostRegressor(
         n_estimators=2,
         learning_rate=0.75,
         max_depth=1,
@@ -43,10 +42,10 @@ def test_native_fuzzy_gaussian_serialization_preserves_predictions(tmp_path):
         ]
     )
     before = model.predict(probes)
-    model_path = tmp_path / "fuzzy_gaussian.geoboost"
+    model_path = tmp_path / "fuzzy_gaussian.cartoboost"
     model.save(model_path)
 
-    restored = GeoBoostRegressor.load(model_path)
+    restored = CartoBoostRegressor.load(model_path)
 
     assert restored.predict(probes) == pytest.approx(before)
     assert restored.n_features_in_ == 2
@@ -55,7 +54,7 @@ def test_native_fuzzy_gaussian_serialization_preserves_predictions(tmp_path):
 def test_real_native_save_load_restores_public_params_and_metadata(tmp_path):
     x = np.array([[0.0, 0.0], [0.2, 0.0], [3.0, 0.0], [0.0, 3.0]])
     y = np.array([5.0, 5.0, -1.0, -1.0])
-    model = GeoBoostRegressor(
+    model = CartoBoostRegressor(
         n_estimators=2,
         learning_rate=0.25,
         max_depth=1,
@@ -72,11 +71,11 @@ def test_real_native_save_load_restores_public_params_and_metadata(tmp_path):
     except ImportError as exc:
         pytest.skip(str(exc))
 
-    path = tmp_path / "native-geoboost.json"
+    path = tmp_path / "native-cartoboost.json"
     before = model.predict(x)
     model.save(path)
 
-    restored = GeoBoostRegressor.load(path)
+    restored = CartoBoostRegressor.load(path)
 
     assert restored.get_params() == {
         "n_estimators": 2,
@@ -101,7 +100,7 @@ def test_real_native_save_load_restores_public_params_and_metadata(tmp_path):
         "n_threads": None,
         "monotonic_constraints": None,
     }
-    assert restored.metadata_["library_name"] == "geoboost-core"
+    assert restored.metadata_["library_name"] == "cartoboost-core"
     assert restored.training_config_["splitters"] == ["Gaussian2D"]
     assert restored.requires_sparse_sets_ is False
     assert restored.predict(x) == pytest.approx(before)
@@ -110,7 +109,7 @@ def test_real_native_save_load_restores_public_params_and_metadata(tmp_path):
 def test_real_native_save_weights_load_weights_restores_predictions(tmp_path):
     x = np.array([[0.0], [1.0], [2.0], [3.0]])
     y = np.array([0.0, 0.0, 5.0, 5.0])
-    model = GeoBoostRegressor(
+    model = CartoBoostRegressor(
         n_estimators=2,
         learning_rate=0.5,
         max_depth=1,
@@ -128,9 +127,9 @@ def test_real_native_save_weights_load_weights_restores_predictions(tmp_path):
     model.save_weights(path)
     payload = json.loads(path.read_text(encoding="utf-8"))
 
-    restored = GeoBoostRegressor.load_weights(path)
+    restored = CartoBoostRegressor.load_weights(path)
 
-    assert payload["artifact_type"] == "geoboost.weights"
+    assert payload["artifact_type"] == "cartoboost.weights"
     assert payload["weights_artifact_version"] == 1
     assert payload["backend"] == "rust"
     assert restored.predict(x) == pytest.approx(before)
@@ -140,7 +139,7 @@ def test_native_sparse_list_prediction_requires_sparse_sets_after_load(tmp_path)
     x = [[0.0], [0.0], [0.0], [0.0]]
     y = [7.0, 7.0, -2.0, -2.0]
     sparse_sets = {"route_cells": [[10, 20], [20, 30], [40], []]}
-    model = GeoBoostRegressor(
+    model = CartoBoostRegressor(
         n_estimators=1,
         learning_rate=1.0,
         max_depth=1,
@@ -154,9 +153,9 @@ def test_native_sparse_list_prediction_requires_sparse_sets_after_load(tmp_path)
     except ImportError as exc:
         pytest.skip(str(exc))
 
-    path = tmp_path / "native-sparse-geoboost.json"
+    path = tmp_path / "native-sparse-cartoboost.json"
     model.save(path)
-    restored = GeoBoostRegressor.load(path)
+    restored = CartoBoostRegressor.load(path)
 
     assert restored.requires_sparse_sets_ is True
     with pytest.raises(ValueError, match="sparse_sets are required"):
@@ -181,20 +180,20 @@ def test_native_artifact_version_mismatch_errors_clearly(tmp_path):
     )
 
     with pytest.raises(ValueError, match="unsupported model artifact version 999"):
-        GeoBoostRegressor.load(path)
+        CartoBoostRegressor.load(path)
 
 
 def test_python_api_rejects_unsupported_objectives():
     with pytest.raises(ValueError, match="loss"):
-        GeoBoostRegressor(loss="poisson").fit([[0.0], [1.0]], [0.0, 1.0])
+        CartoBoostRegressor(loss="poisson").fit([[0.0], [1.0]], [0.0, 1.0])
     with pytest.raises(ValueError, match="quantile_alpha"):
-        GeoBoostRegressor(loss="quantile", quantile_alpha=1.0).fit([[0.0], [1.0]], [0.0, 1.0])
+        CartoBoostRegressor(loss="quantile", quantile_alpha=1.0).fit([[0.0], [1.0]], [0.0, 1.0])
     with pytest.raises(ValueError, match="leaf_predictor"):
-        GeoBoostRegressor(leaf_predictor="spline").fit([[0.0], [1.0]], [0.0, 1.0])
+        CartoBoostRegressor(leaf_predictor="spline").fit([[0.0], [1.0]], [0.0, 1.0])
 
 
 def test_python_api_rejects_invalid_training_arrays():
-    model = GeoBoostRegressor()
+    model = CartoBoostRegressor()
 
     with pytest.raises(ValueError, match="same number of rows"):
         model.fit([[0.0], [1.0]], [0.0])
@@ -208,13 +207,13 @@ def test_python_api_rejects_invalid_training_arrays():
 
 def test_linear_leaf_feature_indices_are_validated():
     with pytest.raises(ValueError, match="stringified integer"):
-        GeoBoostRegressor(
+        CartoBoostRegressor(
             leaf_predictor="linear",
             linear_leaf_features=["distance"],
         ).fit([[0.0], [1.0]], [0.0, 1.0])
 
     with pytest.raises(ValueError, match="out of bounds"):
-        GeoBoostRegressor(
+        CartoBoostRegressor(
             leaf_predictor="linear",
             linear_leaf_features=["2"],
         ).fit([[0.0], [1.0]], [0.0, 1.0])

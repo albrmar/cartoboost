@@ -16,8 +16,8 @@ def test_full_validation_script_uses_native_estimator_without_backend_toggle():
 
     assert "scripts/run_splitter_acceptance_metrics.py" in full_validation
     assert "scripts/run_lane_level_acceptance_metrics.py" in full_validation
-    assert "GeoBoostRegressor(" in splitter_metrics
-    assert "GeoBoostRegressor(" in lane_metrics
+    assert "CartoBoostRegressor(" in splitter_metrics
+    assert "CartoBoostRegressor(" in lane_metrics
     backend_kwarg = "backend" + "="
     assert backend_kwarg not in splitter_metrics
     assert backend_kwarg not in lane_metrics

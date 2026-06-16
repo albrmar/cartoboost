@@ -8,7 +8,7 @@ checks prediction from Python and the CLI.
 - Rust stable toolchain.
 - Python 3.10 or newer.
 - `uv` 0.7 or newer.
-- A checkout of the GeoBoost repository.
+- A checkout of the CartoBoost repository.
 
 ## Install
 
@@ -17,18 +17,18 @@ uv sync --group dev
 uv run --group dev maturin develop
 ```
 
-`maturin develop` builds `geoboost._native` and installs it into the `uv`
+`maturin develop` builds `cartoboost._native` and installs it into the `uv`
 environment. The Python estimator requires this native extension.
 
 ## Train From Python
 
 ```python
-from geoboost import GeoBoostRegressor
+from cartoboost import CartoBoostRegressor
 
 X = [[0.0], [1.0], [2.0], [3.0]]
 y = [0.0, 1.0, 2.0, 3.0]
 
-model = GeoBoostRegressor(
+model = CartoBoostRegressor(
     n_estimators=20,
     learning_rate=0.1,
     max_depth=2,
@@ -43,7 +43,7 @@ predictions = model.predict([[1.5], [2.5]])
 For a temporal-spatial model, add splitters that match the feature structure:
 
 ```python
-model = GeoBoostRegressor(
+model = CartoBoostRegressor(
     n_estimators=100,
     learning_rate=0.05,
     max_depth=4,
@@ -81,8 +81,8 @@ splitter = "axis"
 Run:
 
 ```sh
-cargo run -p geoboost-cli -- train --data train.csv --config config.toml --model-out model.json
-cargo run -p geoboost-cli -- predict --model model.json --input train.csv --predictions-out predictions.csv
+cargo run -p cartoboost-cli -- train --data train.csv --config config.toml --model-out model.json
+cargo run -p cartoboost-cli -- predict --model model.json --input train.csv --predictions-out predictions.csv
 ```
 
 The CLI expects dense numeric CSV input. Use the Python estimator for sparse-set
@@ -91,14 +91,14 @@ route-cell features.
 ## Save And Reload
 
 ```python
-model.save("model.geoboost.json")
-loaded = GeoBoostRegressor.load("model.geoboost.json")
+model.save("model.cartoboost.json")
+loaded = CartoBoostRegressor.load("model.cartoboost.json")
 
 model.save_weights("model.weights.json")
-weights_loaded = GeoBoostRegressor.load_weights("model.weights.json")
+weights_loaded = CartoBoostRegressor.load_weights("model.weights.json")
 ```
 
-Use `save` for GeoBoost JSON model artifacts and `save_weights` for portable
+Use `save` for CartoBoost JSON model artifacts and `save_weights` for portable
 prediction artifacts. ONNX export is available only for dense axis-tree
 constant-leaf models when the optional `onnx` dependency is installed.
 
@@ -122,7 +122,7 @@ For temporal-spatial problems, hold out the latest rows before trusting model
 quality:
 
 ```python
-from geoboost import out_of_time_split
+from cartoboost import out_of_time_split
 
 train_idx, validation_idx = out_of_time_split(
     pickup_times,

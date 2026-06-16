@@ -1,6 +1,6 @@
 import numpy as np
 import pytest
-from geoboost import (
+from cartoboost import (
     grouped_blocked_cv,
     out_of_time_split,
     spatial_blocked_cv,

@@ -1,10 +1,10 @@
-# GeoBoost Agent Guide
+# CartoBoost Agent Guide
 
 ## Dev environment tips
-- This repository is a Rust workspace with Python bindings and a Python package for GeoBoost regression tooling.
+- This repository is a Rust workspace with Python bindings and a Python package for CartoBoost regression tooling.
 - Use `uv sync --group dev` to prepare the Python development environment.
-- Use `uv run --group dev maturin develop` after native binding changes so `geoboost._native` is available to Python tests.
-- Keep shared model behavior in `crates/geoboost-core`; keep CLI-only behavior in `crates/geoboost-cli`, PyO3 bindings in `crates/geoboost-py`, and Python API ergonomics in `python/geoboost`.
+- Use `uv run --group dev maturin develop` after native binding changes so `cartoboost._native` is available to Python tests.
+- Keep shared model behavior in `crates/cartoboost-core`; keep CLI-only behavior in `crates/cartoboost-cli`, PyO3 bindings in `crates/cartoboost-py`, and Python API ergonomics in `python/cartoboost`.
 - Do not edit build output, virtualenvs, caches, downloaded data, or benchmark output under `target/`, `.venv/`, `.pytest_cache/`, `data/`, or generated plot folders unless the task explicitly asks for generated artifacts.
 
 ## Testing instructions

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run repeated NYC taxi benchmarks and summarize GeoBoost speed ratios."""
+"""Run repeated NYC taxi benchmarks and summarize CartoBoost speed ratios."""
 
 from __future__ import annotations
 
@@ -30,23 +30,23 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--sample-size", type=int, default=25_000)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--tasks", default="")
-    parser.add_argument("--models", default="geoboost,geoboost_reference,lightgbm,xgboost,mean")
+    parser.add_argument("--models", default="cartoboost,cartoboost_reference,lightgbm,xgboost,mean")
     parser.add_argument("--n-estimators", type=int, default=100)
-    parser.add_argument("--geoboost-n-estimators", type=int, default=100)
+    parser.add_argument("--cartoboost-n-estimators", type=int, default=100)
     parser.add_argument("--learning-rate", type=float, default=0.08)
     parser.add_argument("--max-depth", type=int, default=4)
-    parser.add_argument("--geoboost-max-depth", type=int, default=5)
+    parser.add_argument("--cartoboost-max-depth", type=int, default=5)
     parser.add_argument(
-        "--geoboost-splitters",
+        "--cartoboost-splitters",
         default="axis_histogram:512,periodic:24,periodic:7,sparse_set",
     )
-    parser.add_argument("--geoboost-min-samples-leaf", type=int, default=1)
-    parser.add_argument("--geoboost-constant-l2", type=float, default=0.0)
+    parser.add_argument("--cartoboost-min-samples-leaf", type=int, default=1)
+    parser.add_argument("--cartoboost-constant-l2", type=float, default=0.0)
     parser.add_argument(
-        "--geoboost-leaf-predictor", default="constant", choices=["constant", "linear"]
+        "--cartoboost-leaf-predictor", default="constant", choices=["constant", "linear"]
     )
-    parser.add_argument("--geoboost-init", default="constant", choices=["constant", "linear"])
-    parser.add_argument("--geoboost-calibration", default="none", choices=["none", "affine"])
+    parser.add_argument("--cartoboost-init", default="constant", choices=["constant", "linear"])
+    parser.add_argument("--cartoboost-calibration", default="none", choices=["none", "affine"])
     parser.add_argument(
         "--xgboost-tree-method",
         default="hist",
@@ -63,7 +63,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--profile-fit",
         action="store_true",
-        help="Set GEOBOOST_PROFILE_FIT=1 for each benchmark subprocess.",
+        help="Set CARTOBOOST_PROFILE_FIT=1 for each benchmark subprocess.",
     )
     return parser.parse_args()
 
@@ -78,26 +78,26 @@ def benchmark_command(args: argparse.Namespace, output_dir: Path) -> list[str]:
         args.models,
         "--n-estimators",
         str(args.n_estimators),
-        "--geoboost-n-estimators",
-        str(args.geoboost_n_estimators),
+        "--cartoboost-n-estimators",
+        str(args.cartoboost_n_estimators),
         "--learning-rate",
         str(args.learning_rate),
         "--max-depth",
         str(args.max_depth),
-        "--geoboost-max-depth",
-        str(args.geoboost_max_depth),
-        "--geoboost-splitters",
-        args.geoboost_splitters,
-        "--geoboost-min-samples-leaf",
-        str(args.geoboost_min_samples_leaf),
-        "--geoboost-constant-l2",
-        str(args.geoboost_constant_l2),
-        "--geoboost-leaf-predictor",
-        args.geoboost_leaf_predictor,
-        "--geoboost-init",
-        args.geoboost_init,
-        "--geoboost-calibration",
-        args.geoboost_calibration,
+        "--cartoboost-max-depth",
+        str(args.cartoboost_max_depth),
+        "--cartoboost-splitters",
+        args.cartoboost_splitters,
+        "--cartoboost-min-samples-leaf",
+        str(args.cartoboost_min_samples_leaf),
+        "--cartoboost-constant-l2",
+        str(args.cartoboost_constant_l2),
+        "--cartoboost-leaf-predictor",
+        args.cartoboost_leaf_predictor,
+        "--cartoboost-init",
+        args.cartoboost_init,
+        "--cartoboost-calibration",
+        args.cartoboost_calibration,
         "--xgboost-tree-method",
         args.xgboost_tree_method,
         "--xgboost-max-bin",
@@ -140,7 +140,7 @@ def run_once(args: argparse.Namespace, run_index: int) -> dict[str, Any]:
     output_dir.mkdir(parents=True, exist_ok=True)
     env = None
     if args.profile_fit:
-        env = {**os.environ, "GEOBOOST_PROFILE_FIT": "1"}
+        env = {**os.environ, "CARTOBOOST_PROFILE_FIT": "1"}
     subprocess.run(benchmark_command(args, output_dir), cwd=ROOT, check=True, env=env)
     return json.loads((output_dir / "results.json").read_text(encoding="utf-8"))
 
@@ -151,44 +151,44 @@ def collect_ratios(results: list[dict[str, Any]]) -> dict[str, Any]:
         for task_name, task in result["tasks"].items():
             for split_name, split in task["splits"].items():
                 models = split["models"]
-                geoboost = models.get("geoboost")
-                if geoboost is None or geoboost["status"] != "ok":
+                cartoboost = models.get("cartoboost")
+                if cartoboost is None or cartoboost["status"] != "ok":
                     continue
                 xgboost = models.get("xgboost")
                 if xgboost is None or xgboost["status"] != "ok":
                     continue
-                geoboost_reference = models.get("geoboost_reference")
-                geo_timing = geoboost["timing"]
+                cartoboost_reference = models.get("cartoboost_reference")
+                carto_timing = cartoboost["timing"]
                 xgb_timing = xgboost["timing"]
-                geo_metrics = geoboost["metrics"]
+                carto_metrics = cartoboost["metrics"]
                 xgb_metrics = xgboost["metrics"]
                 reference_metrics = (
-                    geoboost_reference["metrics"]
-                    if geoboost_reference is not None and geoboost_reference["status"] == "ok"
+                    cartoboost_reference["metrics"]
+                    if cartoboost_reference is not None and cartoboost_reference["status"] == "ok"
                     else None
                 )
                 key = f"{task_name}/{split_name}"
                 row = {
                     "run": float(run_index),
-                    "geoboost_train_seconds": float(geo_timing["train_seconds"]),
-                    "geoboost_predict_rows_per_second": float(
-                        geo_timing["predict_rows_per_second"]
+                    "cartoboost_train_seconds": float(carto_timing["train_seconds"]),
+                    "cartoboost_predict_rows_per_second": float(
+                        carto_timing["predict_rows_per_second"]
                     ),
                     "xgboost_train_seconds": float(xgb_timing["train_seconds"]),
                     "xgboost_predict_rows_per_second": float(xgb_timing["predict_rows_per_second"]),
-                    "train_ratio_vs_xgboost": float(geo_timing["train_seconds"])
+                    "train_ratio_vs_xgboost": float(carto_timing["train_seconds"])
                     / float(xgb_timing["train_seconds"]),
-                    "predict_rps_ratio_vs_xgboost": float(geo_timing["predict_rows_per_second"])
+                    "predict_rps_ratio_vs_xgboost": float(carto_timing["predict_rows_per_second"])
                     / float(xgb_timing["predict_rows_per_second"]),
-                    "rmse_delta_vs_xgboost": float(geo_metrics["rmse"])
+                    "rmse_delta_vs_xgboost": float(carto_metrics["rmse"])
                     - float(xgb_metrics["rmse"]),
-                    "r2_delta_vs_xgboost": float(geo_metrics["r2"]) - float(xgb_metrics["r2"]),
+                    "r2_delta_vs_xgboost": float(carto_metrics["r2"]) - float(xgb_metrics["r2"]),
                 }
                 if reference_metrics is not None:
-                    row["rmse_delta_vs_geoboost_reference"] = float(geo_metrics["rmse"]) - float(
-                        reference_metrics["rmse"]
-                    )
-                    row["r2_delta_vs_geoboost_reference"] = float(geo_metrics["r2"]) - float(
+                    row["rmse_delta_vs_cartoboost_reference"] = float(
+                        carto_metrics["rmse"]
+                    ) - float(reference_metrics["rmse"])
+                    row["r2_delta_vs_cartoboost_reference"] = float(carto_metrics["r2"]) - float(
                         reference_metrics["r2"]
                     )
                 rows.setdefault(key, []).append(row)
@@ -223,18 +223,18 @@ def collect_ratios(results: list[dict[str, Any]]) -> dict[str, Any]:
 
 def reference_delta_summary(values: list[dict[str, float]]) -> dict[str, float | None]:
     rmse = [
-        item["rmse_delta_vs_geoboost_reference"]
+        item["rmse_delta_vs_cartoboost_reference"]
         for item in values
-        if "rmse_delta_vs_geoboost_reference" in item
+        if "rmse_delta_vs_cartoboost_reference" in item
     ]
     r2 = [
-        item["r2_delta_vs_geoboost_reference"]
+        item["r2_delta_vs_cartoboost_reference"]
         for item in values
-        if "r2_delta_vs_geoboost_reference" in item
+        if "r2_delta_vs_cartoboost_reference" in item
     ]
     return {
-        "median_rmse_delta_vs_geoboost_reference": statistics.median(rmse) if rmse else None,
-        "median_r2_delta_vs_geoboost_reference": statistics.median(r2) if r2 else None,
+        "median_rmse_delta_vs_cartoboost_reference": statistics.median(rmse) if rmse else None,
+        "median_r2_delta_vs_cartoboost_reference": statistics.median(r2) if r2 else None,
     }
 
 
@@ -243,8 +243,8 @@ def format_delta(value: float | None) -> str:
 
 
 def same_quality(row: dict[str, Any], tolerance: float = 1e-9) -> bool:
-    rmse_ref = row["median_rmse_delta_vs_geoboost_reference"]
-    r2_ref = row["median_r2_delta_vs_geoboost_reference"]
+    rmse_ref = row["median_rmse_delta_vs_cartoboost_reference"]
+    r2_ref = row["median_r2_delta_vs_cartoboost_reference"]
     if rmse_ref is None or r2_ref is None:
         return False
     return abs(rmse_ref) <= tolerance and abs(r2_ref) <= tolerance
@@ -268,14 +268,14 @@ def write_markdown(summary: dict[str, Any], output: Path) -> None:
         "",
         (
             f"- baseline estimators: {summary['model_config']['baseline_n_estimators']}; "
-            f"GeoBoost candidate estimators: {summary['model_config']['geoboost_n_estimators']}"
+            f"CartoBoost candidate estimators: {summary['model_config']['cartoboost_n_estimators']}"
         ),
         (
             f"- baseline max depth: {summary['model_config']['baseline_max_depth']}; "
-            f"GeoBoost candidate max depth: {summary['model_config']['geoboost_max_depth']}"
+            f"CartoBoost candidate max depth: {summary['model_config']['cartoboost_max_depth']}"
         ),
         (
-            f"- GeoBoost splitters: {summary['model_config']['geoboost_splitters']}; "
+            f"- CartoBoost splitters: {summary['model_config']['cartoboost_splitters']}; "
             f"XGBoost tree_method: {summary['model_config']['xgboost_tree_method']}"
         ),
         f"- zone treatment: {summary['model_config'].get('zone_treatment', 'raw')}",
@@ -286,7 +286,7 @@ def write_markdown(summary: dict[str, Any], output: Path) -> None:
         "",
         "| task/split | train ratio vs XGBoost median | train ratio min-max | "
         "predict rps ratio vs XGBoost median | predict rps ratio min-max | "
-        "RMSE delta vs Geo ref | R2 delta vs Geo ref | "
+        "RMSE delta vs Carto ref | R2 delta vs Carto ref | "
         "RMSE delta vs XGB | R2 delta vs XGB | gate |",
         "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
     ]
@@ -294,8 +294,8 @@ def write_markdown(summary: dict[str, Any], output: Path) -> None:
         train_median = row["median_train_ratio_vs_xgboost"]
         predict_median = row["median_predict_rps_ratio_vs_xgboost"]
         gate = "pass" if passes_xgboost_gate(row) else "miss"
-        rmse_ref = row["median_rmse_delta_vs_geoboost_reference"]
-        r2_ref = row["median_r2_delta_vs_geoboost_reference"]
+        rmse_ref = row["median_rmse_delta_vs_cartoboost_reference"]
+        r2_ref = row["median_r2_delta_vs_cartoboost_reference"]
         lines.append(
             f"| {key} | {train_median:.2f}x | "
             f"{row['min_train_ratio_vs_xgboost']:.2f}x-{row['max_train_ratio_vs_xgboost']:.2f}x | "
@@ -326,19 +326,19 @@ def main() -> None:
             "predict_rps_ratio_vs_xgboost_min": 1.0,
             "rmse_delta_vs_xgboost_max_exclusive": 0.0,
             "r2_delta_vs_xgboost_min": 0.0,
-            "quality_delta_vs_geoboost_reference_abs_max": 1e-9,
+            "quality_delta_vs_cartoboost_reference_abs_max": 1e-9,
         },
         "model_config": {
             "baseline_n_estimators": args.n_estimators,
-            "geoboost_n_estimators": args.geoboost_n_estimators,
+            "cartoboost_n_estimators": args.cartoboost_n_estimators,
             "baseline_max_depth": args.max_depth,
-            "geoboost_max_depth": args.geoboost_max_depth,
-            "geoboost_splitters": args.geoboost_splitters,
-            "geoboost_min_samples_leaf": args.geoboost_min_samples_leaf,
-            "geoboost_constant_l2": args.geoboost_constant_l2,
-            "geoboost_leaf_predictor": args.geoboost_leaf_predictor,
-            "geoboost_init": args.geoboost_init,
-            "geoboost_calibration": args.geoboost_calibration,
+            "cartoboost_max_depth": args.cartoboost_max_depth,
+            "cartoboost_splitters": args.cartoboost_splitters,
+            "cartoboost_min_samples_leaf": args.cartoboost_min_samples_leaf,
+            "cartoboost_constant_l2": args.cartoboost_constant_l2,
+            "cartoboost_leaf_predictor": args.cartoboost_leaf_predictor,
+            "cartoboost_init": args.cartoboost_init,
+            "cartoboost_calibration": args.cartoboost_calibration,
             "xgboost_tree_method": args.xgboost_tree_method,
             "xgboost_max_bin": args.xgboost_max_bin,
             "xgboost_subsample": args.xgboost_subsample,

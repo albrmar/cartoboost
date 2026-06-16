@@ -1,6 +1,6 @@
 # CLI
 
-The `geoboost` CLI is a dense numeric CSV interface for quick training,
+The `cartoboost` CLI is a dense numeric CSV interface for quick training,
 prediction, evaluation, and artifact inspection. It is useful for simple
 baselines and scripted checks. Use the Python API for list-valued sparse route
 features, feature schemas, SHAP explanations, and richer temporal-spatial
@@ -9,16 +9,16 @@ workflows.
 ## Commands
 
 ```sh
-geoboost train --data <csv> [--config <toml>] [--model-out <path>] [--output json|csv]
-geoboost predict --model <path> --input <csv> [--predictions-out <path>] [--output json|csv]
-geoboost eval --model <path> --data <csv> [--output json|csv]
-geoboost inspect [--model <path>] [--config <toml>] [--data <csv>] [--output json|csv]
+cartoboost train --data <csv> [--config <toml>] [--model-out <path>] [--output json|csv]
+cartoboost predict --model <path> --input <csv> [--predictions-out <path>] [--output json|csv]
+cartoboost eval --model <path> --data <csv> [--output json|csv]
+cartoboost inspect [--model <path>] [--config <toml>] [--data <csv>] [--output json|csv]
 ```
 
 From a source checkout, you can run the binary through Cargo:
 
 ```sh
-cargo run -p geoboost-cli -- train --data train.csv --config config.toml --model-out model.json
+cargo run -p cartoboost-cli -- train --data train.csv --config config.toml --model-out model.json
 ```
 
 ## Input CSV
@@ -77,7 +77,7 @@ splitter = "axis,diagonal_2d,gaussian_2d,periodic_24"
 ```
 
 Sparse route-cell columns are not represented in CLI CSV input; train those
-models with `GeoBoostRegressor`.
+models with `CartoBoostRegressor`.
 
 ## Output
 
@@ -89,4 +89,4 @@ prints tabular command output. `predict --predictions-out` writes a CSV with
 
 The CLI exits nonzero for malformed options, unknown config keys, invalid
 splitters or leaf predictors, missing targets, numeric parse failures, and
-feature-count mismatches. Error messages are prefixed with `geoboost:`.
+feature-count mismatches. Error messages are prefixed with `cartoboost:`.

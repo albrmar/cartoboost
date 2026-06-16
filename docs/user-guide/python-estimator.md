@@ -1,20 +1,20 @@
 # Python Estimator
 
-`GeoBoostRegressor` is the public Python estimator. It follows sklearn
+`CartoBoostRegressor` is the public Python estimator. It follows sklearn
 conventions for parameter inspection, cloning, pipelines, and grid search over
 the supported API surface.
 
 Optuna tuning works through the same estimator contract. Install the optional
-dependency with `geoboost[optuna]` or `uv sync --group dev --extra optuna` from
+dependency with `cartoboost[optuna]` or `uv sync --group dev --extra optuna` from
 a source checkout, then optimize an objective that constructs a fresh
-`GeoBoostRegressor` for each trial.
+`CartoBoostRegressor` for each trial.
 
 ## Basic Usage
 
 ```python
-from geoboost import GeoBoostRegressor
+from cartoboost import CartoBoostRegressor
 
-model = GeoBoostRegressor(
+model = CartoBoostRegressor(
     n_estimators=100,
     learning_rate=0.05,
     max_depth=4,
@@ -30,10 +30,10 @@ predictions = model.predict(X_test)
 
 ## Temporal-Spatial Usage
 
-GeoBoost can use splitters that match common time and location patterns:
+CartoBoost can use splitters that match common time and location patterns:
 
 ```python
-model = GeoBoostRegressor(
+model = CartoBoostRegressor(
     n_estimators=200,
     learning_rate=0.04,
     max_depth=5,
@@ -54,7 +54,7 @@ intervals or service-level targets, use `loss="quantile"` with
 
 ## Native Extension
 
-`GeoBoostRegressor` requires `geoboost._native`. Build it with
+`CartoBoostRegressor` requires `cartoboost._native`. Build it with
 `uv run --group dev maturin develop` from a source checkout. If the extension is
 missing, fitting or loading a model raises `ImportError`.
 
@@ -65,7 +65,7 @@ Sparse-set columns are passed separately from dense features:
 ```python
 route_cells = [[7, 11], [11], [3], []]
 
-model = GeoBoostRegressor(
+model = CartoBoostRegressor(
     n_estimators=2,
     learning_rate=0.5,
     max_depth=1,
@@ -123,11 +123,11 @@ Weights are passed to the native trainer.
 import optuna
 from sklearn.model_selection import cross_val_score
 
-from geoboost import GeoBoostRegressor
+from cartoboost import CartoBoostRegressor
 
 
 def objective(trial):
-    model = GeoBoostRegressor(
+    model = CartoBoostRegressor(
         n_estimators=trial.suggest_int("n_estimators", 50, 300),
         learning_rate=trial.suggest_float("learning_rate", 0.01, 0.2, log=True),
         max_depth=trial.suggest_int("max_depth", 1, 6),
@@ -145,10 +145,10 @@ def objective(trial):
 
 study = optuna.create_study(direction="minimize")
 study.optimize(objective, n_trials=30)
-best_model = GeoBoostRegressor(**study.best_params).fit(X_train, y_train)
+best_model = CartoBoostRegressor(**study.best_params).fit(X_train, y_train)
 ```
 
-This pattern works because GeoBoost exposes sklearn-compatible constructor
+This pattern works because CartoBoost exposes sklearn-compatible constructor
 parameters and cloning behavior. Keep each trial self-contained: create the
 estimator inside the objective and fit it only on that trial's data split.
 
@@ -162,7 +162,7 @@ explainer = model.make_shap_explainer(X_background)
 explanation = model.explain_shap(X_test, background=X_background)
 ```
 
-Install `geoboost[explain]` or add the optional SHAP dependency in your local
+Install `cartoboost[explain]` or add the optional SHAP dependency in your local
 environment.
 Sparse-list models can be explained through the helper by supplying matching
 foreground and background sparse sets.
@@ -170,11 +170,11 @@ foreground and background sparse sets.
 ## Save And Load
 
 ```python
-model.save("model.geoboost.json")
-loaded = GeoBoostRegressor.load("model.geoboost.json")
+model.save("model.cartoboost.json")
+loaded = CartoBoostRegressor.load("model.cartoboost.json")
 
 model.save_weights("model.weights.json")
-weights_loaded = GeoBoostRegressor.load_weights("model.weights.json")
+weights_loaded = CartoBoostRegressor.load_weights("model.weights.json")
 ```
 
 Native JSON artifacts preserve training metadata when available, including

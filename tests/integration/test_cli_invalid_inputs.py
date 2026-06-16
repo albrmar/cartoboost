@@ -10,7 +10,7 @@ def _repo_root() -> Path:
 
 def _run_cli(*args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        ["cargo", "run", "--quiet", "-p", "geoboost-cli", "--", *args],
+        ["cargo", "run", "--quiet", "-p", "cartoboost-cli", "--", *args],
         cwd=_repo_root(),
         text=True,
         capture_output=True,

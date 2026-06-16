@@ -1,12 +1,12 @@
 import numpy as np
 import pytest
-from geoboost import FeatureKind, FeatureSchema, GeoBoostRegressor
-from geoboost.regressor import _encode_sparse_columns, _rust_feature_schema_json
+from cartoboost import CartoBoostRegressor, FeatureKind, FeatureSchema
+from cartoboost.regressor import _encode_sparse_columns, _rust_feature_schema_json
 
 try:
-    from geoboost._native import GeoBoostRegressor as NativeGeoBoostRegressor
+    from cartoboost._native import CartoBoostRegressor as NativeCartoBoostRegressor
 except ImportError:  # pragma: no cover - extension may be absent in source-only runs
-    NativeGeoBoostRegressor = None
+    NativeCartoBoostRegressor = None
 
 
 def _fit_or_skip(model, *args, **kwargs):
@@ -29,8 +29,8 @@ def test_numpy_dense_fast_path_matches_list_path():
         min_gain=0.0,
         splitters=["axis"],
     )
-    list_model = GeoBoostRegressor(**config)
-    array_model = GeoBoostRegressor(**config)
+    list_model = CartoBoostRegressor(**config)
+    array_model = CartoBoostRegressor(**config)
 
     _fit_or_skip(list_model, x, y)
     _fit_or_skip(array_model, np.asarray(x, dtype=np.float64), np.asarray(y, dtype=np.float64))
@@ -51,8 +51,8 @@ def test_numpy_sparse_fast_path_matches_list_path():
         min_gain=0.0,
         splitters=["sparse_set"],
     )
-    list_model = GeoBoostRegressor(**config)
-    array_model = GeoBoostRegressor(**config)
+    list_model = CartoBoostRegressor(**config)
+    array_model = CartoBoostRegressor(**config)
 
     _fit_or_skip(list_model, x, y, sparse_sets=sparse_sets)
     _fit_or_skip(
@@ -79,8 +79,8 @@ def test_numpy_sample_weight_fast_path_matches_list_path():
         min_gain=0.0,
         splitters=["axis"],
     )
-    list_model = GeoBoostRegressor(**config)
-    array_model = GeoBoostRegressor(**config)
+    list_model = CartoBoostRegressor(**config)
+    array_model = CartoBoostRegressor(**config)
 
     _fit_or_skip(list_model, x, y, sample_weight=sample_weight)
     _fit_or_skip(
@@ -107,8 +107,8 @@ def test_numpy_feature_schema_fast_path_matches_list_path():
         min_gain=0.0,
         splitters=["periodic:24"],
     )
-    list_model = GeoBoostRegressor(**config)
-    array_model = GeoBoostRegressor(**config)
+    list_model = CartoBoostRegressor(**config)
+    array_model = CartoBoostRegressor(**config)
 
     _fit_or_skip(list_model, x, y, feature_schema=schema)
     _fit_or_skip(
@@ -125,7 +125,7 @@ def test_numpy_feature_schema_fast_path_matches_list_path():
 
 
 def test_native_numpy_fast_paths_match_native_list_paths_exactly():
-    if NativeGeoBoostRegressor is None:
+    if NativeCartoBoostRegressor is None:
         pytest.skip("native extension is not available")
 
     x = [[23.0, 0.0], [1.0, 0.0], [12.0, 0.0], [15.0, 0.0], [2.0, 0.0]]
@@ -152,8 +152,8 @@ def test_native_numpy_fast_paths_match_native_list_paths_exactly():
         min_gain=0.0,
         splitters=["axis", "periodic:24", "sparse_set"],
     )
-    list_model = NativeGeoBoostRegressor(**config)
-    array_model = NativeGeoBoostRegressor(**config)
+    list_model = NativeCartoBoostRegressor(**config)
+    array_model = NativeCartoBoostRegressor(**config)
 
     list_model.fit(x, y, sample_weight, sparse_sets, schema_json)
     array_model.fit_arrays(
@@ -172,7 +172,7 @@ def test_native_numpy_fast_paths_match_native_list_paths_exactly():
 
 
 def test_axis_histogram_splitter_is_accepted_by_python_api():
-    model = GeoBoostRegressor(
+    model = CartoBoostRegressor(
         n_estimators=2,
         learning_rate=0.5,
         max_depth=1,

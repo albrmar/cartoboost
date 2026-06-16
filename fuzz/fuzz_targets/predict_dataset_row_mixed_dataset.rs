@@ -1,8 +1,8 @@
 #![no_main]
 
-use geoboost_core::data::{FeatureKind, FeatureSchema, SparseSetColumn};
-use geoboost_core::tree::{FuzzyKernel, Node, Split, Tree, MODEL_ARTIFACT_VERSION};
-use geoboost_core::{Dataset, Model};
+use cartoboost_core::data::{FeatureKind, FeatureSchema, SparseSetColumn};
+use cartoboost_core::tree::{FuzzyKernel, Node, Split, Tree, MODEL_ARTIFACT_VERSION};
+use cartoboost_core::{Dataset, Model};
 use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: &[u8]| {

@@ -1,7 +1,7 @@
 from pathlib import Path
 
 import pytest
-from geoboost import FeatureKind, FeatureSchema, GeoBoostRegressor
+from cartoboost import CartoBoostRegressor, FeatureKind, FeatureSchema
 
 
 def _fit_or_skip(model, *args, **kwargs):
@@ -51,7 +51,7 @@ def test_python_schema_periodic_feature_used_without_full_period_coverage():
     x = [[7.0], [8.0], [9.0], [10.0]]
     y = [3.0, 3.0, -1.0, -1.0]
     schema = FeatureSchema(dense=[("hour", {"periodic": 24})])
-    model = GeoBoostRegressor(
+    model = CartoBoostRegressor(
         n_estimators=1,
         learning_rate=1.0,
         max_depth=1,
@@ -75,7 +75,7 @@ def test_python_schema_sparse_columns_restrict_sparse_splitter():
         sparse_sets=[("route_cells", "sparse_set")],
     )
     sparse_sets = {"route_cells": [[5], [5, 9], [2], []]}
-    model = GeoBoostRegressor(
+    model = CartoBoostRegressor(
         n_estimators=1,
         learning_rate=1.0,
         max_depth=1,
@@ -92,7 +92,7 @@ def test_python_schema_sparse_columns_restrict_sparse_splitter():
 
 
 def test_python_schema_rejects_unknown_kind():
-    model = GeoBoostRegressor(max_depth=0)
+    model = CartoBoostRegressor(max_depth=0)
     schema = FeatureSchema(dense=[("hour", "clockish")])
 
     with pytest.raises(ValueError, match="unknown feature kind"):
@@ -100,7 +100,7 @@ def test_python_schema_rejects_unknown_kind():
 
 
 def test_python_schema_rejects_length_mismatch():
-    model = GeoBoostRegressor(max_depth=0)
+    model = CartoBoostRegressor(max_depth=0)
     schema = FeatureSchema(dense=[("only_one", "numeric")])
 
     with pytest.raises(ValueError, match="feature_schema length"):
@@ -108,7 +108,7 @@ def test_python_schema_rejects_length_mismatch():
 
 
 def test_python_schema_rejects_sparse_length_mismatch():
-    model = GeoBoostRegressor(max_depth=0)
+    model = CartoBoostRegressor(max_depth=0)
     schema = FeatureSchema(dense=[("x", "numeric")])
 
     with pytest.raises(ValueError, match="feature_schema length"):
@@ -128,7 +128,7 @@ def test_schema_survives_save_load(tmp_path: Path):
         sparse_sets=[("route_cells", "sparse_set")],
     )
     sparse_sets = {"route_cells": [[5], [5, 9], [2], []]}
-    model = GeoBoostRegressor(
+    model = CartoBoostRegressor(
         n_estimators=1,
         learning_rate=1.0,
         max_depth=1,
@@ -140,7 +140,7 @@ def test_schema_survives_save_load(tmp_path: Path):
     path = tmp_path / "schema.json"
 
     model.save(path)
-    loaded = GeoBoostRegressor.load(path)
+    loaded = CartoBoostRegressor.load(path)
 
     assert loaded.feature_schema_ == model.feature_schema_
     assert loaded.predict(x, sparse_sets=sparse_sets) == pytest.approx(

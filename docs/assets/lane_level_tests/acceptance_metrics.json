@@ -43,7 +43,7 @@
       "Neighboring cold lanes should not inherit the hot lane uplift."
     ]
   },
-  "route_midpoint_geometry": {
+  "route_midpoint_cartometry": {
     "models": {
       "axis_midpoint": {
         "train_rmse": 69.40220937885671
@@ -75,8 +75,8 @@
       }
     ],
     "future_checks": [
-      "Gaussian 2D routing should recover center-focused route geometry.",
-      "This validates lane geometry from observable midpoint features, not hidden metadata."
+      "Gaussian 2D routing should recover center-focused route cartometry.",
+      "This validates lane cartometry from observable midpoint features, not hidden metadata."
     ]
   },
   "wraparound_lane_hour": {

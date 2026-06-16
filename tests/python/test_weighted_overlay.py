@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from geoboost import weighted_overlay
+from cartoboost import weighted_overlay
 
 
 def test_weighted_overlay_adds_distance_decay_debug_output(

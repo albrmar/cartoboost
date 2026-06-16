@@ -1,6 +1,6 @@
 # Objectives
 
-GeoBoost supports regression objectives for continuous temporal-spatial targets
+CartoBoost supports regression objectives for continuous temporal-spatial targets
 such as demand, duration, fare, cost, or residual error.
 
 ## L2 Regression
@@ -8,7 +8,7 @@ such as demand, duration, fare, cost, or residual error.
 L2 squared error is the default objective:
 
 ```python
-model = GeoBoostRegressor(loss="l2")
+model = CartoBoostRegressor(loss="l2")
 ```
 
 Use L2 when your primary score is RMSE, R2, or general point-prediction quality.
@@ -21,7 +21,7 @@ Quantile regression estimates a conditional quantile instead of the conditional
 mean:
 
 ```python
-model = GeoBoostRegressor(
+model = CartoBoostRegressor(
     loss="quantile",
     quantile_alpha=0.9,
     leaf_predictor="constant",

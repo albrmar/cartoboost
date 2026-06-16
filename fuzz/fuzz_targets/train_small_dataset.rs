@@ -1,7 +1,7 @@
 #![no_main]
 
-use geoboost_core::tree::SplitterKind;
-use geoboost_core::{Booster, BoosterConfig, Dataset};
+use cartoboost_core::tree::SplitterKind;
+use cartoboost_core::{Booster, BoosterConfig, Dataset};
 use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: &[u8]| {

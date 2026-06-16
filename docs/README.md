@@ -1,7 +1,7 @@
-# GeoBoost Documentation
+# CartoBoost Documentation
 
 This directory contains the user documentation for fitting, evaluating,
-explaining, and saving GeoBoost regression models for temporal-spatial data.
+explaining, and saving CartoBoost regression models for temporal-spatial data.
 
 ## Contents
 
@@ -20,7 +20,7 @@ explaining, and saving GeoBoost regression models for temporal-spatial data.
 - [Limitations](limitations.md)
 - [Benchmarks](benchmarks/index.md)
 
-GeoBoost is most useful when time, place, and route membership are more than
+CartoBoost is most useful when time, place, and route membership are more than
 ordinary scalar columns: periodic hours, spatial boundaries, local hotspots,
 route cells, and fuzzy boundary behavior can be modeled directly through the
 estimator parameters.
@@ -33,9 +33,9 @@ uv run --group dev maturin develop
 ```
 
 ```python
-from geoboost import GeoBoostRegressor
+from cartoboost import CartoBoostRegressor
 
-model = GeoBoostRegressor(
+model = CartoBoostRegressor(
     n_estimators=50,
     learning_rate=0.1,
     max_depth=3,
@@ -48,6 +48,6 @@ predictions = model.predict(X_test)
 The CLI is available for dense numeric CSV workflows:
 
 ```sh
-geoboost train --data train.csv --config configs/regression.toml --model-out model.json
-geoboost predict --model model.json --input test.csv --predictions-out predictions.csv
+cartoboost train --data train.csv --config configs/regression.toml --model-out model.json
+cartoboost predict --model model.json --input test.csv --predictions-out predictions.csv
 ```

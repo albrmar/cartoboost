@@ -6,8 +6,8 @@
 
 ## Testing instructions
 - Update generating scripts and tests before refreshing artifacts.
-- Verify acceptance metrics when route geometry or thresholds change.
+- Verify acceptance metrics when route cartometry or thresholds change.
 
 ## PR instructions
 - Explain artifact changes and generation commands.
-- Call out threshold or route geometry contract changes.
+- Call out threshold or route cartometry contract changes.

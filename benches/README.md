@@ -1,4 +1,4 @@
-# GeoBoost Benchmarks
+# CartoBoost Benchmarks
 
 This directory contains low-level Rust timing benchmarks. Most data-science
 model comparisons should use the benchmark guides under `docs/benchmarks/`,

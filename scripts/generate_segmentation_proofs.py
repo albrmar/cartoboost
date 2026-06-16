@@ -1,27 +1,33 @@
 #!/usr/bin/env python3
-"""Generate deterministic PNG proof images for GeoBoost splitter behavior."""
+"""Generate deterministic PNG proof images for CartoBoost splitter behavior."""
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
-from geoboost import GeoBoostRegressor
 
 ROOT = Path(__file__).resolve().parents[1]
+PYTHON_SOURCE = ROOT / "python"
+if str(PYTHON_SOURCE) not in sys.path:
+    sys.path.insert(0, str(PYTHON_SOURCE))
+
+from cartoboost import CartoBoostRegressor  # noqa: E402
+
 OUT = ROOT / "docs" / "assets"
 PHASE_OUT = OUT / "splitter_tests"
 
 
-def train_diagonal() -> GeoBoostRegressor:
+def train_diagonal() -> CartoBoostRegressor:
     points = []
     target = []
     for x in np.linspace(-3.0, 3.0, 25):
         for y in np.linspace(-3.0, 3.0, 25):
             points.append([float(x), float(y)])
             target.append(10.0 if x + y > 0.0 else -10.0)
-    model = GeoBoostRegressor(
+    model = CartoBoostRegressor(
         n_estimators=1,
         learning_rate=1.0,
         max_depth=1,
@@ -32,14 +38,14 @@ def train_diagonal() -> GeoBoostRegressor:
     return model
 
 
-def train_radial() -> GeoBoostRegressor:
+def train_radial() -> CartoBoostRegressor:
     points = []
     target = []
     for x in np.linspace(-3.0, 3.0, 31):
         for y in np.linspace(-3.0, 3.0, 31):
             points.append([float(x), float(y)])
             target.append(10.0 if np.hypot(x, y) <= 1.5 else -10.0)
-    model = GeoBoostRegressor(
+    model = CartoBoostRegressor(
         n_estimators=1,
         learning_rate=1.0,
         max_depth=1,
@@ -50,7 +56,7 @@ def train_radial() -> GeoBoostRegressor:
     return model
 
 
-def plot_segmentation(model: GeoBoostRegressor, path: Path, title: str) -> None:
+def plot_segmentation(model: CartoBoostRegressor, path: Path, title: str) -> None:
     grid = np.linspace(-3.0, 3.0, 180)
     xx, yy = np.meshgrid(grid, grid)
     points = np.column_stack([xx.ravel(), yy.ravel()])
@@ -81,8 +87,8 @@ def fit_model(
     linear_leaf_features: list[str] | None = None,
     fuzzy: bool = False,
     fuzzy_bandwidth: float = 0.0,
-) -> GeoBoostRegressor:
-    model = GeoBoostRegressor(
+) -> CartoBoostRegressor:
+    model = CartoBoostRegressor(
         n_estimators=1,
         learning_rate=learning_rate,
         max_depth=max_depth,
@@ -342,12 +348,12 @@ def main() -> None:
     plot_segmentation(
         train_diagonal(),
         OUT / "segmentation_diagonal_2d.png",
-        "GeoBoost diagonal_2d learned segmentation",
+        "CartoBoost diagonal_2d learned segmentation",
     )
     plot_segmentation(
         train_radial(),
         OUT / "segmentation_gaussian_2d.png",
-        "GeoBoost gaussian_2d learned segmentation",
+        "CartoBoost gaussian_2d learned segmentation",
     )
     generate_phase_proofs()
 

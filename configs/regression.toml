@@ -1,4 +1,4 @@
-# Numeric-target example for `geoboost train --config configs/regression.toml`.
+# Numeric-target example for `cartoboost train --config configs/regression.toml`.
 target = "target"
 
 [model]

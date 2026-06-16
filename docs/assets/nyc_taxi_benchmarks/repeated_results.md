@@ -1,12 +1,12 @@
 # Repeated NYC Taxi Speed Benchmark
 
-- baseline estimators: 100; GeoBoost candidate estimators: 100
-- baseline max depth: 4; GeoBoost candidate max depth: 5
-- GeoBoost splitters: axis_histogram:512; XGBoost tree_method: hist
+- baseline estimators: 100; CartoBoost candidate estimators: 100
+- baseline max depth: 4; CartoBoost candidate max depth: 5
+- CartoBoost splitters: axis_histogram:512; XGBoost tree_method: hist
 - zone treatment: target_mean
 - gate requires train <= XGBoost, predict rows/sec >= XGBoost, lower RMSE than XGBoost, and R2 no worse than XGBoost.
 
-| task/split | train ratio vs XGBoost median | train ratio min-max | predict rps ratio vs XGBoost median | predict rps ratio min-max | RMSE delta vs Geo ref | R2 delta vs Geo ref | RMSE delta vs XGB | R2 delta vs XGB | gate |
+| task/split | train ratio vs XGBoost median | train ratio min-max | predict rps ratio vs XGBoost median | predict rps ratio min-max | RMSE delta vs Carto ref | R2 delta vs Carto ref | RMSE delta vs XGB | R2 delta vs XGB | gate |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
 | duration/random | 18.78x | 16.01x-20.79x | 0.287x | 0.076x-0.357x | -0.005611 | 0.006801 | -0.004507 | 0.005453 | miss |
 | duration/spatial_holdout | 18.08x | 17.85x-18.35x | 0.361x | 0.128x-0.419x | -0.004058 | 0.005427 | -0.001197 | 0.001594 | miss |

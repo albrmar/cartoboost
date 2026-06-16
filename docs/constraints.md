@@ -16,7 +16,7 @@ travel time.
 | `0` | Feature is unconstrained. |
 
 ```python
-model = GeoBoostRegressor(
+model = CartoBoostRegressor(
     splitters=["axis"],
     monotonic_constraints=[1, 0, -1],
 )
@@ -50,4 +50,4 @@ Check more than aggregate RMSE:
 - Check increasing and decreasing constraints separately.
 - Include tied or nearly tied feature values.
 - Use spatial or temporal holdouts when the constrained feature is correlated
-  with geography, route, or time.
+  with cartography, route, or time.

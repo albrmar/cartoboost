@@ -1,17 +1,17 @@
 import pytest
-from geoboost import FeatureKind, GeoBoostRegressor
-from geoboost import regressor as regressor_module
+from cartoboost import CartoBoostRegressor, FeatureKind
+from cartoboost import regressor as regressor_module
 
 
 def test_unknown_splitter_is_rejected_before_native_training():
-    model = GeoBoostRegressor(splitters=["axis", "not_a_splitter"])
+    model = CartoBoostRegressor(splitters=["axis", "not_a_splitter"])
 
     with pytest.raises(ValueError, match="unknown splitter"):
         model.fit([[0.0], [1.0]], [0.0, 1.0])
 
 
 def test_splitters_must_be_a_sequence_of_names():
-    model = GeoBoostRegressor(splitters="axis")
+    model = CartoBoostRegressor(splitters="axis")
 
     with pytest.raises(ValueError, match="splitters must be a list"):
         model.fit([[0.0], [1.0]], [0.0, 1.0])
@@ -19,19 +19,19 @@ def test_splitters_must_be_a_sequence_of_names():
 
 def test_feature_schema_metadata_is_retained(tmp_path):
     schema = {"distance": {"role": FeatureKind.NUMERIC}}
-    model = GeoBoostRegressor(max_depth=0)
+    model = CartoBoostRegressor(max_depth=0)
 
     model.fit([[0.0], [1.0]], [2.0, 4.0], feature_schema=schema)
     model_path = tmp_path / "schema.json"
     model.save(model_path)
-    restored = GeoBoostRegressor.load(model_path)
+    restored = CartoBoostRegressor.load(model_path)
 
     assert model.feature_schema_ == {"names": ["distance"], "kinds": ["Numeric"]}
     assert restored.feature_schema_ == {"names": ["distance"], "kinds": ["Numeric"]}
 
 
 def test_periodic_custom_period_splitter_is_validated():
-    model = GeoBoostRegressor(splitters=["periodic:168"], max_depth=0)
+    model = CartoBoostRegressor(splitters=["periodic:168"], max_depth=0)
 
     model.fit([[1.0], [2.0]], [3.0, 4.0])
 
@@ -56,7 +56,7 @@ def test_native_load_restores_public_estimator_params(monkeypatch, tmp_path):
         feature_schema_json = (
             '{"names":["x","y","hour"],"kinds":["Numeric","Numeric",{"Periodic":{"period":168}}]}'
         )
-        metadata_json = '{"library_name":"geoboost-core","library_version":"0.1.0"}'
+        metadata_json = '{"library_name":"cartoboost-core","library_version":"0.1.0"}'
 
         @classmethod
         def load(cls, path):
@@ -68,7 +68,7 @@ def test_native_load_restores_public_estimator_params(monkeypatch, tmp_path):
 
     monkeypatch.setattr(regressor_module, "_NativeRegressorModel", FakeNativeModel)
 
-    loaded = GeoBoostRegressor.load(tmp_path / "native.json")
+    loaded = CartoBoostRegressor.load(tmp_path / "native.json")
 
     assert loaded.get_params() == {
         "n_estimators": 7,
@@ -95,11 +95,11 @@ def test_native_load_restores_public_estimator_params(monkeypatch, tmp_path):
     }
     assert loaded.n_features_in_ == 3
     assert loaded.feature_schema_["names"] == ["x", "y", "hour"]
-    assert loaded.metadata_["library_name"] == "geoboost-core"
+    assert loaded.metadata_["library_name"] == "cartoboost-core"
 
 
 def test_fuzzy_kernel_validation_rejects_unknown_name():
-    model = GeoBoostRegressor(fuzzy=True, fuzzy_kernel="unknown")
+    model = CartoBoostRegressor(fuzzy=True, fuzzy_kernel="unknown")
 
     with pytest.raises(ValueError, match="fuzzy_kernel"):
         model.fit([[0.0], [1.0]], [0.0, 1.0])

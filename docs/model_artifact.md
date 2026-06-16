@@ -1,6 +1,6 @@
 # Model Artifact
 
-GeoBoost models are stored as JSON artifacts. Use them when you need to reload
+CartoBoost models are stored as JSON artifacts. Use them when you need to reload
 a fitted temporal-spatial model with its splitters, sparse-feature requirements,
 feature schema, and training parameters intact.
 
@@ -25,8 +25,8 @@ settings, and leaf configuration.
 ## Save And Load
 
 ```python
-model.save("model.geoboost.json")
-loaded = GeoBoostRegressor.load("model.geoboost.json")
+model.save("model.cartoboost.json")
+loaded = CartoBoostRegressor.load("model.cartoboost.json")
 ```
 
 Load restores public estimator parameters when training metadata is present,
@@ -39,19 +39,19 @@ regularization, learning rate, depth, and minimum split controls.
 
 ```python
 model.save_weights("model.weights.json")
-loaded = GeoBoostRegressor.load_weights("model.weights.json")
+loaded = CartoBoostRegressor.load_weights("model.weights.json")
 ```
 
 The JSON wrapper uses:
 
-- `artifact_type: "geoboost.weights"`
+- `artifact_type: "cartoboost.weights"`
 - `weights_artifact_version: 1`
 - `model_artifact_version`
 - `backend`
 - `model`
 
 The `model` field contains the same versioned model payload used by native
-GeoBoost artifacts, so the file is directly inspectable and can be loaded
+CartoBoost artifacts, so the file is directly inspectable and can be loaded
 without relying on pickle or process-local Python classes. `load_weights` also
 accepts plain native model JSON for compatibility.
 

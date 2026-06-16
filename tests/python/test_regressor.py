@@ -2,11 +2,11 @@ import json
 from pathlib import Path
 
 import pytest
-from geoboost import GeoBoostRegressor
+from cartoboost import CartoBoostRegressor
 
 
 def test_get_params_and_set_params_reset_model():
-    regressor = GeoBoostRegressor(n_estimators=3)
+    regressor = CartoBoostRegressor(n_estimators=3)
     assert regressor.get_params()["n_estimators"] == 3
 
     returned = regressor.set_params(learning_rate=0.2)
@@ -18,7 +18,7 @@ def test_get_params_and_set_params_reset_model():
 def test_fit_predict_and_roundtrip_native_backend(tmp_path: Path):
     X = [[0.0], [1.0], [2.0], [3.0]]
     y = [0.0, 1.0, 2.0, 3.0]
-    regressor = GeoBoostRegressor(
+    regressor = CartoBoostRegressor(
         n_estimators=8,
         learning_rate=0.4,
         min_samples_leaf=1,
@@ -31,7 +31,7 @@ def test_fit_predict_and_roundtrip_native_backend(tmp_path: Path):
 
     model_path = tmp_path / "model.json"
     regressor.save(model_path)
-    loaded = GeoBoostRegressor.load(model_path)
+    loaded = CartoBoostRegressor.load(model_path)
 
     assert loaded.predict([[0.0], [3.0]]) == pytest.approx(predictions)
 
@@ -39,7 +39,7 @@ def test_fit_predict_and_roundtrip_native_backend(tmp_path: Path):
 def test_quantile_native_backend_uses_quantile_initial_prediction_and_roundtrips(tmp_path: Path):
     X = [[0.0], [1.0], [2.0], [3.0]]
     y = [0.0, 10.0, 20.0, 30.0]
-    regressor = GeoBoostRegressor(
+    regressor = CartoBoostRegressor(
         n_estimators=1,
         learning_rate=1.0,
         max_depth=0,
@@ -51,7 +51,7 @@ def test_quantile_native_backend_uses_quantile_initial_prediction_and_roundtrips
 
     model_path = tmp_path / "quantile.json"
     regressor.save(model_path)
-    loaded = GeoBoostRegressor.load(model_path)
+    loaded = CartoBoostRegressor.load(model_path)
 
     assert loaded.loss == "quantile"
     assert loaded.quantile_alpha == pytest.approx(0.8)
@@ -61,7 +61,7 @@ def test_quantile_native_backend_uses_quantile_initial_prediction_and_roundtrips
 def test_l1_native_backend_uses_weighted_median_initial_prediction_and_roundtrips(tmp_path: Path):
     X = [[0.0], [1.0], [2.0], [3.0]]
     y = [0.0, 10.0, 20.0, 30.0]
-    regressor = GeoBoostRegressor(
+    regressor = CartoBoostRegressor(
         n_estimators=1,
         learning_rate=1.0,
         max_depth=0,
@@ -72,14 +72,14 @@ def test_l1_native_backend_uses_weighted_median_initial_prediction_and_roundtrip
 
     model_path = tmp_path / "l1.json"
     regressor.save(model_path)
-    loaded = GeoBoostRegressor.load(model_path)
+    loaded = CartoBoostRegressor.load(model_path)
 
     assert loaded.loss == "l1"
     assert loaded.predict([[0.0], [3.0]]) == pytest.approx([20.0, 20.0])
 
 
 def test_native_backend_monotonic_constraint_blocks_decreasing_stump():
-    model = GeoBoostRegressor(
+    model = CartoBoostRegressor(
         n_estimators=1,
         learning_rate=1.0,
         max_depth=1,
@@ -95,7 +95,7 @@ def test_native_backend_monotonic_constraint_blocks_decreasing_stump():
 def test_native_backend_save_weights_roundtrip_is_versioned_json(tmp_path: Path):
     X = [[0.0], [1.0], [2.0], [3.0]]
     y = [0.0, 1.0, 2.0, 3.0]
-    regressor = GeoBoostRegressor(
+    regressor = CartoBoostRegressor(
         n_estimators=3,
         learning_rate=0.3,
         min_samples_leaf=1,
@@ -105,9 +105,9 @@ def test_native_backend_save_weights_roundtrip_is_versioned_json(tmp_path: Path)
 
     regressor.save_weights(path)
     payload = json.loads(path.read_text(encoding="utf-8"))
-    loaded = GeoBoostRegressor.load_weights(path)
+    loaded = CartoBoostRegressor.load_weights(path)
 
-    assert payload["artifact_type"] == "geoboost.weights"
+    assert payload["artifact_type"] == "cartoboost.weights"
     assert payload["weights_artifact_version"] == 1
     assert payload["model_artifact_version"] == 1
     assert payload["backend"] == "rust"
@@ -116,7 +116,7 @@ def test_native_backend_save_weights_roundtrip_is_versioned_json(tmp_path: Path)
 
 def test_native_backend_save_weights_onnx_when_optional_dependency_is_available(tmp_path: Path):
     pytest.importorskip("onnx")
-    regressor = GeoBoostRegressor(
+    regressor = CartoBoostRegressor(
         n_estimators=1,
         learning_rate=0.3,
         min_samples_leaf=1,
@@ -130,11 +130,11 @@ def test_native_backend_save_weights_onnx_when_optional_dependency_is_available(
 
 def test_predict_before_fit_raises():
     with pytest.raises(RuntimeError, match="not fitted"):
-        GeoBoostRegressor().predict([[1.0]])
+        CartoBoostRegressor().predict([[1.0]])
 
 
 def test_rust_backend_accepts_special_splitters():
-    regressor = GeoBoostRegressor(
+    regressor = CartoBoostRegressor(
         n_estimators=1,
         learning_rate=1.0,
         max_depth=1,
@@ -152,7 +152,7 @@ def test_rust_backend_accepts_special_splitters():
 
 
 def test_rust_backend_accepts_linear_fuzzy_and_sparse_options():
-    linear = GeoBoostRegressor(
+    linear = CartoBoostRegressor(
         n_estimators=1,
         learning_rate=0.5,
         max_depth=1,
@@ -161,14 +161,14 @@ def test_rust_backend_accepts_linear_fuzzy_and_sparse_options():
         linear_leaf_features=["0"],
         l2_regularization=0.0,
     )
-    sparse = GeoBoostRegressor(
+    sparse = CartoBoostRegressor(
         n_estimators=1,
         learning_rate=1.0,
         max_depth=1,
         min_samples_leaf=1,
         splitters=["sparse_set"],
     )
-    fuzzy = GeoBoostRegressor(
+    fuzzy = CartoBoostRegressor(
         n_estimators=1,
         learning_rate=1.0,
         max_depth=1,
@@ -190,7 +190,7 @@ def test_rust_backend_accepts_linear_fuzzy_and_sparse_options():
 
 
 def test_rust_backend_preserves_fuzzy_kernel_roundtrip(tmp_path: Path):
-    model = GeoBoostRegressor(
+    model = CartoBoostRegressor(
         n_estimators=1,
         learning_rate=1.0,
         max_depth=1,
@@ -206,14 +206,14 @@ def test_rust_backend_preserves_fuzzy_kernel_roundtrip(tmp_path: Path):
 
     path = tmp_path / "fuzzy-kernel.json"
     model.save(path)
-    loaded = GeoBoostRegressor.load(path)
+    loaded = CartoBoostRegressor.load(path)
 
     assert loaded.fuzzy_kernel == "gaussian"
     assert loaded.predict([[1.5]]) == pytest.approx(model.predict([[1.5]]))
 
 
 def test_rust_backend_quantile_and_monotonic_roundtrip(tmp_path: Path):
-    model = GeoBoostRegressor(
+    model = CartoBoostRegressor(
         n_estimators=1,
         learning_rate=1.0,
         max_depth=1,
@@ -230,7 +230,7 @@ def test_rust_backend_quantile_and_monotonic_roundtrip(tmp_path: Path):
     path = tmp_path / "native-quantile.json"
     predictions = model.predict([[0.0], [3.0]])
     model.save(path)
-    loaded = GeoBoostRegressor.load(path)
+    loaded = CartoBoostRegressor.load(path)
 
     assert loaded.loss == "quantile"
     assert loaded.quantile_alpha == pytest.approx(0.8)

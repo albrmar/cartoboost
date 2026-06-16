@@ -1,19 +1,25 @@
 #!/usr/bin/env python3
-"""Compare GeoBoost against small sklearn baselines on deterministic fixtures."""
+"""Compare CartoBoost against small sklearn baselines on deterministic fixtures."""
 
 from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
 import numpy as np
-from geoboost import GeoBoostRegressor
 from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.metrics import mean_squared_error
 
 ROOT = Path(__file__).resolve().parents[1]
+PYTHON_SOURCE = ROOT / "python"
+if str(PYTHON_SOURCE) not in sys.path:
+    sys.path.insert(0, str(PYTHON_SOURCE))
+
+from cartoboost import CartoBoostRegressor  # noqa: E402
+
 DEFAULT_OUTPUT = ROOT / "target" / "validation" / "baseline_comparison.json"
 
 
@@ -40,7 +46,7 @@ def rmse(actual: np.ndarray, predicted: np.ndarray) -> float:
 
 def collect() -> dict[str, Any]:
     train_x, train_y, test_x, test_y = fixture()
-    geoboost = GeoBoostRegressor(
+    cartoboost = CartoBoostRegressor(
         n_estimators=25,
         learning_rate=0.1,
         max_depth=2,
@@ -60,9 +66,9 @@ def collect() -> dict[str, Any]:
         "artifact_version": 1,
         "fixture": "deterministic_axis_regression",
         "models": {
-            "geoboost": {
-                "test_rmse": rmse(test_y, geoboost.predict(test_x)),
-                "backend": geoboost._backend_used,
+            "cartoboost": {
+                "test_rmse": rmse(test_y, cartoboost.predict(test_x)),
+                "backend": cartoboost._backend_used,
             },
             "sklearn_gradient_boosting": {
                 "test_rmse": rmse(test_y, sklearn_gbr.predict(test_x)),

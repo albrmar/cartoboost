@@ -1,12 +1,12 @@
 # Sparse Features
 
-GeoBoost supports list-valued sparse columns through the Rust backend. Each row
+CartoBoost supports list-valued sparse columns through the Rust backend. Each row
 can contain zero or more non-negative integer IDs for route cells, zones,
 encoded H3 cells, grid cells, corridors, or other memberships.
 
 This is useful when a temporal-spatial row belongs to several places at once,
 such as all route cells crossed by a trip. A generic tabular model usually
-needs a wide one-hot or hashing step for this data; GeoBoost can consume the
+needs a wide one-hot or hashing step for this data; CartoBoost can consume the
 lists directly.
 
 ## Python API
@@ -57,8 +57,8 @@ The Rust payload still uses the existing `"SparseSet"` feature kind, while the
 Python schema metadata keeps the H3 resolution fields for callers and saved
 estimator metadata.
 
-`geoboost.h3.normalize_h3_id` accepts non-negative integer IDs plus decimal or
-hexadecimal strings. GeoBoost does not compute H3 cells from latitude and
+`cartoboost.h3.normalize_h3_id` accepts non-negative integer IDs plus decimal or
+hexadecimal strings. CartoBoost does not compute H3 cells from latitude and
 longitude; compute cells upstream, then pass the encoded IDs through
 `sparse_sets=`.
 

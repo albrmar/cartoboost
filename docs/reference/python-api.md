@@ -1,12 +1,12 @@
 # Python API Reference
 
 This page lists the public Python entry points used to fit, evaluate, explain,
-and save GeoBoost regression models.
+and save CartoBoost regression models.
 
-## `geoboost.GeoBoostRegressor`
+## `cartoboost.CartoBoostRegressor`
 
 ```python
-GeoBoostRegressor(
+CartoBoostRegressor(
     n_estimators=100,
     learning_rate=0.05,
     max_depth=4,
@@ -42,12 +42,12 @@ GeoBoostRegressor(
 | `explain_shap(X, background=..., **kwargs)` | `shap.Explanation` | Convenience SHAP entry point. |
 | `save(path)` | `None` | Writes a model artifact. |
 | `save_weights(path, format="auto")` | `None` | Writes JSON weights or supported ONNX. |
-| `GeoBoostRegressor.load(path)` | estimator | Loads native model artifacts. |
-| `GeoBoostRegressor.load_weights(path)` | estimator | Loads weights artifacts. |
+| `CartoBoostRegressor.load(path)` | estimator | Loads native model artifacts. |
+| `CartoBoostRegressor.load_weights(path)` | estimator | Loads weights artifacts. |
 | `get_params(deep=True)` | `dict` | sklearn-compatible parameter inspection. |
 | `set_params(**params)` | `self` | Validates known parameter names. |
 
-## `geoboost.FeatureSchema`
+## `cartoboost.FeatureSchema`
 
 ```python
 FeatureSchema(dense, sparse_sets=None)
@@ -64,8 +64,8 @@ Helper for declaring numeric, periodic, and sparse-set feature roles.
 ## SHAP Helpers
 
 ```python
-geoboost.make_shap_explainer(model, background, **kwargs)
-geoboost.explain_shap(model, X, background=..., **kwargs)
+cartoboost.make_shap_explainer(model, background, **kwargs)
+cartoboost.explain_shap(model, X, background=..., **kwargs)
 ```
 
 These functions are also available as estimator methods. See
@@ -74,10 +74,10 @@ These functions are also available as estimator methods. See
 ## Evaluation Helpers
 
 ```python
-geoboost.out_of_time_split(times, validation_fraction=0.2, gap=0)
-geoboost.spatial_blocked_cv(coordinates, n_splits=5)
-geoboost.temporal_blocked_cv(times, n_splits=5, gap=0)
-geoboost.grouped_blocked_cv(groups, n_splits=5)
+cartoboost.out_of_time_split(times, validation_fraction=0.2, gap=0)
+cartoboost.spatial_blocked_cv(coordinates, n_splits=5)
+cartoboost.temporal_blocked_cv(times, n_splits=5, gap=0)
+cartoboost.grouped_blocked_cv(groups, n_splits=5)
 ```
 
 `out_of_time_split` returns one `(train_idx, validation_idx)` pair for a future
@@ -92,7 +92,7 @@ random split hides.
 ## I/O Helpers
 
 ```python
-geoboost.io.read_geojson(path)
+cartoboost.io.read_geojson(path)
 ```
 
 Reads a GeoJSON file into a Python dictionary.

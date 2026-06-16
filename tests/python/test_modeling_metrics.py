@@ -1,6 +1,6 @@
 import numpy as np
 import pytest
-from geoboost import (
+from cartoboost import (
     calibrated_intervals,
     conformal_residual_quantile,
     interval_coverage,

@@ -1,13 +1,13 @@
 # Benchmarks
 
-GeoBoost benchmark docs are for reproducible model comparison. Use them to
+CartoBoost benchmark docs are for reproducible model comparison. Use them to
 answer data-science questions such as whether temporal-spatial splitters improve
-random, spatial, or temporal holdouts against an axis-only GeoBoost model,
+random, spatial, or temporal holdouts against an axis-only CartoBoost model,
 XGBoost, LightGBM, or a mean baseline.
 
 | Page | Question |
 | --- | --- |
-| [NYC Taxi Benchmarks](nyc-taxi.md) | Does GeoBoost help on real temporal-spatial taxi tasks with random and spatial holdouts? |
+| [NYC Taxi Benchmarks](nyc-taxi.md) | Does CartoBoost help on real temporal-spatial taxi tasks with random and spatial holdouts? |
 | [Lane-Level Acceptance](lane-level.md) | Does the model capture route-cell, temporal, spatial, and combined lane behavior on a controlled dataset? |
 
 ## Evaluation Helpers
@@ -16,7 +16,7 @@ Objective, calibration, spatial-diagnostic, and blocked-validation helpers are
 available from the Python package:
 
 ```python
-from geoboost import (
+from cartoboost import (
     out_of_time_split,
     residual_morans_i,
     spatial_blocked_cv,

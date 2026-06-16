@@ -1,6 +1,6 @@
-# GeoBoost Documentation
+# CartoBoost Documentation
 
-GeoBoost is a Python regression package for temporal-spatial problems: demand
+CartoBoost is a Python regression package for temporal-spatial problems: demand
 by zone and time, route or lane performance, ETA residuals, local pricing
 effects, and other targets where place, time, and sparse location memberships
 carry signal. It is designed for data scientists who want an estimator workflow
@@ -21,7 +21,7 @@ split types that directly model temporal and spatial structure.
 - [CLI](user-guide/cli.md) covers dense numeric CSV training and prediction.
 - [Benchmarks](benchmarks/index.md) explains reproducible comparison reports.
 
-## What GeoBoost Supports
+## What CartoBoost Supports
 
 - L2 and quantile regression.
 - Constant and linear residual leaves.
@@ -38,7 +38,7 @@ split types that directly model temporal and spatial structure.
 
 Standard tabular boosters are strong baselines, but they usually see location
 and time as ordinary scalar columns unless you pre-engineer richer features.
-GeoBoost adds splitters that match common temporal-spatial patterns:
+CartoBoost adds splitters that match common temporal-spatial patterns:
 
 - Periodic splitters keep wraparound time features, such as hour `23` and hour
   `0`, adjacent.
@@ -55,9 +55,9 @@ The Rust native extension is required for training and prediction.
 ## Typical Workflow
 
 ```python
-from geoboost import GeoBoostRegressor
+from cartoboost import CartoBoostRegressor
 
-model = GeoBoostRegressor(
+model = CartoBoostRegressor(
     n_estimators=100,
     learning_rate=0.05,
     max_depth=4,
@@ -67,9 +67,9 @@ model = GeoBoostRegressor(
 
 model.fit(X_train, y_train)
 predictions = model.predict(X_test)
-model.save("model.geoboost.json")
+model.save("model.cartoboost.json")
 ```
 
-Use GeoBoost like other gradient-boosting regressors: choose features, split the
+Use CartoBoost like other gradient-boosting regressors: choose features, split the
 data, fit the estimator, compare metrics against baselines, inspect residuals,
 and save the fitted model artifact.

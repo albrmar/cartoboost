@@ -1,6 +1,6 @@
+use cartoboost_core::tree::{Node, PredictionTransform, Tree, MODEL_ARTIFACT_VERSION};
+use cartoboost_core::Model;
 use criterion::{black_box, criterion_group, criterion_main, BenchmarkId, Criterion};
-use geoboost_core::tree::{Node, PredictionTransform, Tree, MODEL_ARTIFACT_VERSION};
-use geoboost_core::Model;
 
 fn model_fixture(trees: usize) -> Model {
     let trees = (0..trees)

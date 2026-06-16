@@ -2,7 +2,7 @@
 
 ## Dev environment tips
 - This folder contains the Rust workspace crates.
-- Keep shared behavior in `geoboost-core`, CLI-only behavior in `geoboost-cli`, and PyO3 binding code in `geoboost-py`.
+- Keep shared behavior in `cartoboost-core`, CLI-only behavior in `cartoboost-cli`, and PyO3 binding code in `cartoboost-py`.
 - Use workspace dependencies and lint settings from the root `Cargo.toml`.
 
 ## Testing instructions

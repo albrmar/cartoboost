@@ -1,5 +1,5 @@
 {
-  "model_path": "baseline_model.geoboost",
+  "model_path": "baseline_model.cartoboost",
   "rows": [
     [
       0.1,

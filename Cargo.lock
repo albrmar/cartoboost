@@ -48,6 +48,35 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72f5acc6cb2ba439de613abc23857ec3d78374d8ed5ac84e9d11336e87da8649"
 
 [[package]]
+name = "cartoboost-cli"
+version = "0.1.0"
+dependencies = [
+ "cartoboost-core",
+]
+
+[[package]]
+name = "cartoboost-core"
+version = "0.1.0"
+dependencies = [
+ "criterion",
+ "rayon",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror",
+]
+
+[[package]]
+name = "cartoboost-py"
+version = "0.1.0"
+dependencies = [
+ "cartoboost-core",
+ "numpy",
+ "pyo3",
+ "serde_json",
+]
+
+[[package]]
 name = "cast"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -234,35 +263,6 @@ dependencies = [
  "futures-task",
  "pin-project-lite",
  "slab",
-]
-
-[[package]]
-name = "geoboost-cli"
-version = "0.1.0"
-dependencies = [
- "geoboost-core",
-]
-
-[[package]]
-name = "geoboost-core"
-version = "0.1.0"
-dependencies = [
- "criterion",
- "rayon",
- "serde",
- "serde_json",
- "tempfile",
- "thiserror",
-]
-
-[[package]]
-name = "geoboost-py"
-version = "0.1.0"
-dependencies = [
- "geoboost-core",
- "numpy",
- "pyo3",
- "serde_json",
 ]
 
 [[package]]

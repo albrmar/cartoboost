@@ -1,8 +1,8 @@
 [workspace]
 members = [
-    "crates/geoboost-core",
-    "crates/geoboost-cli",
-    "crates/geoboost-py",
+    "crates/cartoboost-core",
+    "crates/cartoboost-cli",
+    "crates/cartoboost-py",
 ]
 resolver = "2"
 
@@ -11,9 +11,9 @@ version = "0.1.0"
 edition = "2021"
 rust-version = "1.85"
 license = "MIT"
-repository = "https://github.com/theculliganman/geoboost"
-homepage = "https://github.com/theculliganman/geoboost"
-description = "Clean-room GeoBoost-inspired regression package."
+repository = "https://github.com/theculliganman/cartoboost"
+homepage = "https://github.com/theculliganman/cartoboost"
+description = "Clean-room CartoBoost-inspired regression package."
 readme = "README.md"
 authors = ["Ryan Culligan"]
 

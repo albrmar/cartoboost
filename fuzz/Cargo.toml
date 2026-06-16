@@ -1,5 +1,5 @@
 [package]
-name = "geoboost-fuzz"
+name = "cartoboost-fuzz"
 version = "0.0.0"
 edition = "2021"
 publish = false
@@ -10,7 +10,7 @@ cargo-fuzz = true
 [workspace]
 
 [dependencies]
-geoboost-core = { path = "../crates/geoboost-core" }
+cartoboost-core = { path = "../crates/cartoboost-core" }
 libfuzzer-sys = "0.4"
 serde_json = "1"
 

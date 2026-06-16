@@ -6,7 +6,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from geoboost import GeoBoostRegressor
+from cartoboost import CartoBoostRegressor
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
@@ -42,7 +42,7 @@ def _fit_or_skip(model, *args, **kwargs):
 @given(small_regression_cases())
 def test_native_backend_predictions_are_finite(case):
     x, y = case
-    model = GeoBoostRegressor(
+    model = CartoBoostRegressor(
         n_estimators=3,
         learning_rate=0.25,
         max_depth=2,
@@ -61,7 +61,7 @@ def test_native_backend_predictions_are_finite(case):
 @given(small_regression_cases())
 def test_native_backend_save_load_preserves_predictions(case):
     x, y = case
-    model = GeoBoostRegressor(
+    model = CartoBoostRegressor(
         n_estimators=2,
         learning_rate=0.5,
         max_depth=1,
@@ -75,7 +75,7 @@ def test_native_backend_save_load_preserves_predictions(case):
         path = Path(temp_dir) / "model.json"
         model.save(path)
 
-        restored = GeoBoostRegressor.load(path)
+        restored = CartoBoostRegressor.load(path)
 
     assert restored.predict(x) == pytest.approx(before)
 
@@ -84,7 +84,7 @@ def test_native_backend_save_load_preserves_predictions(case):
 @given(small_regression_cases())
 def test_native_backend_batch_prediction_equals_row_by_row(case):
     x, y = case
-    model = GeoBoostRegressor(
+    model = CartoBoostRegressor(
         n_estimators=2,
         learning_rate=0.4,
         max_depth=1,
@@ -116,7 +116,7 @@ def test_native_backend_batch_prediction_equals_row_by_row(case):
 def test_zero_weight_rows_do_not_affect_weighted_initial_prediction(targets):
     x = [[float(idx)] for idx in range(len(targets))]
     weights = [1.0] + [0.0 for _ in targets[1:]]
-    model = GeoBoostRegressor(
+    model = CartoBoostRegressor(
         n_estimators=1,
         learning_rate=1.0,
         max_depth=0,
@@ -130,7 +130,7 @@ def test_zero_weight_rows_do_not_affect_weighted_initial_prediction(targets):
 
 
 def test_native_fuzzy_midpoint_preserves_branch_mass():
-    model = GeoBoostRegressor(
+    model = CartoBoostRegressor(
         n_estimators=1,
         learning_rate=1.0,
         max_depth=1,
@@ -150,7 +150,7 @@ def test_native_fuzzy_midpoint_preserves_branch_mass():
 def test_native_periodic_prediction_invariant_under_period_shift():
     x = [[float(hour)] for hour in range(24)]
     y = [8.0 if hour >= 22 or hour <= 2 else -2.0 for hour in range(24)]
-    model = GeoBoostRegressor(
+    model = CartoBoostRegressor(
         n_estimators=1,
         learning_rate=1.0,
         max_depth=1,
@@ -176,7 +176,7 @@ def test_native_duplicate_sparse_ids_do_not_change_predictions():
     y = [6.0, 6.0, -1.0, -1.0]
     sparse_sets = {"route_cells": [[7, 11], [11], [3], []]}
     duplicate_sparse_sets = {"route_cells": [[11, 7, 7], [11, 11], [3, 3], []]}
-    model = GeoBoostRegressor(
+    model = CartoBoostRegressor(
         n_estimators=1,
         learning_rate=1.0,
         max_depth=1,
@@ -197,7 +197,7 @@ def test_native_sparse_save_load_preserves_predictions(tmp_path: Path):
     x = [[0.0], [0.0], [0.0], [0.0]]
     y = [9.0, 9.0, -3.0, -3.0]
     sparse_sets = {"route_cells": [[5, 7], [7], [2], []]}
-    model = GeoBoostRegressor(
+    model = CartoBoostRegressor(
         n_estimators=2,
         learning_rate=0.5,
         max_depth=1,
@@ -210,7 +210,7 @@ def test_native_sparse_save_load_preserves_predictions(tmp_path: Path):
     path = tmp_path / "sparse.json"
 
     model.save(path)
-    restored = GeoBoostRegressor.load(path)
+    restored = CartoBoostRegressor.load(path)
 
     after = np.asarray(restored.predict(x, sparse_sets=sparse_sets), dtype=float)
     assert after == pytest.approx(before, abs=1e-12)

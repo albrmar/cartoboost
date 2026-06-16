@@ -1,8 +1,8 @@
 # Limitations
 
-GeoBoost is a regression package with a temporal-spatial modeling focus. It is
+CartoBoost is a regression package with a temporal-spatial modeling focus. It is
 not a universal replacement for XGBoost, LightGBM, scikit-learn, or production
-geospatial systems. Treat those tools as baselines and choose GeoBoost when its
+cartospatial systems. Treat those tools as baselines and choose CartoBoost when its
 splitters match the structure in your data.
 
 ## Modeling Scope
@@ -10,7 +10,7 @@ splitters match the structure in your data.
 - Regression only; classification, ranking, and survival objectives are not
   supported.
 - Public regression objectives are L2, L1, Huber, LogL2, and quantile.
-- GeoBoost should not be described as generally superior to other boosters.
+- CartoBoost should not be described as generally superior to other boosters.
   Compare on the same data, split strategy, features, and metrics.
 
 ## Backend Scope
@@ -41,7 +41,7 @@ splitters match the structure in your data.
 
 ## Artifact Scope
 
-- GeoBoost JSON model and weights artifacts are the recommended save/load path.
+- CartoBoost JSON model and weights artifacts are the recommended save/load path.
 - ONNX export supports only dense axis-tree constant-leaf models.
 - Unknown future artifact versions fail clearly instead of attempting an
   implicit migration.
@@ -51,6 +51,6 @@ splitters match the structure in your data.
 - Benchmark reports are setup-specific evidence, not universal superiority
   claims.
 - LightGBM and XGBoost are optional benchmark dependencies, not runtime
-  dependencies of GeoBoost.
+  dependencies of CartoBoost.
 - Any cross-package comparison should state the command, data version, feature
   handling, estimator settings, dependency versions, and holdout strategy.

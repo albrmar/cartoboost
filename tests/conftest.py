@@ -1,4 +1,4 @@
-"""Shared fixture helpers for GeoBoost contract tests."""
+"""Shared fixture helpers for CartoBoost contract tests."""
 
 from __future__ import annotations
 

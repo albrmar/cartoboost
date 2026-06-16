@@ -3,11 +3,11 @@
 ## `train`
 
 ```sh
-geoboost train --data <csv> [--config <toml>] [--model-out <path>] [--output json|csv]
+cartoboost train --data <csv> [--config <toml>] [--model-out <path>] [--output json|csv]
 ```
 
 Trains a dense numeric CSV model. If `--model-out` is omitted, the CLI writes
-`geoboost-model.json`.
+`cartoboost-model.json`.
 
 JSON output:
 
@@ -18,7 +18,7 @@ JSON output:
 ## `predict`
 
 ```sh
-geoboost predict --model <path> --input <csv> [--predictions-out <path>] [--output json|csv]
+cartoboost predict --model <path> --input <csv> [--predictions-out <path>] [--output json|csv]
 ```
 
 Loads a model and predicts dense numeric rows. Prediction CSV output uses:
@@ -32,7 +32,7 @@ row,prediction
 ## `eval`
 
 ```sh
-geoboost eval --model <path> --data <csv> [--output json|csv]
+cartoboost eval --model <path> --data <csv> [--output json|csv]
 ```
 
 Computes mean absolute error against the target column stored in the model, or
@@ -41,7 +41,7 @@ the last data column when the model has no target name.
 ## `inspect`
 
 ```sh
-geoboost inspect [--model <path>] [--config <toml>] [--data <csv>] [--output json|csv]
+cartoboost inspect [--model <path>] [--config <toml>] [--data <csv>] [--output json|csv]
 ```
 
 Summarizes model, config, and data inputs without training.

@@ -2,7 +2,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from geoboost import GeoBoostRegressor, make_shap_explainer
+from cartoboost import CartoBoostRegressor, make_shap_explainer
 
 shap = pytest.importorskip("shap")
 
@@ -19,10 +19,10 @@ def _fit_or_skip(model, *args, **kwargs):
         pytest.skip(str(exc))
 
 
-def test_shap_explainer_accepts_geoboost_estimator_directly():
+def test_shap_explainer_accepts_cartoboost_estimator_directly():
     X = np.asarray([[0.0], [1.0], [2.0], [3.0]], dtype=float)
     y = np.asarray([0.0, 1.0, 2.0, 3.0], dtype=float)
-    model = GeoBoostRegressor(
+    model = CartoBoostRegressor(
         n_estimators=3,
         learning_rate=0.5,
         min_samples_leaf=1,
@@ -49,7 +49,7 @@ def test_explain_shap_returns_additive_explanation_for_native_backend():
         dtype=float,
     )
     y = np.asarray([0.0, 0.5, 2.0, 2.5, 4.0, 4.5], dtype=float)
-    model = GeoBoostRegressor(
+    model = CartoBoostRegressor(
         n_estimators=4,
         learning_rate=0.5,
         max_depth=1,
@@ -66,7 +66,7 @@ def test_explain_shap_returns_additive_explanation_for_native_backend():
 def test_make_shap_explainer_public_helper_matches_method():
     X = np.asarray([[0.0], [1.0], [2.0], [3.0]], dtype=float)
     y = np.asarray([0.0, 1.0, 2.0, 3.0], dtype=float)
-    model = GeoBoostRegressor(
+    model = CartoBoostRegressor(
         n_estimators=3,
         learning_rate=0.5,
         min_samples_leaf=1,
@@ -86,7 +86,7 @@ def test_shap_decomposes_additive_weights_for_weighted_native_backend():
     X = np.asarray([[0.0], [1.0], [2.0], [3.0]], dtype=float)
     y = np.asarray([0.0, 1.0, 4.0, 9.0], dtype=float)
     sample_weight = np.asarray([4.0, 1.0, 1.0, 2.0], dtype=float)
-    model = GeoBoostRegressor(
+    model = CartoBoostRegressor(
         n_estimators=3,
         learning_rate=0.5,
         max_depth=1,
@@ -116,7 +116,7 @@ def test_shap_preserves_pandas_feature_names():
     pd = pytest.importorskip("pandas")
     X = pd.DataFrame({"distance_m": [0.0, 1.0, 2.0, 3.0], "hour": [0.0, 1.0, 0.0, 1.0]})
     y = np.asarray([0.0, 1.5, 2.0, 3.5], dtype=float)
-    model = GeoBoostRegressor(
+    model = CartoBoostRegressor(
         n_estimators=3,
         learning_rate=0.5,
         min_samples_leaf=1,
@@ -154,7 +154,7 @@ def test_shap_preserves_pandas_feature_names():
 )
 def test_shap_additivity_for_rust_dense_splitters(splitters, X, y, extra):
     rows = np.asarray(X, dtype=float)
-    model = GeoBoostRegressor(
+    model = CartoBoostRegressor(
         n_estimators=2,
         learning_rate=0.5,
         max_depth=1,
@@ -179,7 +179,7 @@ def test_shap_additivity_for_rust_dense_splitters(splitters, X, y, extra):
 def test_shap_additivity_for_rust_fuzzy_and_linear_leaf(params):
     X = np.asarray([[0.0], [1.0], [2.0], [3.0]], dtype=float)
     y = np.asarray([1.0, 3.0, 5.0, 7.0], dtype=float)
-    model = GeoBoostRegressor(
+    model = CartoBoostRegressor(
         n_estimators=1,
         learning_rate=0.5,
         max_depth=1,
@@ -196,15 +196,15 @@ def test_shap_additivity_for_rust_fuzzy_and_linear_leaf(params):
 def test_shap_additivity_after_save_load(tmp_path: Path):
     X = np.asarray([[0.0], [1.0], [2.0], [3.0]], dtype=float)
     y = np.asarray([0.0, 1.0, 2.0, 3.0], dtype=float)
-    model = GeoBoostRegressor(
+    model = CartoBoostRegressor(
         n_estimators=2,
         learning_rate=0.5,
         min_samples_leaf=1,
     )
     _fit_or_skip(model, X, y)
-    path = tmp_path / "model.geoboost.json"
+    path = tmp_path / "model.cartoboost.json"
     model.save(path)
-    loaded = GeoBoostRegressor.load(path)
+    loaded = CartoBoostRegressor.load(path)
 
     explanation = loaded.explain_shap(X[:2], background=X, algorithm="exact")
 
@@ -215,7 +215,7 @@ def test_shap_supports_sparse_set_models_with_augmented_features():
     X = np.asarray([[0.0], [0.0], [0.0], [0.0]], dtype=float)
     y = np.asarray([10.0, 10.0, 0.0, 0.0], dtype=float)
     sparse_sets = {"route_cells": [[7], [7, 11], [3], []]}
-    model = GeoBoostRegressor(
+    model = CartoBoostRegressor(
         n_estimators=2,
         learning_rate=0.5,
         max_depth=1,
@@ -249,7 +249,7 @@ def test_shap_decomposes_additive_weights_for_sparse_set_models():
     X = np.asarray([[0.0], [0.0], [0.0], [0.0]], dtype=float)
     y = np.asarray([10.0, 10.0, 0.0, 0.0], dtype=float)
     sparse_sets = {"route_cells": [[7], [7, 11], [3], []]}
-    model = GeoBoostRegressor(
+    model = CartoBoostRegressor(
         n_estimators=2,
         learning_rate=0.5,
         max_depth=1,

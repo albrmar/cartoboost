@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run NYC TLC taxi quality and speed benchmarks for GeoBoost and GBDT baselines."""
+"""Run NYC TLC taxi quality and speed benchmarks for CartoBoost and GBDT baselines."""
 
 from __future__ import annotations
 
@@ -19,6 +19,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
+PYTHON_SOURCE = ROOT / "python"
+if str(PYTHON_SOURCE) not in sys.path:
+    sys.path.insert(0, str(PYTHON_SOURCE))
+
 DEFAULT_CACHE_DIR = ROOT / "data" / "nyc_taxi"
 DEFAULT_OUTPUT_DIR = ROOT / "docs" / "assets" / "nyc_taxi_benchmarks"
 TLC_TRIP_RECORD_PAGE = "https://www.nyc.gov/site/tlc/about/tlc-trip-record-data.page"
@@ -89,67 +93,69 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--no-download", action="store_true")
     parser.add_argument(
         "--models",
-        default="geoboost,geoboost_reference,lightgbm,xgboost,mean",
-        help=("Comma-separated models from: geoboost, geoboost_reference, lightgbm, xgboost, mean"),
+        default="cartoboost,cartoboost_reference,lightgbm,xgboost,mean",
+        help=(
+            "Comma-separated models from: cartoboost, cartoboost_reference, lightgbm, xgboost, mean"
+        ),
     )
     parser.add_argument("--n-estimators", type=int, default=100)
     parser.add_argument(
-        "--geoboost-n-estimators",
+        "--cartoboost-n-estimators",
         type=int,
         default=100,
         help=(
-            "Estimator count for the GeoBoost benchmark candidate. Baselines use "
-            "--n-estimators; geoboost_reference uses the baseline count."
+            "Estimator count for the CartoBoost benchmark candidate. Baselines use "
+            "--n-estimators; cartoboost_reference uses the baseline count."
         ),
     )
     parser.add_argument("--learning-rate", type=float, default=0.08)
     parser.add_argument("--max-depth", type=int, default=4)
     parser.add_argument(
-        "--geoboost-max-depth",
+        "--cartoboost-max-depth",
         type=int,
         default=5,
         help=(
-            "Max depth for the GeoBoost benchmark candidate. Baselines use --max-depth; "
-            "geoboost_reference uses the baseline depth."
+            "Max depth for the CartoBoost benchmark candidate. Baselines use --max-depth; "
+            "cartoboost_reference uses the baseline depth."
         ),
     )
     parser.add_argument(
-        "--geoboost-splitters",
+        "--cartoboost-splitters",
         default="axis_histogram:512,periodic:24,periodic:7,sparse_set",
         help=(
-            "Comma-separated GeoBoost splitters for candidate and reference, "
+            "Comma-separated CartoBoost splitters for candidate and reference, "
             "for example axis_histogram:512 or axis."
         ),
     )
     parser.add_argument(
-        "--geoboost-min-samples-leaf",
+        "--cartoboost-min-samples-leaf",
         type=int,
         default=1,
-        help="Minimum leaf row count for GeoBoost candidate and reference models.",
+        help="Minimum leaf row count for CartoBoost candidate and reference models.",
     )
     parser.add_argument(
-        "--geoboost-constant-l2",
+        "--cartoboost-constant-l2",
         type=float,
         default=0.0,
-        help="L2 regularization for GeoBoost constant leaf values.",
+        help="L2 regularization for CartoBoost constant leaf values.",
     )
     parser.add_argument(
-        "--geoboost-leaf-predictor",
+        "--cartoboost-leaf-predictor",
         default="constant",
         choices=["constant", "linear"],
-        help="Leaf predictor for GeoBoost candidate and reference models.",
+        help="Leaf predictor for CartoBoost candidate and reference models.",
     )
     parser.add_argument(
-        "--geoboost-init",
+        "--cartoboost-init",
         default="constant",
         choices=["constant", "linear"],
-        help="Initial GeoBoost model before residual tree boosting.",
+        help="Initial CartoBoost model before residual tree boosting.",
     )
     parser.add_argument(
-        "--geoboost-calibration",
+        "--cartoboost-calibration",
         default="none",
         choices=["none", "affine"],
-        help="Train-only post-fit calibration for GeoBoost predictions.",
+        help="Train-only post-fit calibration for CartoBoost predictions.",
     )
     parser.add_argument(
         "--xgboost-tree-method",
@@ -534,7 +540,7 @@ def metric_summary(actual: np.ndarray, predicted: np.ndarray) -> dict[str, float
     return {"rmse": rmse, "mae": mae, "r2": r2}
 
 
-def geoboost_schema(
+def cartoboost_schema(
     task: BenchmarkTask,
     *,
     feature_names: list[str] | None = None,
@@ -680,22 +686,22 @@ def fit_predict_model(
             "predictions": prediction,
         }
 
-    if model_name in {"geoboost", "geoboost_reference"}:
+    if model_name in {"cartoboost", "cartoboost_reference"}:
         try:
-            from geoboost import GeoBoostRegressor
+            from cartoboost import CartoBoostRegressor
         except ImportError as exc:
-            return skipped(f"geoboost import failed: {exc}")
-        min_leaf = args.geoboost_min_samples_leaf
-        is_speed_preset = model_name == "geoboost"
-        n_estimators = args.geoboost_n_estimators if is_speed_preset else args.n_estimators
-        max_depth = args.geoboost_max_depth if is_speed_preset else args.max_depth
-        splitters = parse_splitters(args.geoboost_splitters)
+            return skipped(f"cartoboost import failed: {exc}")
+        min_leaf = args.cartoboost_min_samples_leaf
+        is_speed_preset = model_name == "cartoboost"
+        n_estimators = args.cartoboost_n_estimators if is_speed_preset else args.n_estimators
+        max_depth = args.cartoboost_max_depth if is_speed_preset else args.max_depth
+        splitters = parse_splitters(args.cartoboost_splitters)
         use_dense_id_sets = splitters_use_dense_id_sets(splitters)
         use_sparse_sets = splitters_need_sparse_sets(splitters) and not use_dense_id_sets
         init_model = None
         init_train_prediction = np.zeros_like(train_y, dtype=float)
         init_test_prediction = np.zeros(len(test_indices), dtype=float)
-        if args.geoboost_init == "linear":
+        if args.cartoboost_init == "linear":
             try:
                 from sklearn.linear_model import Ridge
             except ImportError as exc:
@@ -705,20 +711,20 @@ def fit_predict_model(
             init_train_prediction = np.asarray(init_model.predict(train_x), dtype=float)
             init_test_prediction = np.asarray(init_model.predict(test_x), dtype=float)
 
-        model = GeoBoostRegressor(
+        model = CartoBoostRegressor(
             n_estimators=n_estimators,
             learning_rate=args.learning_rate,
             max_depth=max_depth,
             min_samples_leaf=min_leaf,
             min_gain=0.0,
             splitters=splitters,
-            leaf_predictor=args.geoboost_leaf_predictor,
-            constant_l2_regularization=args.geoboost_constant_l2,
+            leaf_predictor=args.cartoboost_leaf_predictor,
+            constant_l2_regularization=args.cartoboost_constant_l2,
         )
         train_sparse = sparse_subset(task.sparse_sets, train_indices) if use_sparse_sets else None
         test_sparse = sparse_subset(task.sparse_sets, test_indices) if use_sparse_sets else None
         feature_schema = (
-            geoboost_schema(
+            cartoboost_schema(
                 task,
                 feature_names=effective_feature_names,
                 include_sparse_sets=True,
@@ -736,7 +742,7 @@ def fit_predict_model(
             )
             calibration_intercept = 0.0
             calibration_slope = 1.0
-            if args.geoboost_calibration == "affine":
+            if args.cartoboost_calibration == "affine":
                 train_raw = init_train_prediction + model.predict(
                     train_x,
                     sparse_sets=train_sparse,
@@ -770,7 +776,7 @@ def fit_predict_model(
                 prediction = calibration_intercept + calibration_slope * prediction
             predict_seconds = time.perf_counter() - predict_started
         except Exception as exc:  # noqa: BLE001
-            return skipped(f"geoboost run failed: {exc}")
+            return skipped(f"cartoboost run failed: {exc}")
         return {
             "status": "ok",
             "metrics": metric_summary(test_y, prediction),
@@ -785,10 +791,10 @@ def fit_predict_model(
                 "learning_rate": float(args.learning_rate),
                 "max_depth": int(max_depth),
                 "min_samples_leaf": int(min_leaf),
-                "constant_l2_regularization": float(args.geoboost_constant_l2),
-                "leaf_predictor": args.geoboost_leaf_predictor,
-                "init": args.geoboost_init,
-                "calibration": args.geoboost_calibration,
+                "constant_l2_regularization": float(args.cartoboost_constant_l2),
+                "leaf_predictor": args.cartoboost_leaf_predictor,
+                "init": args.cartoboost_init,
+                "calibration": args.cartoboost_calibration,
                 "splitters": splitters,
                 "sparse_sets": bool(use_sparse_sets),
                 "zone_treatment": args.zone_treatment,
@@ -923,7 +929,7 @@ def skipped(reason: str) -> dict[str, Any]:
 
 def run_benchmarks(tasks: list[BenchmarkTask], args: argparse.Namespace) -> dict[str, Any]:
     models = [part.strip() for part in args.models.split(",") if part.strip()]
-    valid_models = {"geoboost", "geoboost_reference", "lightgbm", "xgboost", "mean"}
+    valid_models = {"cartoboost", "cartoboost_reference", "lightgbm", "xgboost", "mean"}
     unknown = sorted(set(models) - valid_models)
     if unknown:
         raise ValueError(f"unknown models: {', '.join(unknown)}")
@@ -934,10 +940,10 @@ def run_benchmarks(tasks: list[BenchmarkTask], args: argparse.Namespace) -> dict
         "models_requested": models,
         "model_config": {
             "baseline_n_estimators": int(args.n_estimators),
-            "geoboost_n_estimators": int(args.geoboost_n_estimators),
+            "cartoboost_n_estimators": int(args.cartoboost_n_estimators),
             "learning_rate": float(args.learning_rate),
             "baseline_max_depth": int(args.max_depth),
-            "geoboost_max_depth": int(args.geoboost_max_depth),
+            "cartoboost_max_depth": int(args.cartoboost_max_depth),
             "zone_treatment": args.zone_treatment,
             "zone_target_smoothing": float(args.zone_target_smoothing),
         },
@@ -1052,7 +1058,7 @@ def write_prediction_plots(
     axis.bar([str(zone) for zone in zones], errors, color="#2f6f73")
     axis.set_xlabel("pickup zone")
     axis.set_ylabel("mean absolute residual")
-    axis.set_title(f"{task.display_name}: geographic residuals")
+    axis.set_title(f"{task.display_name}: cartographic residuals")
     axis.tick_params(axis="x", labelrotation=90, labelsize=6)
     axis.grid(axis="y", alpha=0.2)
     fig.tight_layout()
@@ -1145,9 +1151,9 @@ def write_markdown(results: dict[str, Any], output_dir: Path) -> None:
         f"- dataset source: {results['dataset']['source']}",
         f"- models requested: {', '.join(results['models_requested'])}",
         f"- baseline estimators: {results['model_config']['baseline_n_estimators']}",
-        f"- GeoBoost candidate estimators: {results['model_config']['geoboost_n_estimators']}",
+        f"- CartoBoost candidate estimators: {results['model_config']['cartoboost_n_estimators']}",
         f"- baseline max depth: {results['model_config']['baseline_max_depth']}",
-        f"- GeoBoost candidate max depth: {results['model_config']['geoboost_max_depth']}",
+        f"- CartoBoost candidate max depth: {results['model_config']['cartoboost_max_depth']}",
         f"- zone treatment: {results['model_config'].get('zone_treatment', 'raw')}",
         "",
     ]

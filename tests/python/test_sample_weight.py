@@ -1,10 +1,10 @@
-import geoboost.regressor as regressor_module
+import cartoboost.regressor as regressor_module
 import pytest
-from geoboost import GeoBoostRegressor
+from cartoboost import CartoBoostRegressor
 
 
 def test_native_backend_uses_weighted_initial_prediction():
-    model = GeoBoostRegressor(max_depth=0)
+    model = CartoBoostRegressor(max_depth=0)
 
     model.fit([[0.0], [1.0]], [0.0, 10.0], sample_weight=[3.0, 1.0])
 
@@ -12,7 +12,7 @@ def test_native_backend_uses_weighted_initial_prediction():
 
 
 def test_sample_weight_validation():
-    model = GeoBoostRegressor()
+    model = CartoBoostRegressor()
 
     with pytest.raises(ValueError, match="length"):
         model.fit([[0.0], [1.0]], [0.0, 1.0], sample_weight=[1.0])
@@ -35,7 +35,7 @@ def test_sample_weight_is_passed_to_native_when_supported(monkeypatch):
 
     monkeypatch.setattr(regressor_module, "_NativeRegressorModel", NativeWithWeights)
 
-    model = GeoBoostRegressor(n_estimators=1)
+    model = CartoBoostRegressor(n_estimators=1)
     model.fit([[0.0], [1.0]], [0.0, 1.0], sample_weight=[0.25, 0.75])
 
     assert calls["fit"] == ([[0.0], [1.0]], [0.0, 1.0], [0.25, 0.75])
@@ -52,7 +52,7 @@ def test_native_backend_requires_sample_weight_support(monkeypatch):
 
     monkeypatch.setattr(regressor_module, "_NativeRegressorModel", NativeWithoutWeights)
 
-    model = GeoBoostRegressor(max_depth=1)
+    model = CartoBoostRegressor(max_depth=1)
 
     with pytest.raises(NotImplementedError, match="sample_weight"):
         model.fit([[0.0], [1.0]], [0.0, 10.0], sample_weight=[1.0, 3.0])

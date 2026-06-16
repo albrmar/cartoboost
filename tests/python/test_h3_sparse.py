@@ -1,6 +1,6 @@
 import pytest
-from geoboost import FeatureKind, FeatureSchema
-from geoboost.h3 import (
+from cartoboost import FeatureKind, FeatureSchema
+from cartoboost.h3 import (
     expand_h3_sparse_set,
     normalize_h3_id,
     scaffold_h3_parent_id,

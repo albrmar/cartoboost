@@ -1,6 +1,6 @@
 # Feature Schema
 
-Feature schemas tell GeoBoost which columns are ordinary numeric features,
+Feature schemas tell CartoBoost which columns are ordinary numeric features,
 which dense columns wrap around like time, and which columns are list-valued
 sparse memberships. They are especially useful for temporal-spatial models where
 column roles matter.
@@ -63,7 +63,7 @@ When a schema is present:
 
 For example, declaring `hour_of_day` with `period=24` lets `periodic:24` treat
 late-night and early-morning rows as neighboring values. Declaring
-`route_cells` as sparse-set tells GeoBoost to use list membership instead of
+`route_cells` as sparse-set tells CartoBoost to use list membership instead of
 expecting a scalar numeric feature.
 
 ## Limitations

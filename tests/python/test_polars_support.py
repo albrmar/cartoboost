@@ -1,6 +1,6 @@
 import numpy as np
 import pytest
-from geoboost import GeoBoostRegressor
+from cartoboost import CartoBoostRegressor
 
 pl = pytest.importorskip("polars")
 
@@ -22,7 +22,7 @@ def test_polars_dataframe_fit_predict_preserves_feature_names():
         }
     )
     y = pl.Series("target", [0.0, 1.5, 2.0, 3.5])
-    model = GeoBoostRegressor(
+    model = CartoBoostRegressor(
         n_estimators=3,
         learning_rate=0.5,
         min_samples_leaf=1,
@@ -48,8 +48,8 @@ def test_polars_series_sample_weight_matches_numpy_path():
         min_gain=0.0,
         splitters=["axis"],
     )
-    polars_model = GeoBoostRegressor(**config)
-    numpy_model = GeoBoostRegressor(**config)
+    polars_model = CartoBoostRegressor(**config)
+    numpy_model = CartoBoostRegressor(**config)
 
     _fit_or_skip(polars_model, x, y, sample_weight=sample_weight)
     _fit_or_skip(
@@ -75,8 +75,8 @@ def test_polars_sparse_set_dataframe_train_predict_matches_dict_path():
         min_gain=0.0,
         splitters=["sparse_set"],
     )
-    polars_model = GeoBoostRegressor(**config)
-    dict_model = GeoBoostRegressor(**config)
+    polars_model = CartoBoostRegressor(**config)
+    dict_model = CartoBoostRegressor(**config)
 
     _fit_or_skip(polars_model, x, y, sparse_sets=sparse_sets)
     _fit_or_skip(dict_model, x.to_numpy(), y.to_numpy(), sparse_sets=dict_sparse_sets)
@@ -92,7 +92,7 @@ def test_polars_sparse_shap_adapter_accepts_dataframes():
     x = pl.DataFrame({"bias": [0.0, 0.0, 0.0, 0.0]})
     y = np.asarray([10.0, 10.0, 0.0, 0.0], dtype=float)
     sparse_sets = pl.DataFrame({"route_cells": [[7], [7, 11], [3], []]})
-    model = GeoBoostRegressor(
+    model = CartoBoostRegressor(
         n_estimators=2,
         learning_rate=0.5,
         max_depth=1,

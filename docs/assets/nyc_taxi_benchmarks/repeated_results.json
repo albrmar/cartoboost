@@ -6,19 +6,19 @@
     "predict_rps_ratio_vs_xgboost_min": 1.0,
     "rmse_delta_vs_xgboost_max_exclusive": 0.0,
     "r2_delta_vs_xgboost_min": 0.0,
-    "quality_delta_vs_geoboost_reference_abs_max": 1e-09
+    "quality_delta_vs_cartoboost_reference_abs_max": 1e-09
   },
   "model_config": {
     "baseline_n_estimators": 100,
-    "geoboost_n_estimators": 100,
+    "cartoboost_n_estimators": 100,
     "baseline_max_depth": 4,
-    "geoboost_max_depth": 5,
-    "geoboost_splitters": "axis_histogram:512",
-    "geoboost_min_samples_leaf": 1,
-    "geoboost_constant_l2": 0.0,
-    "geoboost_leaf_predictor": "constant",
-    "geoboost_init": "constant",
-    "geoboost_calibration": "none",
+    "cartoboost_max_depth": 5,
+    "cartoboost_splitters": "axis_histogram:512",
+    "cartoboost_min_samples_leaf": 1,
+    "cartoboost_constant_l2": 0.0,
+    "cartoboost_leaf_predictor": "constant",
+    "cartoboost_init": "constant",
+    "cartoboost_calibration": "none",
     "xgboost_tree_method": "hist",
     "xgboost_max_bin": 256,
     "xgboost_subsample": 1.0,
@@ -31,68 +31,68 @@
       "runs": [
         {
           "run": 1.0,
-          "geoboost_train_seconds": 1.2084132499876432,
-          "geoboost_predict_rows_per_second": 591313.6025694844,
+          "cartoboost_train_seconds": 1.2084132499876432,
+          "cartoboost_predict_rows_per_second": 591313.6025694844,
           "xgboost_train_seconds": 0.06434370900387876,
           "xgboost_predict_rows_per_second": 1657733.1426674821,
           "train_ratio_vs_xgboost": 18.78059671559807,
           "predict_rps_ratio_vs_xgboost": 0.35670011496421744,
           "rmse_delta_vs_xgboost": -0.004507381140219979,
           "r2_delta_vs_xgboost": 0.005452611533650842,
-          "rmse_delta_vs_geoboost_reference": -0.00561136105276383,
-          "r2_delta_vs_geoboost_reference": 0.0068006771629171014
+          "rmse_delta_vs_cartoboost_reference": -0.00561136105276383,
+          "r2_delta_vs_cartoboost_reference": 0.0068006771629171014
         },
         {
           "run": 2.0,
-          "geoboost_train_seconds": 1.1843475000059698,
-          "geoboost_predict_rows_per_second": 512820.5129552209,
+          "cartoboost_train_seconds": 1.1843475000059698,
+          "cartoboost_predict_rows_per_second": 512820.5129552209,
           "xgboost_train_seconds": 0.06184999999823049,
           "xgboost_predict_rows_per_second": 1785236.1018181313,
           "train_ratio_vs_xgboost": 19.148706548744602,
           "predict_rps_ratio_vs_xgboost": 0.2872564096328497,
           "rmse_delta_vs_xgboost": -0.004507381140219979,
           "r2_delta_vs_xgboost": 0.005452611533650842,
-          "rmse_delta_vs_geoboost_reference": -0.00561136105276383,
-          "r2_delta_vs_geoboost_reference": 0.0068006771629171014
+          "rmse_delta_vs_cartoboost_reference": -0.00561136105276383,
+          "r2_delta_vs_cartoboost_reference": 0.0068006771629171014
         },
         {
           "run": 3.0,
-          "geoboost_train_seconds": 1.3894636250042822,
-          "geoboost_predict_rows_per_second": 140481.17272809724,
+          "cartoboost_train_seconds": 1.3894636250042822,
+          "cartoboost_predict_rows_per_second": 140481.17272809724,
           "xgboost_train_seconds": 0.06682545802323148,
           "xgboost_predict_rows_per_second": 1845160.0743328074,
           "train_ratio_vs_xgboost": 20.792429503756537,
           "predict_rps_ratio_vs_xgboost": 0.07613495147779735,
           "rmse_delta_vs_xgboost": -0.004507381140219979,
           "r2_delta_vs_xgboost": 0.005452611533650842,
-          "rmse_delta_vs_geoboost_reference": -0.00561136105276383,
-          "r2_delta_vs_geoboost_reference": 0.0068006771629171014
+          "rmse_delta_vs_cartoboost_reference": -0.00561136105276383,
+          "r2_delta_vs_cartoboost_reference": 0.0068006771629171014
         },
         {
           "run": 4.0,
-          "geoboost_train_seconds": 1.125173166015884,
-          "geoboost_predict_rows_per_second": 465347.1345004066,
+          "cartoboost_train_seconds": 1.125173166015884,
+          "cartoboost_predict_rows_per_second": 465347.1345004066,
           "xgboost_train_seconds": 0.07025954200071283,
           "xgboost_predict_rows_per_second": 1727115.726742958,
           "train_ratio_vs_xgboost": 16.01452463217691,
           "predict_rps_ratio_vs_xgboost": 0.26943598931727114,
           "rmse_delta_vs_xgboost": -0.004507381140219979,
           "r2_delta_vs_xgboost": 0.005452611533650842,
-          "rmse_delta_vs_geoboost_reference": -0.00561136105276383,
-          "r2_delta_vs_geoboost_reference": 0.0068006771629171014
+          "rmse_delta_vs_cartoboost_reference": -0.00561136105276383,
+          "r2_delta_vs_cartoboost_reference": 0.0068006771629171014
         },
         {
           "run": 5.0,
-          "geoboost_train_seconds": 1.1169125000014901,
-          "geoboost_predict_rows_per_second": 598506.7263314367,
+          "cartoboost_train_seconds": 1.1169125000014901,
+          "cartoboost_predict_rows_per_second": 598506.7263314367,
           "xgboost_train_seconds": 0.0637387500028126,
           "xgboost_predict_rows_per_second": 1790536.5964287382,
           "train_ratio_vs_xgboost": 17.523288422697405,
           "predict_rps_ratio_vs_xgboost": 0.3342610966596106,
           "rmse_delta_vs_xgboost": -0.004507381140219979,
           "r2_delta_vs_xgboost": 0.005452611533650842,
-          "rmse_delta_vs_geoboost_reference": -0.00561136105276383,
-          "r2_delta_vs_geoboost_reference": 0.0068006771629171014
+          "rmse_delta_vs_cartoboost_reference": -0.00561136105276383,
+          "r2_delta_vs_cartoboost_reference": 0.0068006771629171014
         }
       ],
       "median_train_ratio_vs_xgboost": 18.78059671559807,
@@ -103,75 +103,75 @@
       "max_predict_rps_ratio_vs_xgboost": 0.35670011496421744,
       "median_rmse_delta_vs_xgboost": -0.004507381140219979,
       "median_r2_delta_vs_xgboost": 0.005452611533650842,
-      "median_rmse_delta_vs_geoboost_reference": -0.00561136105276383,
-      "median_r2_delta_vs_geoboost_reference": 0.0068006771629171014
+      "median_rmse_delta_vs_cartoboost_reference": -0.00561136105276383,
+      "median_r2_delta_vs_cartoboost_reference": 0.0068006771629171014
     },
     "duration/spatial_holdout": {
       "runs": [
         {
           "run": 1.0,
-          "geoboost_train_seconds": 1.046764875005465,
-          "geoboost_predict_rows_per_second": 655542.3790804867,
+          "cartoboost_train_seconds": 1.046764875005465,
+          "cartoboost_predict_rows_per_second": 655542.3790804867,
           "xgboost_train_seconds": 0.05784541700268164,
           "xgboost_predict_rows_per_second": 1814443.120830824,
           "train_ratio_vs_xgboost": 18.09589988705481,
           "predict_rps_ratio_vs_xgboost": 0.36129122569591343,
           "rmse_delta_vs_xgboost": -0.0011971511338659258,
           "r2_delta_vs_xgboost": 0.001593967109713823,
-          "rmse_delta_vs_geoboost_reference": -0.004057851498085796,
-          "r2_delta_vs_geoboost_reference": 0.0054268498130171094
+          "rmse_delta_vs_cartoboost_reference": -0.004057851498085796,
+          "r2_delta_vs_cartoboost_reference": 0.0054268498130171094
         },
         {
           "run": 2.0,
-          "geoboost_train_seconds": 1.057197250018362,
-          "geoboost_predict_rows_per_second": 666566.9761654149,
+          "cartoboost_train_seconds": 1.057197250018362,
+          "cartoboost_predict_rows_per_second": 666566.9761654149,
           "xgboost_train_seconds": 0.058752582990564406,
           "xgboost_predict_rows_per_second": 1791310.2481767954,
           "train_ratio_vs_xgboost": 17.994055685826556,
           "predict_rps_ratio_vs_xgboost": 0.3721114066331336,
           "rmse_delta_vs_xgboost": -0.0011971511338659258,
           "r2_delta_vs_xgboost": 0.001593967109713823,
-          "rmse_delta_vs_geoboost_reference": -0.004057851498085796,
-          "r2_delta_vs_geoboost_reference": 0.0054268498130171094
+          "rmse_delta_vs_cartoboost_reference": -0.004057851498085796,
+          "r2_delta_vs_cartoboost_reference": 0.0054268498130171094
         },
         {
           "run": 3.0,
-          "geoboost_train_seconds": 1.0676537080144044,
-          "geoboost_predict_rows_per_second": 215550.8357215335,
+          "cartoboost_train_seconds": 1.0676537080144044,
+          "cartoboost_predict_rows_per_second": 215550.8357215335,
           "xgboost_train_seconds": 0.05981108301784843,
           "xgboost_predict_rows_per_second": 1679578.6684339494,
           "train_ratio_vs_xgboost": 17.850432631286782,
           "predict_rps_ratio_vs_xgboost": 0.1283362546646979,
           "rmse_delta_vs_xgboost": -0.0011971511338659258,
           "r2_delta_vs_xgboost": 0.001593967109713823,
-          "rmse_delta_vs_geoboost_reference": -0.004057851498085796,
-          "r2_delta_vs_geoboost_reference": 0.0054268498130171094
+          "rmse_delta_vs_cartoboost_reference": -0.004057851498085796,
+          "r2_delta_vs_cartoboost_reference": 0.0054268498130171094
         },
         {
           "run": 4.0,
-          "geoboost_train_seconds": 1.0444070409866981,
-          "geoboost_predict_rows_per_second": 572281.6133347668,
+          "cartoboost_train_seconds": 1.0444070409866981,
+          "cartoboost_predict_rows_per_second": 572281.6133347668,
           "xgboost_train_seconds": 0.05777812498854473,
           "xgboost_predict_rows_per_second": 1766130.6532084537,
           "train_ratio_vs_xgboost": 18.076167082157227,
           "predict_rps_ratio_vs_xgboost": 0.3240313010224512,
           "rmse_delta_vs_xgboost": -0.0011971511338659258,
           "r2_delta_vs_xgboost": 0.001593967109713823,
-          "rmse_delta_vs_geoboost_reference": -0.004057851498085796,
-          "r2_delta_vs_geoboost_reference": 0.0054268498130171094
+          "rmse_delta_vs_cartoboost_reference": -0.004057851498085796,
+          "r2_delta_vs_cartoboost_reference": 0.0054268498130171094
         },
         {
           "run": 5.0,
-          "geoboost_train_seconds": 1.051876000012271,
-          "geoboost_predict_rows_per_second": 759251.8631533423,
+          "cartoboost_train_seconds": 1.051876000012271,
+          "cartoboost_predict_rows_per_second": 759251.8631533423,
           "xgboost_train_seconds": 0.05732287498540245,
           "xgboost_predict_rows_per_second": 1809906.7904143934,
           "train_ratio_vs_xgboost": 18.350021702158806,
           "predict_rps_ratio_vs_xgboost": 0.41949777036833213,
           "rmse_delta_vs_xgboost": -0.0011971511338659258,
           "r2_delta_vs_xgboost": 0.001593967109713823,
-          "rmse_delta_vs_geoboost_reference": -0.004057851498085796,
-          "r2_delta_vs_geoboost_reference": 0.0054268498130171094
+          "rmse_delta_vs_cartoboost_reference": -0.004057851498085796,
+          "r2_delta_vs_cartoboost_reference": 0.0054268498130171094
         }
       ],
       "median_train_ratio_vs_xgboost": 18.076167082157227,
@@ -182,75 +182,75 @@
       "max_predict_rps_ratio_vs_xgboost": 0.41949777036833213,
       "median_rmse_delta_vs_xgboost": -0.0011971511338659258,
       "median_r2_delta_vs_xgboost": 0.001593967109713823,
-      "median_rmse_delta_vs_geoboost_reference": -0.004057851498085796,
-      "median_r2_delta_vs_geoboost_reference": 0.0054268498130171094
+      "median_rmse_delta_vs_cartoboost_reference": -0.004057851498085796,
+      "median_r2_delta_vs_cartoboost_reference": 0.0054268498130171094
     },
     "fare/random": {
       "runs": [
         {
           "run": 1.0,
-          "geoboost_train_seconds": 1.0953831250080839,
-          "geoboost_predict_rows_per_second": 481206.89804977237,
+          "cartoboost_train_seconds": 1.0953831250080839,
+          "cartoboost_predict_rows_per_second": 481206.89804977237,
           "xgboost_train_seconds": 0.06276075000641868,
           "xgboost_predict_rows_per_second": 1735282.6366145748,
           "train_ratio_vs_xgboost": 17.453314769120137,
           "predict_rps_ratio_vs_xgboost": 0.2773075047812247,
           "rmse_delta_vs_xgboost": -0.00014831217210958814,
           "r2_delta_vs_xgboost": 0.00016269272727165163,
-          "rmse_delta_vs_geoboost_reference": -0.0011322725281938395,
-          "r2_delta_vs_geoboost_reference": 0.001246142664616201
+          "rmse_delta_vs_cartoboost_reference": -0.0011322725281938395,
+          "r2_delta_vs_cartoboost_reference": 0.001246142664616201
         },
         {
           "run": 2.0,
-          "geoboost_train_seconds": 1.1103379159758333,
-          "geoboost_predict_rows_per_second": 539791.6029102367,
+          "cartoboost_train_seconds": 1.1103379159758333,
+          "cartoboost_predict_rows_per_second": 539791.6029102367,
           "xgboost_train_seconds": 0.06224208400817588,
           "xgboost_predict_rows_per_second": 1848998.2237535422,
           "train_ratio_vs_xgboost": 17.839022161115036,
           "predict_rps_ratio_vs_xgboost": 0.2919373290767352,
           "rmse_delta_vs_xgboost": -0.00014831217210958814,
           "r2_delta_vs_xgboost": 0.00016269272727165163,
-          "rmse_delta_vs_geoboost_reference": -0.0011322725281938395,
-          "r2_delta_vs_geoboost_reference": 0.001246142664616201
+          "rmse_delta_vs_cartoboost_reference": -0.0011322725281938395,
+          "r2_delta_vs_cartoboost_reference": 0.001246142664616201
         },
         {
           "run": 3.0,
-          "geoboost_train_seconds": 1.1164208749833051,
-          "geoboost_predict_rows_per_second": 390469.9404246066,
+          "cartoboost_train_seconds": 1.1164208749833051,
+          "cartoboost_predict_rows_per_second": 390469.9404246066,
           "xgboost_train_seconds": 0.06465345900505781,
           "xgboost_predict_rows_per_second": 1800018.0049272045,
           "train_ratio_vs_xgboost": 17.267767141367766,
           "predict_rps_ratio_vs_xgboost": 0.21692557483079056,
           "rmse_delta_vs_xgboost": -0.00014831217210958814,
           "r2_delta_vs_xgboost": 0.00016269272727165163,
-          "rmse_delta_vs_geoboost_reference": -0.0011322725281938395,
-          "r2_delta_vs_geoboost_reference": 0.001246142664616201
+          "rmse_delta_vs_cartoboost_reference": -0.0011322725281938395,
+          "r2_delta_vs_cartoboost_reference": 0.001246142664616201
         },
         {
           "run": 4.0,
-          "geoboost_train_seconds": 1.1513039170240518,
-          "geoboost_predict_rows_per_second": 411470.41343652445,
+          "cartoboost_train_seconds": 1.1513039170240518,
+          "cartoboost_predict_rows_per_second": 411470.41343652445,
           "xgboost_train_seconds": 0.06161162501666695,
           "xgboost_predict_rows_per_second": 1761183.5194162275,
           "train_ratio_vs_xgboost": 18.686472183011002,
           "predict_rps_ratio_vs_xgboost": 0.23363290020617097,
           "rmse_delta_vs_xgboost": -0.00014831217210958814,
           "r2_delta_vs_xgboost": 0.00016269272727165163,
-          "rmse_delta_vs_geoboost_reference": -0.0011322725281938395,
-          "r2_delta_vs_geoboost_reference": 0.001246142664616201
+          "rmse_delta_vs_cartoboost_reference": -0.0011322725281938395,
+          "r2_delta_vs_cartoboost_reference": 0.001246142664616201
         },
         {
           "run": 5.0,
-          "geoboost_train_seconds": 1.1168154579936527,
-          "geoboost_predict_rows_per_second": 237420.65824872922,
+          "cartoboost_train_seconds": 1.1168154579936527,
+          "cartoboost_predict_rows_per_second": 237420.65824872922,
           "xgboost_train_seconds": 0.07683187499060296,
           "xgboost_predict_rows_per_second": 1778093.888708939,
           "train_ratio_vs_xgboost": 14.535835005071092,
           "predict_rps_ratio_vs_xgboost": 0.1335253777971863,
           "rmse_delta_vs_xgboost": -0.00014831217210958814,
           "r2_delta_vs_xgboost": 0.00016269272727165163,
-          "rmse_delta_vs_geoboost_reference": -0.0011322725281938395,
-          "r2_delta_vs_geoboost_reference": 0.001246142664616201
+          "rmse_delta_vs_cartoboost_reference": -0.0011322725281938395,
+          "r2_delta_vs_cartoboost_reference": 0.001246142664616201
         }
       ],
       "median_train_ratio_vs_xgboost": 17.453314769120137,
@@ -261,75 +261,75 @@
       "max_predict_rps_ratio_vs_xgboost": 0.2919373290767352,
       "median_rmse_delta_vs_xgboost": -0.00014831217210958814,
       "median_r2_delta_vs_xgboost": 0.00016269272727165163,
-      "median_rmse_delta_vs_geoboost_reference": -0.0011322725281938395,
-      "median_r2_delta_vs_geoboost_reference": 0.001246142664616201
+      "median_rmse_delta_vs_cartoboost_reference": -0.0011322725281938395,
+      "median_r2_delta_vs_cartoboost_reference": 0.001246142664616201
     },
     "fare/spatial_holdout": {
       "runs": [
         {
           "run": 1.0,
-          "geoboost_train_seconds": 1.052823834004812,
-          "geoboost_predict_rows_per_second": 571582.0414060426,
+          "cartoboost_train_seconds": 1.052823834004812,
+          "cartoboost_predict_rows_per_second": 571582.0414060426,
           "xgboost_train_seconds": 0.05884608399355784,
           "xgboost_predict_rows_per_second": 1791917.9801978099,
           "train_ratio_vs_xgboost": 17.891145214014063,
           "predict_rps_ratio_vs_xgboost": 0.31897779235573365,
           "rmse_delta_vs_xgboost": -0.0030959052695632705,
           "r2_delta_vs_xgboost": 0.003471675639380667,
-          "rmse_delta_vs_geoboost_reference": -0.003043153987760089,
-          "r2_delta_vs_geoboost_reference": 0.003411992976237399
+          "rmse_delta_vs_cartoboost_reference": -0.003043153987760089,
+          "r2_delta_vs_cartoboost_reference": 0.003411992976237399
         },
         {
           "run": 2.0,
-          "geoboost_train_seconds": 1.0466149999992922,
-          "geoboost_predict_rows_per_second": 605489.8435529553,
+          "cartoboost_train_seconds": 1.0466149999992922,
+          "cartoboost_predict_rows_per_second": 605489.8435529553,
           "xgboost_train_seconds": 0.05923354098922573,
           "xgboost_predict_rows_per_second": 1738697.8766803895,
           "train_ratio_vs_xgboost": 17.669296525589548,
           "predict_rps_ratio_vs_xgboost": 0.3482432754268886,
           "rmse_delta_vs_xgboost": -0.0030959052695632705,
           "r2_delta_vs_xgboost": 0.003471675639380667,
-          "rmse_delta_vs_geoboost_reference": -0.003043153987760089,
-          "r2_delta_vs_geoboost_reference": 0.003411992976237399
+          "rmse_delta_vs_cartoboost_reference": -0.003043153987760089,
+          "r2_delta_vs_cartoboost_reference": 0.003411992976237399
         },
         {
           "run": 3.0,
-          "geoboost_train_seconds": 1.0695038329868112,
-          "geoboost_predict_rows_per_second": 164062.82509086013,
+          "cartoboost_train_seconds": 1.0695038329868112,
+          "cartoboost_predict_rows_per_second": 164062.82509086013,
           "xgboost_train_seconds": 0.13150658400263637,
           "xgboost_predict_rows_per_second": 1432037.3929354392,
           "train_ratio_vs_xgboost": 8.132701804233394,
           "predict_rps_ratio_vs_xgboost": 0.11456602034291755,
           "rmse_delta_vs_xgboost": -0.0030959052695632705,
           "r2_delta_vs_xgboost": 0.003471675639380667,
-          "rmse_delta_vs_geoboost_reference": -0.003043153987760089,
-          "r2_delta_vs_geoboost_reference": 0.003411992976237399
+          "rmse_delta_vs_cartoboost_reference": -0.003043153987760089,
+          "r2_delta_vs_cartoboost_reference": 0.003411992976237399
         },
         {
           "run": 4.0,
-          "geoboost_train_seconds": 1.0481900840240996,
-          "geoboost_predict_rows_per_second": 622329.2853983165,
+          "cartoboost_train_seconds": 1.0481900840240996,
+          "cartoboost_predict_rows_per_second": 622329.2853983165,
           "xgboost_train_seconds": 0.0593026670103427,
           "xgboost_predict_rows_per_second": 1693540.9174673392,
           "train_ratio_vs_xgboost": 17.675260437128227,
           "predict_rps_ratio_vs_xgboost": 0.36747224645094434,
           "rmse_delta_vs_xgboost": -0.0030959052695632705,
           "r2_delta_vs_xgboost": 0.003471675639380667,
-          "rmse_delta_vs_geoboost_reference": -0.003043153987760089,
-          "r2_delta_vs_geoboost_reference": 0.003411992976237399
+          "rmse_delta_vs_cartoboost_reference": -0.003043153987760089,
+          "r2_delta_vs_cartoboost_reference": 0.003411992976237399
         },
         {
           "run": 5.0,
-          "geoboost_train_seconds": 1.081088249979075,
-          "geoboost_predict_rows_per_second": 129755.69817626804,
+          "cartoboost_train_seconds": 1.081088249979075,
+          "cartoboost_predict_rows_per_second": 129755.69817626804,
           "xgboost_train_seconds": 0.060353915992891416,
           "xgboost_predict_rows_per_second": 1694688.0521569857,
           "train_ratio_vs_xgboost": 17.91247895341882,
           "predict_rps_ratio_vs_xgboost": 0.076566125553972,
           "rmse_delta_vs_xgboost": -0.0030959052695632705,
           "r2_delta_vs_xgboost": 0.003471675639380667,
-          "rmse_delta_vs_geoboost_reference": -0.003043153987760089,
-          "r2_delta_vs_geoboost_reference": 0.003411992976237399
+          "rmse_delta_vs_cartoboost_reference": -0.003043153987760089,
+          "r2_delta_vs_cartoboost_reference": 0.003411992976237399
         }
       ],
       "median_train_ratio_vs_xgboost": 17.675260437128227,
@@ -340,75 +340,75 @@
       "max_predict_rps_ratio_vs_xgboost": 0.36747224645094434,
       "median_rmse_delta_vs_xgboost": -0.0030959052695632705,
       "median_r2_delta_vs_xgboost": 0.003471675639380667,
-      "median_rmse_delta_vs_geoboost_reference": -0.003043153987760089,
-      "median_r2_delta_vs_geoboost_reference": 0.003411992976237399
+      "median_rmse_delta_vs_cartoboost_reference": -0.003043153987760089,
+      "median_r2_delta_vs_cartoboost_reference": 0.003411992976237399
     },
     "pickup_demand/random": {
       "runs": [
         {
           "run": 1.0,
-          "geoboost_train_seconds": 0.30365845799678937,
-          "geoboost_predict_rows_per_second": 602067.8287200306,
+          "cartoboost_train_seconds": 0.30365845799678937,
+          "cartoboost_predict_rows_per_second": 602067.8287200306,
           "xgboost_train_seconds": 0.016787375003332272,
           "xgboost_predict_rows_per_second": 1623087.437416511,
           "train_ratio_vs_xgboost": 18.08850150404775,
           "predict_rps_ratio_vs_xgboost": 0.370939861181077,
           "rmse_delta_vs_xgboost": -0.012369832556020754,
           "r2_delta_vs_xgboost": 0.02551797903143227,
-          "rmse_delta_vs_geoboost_reference": -0.013793239610934815,
-          "r2_delta_vs_geoboost_reference": 0.028506756014952672
+          "rmse_delta_vs_cartoboost_reference": -0.013793239610934815,
+          "r2_delta_vs_cartoboost_reference": 0.028506756014952672
         },
         {
           "run": 2.0,
-          "geoboost_train_seconds": 0.3045544999768026,
-          "geoboost_predict_rows_per_second": 508256.53589012387,
+          "cartoboost_train_seconds": 0.3045544999768026,
+          "cartoboost_predict_rows_per_second": 508256.53589012387,
           "xgboost_train_seconds": 0.017386708001140505,
           "xgboost_predict_rows_per_second": 1709318.7178688701,
           "train_ratio_vs_xgboost": 17.51651318678757,
           "predict_rps_ratio_vs_xgboost": 0.2973445095855521,
           "rmse_delta_vs_xgboost": -0.012369832556020754,
           "r2_delta_vs_xgboost": 0.02551797903143227,
-          "rmse_delta_vs_geoboost_reference": -0.013793239610934815,
-          "r2_delta_vs_geoboost_reference": 0.028506756014952672
+          "rmse_delta_vs_cartoboost_reference": -0.013793239610934815,
+          "r2_delta_vs_cartoboost_reference": 0.028506756014952672
         },
         {
           "run": 3.0,
-          "geoboost_train_seconds": 0.3514322499977425,
-          "geoboost_predict_rows_per_second": 30897.918889193475,
+          "cartoboost_train_seconds": 0.3514322499977425,
+          "cartoboost_predict_rows_per_second": 30897.918889193475,
           "xgboost_train_seconds": 0.01714862501830794,
           "xgboost_predict_rows_per_second": 1463359.3100165243,
           "train_ratio_vs_xgboost": 20.493319413221293,
           "predict_rps_ratio_vs_xgboost": 0.021114376132847765,
           "rmse_delta_vs_xgboost": -0.012369832556020754,
           "r2_delta_vs_xgboost": 0.02551797903143227,
-          "rmse_delta_vs_geoboost_reference": -0.013793239610934815,
-          "r2_delta_vs_geoboost_reference": 0.028506756014952672
+          "rmse_delta_vs_cartoboost_reference": -0.013793239610934815,
+          "r2_delta_vs_cartoboost_reference": 0.028506756014952672
         },
         {
           "run": 4.0,
-          "geoboost_train_seconds": 0.306591375003336,
-          "geoboost_predict_rows_per_second": 649012.0204479626,
+          "cartoboost_train_seconds": 0.306591375003336,
+          "cartoboost_predict_rows_per_second": 649012.0204479626,
           "xgboost_train_seconds": 0.017433667002478614,
           "xgboost_predict_rows_per_second": 1684370.0337535862,
           "train_ratio_vs_xgboost": 17.58616675193731,
           "predict_rps_ratio_vs_xgboost": 0.3853143949620451,
           "rmse_delta_vs_xgboost": -0.012369832556020754,
           "r2_delta_vs_xgboost": 0.02551797903143227,
-          "rmse_delta_vs_geoboost_reference": -0.013793239610934815,
-          "r2_delta_vs_geoboost_reference": 0.028506756014952672
+          "rmse_delta_vs_cartoboost_reference": -0.013793239610934815,
+          "r2_delta_vs_cartoboost_reference": 0.028506756014952672
         },
         {
           "run": 5.0,
-          "geoboost_train_seconds": 0.32314266698085703,
-          "geoboost_predict_rows_per_second": 27209.747883563567,
+          "cartoboost_train_seconds": 0.32314266698085703,
+          "cartoboost_predict_rows_per_second": 27209.747883563567,
           "xgboost_train_seconds": 0.01930108299711719,
           "xgboost_predict_rows_per_second": 1673284.4751366253,
           "train_ratio_vs_xgboost": 16.742203897528526,
           "predict_rps_ratio_vs_xgboost": 0.016261280307009282,
           "rmse_delta_vs_xgboost": -0.012369832556020754,
           "r2_delta_vs_xgboost": 0.02551797903143227,
-          "rmse_delta_vs_geoboost_reference": -0.013793239610934815,
-          "r2_delta_vs_geoboost_reference": 0.028506756014952672
+          "rmse_delta_vs_cartoboost_reference": -0.013793239610934815,
+          "r2_delta_vs_cartoboost_reference": 0.028506756014952672
         }
       ],
       "median_train_ratio_vs_xgboost": 17.58616675193731,
@@ -419,75 +419,75 @@
       "max_predict_rps_ratio_vs_xgboost": 0.3853143949620451,
       "median_rmse_delta_vs_xgboost": -0.012369832556020754,
       "median_r2_delta_vs_xgboost": 0.02551797903143227,
-      "median_rmse_delta_vs_geoboost_reference": -0.013793239610934815,
-      "median_r2_delta_vs_geoboost_reference": 0.028506756014952672
+      "median_rmse_delta_vs_cartoboost_reference": -0.013793239610934815,
+      "median_r2_delta_vs_cartoboost_reference": 0.028506756014952672
     },
     "pickup_demand/spatial_holdout": {
       "runs": [
         {
           "run": 1.0,
-          "geoboost_train_seconds": 0.2907960829907097,
-          "geoboost_predict_rows_per_second": 537011.4856280646,
+          "cartoboost_train_seconds": 0.2907960829907097,
+          "cartoboost_predict_rows_per_second": 537011.4856280646,
           "xgboost_train_seconds": 0.01792783400742337,
           "xgboost_predict_rows_per_second": 1731521.7554843558,
           "train_ratio_vs_xgboost": 16.2203690010907,
           "predict_rps_ratio_vs_xgboost": 0.3101384570694275,
           "rmse_delta_vs_xgboost": -0.00262617171184365,
           "r2_delta_vs_xgboost": 0.008206189113296736,
-          "rmse_delta_vs_geoboost_reference": -0.006503856970631272,
-          "r2_delta_vs_geoboost_reference": 0.020389092566432843
+          "rmse_delta_vs_cartoboost_reference": -0.006503856970631272,
+          "r2_delta_vs_cartoboost_reference": 0.020389092566432843
         },
         {
           "run": 2.0,
-          "geoboost_train_seconds": 0.29207433300325647,
-          "geoboost_predict_rows_per_second": 537834.9867000494,
+          "cartoboost_train_seconds": 0.29207433300325647,
+          "cartoboost_predict_rows_per_second": 537834.9867000494,
           "xgboost_train_seconds": 0.018117958010407165,
           "xgboost_predict_rows_per_second": 1641210.5628358934,
           "train_ratio_vs_xgboost": 16.12070923420209,
           "predict_rps_ratio_vs_xgboost": 0.32770626687334337,
           "rmse_delta_vs_xgboost": -0.00262617171184365,
           "r2_delta_vs_xgboost": 0.008206189113296736,
-          "rmse_delta_vs_geoboost_reference": -0.006503856970631272,
-          "r2_delta_vs_geoboost_reference": 0.020389092566432843
+          "rmse_delta_vs_cartoboost_reference": -0.006503856970631272,
+          "r2_delta_vs_cartoboost_reference": 0.020389092566432843
         },
         {
           "run": 3.0,
-          "geoboost_train_seconds": 0.3000942499784287,
-          "geoboost_predict_rows_per_second": 188121.82541641121,
+          "cartoboost_train_seconds": 0.3000942499784287,
+          "cartoboost_predict_rows_per_second": 188121.82541641121,
           "xgboost_train_seconds": 0.018953208986204118,
           "xgboost_predict_rows_per_second": 1635874.6376699219,
           "train_ratio_vs_xgboost": 15.833426951439453,
           "predict_rps_ratio_vs_xgboost": 0.11499770280952876,
           "rmse_delta_vs_xgboost": -0.00262617171184365,
           "r2_delta_vs_xgboost": 0.008206189113296736,
-          "rmse_delta_vs_geoboost_reference": -0.006503856970631272,
-          "r2_delta_vs_geoboost_reference": 0.020389092566432843
+          "rmse_delta_vs_cartoboost_reference": -0.006503856970631272,
+          "r2_delta_vs_cartoboost_reference": 0.020389092566432843
         },
         {
           "run": 4.0,
-          "geoboost_train_seconds": 0.292209457984427,
-          "geoboost_predict_rows_per_second": 569615.1570617046,
+          "cartoboost_train_seconds": 0.292209457984427,
+          "cartoboost_predict_rows_per_second": 569615.1570617046,
           "xgboost_train_seconds": 0.026572959002805874,
           "xgboost_predict_rows_per_second": 1696635.6165366776,
           "train_ratio_vs_xgboost": 10.996496775295977,
           "predict_rps_ratio_vs_xgboost": 0.3357321698954153,
           "rmse_delta_vs_xgboost": -0.00262617171184365,
           "r2_delta_vs_xgboost": 0.008206189113296736,
-          "rmse_delta_vs_geoboost_reference": -0.006503856970631272,
-          "r2_delta_vs_geoboost_reference": 0.020389092566432843
+          "rmse_delta_vs_cartoboost_reference": -0.006503856970631272,
+          "r2_delta_vs_cartoboost_reference": 0.020389092566432843
         },
         {
           "run": 5.0,
-          "geoboost_train_seconds": 0.3013467499986291,
-          "geoboost_predict_rows_per_second": 148473.78180569413,
+          "cartoboost_train_seconds": 0.3013467499986291,
+          "cartoboost_predict_rows_per_second": 148473.78180569413,
           "xgboost_train_seconds": 0.019235875020967796,
           "xgboost_predict_rows_per_second": 1560999.510246388,
           "train_ratio_vs_xgboost": 15.66587169391308,
           "predict_rps_ratio_vs_xgboost": 0.09511456014631231,
           "rmse_delta_vs_xgboost": -0.00262617171184365,
           "r2_delta_vs_xgboost": 0.008206189113296736,
-          "rmse_delta_vs_geoboost_reference": -0.006503856970631272,
-          "r2_delta_vs_geoboost_reference": 0.020389092566432843
+          "rmse_delta_vs_cartoboost_reference": -0.006503856970631272,
+          "r2_delta_vs_cartoboost_reference": 0.020389092566432843
         }
       ],
       "median_train_ratio_vs_xgboost": 15.833426951439453,
@@ -498,8 +498,8 @@
       "max_predict_rps_ratio_vs_xgboost": 0.3357321698954153,
       "median_rmse_delta_vs_xgboost": -0.00262617171184365,
       "median_r2_delta_vs_xgboost": 0.008206189113296736,
-      "median_rmse_delta_vs_geoboost_reference": -0.006503856970631272,
-      "median_r2_delta_vs_geoboost_reference": 0.020389092566432843
+      "median_rmse_delta_vs_cartoboost_reference": -0.006503856970631272,
+      "median_r2_delta_vs_cartoboost_reference": 0.020389092566432843
     }
   },
   "all_gates_pass": false

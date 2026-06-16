@@ -2,7 +2,7 @@
 
 `scripts/run_nyc_taxi_quality_benchmarks.py` runs model-quality and speed
 comparisons on NYC TLC yellow taxi trip-record Parquet files. It compares
-GeoBoost with LightGBM and XGBoost when optional benchmark packages are
+CartoBoost with LightGBM and XGBoost when optional benchmark packages are
 installed, and always supports a mean-prediction baseline.
 
 The repeated wrapper, `scripts/run_repeated_nyc_taxi_benchmarks.py`, runs the
@@ -10,7 +10,7 @@ single-run benchmark several times and summarizes speed and quality.
 
 ## Dependency Boundary
 
-GeoBoost runtime dependencies do not include the cross-package benchmark stack.
+CartoBoost runtime dependencies do not include the cross-package benchmark stack.
 Install the `bench` group only for these comparisons.
 
 | Package | Used for |
@@ -53,7 +53,7 @@ and summary reports under `docs/assets/nyc_taxi_benchmarks/`.
 
 The maintained repeated preset uses:
 
-- GeoBoost candidate: `n_estimators=100`, `max_depth=5`,
+- CartoBoost candidate: `n_estimators=100`, `max_depth=5`,
   `splitters=axis_histogram:512,periodic:24,periodic:7,sparse_set`,
   `min_samples_leaf=1`.
 - XGBoost baseline: `n_estimators=100`, `max_depth=4`,
@@ -94,7 +94,7 @@ Each task reports a random split and a pickup-zone spatial holdout split.
 The maintained comparison uses `--zone-treatment target_mean` by default. It
 appends train-only smoothed pickup/dropoff zone target-mean features to every
 model, including XGBoost and LightGBM. This keeps zone handling comparable
-instead of making it GeoBoost-specific.
+instead of making it CartoBoost-specific.
 
 To compare raw numeric zone IDs against target-mean treatment:
 
@@ -133,16 +133,16 @@ Repeated-run summaries:
 
 The repeated 25k report was refreshed on June 4, 2026 with target-mean zone
 treatment through `just nyc-quality-benchmark-repeated`. In that report,
-GeoBoost beats XGBoost on RMSE and R2 for every task/split and has higher
+CartoBoost beats XGBoost on RMSE and R2 for every task/split and has higher
 median prediction throughput for every task/split, while training remains
 slower than XGBoost `hist`.
 
 The comparison checks:
 
-- GeoBoost train time no slower than XGBoost.
-- GeoBoost prediction throughput no slower than XGBoost.
-- GeoBoost RMSE lower than XGBoost.
-- GeoBoost R2 no worse than XGBoost.
+- CartoBoost train time no slower than XGBoost.
+- CartoBoost prediction throughput no slower than XGBoost.
+- CartoBoost RMSE lower than XGBoost.
+- CartoBoost R2 no worse than XGBoost.
 
 Observed medians in the refreshed report:
 

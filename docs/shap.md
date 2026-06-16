@@ -1,10 +1,10 @@
 # SHAP Support
 
-GeoBoost supports the Python `shap` package through the estimator prediction
+CartoBoost supports the Python `shap` package through the estimator prediction
 API. Install the optional dependency before using SHAP:
 
 ```sh
-pip install "geoboost[explain]"
+pip install "cartoboost[explain]"
 ```
 
 For a source checkout:
@@ -16,9 +16,9 @@ uv sync --extra explain --group dev
 ## Basic Usage
 
 ```python
-from geoboost import GeoBoostRegressor
+from cartoboost import CartoBoostRegressor
 
-model = GeoBoostRegressor(
+model = CartoBoostRegressor(
     n_estimators=50,
     learning_rate=0.1,
     max_depth=3,
@@ -37,7 +37,7 @@ shap.plots.beeswarm(explanation)
 shap.plots.waterfall(explanation[0])
 ```
 
-GeoBoost also provides convenience helpers that call SHAP for you:
+CartoBoost also provides convenience helpers that call SHAP for you:
 
 ```python
 explanation = model.explain_shap(X_test, background=X_train)
@@ -46,7 +46,7 @@ explainer = model.make_shap_explainer(X_train)
 
 ## Additive Weight Decomposition
 
-By default, SHAP decomposes predictions over input features. GeoBoost can also
+By default, SHAP decomposes predictions over input features. CartoBoost can also
 decompose the fitted additive prediction weights: the initial prediction and one
 component per fitted tree.
 
@@ -68,7 +68,7 @@ prediction = additive.sum(axis=1)
 
 ## Sparse Sets
 
-Models trained with `sparse_sets=` can be explained through the GeoBoost helper.
+Models trained with `sparse_sets=` can be explained through the CartoBoost helper.
 Sparse IDs are exposed to SHAP as binary features named `column=id`.
 
 ```python
@@ -104,9 +104,9 @@ explanations.
 
 ## Current Limits
 
-- GeoBoost estimators are callable after fitting, so `shap.Explainer(model,
+- CartoBoost estimators are callable after fitting, so `shap.Explainer(model,
   background)` works directly for dense prediction workflows.
 - Dense Python, NumPy, and pandas inputs are supported through the existing
   estimator input handling.
-- Sparse-set models are supported through the GeoBoost helpers because they need
+- Sparse-set models are supported through the CartoBoost helpers because they need
   the sparse-ID encoding described above.

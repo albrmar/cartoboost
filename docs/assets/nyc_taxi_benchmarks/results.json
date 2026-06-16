@@ -14,17 +14,17 @@
     }
   },
   "models_requested": [
-    "geoboost",
-    "geoboost_reference",
+    "cartoboost",
+    "cartoboost_reference",
     "xgboost",
     "mean"
   ],
   "model_config": {
     "baseline_n_estimators": 100,
-    "geoboost_n_estimators": 100,
+    "cartoboost_n_estimators": 100,
     "learning_rate": 0.08,
     "baseline_max_depth": 4,
-    "geoboost_max_depth": 5,
+    "cartoboost_max_depth": 5,
     "zone_treatment": "target_mean",
     "zone_target_smoothing": 20.0
   },
@@ -215,7 +215,7 @@
             263
           ],
           "models": {
-            "geoboost": {
+            "cartoboost": {
               "status": "ok",
               "metrics": {
                 "rmse": 0.4023776868765231,
@@ -252,7 +252,7 @@
                 "predict_path": "model.predict"
               }
             },
-            "geoboost_reference": {
+            "cartoboost_reference": {
               "status": "ok",
               "metrics": {
                 "rmse": 0.43252088944885336,
@@ -383,7 +383,7 @@
             262
           ],
           "models": {
-            "geoboost": {
+            "cartoboost": {
               "status": "ok",
               "metrics": {
                 "rmse": 1.0259978533272127,
@@ -420,7 +420,7 @@
                 "predict_path": "model.predict"
               }
             },
-            "geoboost_reference": {
+            "cartoboost_reference": {
               "status": "ok",
               "metrics": {
                 "rmse": 1.004021465221848,

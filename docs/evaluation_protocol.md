@@ -1,8 +1,8 @@
 # Evaluation Protocol Helpers
 
-GeoBoost exposes lightweight Python helpers for regression diagnostics and
+CartoBoost exposes lightweight Python helpers for regression diagnostics and
 blocked validation. They are independent of the estimator and operate on arrays,
-so they can be used with GeoBoost, XGBoost, LightGBM, scikit-learn, or any
+so they can be used with CartoBoost, XGBoost, LightGBM, scikit-learn, or any
 external model predictions.
 
 For temporal-spatial data, random validation is often too easy: nearby rows,
@@ -13,7 +13,7 @@ new route groups.
 ## Metrics
 
 ```python
-from geoboost import (
+from cartoboost import (
     calibrated_intervals,
     conformal_residual_quantile,
     interval_coverage,
@@ -42,7 +42,7 @@ spatial structure or that the holdout needs a stronger spatial split.
 ## Blocked CV
 
 ```python
-from geoboost import (
+from cartoboost import (
     grouped_blocked_cv,
     out_of_time_split,
     spatial_blocked_cv,
@@ -71,14 +71,14 @@ ETA residuals, pricing adjustments, staffing forecasts, and other temporal or
 temporal-spatial targets.
 
 ```python
-from geoboost import GeoBoostRegressor, out_of_time_split
+from cartoboost import CartoBoostRegressor, out_of_time_split
 
 train_idx, validation_idx = out_of_time_split(
     pickup_times,
     validation_fraction=0.2,
 )
 
-model = GeoBoostRegressor(
+model = CartoBoostRegressor(
     n_estimators=200,
     learning_rate=0.04,
     max_depth=5,
@@ -166,4 +166,4 @@ For temporal-spatial problems, report at least:
   routes.
 - Out-of-time metrics for the latest period.
 - Residual summaries by hour, zone, route cell, or lane.
-- The same splits for GeoBoost and any XGBoost, LightGBM, or baseline model.
+- The same splits for CartoBoost and any XGBoost, LightGBM, or baseline model.

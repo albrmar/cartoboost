@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Run a 10-step NYC taxi speed optimization loop for GeoBoost.
+"""Run a 10-step NYC taxi speed optimization loop for CartoBoost.
 
 The loop keeps the maintained dataset/split/task path but compares candidate
-GeoBoost presets against the current GeoBoost preset instead of XGBoost. A
+CartoBoost presets against the current CartoBoost preset instead of XGBoost. A
 candidate is accepted only when it improves median training speed and does not
 degrade RMSE or R2 on any task/split beyond the configured tolerances.
 """
@@ -92,18 +92,18 @@ def benchmark_command(args: argparse.Namespace, preset: Preset, output_dir: Path
         "--output-dir",
         str(output_dir),
         "--models",
-        "geoboost",
-        "--geoboost-n-estimators",
+        "cartoboost",
+        "--cartoboost-n-estimators",
         str(preset.n_estimators),
         "--learning-rate",
         str(preset.learning_rate),
-        "--geoboost-max-depth",
+        "--cartoboost-max-depth",
         str(preset.max_depth),
-        "--geoboost-splitters",
+        "--cartoboost-splitters",
         preset.splitters,
-        "--geoboost-min-samples-leaf",
+        "--cartoboost-min-samples-leaf",
         str(preset.min_samples_leaf),
-        "--geoboost-constant-l2",
+        "--cartoboost-constant-l2",
         str(preset.constant_l2),
         "--zone-treatment",
         args.zone_treatment,
@@ -146,7 +146,7 @@ def summarize_result(preset: Preset, result: dict[str, Any]) -> dict[str, Any]:
     rows = []
     for task_name, task in result["tasks"].items():
         for split_name, split in task["splits"].items():
-            model = split["models"]["geoboost"]
+            model = split["models"]["cartoboost"]
             if model["status"] != "ok":
                 raise RuntimeError(f"{preset.name} failed for {task_name}/{split_name}: {model}")
             rows.append(
@@ -221,7 +221,7 @@ def write_markdown(summary: dict[str, Any], output: Path) -> None:
     lines = [
         "# NYC Taxi Optimization Loop",
         "",
-        "This report runs a waterfall speed loop against the current GeoBoost preset.",
+        "This report runs a waterfall speed loop against the current CartoBoost preset.",
         "A candidate is accepted only if it improves median training speed and does not "
         "degrade RMSE or R2 on any task/split.",
         "",
