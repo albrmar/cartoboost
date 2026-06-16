@@ -5,6 +5,15 @@ route-cell behavior on deterministic synthetic data.
 
 ## Command
 
+Install from PyPI for normal use:
+
+```sh
+pip install cartoboost
+```
+
+From a source checkout, rebuild the local native extension before regenerating
+the committed acceptance artifacts:
+
 ```sh
 uv run --group dev maturin develop
 uv run --group dev python scripts/run_lane_level_acceptance_metrics.py

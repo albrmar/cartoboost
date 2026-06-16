@@ -1,8 +1,8 @@
 site_name: CartoBoost
 site_description: User documentation for CartoBoost regression tooling.
-site_url: https://theculliganman.github.io/cartoboost/
-repo_url: https://github.com/theculliganman/cartoboost
-repo_name: theculliganman/cartoboost
+site_url: https://theculliganman.github.io/CartoBoost/
+repo_url: https://github.com/TheCulliganMan/CartoBoost
+repo_name: TheCulliganMan/CartoBoost
 edit_uri: edit/main/docs/
 
 theme:
@@ -57,6 +57,7 @@ not_in_nav: |
 
 nav:
   - Home: index.md
+  - Installation: installation.md
   - Getting Started: getting-started.md
   - User Guide:
       - Python Estimator: user-guide/python-estimator.md

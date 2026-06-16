@@ -5,8 +5,8 @@ conventions for parameter inspection, cloning, pipelines, and grid search over
 the supported API surface.
 
 Optuna tuning works through the same estimator contract. Install the optional
-dependency with `cartoboost[optuna]` or `uv sync --group dev --extra optuna` from
-a source checkout, then optimize an objective that constructs a fresh
+dependency with `pip install "cartoboost[optuna]"`, then optimize an objective
+that constructs a fresh
 `CartoBoostRegressor` for each trial.
 
 ## Basic Usage
@@ -54,9 +54,10 @@ intervals or service-level targets, use `loss="quantile"` with
 
 ## Native Extension
 
-`CartoBoostRegressor` requires `cartoboost._native`. Build it with
-`uv run --group dev maturin develop` from a source checkout. If the extension is
-missing, fitting or loading a model raises `ImportError`.
+`CartoBoostRegressor` requires `cartoboost._native`. The PyPI package includes
+this compiled Rust extension for supported Python and platform combinations. In
+a source checkout, build it with `uv run --group dev maturin develop`. If the
+extension is missing, fitting or loading a model raises `ImportError`.
 
 ## Sparse-Set Features
 
@@ -162,8 +163,8 @@ explainer = model.make_shap_explainer(X_background)
 explanation = model.explain_shap(X_test, background=X_background)
 ```
 
-Install `cartoboost[explain]` or add the optional SHAP dependency in your local
-environment.
+Run `pip install "cartoboost[explain]"` or add the optional SHAP dependency in
+your local environment.
 Sparse-list models can be explained through the helper by supplying matching
 foreground and background sparse sets.
 

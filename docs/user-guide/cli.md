@@ -8,6 +8,12 @@ workflows.
 
 ## Commands
 
+Install from PyPI to get both the Python estimator and the `cartoboost` command:
+
+```sh
+pip install cartoboost
+```
+
 ```sh
 cartoboost train --data <csv> [--config <toml>] [--model-out <path>] [--output json|csv]
 cartoboost predict --model <path> --input <csv> [--predictions-out <path>] [--output json|csv]

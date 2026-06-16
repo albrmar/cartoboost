@@ -1,5 +1,12 @@
 # CartoBoost Documentation
 
+[![PyPI](https://img.shields.io/pypi/v/cartoboost.svg)](https://pypi.org/project/cartoboost/)
+[![Python](https://img.shields.io/pypi/pyversions/cartoboost.svg)](https://pypi.org/project/cartoboost/)
+[![CI](https://github.com/TheCulliganMan/CartoBoost/actions/workflows/ci.yml/badge.svg)](https://github.com/TheCulliganMan/CartoBoost/actions/workflows/ci.yml)
+[![Docs](https://github.com/TheCulliganMan/CartoBoost/actions/workflows/pages.yml/badge.svg)](https://github.com/TheCulliganMan/CartoBoost/actions/workflows/pages.yml)
+[![Publish](https://github.com/TheCulliganMan/CartoBoost/actions/workflows/publish-pypi.yml/badge.svg)](https://github.com/TheCulliganMan/CartoBoost/actions/workflows/publish-pypi.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/TheCulliganMan/CartoBoost/blob/main/LICENSE)
+
 CartoBoost is a Python regression package for temporal-spatial problems: demand
 by zone and time, route or lane performance, ETA residuals, local pricing
 effects, and other targets where place, time, and sparse location memberships
@@ -9,8 +16,10 @@ split types that directly model temporal and spatial structure.
 
 ## Start Here
 
-- [Getting Started](getting-started.md) installs the package locally and trains
-  a first model.
+- [Installation](installation.md) covers PyPI installs, extras, verification,
+  and source-checkout development.
+- [Getting Started](getting-started.md) trains a first model from an installed
+  package.
 - [Python Estimator](user-guide/python-estimator.md) shows the sklearn-style
   fit, predict, save, load, and explanation workflow.
 - [Parameters](user-guide/parameters.md) lists the model controls and supported
@@ -50,7 +59,20 @@ CartoBoost adds splitters that match common temporal-spatial patterns:
 - Fuzzy routing softens hard boundaries where nearby locations or times should
   behave similarly.
 
-The Rust native extension is required for training and prediction.
+The PyPI package ships the Rust native extension required for training and
+prediction.
+
+## Install
+
+```sh
+pip install cartoboost
+```
+
+Optional extras are available for SHAP, Optuna, Polars, and ONNX:
+
+```sh
+pip install "cartoboost[explain,optuna,polars,onnx]"
+```
 
 ## Typical Workflow
 

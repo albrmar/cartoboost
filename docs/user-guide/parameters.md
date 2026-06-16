@@ -96,4 +96,9 @@ splitters.
 ## Native Extension Requirement
 
 All training and prediction through `CartoBoostRegressor` uses the native
-extension. Build `cartoboost._native` before fitting or loading models.
+extension. PyPI installs include `cartoboost._native` for supported wheel
+platforms. In a source checkout, build it before fitting or loading models:
+
+```sh
+uv run --group dev maturin develop
+```

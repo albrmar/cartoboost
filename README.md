@@ -1,4 +1,11 @@
-# cartoboost
+# CartoBoost
+
+[![PyPI](https://img.shields.io/pypi/v/cartoboost.svg)](https://pypi.org/project/cartoboost/)
+[![Python](https://img.shields.io/pypi/pyversions/cartoboost.svg)](https://pypi.org/project/cartoboost/)
+[![CI](https://github.com/TheCulliganMan/CartoBoost/actions/workflows/ci.yml/badge.svg)](https://github.com/TheCulliganMan/CartoBoost/actions/workflows/ci.yml)
+[![Docs](https://github.com/TheCulliganMan/CartoBoost/actions/workflows/pages.yml/badge.svg)](https://github.com/TheCulliganMan/CartoBoost/actions/workflows/pages.yml)
+[![Publish](https://github.com/TheCulliganMan/CartoBoost/actions/workflows/publish-pypi.yml/badge.svg)](https://github.com/TheCulliganMan/CartoBoost/actions/workflows/publish-pypi.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 CartoBoost is a Rust-backed Python regressor for temporal-spatial problems:
 demand by zone and time, route or lane performance, delivery ETA residuals,
@@ -22,20 +29,42 @@ evaluate, tune, explain, and save a model without working directly in Rust.
 
 ## Install
 
-Development requires stable Rust, Python 3.10 or newer, and `uv` 0.7 or newer.
+Install the released Python package from PyPI:
+
+```sh
+pip install cartoboost
+```
+
+The PyPI release includes prebuilt Rust extension wheels for CPython 3.10-3.13
+on Linux, macOS, and Windows. For optional integrations:
+
+```sh
+pip install "cartoboost[explain]"  # SHAP support
+pip install "cartoboost[optuna]"   # Optuna tuning
+pip install "cartoboost[polars]"   # Polars inputs
+pip install "cartoboost[onnx]"     # ONNX export subset
+```
+
+Verify the install:
+
+```sh
+python -c "import cartoboost; print(cartoboost.__version__)"
+cartoboost --help
+```
+
+From a source checkout, use the development environment:
 
 ```sh
 uv sync --group dev
 uv run --group dev maturin develop
 ```
 
-`maturin develop` builds the native extension used by the Python estimator.
-Training and prediction require that extension.
+`maturin develop` builds `cartoboost._native` into the local `uv` environment.
 
 To tune CartoBoost with Optuna, install the optional dependency:
 
 ```sh
-uv sync --group dev --extra optuna
+pip install "cartoboost[optuna]"
 ```
 
 ## Basic Regression

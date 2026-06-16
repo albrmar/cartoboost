@@ -1,24 +1,28 @@
 # Getting Started
 
-This guide installs the local package, trains a small regression model, and
+This guide installs CartoBoost from PyPI, trains a small regression model, and
 checks prediction from Python and the CLI.
 
 ## Requirements
 
-- Rust stable toolchain.
 - Python 3.10 or newer.
-- `uv` 0.7 or newer.
-- A checkout of the CartoBoost repository.
+- `pip`.
 
 ## Install
 
 ```sh
-uv sync --group dev
-uv run --group dev maturin develop
+pip install cartoboost
 ```
 
-`maturin develop` builds `cartoboost._native` and installs it into the `uv`
-environment. The Python estimator requires this native extension.
+The PyPI package includes `cartoboost._native`, the Rust native extension used
+for training and prediction.
+
+Verify the install:
+
+```sh
+python -c "import cartoboost; print(cartoboost.__version__)"
+cartoboost --help
+```
 
 ## Train From Python
 
@@ -81,8 +85,8 @@ splitter = "axis"
 Run:
 
 ```sh
-cargo run -p cartoboost-cli -- train --data train.csv --config config.toml --model-out model.json
-cargo run -p cartoboost-cli -- predict --model model.json --input train.csv --predictions-out predictions.csv
+cartoboost train --data train.csv --config config.toml --model-out model.json
+cartoboost predict --model model.json --input train.csv --predictions-out predictions.csv
 ```
 
 The CLI expects dense numeric CSV input. Use the Python estimator for sparse-set
@@ -103,6 +107,16 @@ prediction artifacts. ONNX export is available only for dense axis-tree
 constant-leaf models when the optional `onnx` dependency is installed.
 
 ## Run Local Checks
+
+Local checks are for source checkouts. Clone the repository and build the native
+extension into the development environment first:
+
+```sh
+git clone https://github.com/TheCulliganMan/CartoBoost.git
+cd CartoBoost
+uv sync --group dev
+uv run --group dev maturin develop
+```
 
 ```sh
 just validate

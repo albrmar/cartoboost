@@ -23,7 +23,15 @@ Install the `bench` group only for these comparisons.
 
 ## Setup
 
-Benchmark timings should use a release native extension:
+Benchmark scripts are repository workflows. Install the package from PyPI for
+normal model use:
+
+```sh
+pip install cartoboost
+```
+
+For reproducible benchmark development from a source checkout, use a release
+native extension:
 
 ```sh
 uv sync --group dev --group bench

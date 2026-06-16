@@ -28,8 +28,7 @@ estimator parameters.
 ## Quick Start
 
 ```sh
-uv sync --group dev
-uv run --group dev maturin develop
+pip install cartoboost
 ```
 
 ```python
