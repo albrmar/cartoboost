@@ -35,7 +35,7 @@ Install the released Python package from PyPI:
 uv add cartoboost
 ```
 
-The PyPI release includes prebuilt Rust extension wheels for CPython 3.10-3.15
+The PyPI release includes prebuilt Rust extension wheels for CPython 3.10-3.13
 on Linux, macOS, and Windows. For optional integrations:
 
 ```sh
