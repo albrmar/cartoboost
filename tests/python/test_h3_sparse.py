@@ -68,7 +68,12 @@ def test_expand_h3_sparse_set_adds_deterministic_scaffold_parents():
     "entry",
     [
         {"name": "route_h3", "kind": "h3_sparse_set"},
-        {"name": "route_h3_legacy", "kind": "H3SparseSet", "resolution": 16, "parent_resolutions": []},
+        {
+            "name": "route_h3_legacy",
+            "kind": "H3SparseSet",
+            "resolution": 16,
+            "parent_resolutions": [],
+        },
         {
             "name": "route_h3",
             "kind": FeatureKind.H3_SPARSE_SET,

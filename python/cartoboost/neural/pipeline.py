@@ -6,8 +6,7 @@ from typing import Any
 import numpy as np
 from sklearn.metrics import mean_absolute_error
 
-from ..regressor import CartoBoostRegressor
-from ..regressor import _rust_feature_schema_payload
+from ..regressor import CartoBoostRegressor, _rust_feature_schema_payload
 from .features import NeuralEmbeddingFeatures
 
 

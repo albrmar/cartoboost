@@ -6,13 +6,13 @@ from .evaluation import (
     spatial_blocked_cv,
     temporal_blocked_cv,
 )
+from .explain import explain_shap, make_shap_explainer
 from .geo import (
     build_geo_sparse_sets,
     build_zip_sparse_sets,
     coerce_geo_to_feature_id,
     coerce_zip_to_feature_id,
 )
-from .explain import explain_shap, make_shap_explainer
 from .metrics import (
     calibrated_intervals,
     conformal_residual_quantile,

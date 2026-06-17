@@ -3,8 +3,9 @@ from __future__ import annotations
 import hashlib
 import json
 import struct
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 import numpy as np
 
@@ -124,7 +125,7 @@ class NeuralEmbeddingFeatures:
         self._artifact_fallback = _as_fallback_metadata(fallback, parent_resolution)
         self._fitted = False
 
-    def fit(self, ids: Iterable[Any], target: Iterable[Any]) -> "NeuralEmbeddingFeatures":
+    def fit(self, ids: Iterable[Any], target: Iterable[Any]) -> NeuralEmbeddingFeatures:
         id_values = _to_u64_ids(ids)
         target_values = _to_f32_vector(target)
         if id_values.size != target_values.shape[0]:
@@ -191,7 +192,7 @@ class NeuralEmbeddingFeatures:
         return file_path
 
     @classmethod
-    def from_artifact(cls, path: str | Path) -> "NeuralEmbeddingFeatures":
+    def from_artifact(cls, path: str | Path) -> NeuralEmbeddingFeatures:
         file_path = Path(path)
         payload = json.loads(file_path.read_text(encoding="utf-8"))
         metadata = payload["metadata"]
@@ -210,9 +211,7 @@ class NeuralEmbeddingFeatures:
 
         expected = _build_checksum(metadata, rows)
         if metadata["checksum"] != expected:
-            raise ValueError(
-                f"checksum mismatch: expected {metadata['checksum']}, got {expected}"
-            )
+            raise ValueError(f"checksum mismatch: expected {metadata['checksum']}, got {expected}")
 
         fallback = metadata.get("fallback", {})
         strategy = fallback.get("strategy", ArtifactFallback.GLOBAL_MEAN)
@@ -223,8 +222,7 @@ class NeuralEmbeddingFeatures:
         )
 
         instance._embeddings = {
-            int(row["id"]): np.asarray(row["values"], dtype=np.float32)
-            for row in rows
+            int(row["id"]): np.asarray(row["values"], dtype=np.float32) for row in rows
         }
 
         for id_value, vector in instance._embeddings.items():

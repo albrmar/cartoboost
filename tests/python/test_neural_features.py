@@ -1,5 +1,4 @@
 import numpy as np
-
 from cartoboost.neural import NeuralEmbeddingFeatures
 
 

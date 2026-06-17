@@ -118,7 +118,12 @@ def test_neural_embedding_regressor_appends_feature_schema_for_final_fit():
     regressor = NeuralEmbeddingRegressor(
         dim=2,
         use_residual=True,
-        final_model_kwargs={"n_estimators": 20, "learning_rate": 0.1, "max_depth": 2, "min_gain": 0.0},
+        final_model_kwargs={
+            "n_estimators": 20,
+            "learning_rate": 0.1,
+            "max_depth": 2,
+            "min_gain": 0.0,
+        },
     )
     regressor.fit(
         x,

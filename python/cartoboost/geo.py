@@ -6,7 +6,6 @@ import re
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-
 __all__ = [
     "build_geo_sparse_sets",
     "build_zip_sparse_sets",
@@ -63,9 +62,7 @@ def build_zip_sparse_sets(
         include_raw = False
     parent_prefixes = _normalize_prefixes(parent_prefixes or (3, 2))
     ozip_codes: list[str | None] = (
-        _coerce_zip_sequence(origin_zip, strict=strict, name="origin_zip")
-        if has_origin_zip
-        else []
+        _coerce_zip_sequence(origin_zip, strict=strict, name="origin_zip") if has_origin_zip else []
     )
     dzip_codes: list[str | None] = (
         _coerce_zip_sequence(destination_zip, strict=strict, name="destination_zip")
@@ -101,7 +98,7 @@ def build_zip_sparse_sets(
     if include_match_indicator and has_origin_zip and has_destination_zip:
         sparse_sets["zip_match"] = [
             [1] if ozip == dzip and ozip is not None else []
-            for ozip, dzip in zip(ozip_codes, dzip_codes)
+            for ozip, dzip in zip(ozip_codes, dzip_codes, strict=False)
         ]
 
     return sparse_sets
@@ -139,9 +136,7 @@ def build_geo_sparse_sets(
         for idx, value in enumerate(values):
             value_id = _coerce_geo_string(value, namespace=f"{namespace}:{name}", strict=strict)
             if value_id is None and strict:
-                raise ValueError(
-                    f"geo feature '{name}' contains invalid value at row {idx}"
-                )
+                raise ValueError(f"geo feature '{name}' contains invalid value at row {idx}")
             column.append([] if value_id is None else [value_id])
         sparse_sets[name] = column
     return sparse_sets

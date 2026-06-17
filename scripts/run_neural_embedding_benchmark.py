@@ -92,7 +92,9 @@ def synthetic_dataset(
 
     # Build a synthetic geography-like signal that is stronger when the lane is in-sample.
     origin_effect = np.sin(origin_ids.astype(np.float64) / 7.0) + 0.08 * (origin_ids % 13)
-    destination_effect = 0.6 * np.cos(destination_ids.astype(np.float64) / 9.0) + 0.05 * (destination_ids % 11)
+    destination_effect = 0.6 * np.cos(destination_ids.astype(np.float64) / 9.0) + 0.05 * (
+        destination_ids % 11
+    )
 
     hour = (times.astype(np.int64) % 24).astype(float)
     hourly_effect = np.where((hour >= 17) & (hour <= 19), 1.3, -0.2)
@@ -117,15 +119,22 @@ def synthetic_dataset(
     lat = np.clip(lat, 0.0, 1.0)
     coordinates = np.column_stack([lon, lat])
 
-    return x, origin_ids.astype(np.float64), y, {
-        "times": times,
-        "origin_ids": origin_ids,
-        "destination_ids": destination_ids,
-        "coordinates": coordinates,
-    }
+    return (
+        x,
+        origin_ids.astype(np.float64),
+        y,
+        {
+            "times": times,
+            "origin_ids": origin_ids,
+            "destination_ids": destination_ids,
+            "coordinates": coordinates,
+        },
+    )
 
 
-def _pick_fold(splits: list[tuple[np.ndarray, np.ndarray]], fold: int) -> tuple[np.ndarray, np.ndarray]:
+def _pick_fold(
+    splits: list[tuple[np.ndarray, np.ndarray]], fold: int
+) -> tuple[np.ndarray, np.ndarray]:
     if not splits:
         raise ValueError("split generation returned no folds")
     fold = int(fold)
@@ -147,7 +156,9 @@ def _tail_split(n_rows: int, train_fraction: float) -> tuple[np.ndarray, np.ndar
     return idx[:split], idx[split:]
 
 
-def _random_split(n_rows: int, train_fraction: float, *, random_state: int) -> tuple[np.ndarray, np.ndarray]:
+def _random_split(
+    n_rows: int, train_fraction: float, *, random_state: int
+) -> tuple[np.ndarray, np.ndarray]:
     if not 0.0 < train_fraction < 1.0:
         raise ValueError("train_frac must be in (0, 1)")
 

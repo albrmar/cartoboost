@@ -1,5 +1,4 @@
 import pytest
-
 from cartoboost import build_geo_sparse_sets, build_zip_sparse_sets, coerce_geo_to_feature_id
 
 
