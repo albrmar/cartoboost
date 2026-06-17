@@ -11,6 +11,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 cartoboost-core = { path = "../cartoboost-core" }
+cartoboost-neural = { path = "../cartoboost-neural" }
 numpy = "0.23"
 pyo3.workspace = true
 serde_json.workspace = true

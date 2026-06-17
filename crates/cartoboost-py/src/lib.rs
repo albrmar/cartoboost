@@ -2,10 +2,14 @@ use cartoboost_core::data::{FeatureSchema, SparseSetColumn};
 use cartoboost_core::loss::{HuberLossConfig, LogL2LossConfig, LossConfig, QuantileLossConfig};
 use cartoboost_core::tree::{FlatAxisPredictor, FuzzyKernel, LeafPredictorKind, SplitterKind};
 use cartoboost_core::{Booster, BoosterConfig, CartoBoostError, Dataset, Model};
+use cartoboost_neural::{
+    build_embedding_table_artifact, fit_embedding_table, write_embedding_table_artifact,
+    ArtifactFallbackKind, EmbeddingTable,
+};
 use numpy::{IntoPyArray, PyArray1, PyReadonlyArray1, PyReadonlyArray2, PyUntypedArrayMethods};
 use pyo3::exceptions::{PyIOError, PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::PyModule;
+use pyo3::types::{PyModule, PyType};
 use serde_json::{json, Value};
 use std::cmp::Ordering;
 use std::path::PathBuf;
@@ -618,6 +622,212 @@ fn parse_splitters(names: &[String]) -> PyResult<Vec<SplitterKind>> {
         Ok(vec![SplitterKind::Axis])
     } else {
         Ok(splitters)
+    }
+}
+
+#[pyclass(name = "NeuralEmbeddingFeatures")]
+#[derive(Clone)]
+struct NativeNeuralEmbeddingFeatures {
+    dim: usize,
+    fallback: ArtifactFallbackKind,
+    random_state: Option<i64>,
+    parent_resolution: Option<u8>,
+    table: Option<EmbeddingTable>,
+}
+
+#[pymethods]
+impl NativeNeuralEmbeddingFeatures {
+    #[new]
+    #[pyo3(signature = (dim, fallback="global_mean_vector", random_state=None, parent_resolution=None))]
+    fn new(
+        dim: usize,
+        fallback: &str,
+        random_state: Option<i64>,
+        parent_resolution: Option<u8>,
+    ) -> PyResult<Self> {
+        if dim == 0 {
+            return Err(PyValueError::new_err("dim must be positive"));
+        }
+
+        let fallback = parse_embedding_fallback(fallback, parent_resolution)?;
+
+        Ok(Self {
+            dim,
+            fallback,
+            random_state,
+            parent_resolution,
+            table: None,
+        })
+    }
+
+    #[pyo3(signature = (ids, target))]
+    fn fit(
+        &mut self,
+        ids: PyReadonlyArray1<'_, u64>,
+        target: PyReadonlyArray1<'_, f64>,
+    ) -> PyResult<()> {
+        let ids = ids.as_slice()?;
+        let target: Vec<f32> = target
+            .as_slice()?
+            .iter()
+            .copied()
+            .map(|value| value as f32)
+            .collect();
+        let random_state = self.random_state.map(|value| value as u64);
+
+        let table =
+            fit_embedding_table(self.dim, ids, &target, self.fallback.clone(), random_state)
+                .map_err(|err| PyValueError::new_err(err.to_string()))?;
+        self.table = Some(table);
+        Ok(())
+    }
+
+    #[pyo3(signature = (ids, target))]
+    fn fit_transform(
+        &mut self,
+        ids: PyReadonlyArray1<'_, u64>,
+        target: PyReadonlyArray1<'_, f64>,
+    ) -> PyResult<Vec<Vec<f32>>> {
+        let ids = ids.as_slice()?;
+        let target: Vec<f32> = target
+            .as_slice()?
+            .iter()
+            .copied()
+            .map(|value| value as f32)
+            .collect();
+        let random_state = self.random_state.map(|value| value as u64);
+        let table =
+            fit_embedding_table(self.dim, ids, &target, self.fallback.clone(), random_state)
+                .map_err(|err| PyValueError::new_err(err.to_string()))?;
+        self.table = Some(table);
+
+        let table = self
+            .table
+            .as_ref()
+            .ok_or_else(|| PyRuntimeError::new_err("fit_transform failed to set table"))?;
+        let block = table
+            .encode_ids(ids, "neural_embedding")
+            .map_err(|err| PyValueError::new_err(err.to_string()))?;
+        let mut output = Vec::with_capacity(ids.len());
+        for row in block.values.chunks_exact(block.dim) {
+            output.push(row.to_vec());
+        }
+        Ok(output)
+    }
+
+    #[pyo3(signature = (ids))]
+    fn transform(&self, ids: PyReadonlyArray1<'_, u64>) -> PyResult<Vec<Vec<f32>>> {
+        let table = self
+            .table
+            .as_ref()
+            .ok_or_else(|| PyRuntimeError::new_err("transform called before fit or load"))?;
+
+        let ids = ids.as_slice()?;
+        let block = table
+            .encode_ids(ids, "neural_embedding")
+            .map_err(|err| PyValueError::new_err(err.to_string()))?;
+        let mut output = Vec::with_capacity(ids.len());
+        for row in block.values.chunks_exact(block.dim) {
+            output.push(row.to_vec());
+        }
+        Ok(output)
+    }
+
+    #[pyo3(signature = (path))]
+    fn export(&self, path: String) -> PyResult<()> {
+        let table = self
+            .table
+            .as_ref()
+            .ok_or_else(|| PyRuntimeError::new_err("export called before fit or load"))?;
+
+        let artifact = build_embedding_table_artifact(
+            self.dim,
+            table.rows().to_vec(),
+            table.artifact_metadata().fallback.clone(),
+        )
+        .map_err(|err| PyValueError::new_err(err.to_string()))?;
+        write_embedding_table_artifact(path, &artifact)
+            .map_err(|err| PyValueError::new_err(err.to_string()))
+    }
+
+    #[classmethod]
+    fn from_artifact(_cls: &Bound<'_, PyType>, path: String) -> PyResult<Self> {
+        let table =
+            EmbeddingTable::load(path).map_err(|err| PyValueError::new_err(err.to_string()))?;
+        let metadata = table.artifact_metadata().clone();
+        let parent_resolution = match metadata.fallback {
+            ArtifactFallbackKind::ParentCell { parent_resolution } => Some(parent_resolution),
+            _ => None,
+        };
+
+        Ok(Self {
+            dim: metadata.dim,
+            fallback: metadata.fallback,
+            random_state: None,
+            parent_resolution,
+            table: Some(table),
+        })
+    }
+
+    #[getter]
+    fn dim(&self) -> usize {
+        self.dim
+    }
+
+    #[getter]
+    fn fallback(&self) -> String {
+        artifact_fallback_name(&self.fallback).to_string()
+    }
+
+    #[getter]
+    fn random_state(&self) -> Option<i64> {
+        self.random_state
+    }
+
+    #[getter]
+    fn parent_resolution(&self) -> Option<u8> {
+        self.parent_resolution
+    }
+
+    #[getter]
+    fn is_fitted(&self) -> bool {
+        self.table.is_some()
+    }
+
+    fn artifact_rows(&self) -> PyResult<Vec<(u64, Vec<f32>)>> {
+        let table = self
+            .table
+            .as_ref()
+            .ok_or_else(|| PyRuntimeError::new_err("artifact_rows called before fit or load"))?;
+        Ok(table
+            .rows()
+            .iter()
+            .map(|row| (row.id, row.values.clone()))
+            .collect())
+    }
+}
+
+fn parse_embedding_fallback(
+    value: &str,
+    parent_resolution: Option<u8>,
+) -> PyResult<ArtifactFallbackKind> {
+    match value {
+        "zero_vector" => Ok(ArtifactFallbackKind::ZeroVector),
+        "global_mean_vector" => Ok(ArtifactFallbackKind::GlobalMeanVector),
+        "parent_cell" => parent_resolution
+            .map(|parent_resolution| ArtifactFallbackKind::ParentCell { parent_resolution })
+            .ok_or_else(|| PyValueError::new_err("parent_resolution is required for parent_cell")),
+        _ => Err(PyValueError::new_err(
+            "fallback must be one of zero_vector, global_mean_vector, parent_cell",
+        )),
+    }
+}
+
+fn artifact_fallback_name(fallback: &ArtifactFallbackKind) -> &'static str {
+    match fallback {
+        ArtifactFallbackKind::ZeroVector => "zero_vector",
+        ArtifactFallbackKind::GlobalMeanVector => "global_mean_vector",
+        ArtifactFallbackKind::ParentCell { .. } => "parent_cell",
     }
 }
 
@@ -1396,6 +1606,7 @@ fn to_py_error(err: CartoBoostError) -> PyErr {
 #[pymodule]
 fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<NativeCartoBoostRegressor>()?;
+    m.add_class::<NativeNeuralEmbeddingFeatures>()?;
     m.add_function(wrap_pyfunction!(weighted_overlay, m)?)?;
     Ok(())
 }

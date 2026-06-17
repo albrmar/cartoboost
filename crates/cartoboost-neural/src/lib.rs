@@ -2,6 +2,7 @@ pub mod artifact;
 pub mod encoder;
 mod error;
 pub mod features;
+mod trainer;
 
 pub use artifact::{
     build_embedding_table_artifact, write_embedding_table_artifact, ArtifactFallbackKind,
@@ -11,3 +12,4 @@ pub use artifact::{
 pub use encoder::{EmbeddingTableEncoder, NeuralEncoder};
 pub use error::{NeuralError, Result};
 pub use features::NeuralFeatureBlock;
+pub use trainer::fit_embedding_table;

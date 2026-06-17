@@ -145,6 +145,10 @@ impl EmbeddingTable {
         self.metadata.row_count
     }
 
+    pub fn rows(&self) -> &[EmbeddingRow] {
+        &self.rows
+    }
+
     pub fn id_type(&self) -> EmbeddingIdType {
         self.metadata.id_type
     }
