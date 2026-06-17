@@ -30,7 +30,7 @@ Zip code features can be expanded into geographic sparse-columns with explicit
 origin/destination roles:
 
 ```python
-from geoboost import build_zip_sparse_sets
+from cartoboost import build_zip_sparse_sets
 
 zip_sparse_sets = build_zip_sparse_sets(
     origin_zip=["94103", "94122"],
@@ -69,7 +69,7 @@ Arbitrary geo-id features like pickup/dropoff zones can be mapped directly into
 sparse columns:
 
 ```python
-from geoboost import build_geo_sparse_sets
+from cartoboost import build_geo_sparse_sets
 
 geo_sparse_sets = build_geo_sparse_sets(
     {

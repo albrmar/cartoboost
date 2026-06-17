@@ -1,6 +1,6 @@
 import pytest
 
-from geoboost import build_geo_sparse_sets, build_zip_sparse_sets, coerce_geo_to_feature_id
+from cartoboost import build_geo_sparse_sets, build_zip_sparse_sets, coerce_geo_to_feature_id
 
 
 def test_build_zip_sparse_sets_adds_geo_context_columns():
