@@ -46,9 +46,10 @@ payload:
 
 - Schema length must equal dense feature count plus sparse-set column count.
 - `kind` must be numeric, periodic, or sparse-set.
-- Geographic sparse identifiers may be declared with `zip_sparse_set`, `zip3_sparse_set`,
-  `h3_sparse_set`, or equivalent aliases (`ZipSparseSet`, `H3SparseSet`, `GeoSparseSet`)
-  and are sent to
+- Geographic sparse identifiers may be declared with
+  `zip_sparse_set`, `zip3_sparse_set`, `zone_sparse_set`, `region_sparse_set`,
+  `h3_sparse_set`, or equivalent aliases (`ZipSparseSet`, `ZoneSparseSet`,
+  `RegionSparseSet`, `H3SparseSet`, `GeoSparseSet`) and are sent to
   the trainer as sparse-set features.
 - Periodic entries require a positive period.
 - Sparse-set entries correspond to sparse columns supplied through

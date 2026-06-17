@@ -56,6 +56,29 @@ zip3_only_sparse_sets = build_zip_sparse_sets(
     destination_zip=["10001", "94103"],
     zip3_only=True,
 )
+
+Arbitrary geo-id features like pickup/dropoff zones can be mapped directly into
+geographic sparse columns:
+
+```python
+from geoboost import build_geo_sparse_sets
+
+geo_sparse_sets = build_geo_sparse_sets(
+    {
+        "pickup_zone": ["Z1", "Z2", "Z3"],
+        "delivery_zone": ["D1", "D2", "D3"],
+    },
+    namespace="market_a",
+)
+
+schema = {
+    "dense": [{"name": "distance_m", "kind": "numeric"}],
+    "sparse_sets": [
+        {"name": "pickup_zone", "kind": "zone_sparse_set"},
+        {"name": "delivery_zone", "kind": "region_sparse_set"},
+    ],
+}
+```
 ```
 
 Validation rules:
@@ -90,5 +113,6 @@ The CLI v1 dense CSV workflow does not accept mixed sparse rows. Use Python with
 ## Limitations
 
 - Candidate search currently considers one sparse ID per candidate.
-- Sparse IDs are integer route-cell-style identifiers, not arbitrary strings.
+- Sparse sets accept non-negative integer IDs in the model interface; helper utilities
+  can map abstract geo labels (for example zone IDs) to stable numeric IDs.
 - Sparse support is regression-only and native-backend-only.

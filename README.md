@@ -158,6 +158,31 @@ model = GeoBoostRegressor(backend="rust", splitters=["axis", "sparse_set"])
 model.fit(X_dense, y, sparse_sets=zip_sparse_sets, feature_schema=schema)
 ```
 
+Use abstract geo features (zones, regions, markets, etc.) as sparse columns with
+explicit semantics:
+
+```python
+from geoboost import GeoBoostRegressor, build_geo_sparse_sets
+
+geo_sparse_sets = build_geo_sparse_sets(
+    {
+        "pickup_zone": ["Z1", "Z2", "Z3"],
+        "delivery_zone": ["D1", "D2", "D3"],
+    },
+    namespace="market",
+)
+schema = {
+    "dense": [{"name": "distance_m", "kind": "numeric"}],
+    "sparse_sets": [
+        {"name": "pickup_zone", "kind": "zone_sparse_set"},
+        {"name": "delivery_zone", "kind": "region_sparse_set"},
+    ],
+}
+
+model = GeoBoostRegressor(backend="rust", splitters=["axis", "sparse_set"])
+model.fit(X_dense, y, sparse_sets=geo_sparse_sets, feature_schema=schema)
+```
+
 ## Save And Load
 
 ```python

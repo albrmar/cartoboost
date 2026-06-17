@@ -1,12 +1,18 @@
 from __future__ import annotations
 
+import hashlib
 import math
 import re
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 
-__all__ = ["build_zip_sparse_sets", "coerce_zip_to_feature_id"]
+__all__ = [
+    "build_geo_sparse_sets",
+    "build_zip_sparse_sets",
+    "coerce_geo_to_feature_id",
+    "coerce_zip_to_feature_id",
+]
 
 
 _NON_DIGITS = re.compile(r"\D")
@@ -18,6 +24,16 @@ def coerce_zip_to_feature_id(value: Any, *, strict: bool = False) -> int | None:
     if text is None:
         return None
     return int(text)
+
+
+def coerce_geo_to_feature_id(
+    value: Any,
+    *,
+    namespace: str = "geo",
+    strict: bool = False,
+) -> int | None:
+    """Convert an abstract geographic identifier to a deterministic non-negative ID."""
+    return _coerce_geo_string(value, namespace=namespace, strict=strict)
 
 
 def build_zip_sparse_sets(
@@ -78,6 +94,46 @@ def build_zip_sparse_sets(
             for ozip, dzip in zip(ozip_codes, dzip_codes)
         ]
 
+    return sparse_sets
+
+
+def build_geo_sparse_sets(
+    geo_features: Mapping[str, Sequence[Any]] | None = None,
+    *,
+    namespace: str = "geo",
+    strict: bool = False,
+) -> dict[str, list[list[int]]]:
+    """Build sparse-set columns for abstract geographic IDs.
+
+    The input keys become sparse column names.
+    """
+    if not geo_features:
+        raise ValueError("geo_features cannot be empty")
+
+    feature_items = list(geo_features.items())
+    row_count = len(feature_items[0][1])
+    if row_count == 0:
+        raise ValueError("geo_features values must contain at least one row")
+
+    for _, (name, values) in enumerate(feature_items[1:], start=1):
+        if len(values) != row_count:
+            raise ValueError(f"geo feature '{name}' has {len(values)} rows, expected {row_count}")
+        if name == "":
+            raise ValueError("geo feature names must be non-empty")
+
+    sparse_sets: dict[str, list[list[int]]] = {}
+    for name, values in feature_items:
+        if name == "":
+            raise ValueError("geo feature names must be non-empty")
+        column: list[list[int]] = []
+        for idx, value in enumerate(values):
+            value_id = _coerce_geo_string(value, namespace=f"{namespace}:{name}", strict=strict)
+            if value_id is None and strict:
+                raise ValueError(
+                    f"geo feature '{name}' contains invalid value at row {idx}"
+                )
+            column.append([] if value_id is None else [value_id])
+        sparse_sets[name] = column
     return sparse_sets
 
 
@@ -188,3 +244,41 @@ def _coerce_zip_string(value: Any, strict: bool) -> str | None:
 
     text = text.zfill(5)[:5]
     return text
+
+
+def _coerce_geo_string(value: Any, *, namespace: str, strict: bool) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        if strict:
+            raise ValueError("geo values cannot be boolean")
+        return None
+    if isinstance(value, int):
+        if value < 0:
+            if strict:
+                raise ValueError("geo values must be non-negative")
+            return None
+        return value
+    if isinstance(value, float):
+        if math.isnan(value) or math.isinf(value):
+            if strict:
+                raise ValueError("geo values must be finite")
+            return None
+        if not value.is_integer():
+            if strict:
+                raise ValueError("geo values must be integer-like")
+            return None
+        if value < 0:
+            if strict:
+                raise ValueError("geo values must be non-negative")
+            return None
+        return int(value)
+
+    text = str(value).strip()
+    if not text:
+        if strict:
+            raise ValueError("geo values must be non-empty")
+        return None
+    token = f"{namespace}:{text}"
+    digest = hashlib.blake2b(token.encode("utf-8"), digest_size=4).hexdigest()
+    return int(digest, 16) % (10**9)

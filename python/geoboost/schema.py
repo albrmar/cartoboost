@@ -54,6 +54,21 @@ def normalize_feature_kind(kind: Any, entry: dict[str, Any] | None = None) -> An
     if kind in {"SparseSet", "sparse_set", "sparse"}:
         return "SparseSet"
     if kind in {
+        "ZoneSparseSet",
+        "zone_sparse_set",
+        "zone-sparse-set",
+        "RegionSparseSet",
+        "region_sparse_set",
+        "region-sparse-set",
+        "GeoZoneSparseSet",
+        "geo_zone_sparse_set",
+        "geo-zone-sparse-set",
+        "AreaSparseSet",
+        "area_sparse_set",
+        "area-sparse-set",
+        "GeoAbstractSparseSet",
+        "geo_abstract_sparse_set",
+        "geo-abstract-sparse-set",
         "H3SparseSet",
         "h3_sparse_set",
         "h3-sparse-set",
