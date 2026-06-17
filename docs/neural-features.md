@@ -285,11 +285,11 @@ Row count is preserved through the process.
 
 ```mermaid
 flowchart TD
-    I0[Input request X, ids]
-    I1[Validate row order + shape]
-    I2[Load id vector Φ(ids)]
-    I3[Horizontally append Z to dense matrix]
-    I4[Final model.predict(X_plus)]
+    I0["Input request X and ids"]
+    I1["Validate row order and shape"]
+    I2["Load id vector embedding(ids)"]
+    I3["Horizontally append Z to dense matrix"]
+    I4["Final model predict on X_plus"]
     I0 --> I1 --> I2 --> I3 --> I4
 ```
 
