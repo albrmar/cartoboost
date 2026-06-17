@@ -10,7 +10,7 @@ Rust toolchain.
 uv add cartoboost
 ```
 
-The published wheels target CPython 3.10, 3.11, 3.12, and 3.13 on:
+The published wheels target CPython 3.10, 3.11, 3.12, 3.13, 3.14, and 3.15 on:
 
 - Linux x86_64 and aarch64 with manylinux2014 compatibility.
 - macOS x86_64 and arm64.
@@ -82,5 +82,5 @@ just validate
 | Symptom | Fix |
 | --- | --- |
 | `ImportError: cartoboost._native` | Reinstall from PyPI or run `uv run --group dev maturin develop` in a source checkout. |
-| `uv` tries to compile from source | Use CPython 3.10-3.13 on a supported platform, or install Rust before building. |
+| `uv` tries to compile from source | Use CPython 3.10-3.15 on a supported platform, or install Rust before building. |
 | `cartoboost` command not found | Make sure the Python environment where `cartoboost` was installed is active. |
