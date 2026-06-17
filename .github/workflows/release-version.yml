@@ -124,7 +124,17 @@ jobs:
           fi
 
           git commit -m "chore: bump version to ${RELEASE_TAG} [skip ci]"
-          git tag "${RELEASE_TAG}"
           git push origin HEAD:main
-          git push origin "${RELEASE_TAG}"
-
+          if git rev-parse -q --verify "refs/tags/${RELEASE_TAG}" >/dev/null; then
+            current_sha="$(git rev-parse HEAD)"
+            tag_sha="$(git rev-parse ${RELEASE_TAG}^{commit})"
+            if [ "${current_sha}" != "${tag_sha}" ]; then
+              echo "Refusing to overwrite existing ${RELEASE_TAG}."
+              echo "Existing tag points to ${tag_sha}, current HEAD is ${current_sha}."
+              exit 1
+            fi
+            echo "Tag ${RELEASE_TAG} already points to current HEAD; skipping tag push."
+          else
+            git tag "${RELEASE_TAG}"
+            git push origin "${RELEASE_TAG}"
+          fi
