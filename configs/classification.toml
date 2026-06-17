@@ -1,4 +1,4 @@
-# Text-target example for `geoboost train --config configs/classification.toml`.
+# Text-target example for `cartoboost train --config configs/classification.toml`.
 target = "label"
 
 [model]

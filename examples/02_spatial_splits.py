@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-"""Train GeoBoost spatial splitters on deterministic synthetic datasets."""
+"""Train CartoBoost spatial splitters on deterministic synthetic datasets."""
 
 from __future__ import annotations
 
 import math
 
-from geoboost import GeoBoostRegressor
+from cartoboost import CartoBoostRegressor
 
 
 def diagonal_dataset() -> tuple[list[list[float]], list[float]]:
@@ -31,13 +31,12 @@ def radial_dataset() -> tuple[list[list[float]], list[float]]:
 
 def fit_and_report(name: str, splitters: list[str], data: tuple[list[list[float]], list[float]]) -> None:
     x, y = data
-    model = GeoBoostRegressor(
+    model = CartoBoostRegressor(
         n_estimators=1,
         learning_rate=1.0,
         max_depth=1,
         min_samples_leaf=1,
         splitters=splitters,
-        backend="rust",
     )
     model.fit(x, y)
     pred = model.predict(x)

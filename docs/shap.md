@@ -1,13 +1,13 @@
 # SHAP Support
 
-GeoBoost supports the Python `shap` package through the estimator prediction
+CartoBoost supports the Python `shap` package through the estimator prediction
 API. Install the optional dependency before using SHAP:
 
 ```sh
-pip install "geoboost[explain]"
+pip install "cartoboost[explain]"
 ```
 
-For local development:
+For a source checkout:
 
 ```sh
 uv sync --extra explain --group dev
@@ -16,13 +16,12 @@ uv sync --extra explain --group dev
 ## Basic Usage
 
 ```python
-from geoboost import GeoBoostRegressor
+from cartoboost import CartoBoostRegressor
 
-model = GeoBoostRegressor(
+model = CartoBoostRegressor(
     n_estimators=50,
     learning_rate=0.1,
     max_depth=3,
-    backend="rust",
 ).fit(X_train, y_train)
 
 explainer = shap.Explainer(model, X_train)
@@ -38,16 +37,38 @@ shap.plots.beeswarm(explanation)
 shap.plots.waterfall(explanation[0])
 ```
 
-GeoBoost also provides convenience helpers that call SHAP for you:
+CartoBoost also provides convenience helpers that call SHAP for you:
 
 ```python
 explanation = model.explain_shap(X_test, background=X_train)
 explainer = model.make_shap_explainer(X_train)
 ```
 
+## Additive Weight Decomposition
+
+By default, SHAP decomposes predictions over input features. CartoBoost can also
+decompose the fitted additive prediction weights: the initial prediction and one
+component per fitted tree.
+
+```python
+explanation = model.explain_shap(
+    X_test,
+    background=X_train,
+    decomposition="weights",
+)
+```
+
+The explanation feature names are `init_prediction`, `tree_0`, `tree_1`, and so
+on. The raw additive matrix is also available directly:
+
+```python
+additive = model.predict_additive_values(X_test)
+prediction = additive.sum(axis=1)
+```
+
 ## Sparse Sets
 
-Models trained with `sparse_sets=` can be explained through the GeoBoost helper.
+Models trained with `sparse_sets=` can be explained through the CartoBoost helper.
 Sparse IDs are exposed to SHAP as binary features named `column=id`.
 
 ```python
@@ -78,13 +99,14 @@ prediction = model.predict(X_test)
 reconstructed = explanation.base_values + explanation.values.sum(axis=1)
 ```
 
-The test suite checks this contract for dense and sparse-set models.
+This additivity property is the main sanity check for dense and sparse-set
+explanations.
 
 ## Current Limits
 
-- GeoBoost estimators are callable after fitting, so `shap.Explainer(model,
+- CartoBoost estimators are callable after fitting, so `shap.Explainer(model,
   background)` works directly for dense prediction workflows.
 - Dense Python, NumPy, and pandas inputs are supported through the existing
   estimator input handling.
-- Sparse-set models are supported through the GeoBoost helpers because they need
+- Sparse-set models are supported through the CartoBoost helpers because they need
   the sparse-ID encoding described above.

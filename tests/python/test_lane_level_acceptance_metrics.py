@@ -15,7 +15,7 @@ EXPECTED_ARTIFACTS = {
     "acceptance_metrics.md",
     "lane_heatmap.png",
     "hour_profile.png",
-    "route_midpoint_geometry.png",
+    "route_midpoint_cartometry.png",
 }
 
 
@@ -52,7 +52,7 @@ def test_lane_level_acceptance_metrics_are_generated(tmp_path: Path):
     metrics = json.loads((output_dir / "acceptance_metrics.json").read_text(encoding="utf-8"))
     assert set(metrics) == {
         "sparse_lane_membership",
-        "route_midpoint_geometry",
+        "route_midpoint_cartometry",
         "wraparound_lane_hour",
         "regional_lane_boosting",
     }
@@ -76,7 +76,7 @@ def test_lane_level_acceptance_metrics_are_generated(tmp_path: Path):
     assert sparse["models"]["sparse_lane_id"]["train_rmse"] <= 1e-12
     assert sparse["inspection_metrics"]["hot_lane_margin"] > 200.0
 
-    route = metrics["route_midpoint_geometry"]
+    route = metrics["route_midpoint_cartometry"]
     assert (
         route["models"]["gaussian_midpoint"]["train_rmse"]
         < route["models"]["axis_midpoint"]["train_rmse"]
@@ -102,5 +102,5 @@ def test_lane_level_acceptance_metrics_are_generated(tmp_path: Path):
     assert "16 lanes" in readme
     assert "No hidden simulator metadata" in readme
 
-    for image_name in ["lane_heatmap.png", "hour_profile.png", "route_midpoint_geometry.png"]:
+    for image_name in ["lane_heatmap.png", "hour_profile.png", "route_midpoint_cartometry.png"]:
         _assert_nonblank_image(output_dir / image_name)

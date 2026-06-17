@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Run NYC TLC taxi quality and speed benchmarks for GeoBoost and GBDT baselines."""
+"""Run NYC TLC taxi quality and speed benchmarks for CartoBoost and GBDT baselines."""
 
 from __future__ import annotations
 
 import argparse
+import csv
 import importlib
 import json
 import math
@@ -18,10 +19,15 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
+PYTHON_SOURCE = ROOT / "python"
+if str(PYTHON_SOURCE) not in sys.path:
+    sys.path.insert(0, str(PYTHON_SOURCE))
+
 DEFAULT_CACHE_DIR = ROOT / "data" / "nyc_taxi"
 DEFAULT_OUTPUT_DIR = ROOT / "docs" / "assets" / "nyc_taxi_benchmarks"
 TLC_TRIP_RECORD_PAGE = "https://www.nyc.gov/site/tlc/about/tlc-trip-record-data.page"
 TLC_PARQUET_BASE = "https://d37ci6vzurychx.cloudfront.net/trip-data"
+TAXI_ZONE_LOOKUP_URL = "https://d37ci6vzurychx.cloudfront.net/misc/taxi_zone_lookup.csv"
 
 ROW_FEATURES = [
     "trip_distance",
@@ -32,6 +38,24 @@ ROW_FEATURES = [
     "DOLocationID",
 ]
 DEMAND_FEATURES = ["PULocationID", "hour", "dayofweek"]
+ZONE_FEATURES = {"PULocationID", "DOLocationID"}
+BASIC_BOROUGH_CODES = {
+    "Bronx": 1,
+    "Brooklyn": 2,
+    "EWR": 3,
+    "Manhattan": 4,
+    "Queens": 5,
+    "Staten Island": 6,
+    "Unknown": 7,
+}
+SERVICE_ZONE_CODES = {
+    "Airports": 1,
+    "Boro Zone": 2,
+    "EWR": 3,
+    "Yellow Zone": 4,
+    "N/A": 5,
+    "Unknown": 6,
+}
 
 
 @dataclass(frozen=True)
@@ -46,6 +70,12 @@ class BenchmarkTask:
     sparse_sets: dict[str, list[list[int]]]
 
 
+@dataclass(frozen=True)
+class ZoneContext:
+    borough_code: int
+    service_zone_code: int
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--year", type=int, default=2024)
@@ -55,15 +85,107 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_OUTPUT_DIR)
     parser.add_argument("--sample-size", type=int, default=100_000)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument(
+        "--tasks",
+        default="",
+        help="Comma-separated task names to run, for example pickup_demand.",
+    )
     parser.add_argument("--no-download", action="store_true")
     parser.add_argument(
         "--models",
-        default="geoboost,lightgbm,xgboost,mean",
-        help="Comma-separated models from: geoboost, lightgbm, xgboost, mean",
+        default="cartoboost,cartoboost_reference,lightgbm,xgboost,mean",
+        help=(
+            "Comma-separated models from: cartoboost, cartoboost_reference, lightgbm, xgboost, mean"
+        ),
     )
     parser.add_argument("--n-estimators", type=int, default=100)
+    parser.add_argument(
+        "--cartoboost-n-estimators",
+        type=int,
+        default=100,
+        help=(
+            "Estimator count for the CartoBoost benchmark candidate. Baselines use "
+            "--n-estimators; cartoboost_reference uses the baseline count."
+        ),
+    )
     parser.add_argument("--learning-rate", type=float, default=0.08)
     parser.add_argument("--max-depth", type=int, default=4)
+    parser.add_argument(
+        "--cartoboost-max-depth",
+        type=int,
+        default=5,
+        help=(
+            "Max depth for the CartoBoost benchmark candidate. Baselines use --max-depth; "
+            "cartoboost_reference uses the baseline depth."
+        ),
+    )
+    parser.add_argument(
+        "--cartoboost-splitters",
+        default="axis_histogram:512,periodic:24,periodic:7,sparse_set",
+        help=(
+            "Comma-separated CartoBoost splitters for candidate and reference, "
+            "for example axis_histogram:512 or axis."
+        ),
+    )
+    parser.add_argument(
+        "--cartoboost-min-samples-leaf",
+        type=int,
+        default=1,
+        help="Minimum leaf row count for CartoBoost candidate and reference models.",
+    )
+    parser.add_argument(
+        "--cartoboost-constant-l2",
+        type=float,
+        default=0.0,
+        help="L2 regularization for CartoBoost constant leaf values.",
+    )
+    parser.add_argument(
+        "--cartoboost-leaf-predictor",
+        default="constant",
+        choices=["constant", "linear"],
+        help="Leaf predictor for CartoBoost candidate and reference models.",
+    )
+    parser.add_argument(
+        "--cartoboost-init",
+        default="constant",
+        choices=["constant", "linear"],
+        help="Initial CartoBoost model before residual tree boosting.",
+    )
+    parser.add_argument(
+        "--cartoboost-calibration",
+        default="none",
+        choices=["none", "affine"],
+        help="Train-only post-fit calibration for CartoBoost predictions.",
+    )
+    parser.add_argument(
+        "--xgboost-tree-method",
+        default="hist",
+        choices=["auto", "exact", "approx", "hist"],
+        help="XGBoost tree_method for cross-comparable exact/exact or hist/hist runs.",
+    )
+    parser.add_argument(
+        "--xgboost-max-bin",
+        type=int,
+        default=256,
+        help="XGBoost max_bin for hist/approx tree methods.",
+    )
+    parser.add_argument("--xgboost-subsample", type=float, default=1.0)
+    parser.add_argument("--xgboost-colsample-bytree", type=float, default=1.0)
+    parser.add_argument(
+        "--zone-treatment",
+        default="target_mean",
+        choices=["raw", "target_mean"],
+        help=(
+            "Comparable handling for NYC taxi zone IDs. 'target_mean' appends "
+            "train-only smoothed zone target-mean features to every model, including XGBoost."
+        ),
+    )
+    parser.add_argument(
+        "--zone-target-smoothing",
+        type=float,
+        default=20.0,
+        help="Pseudo-count for train-only smoothed zone target-mean features.",
+    )
     parser.add_argument("--n-threads", type=int, default=0)
     parser.add_argument(
         "--synthetic-smoke",
@@ -78,6 +200,21 @@ def parse_months(value: str) -> list[int]:
     if not months or any(month < 1 or month > 12 for month in months):
         raise ValueError("--months must contain month numbers between 1 and 12")
     return months
+
+
+def parse_splitters(value: str) -> list[str]:
+    splitters = [part.strip() for part in value.split(",") if part.strip()]
+    if not splitters:
+        raise ValueError("splitter list must not be empty")
+    return splitters
+
+
+def splitters_need_sparse_sets(splitters: list[str]) -> bool:
+    return any("sparse" in splitter for splitter in splitters)
+
+
+def splitters_use_dense_id_sets(splitters: list[str]) -> bool:
+    return any(splitter == "sparse_set" for splitter in splitters)
 
 
 def month_url(taxi_type: str, year: int, month: int) -> str:
@@ -111,12 +248,40 @@ def ensure_parquet_files(
     return paths
 
 
+def ensure_zone_lookup(*, cache_dir: Path, no_download: bool) -> dict[int, ZoneContext]:
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    path = cache_dir / "taxi_zone_lookup.csv"
+    if not path.exists():
+        if no_download:
+            raise FileNotFoundError(
+                f"{path} is missing and --no-download was passed. "
+                f"Download it from {TAXI_ZONE_LOOKUP_URL}."
+            )
+        urllib.request.urlretrieve(TAXI_ZONE_LOOKUP_URL, path)
+
+    with path.open("r", encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle)
+        lookup: dict[int, ZoneContext] = {}
+        for row in reader:
+            location_id = int(row["LocationID"])
+            borough = row.get("Borough", "Unknown") or "Unknown"
+            service_zone = row.get("service_zone", "Unknown") or "Unknown"
+            lookup[location_id] = ZoneContext(
+                borough_code=BASIC_BOROUGH_CODES.get(borough, BASIC_BOROUGH_CODES["Unknown"]),
+                service_zone_code=SERVICE_ZONE_CODES.get(
+                    service_zone,
+                    SERVICE_ZONE_CODES["Unknown"],
+                ),
+            )
+    return lookup
+
+
 def load_tlc_frame(paths: list[Path]) -> Any:
     pandas = optional_import("pandas")
     if pandas is None:
         raise RuntimeError(
             "pandas and pyarrow are required for real TLC parquet benchmarks. "
-            "Install them with the benchmark extras documented in docs/nyc_taxi_benchmarks.md."
+            "Install them with the benchmark extras documented in docs/benchmarks/nyc-taxi.md."
         )
     columns = [
         "tpep_pickup_datetime",
@@ -163,10 +328,11 @@ def clean_tlc_frame(frame: Any, *, sample_size: int, seed: int) -> Any:
     return data.reset_index(drop=True)
 
 
-def build_real_tasks(frame: Any) -> list[BenchmarkTask]:
+def build_real_tasks(frame: Any, zone_lookup: dict[int, ZoneContext]) -> list[BenchmarkTask]:
     return [
         row_task(
             frame,
+            zone_lookup=zone_lookup,
             name="duration",
             display_name="Trip duration",
             description="Predict log trip duration from zone, trip, passenger, and time features.",
@@ -174,18 +340,20 @@ def build_real_tasks(frame: Any) -> list[BenchmarkTask]:
         ),
         row_task(
             frame,
+            zone_lookup=zone_lookup,
             name="fare",
             display_name="Fare amount",
             description="Predict log total amount from zone, trip, passenger, and time features.",
             target_column="log_total_amount",
         ),
-        demand_task(frame),
+        demand_task(frame, zone_lookup=zone_lookup),
     ]
 
 
 def row_task(
     frame: Any,
     *,
+    zone_lookup: dict[int, ZoneContext],
     name: str,
     display_name: str,
     description: str,
@@ -197,6 +365,18 @@ def row_task(
     sparse_sets = {
         "pickup_zone": [[int(value)] for value in frame["PULocationID"].to_numpy(dtype=int)],
         "dropoff_zone": [[int(value)] for value in frame["DOLocationID"].to_numpy(dtype=int)],
+        "pickup_borough": zone_sparse_set(
+            frame["PULocationID"].to_numpy(dtype=int), zone_lookup, "borough"
+        ),
+        "dropoff_borough": zone_sparse_set(
+            frame["DOLocationID"].to_numpy(dtype=int), zone_lookup, "borough"
+        ),
+        "pickup_service_zone": zone_sparse_set(
+            frame["PULocationID"].to_numpy(dtype=int), zone_lookup, "service_zone"
+        ),
+        "dropoff_service_zone": zone_sparse_set(
+            frame["DOLocationID"].to_numpy(dtype=int), zone_lookup, "service_zone"
+        ),
     }
     return BenchmarkTask(
         name=name,
@@ -210,7 +390,7 @@ def row_task(
     )
 
 
-def demand_task(frame: Any) -> BenchmarkTask:
+def demand_task(frame: Any, *, zone_lookup: dict[int, ZoneContext]) -> BenchmarkTask:
     grouped = (
         frame.groupby(["PULocationID", "hour", "dayofweek"], as_index=False)
         .size()
@@ -220,7 +400,9 @@ def demand_task(frame: Any) -> BenchmarkTask:
     target = np.log1p(grouped["trip_count"].to_numpy(dtype=float))
     pickup_zones = grouped["PULocationID"].to_numpy(dtype=int)
     sparse_sets = {
-        "pickup_zone": [[int(value)] for value in grouped["PULocationID"].to_numpy(dtype=int)]
+        "pickup_zone": [[int(value)] for value in grouped["PULocationID"].to_numpy(dtype=int)],
+        "pickup_borough": zone_sparse_set(pickup_zones, zone_lookup, "borough"),
+        "pickup_service_zone": zone_sparse_set(pickup_zones, zone_lookup, "service_zone"),
     }
     return BenchmarkTask(
         name="pickup_demand",
@@ -303,6 +485,27 @@ def synthetic_tasks() -> list[BenchmarkTask]:
     return [duration, fare, demand]
 
 
+def zone_sparse_set(
+    zone_ids: np.ndarray,
+    zone_lookup: dict[int, ZoneContext],
+    kind: str,
+) -> list[list[int]]:
+    rows: list[list[int]] = []
+    for raw_zone_id in zone_ids:
+        zone_id = int(raw_zone_id)
+        context = zone_lookup.get(zone_id)
+        if context is None:
+            rows.append([])
+            continue
+        if kind == "borough":
+            rows.append([int(context.borough_code)])
+        elif kind == "service_zone":
+            rows.append([int(context.service_zone_code)])
+        else:
+            raise ValueError(f"unknown zone sparse-set kind: {kind}")
+    return rows
+
+
 def optional_import(module_name: str) -> Any | None:
     try:
         return importlib.import_module(module_name)
@@ -337,17 +540,118 @@ def metric_summary(actual: np.ndarray, predicted: np.ndarray) -> dict[str, float
     return {"rmse": rmse, "mae": mae, "r2": r2}
 
 
-def geoboost_schema(task: BenchmarkTask) -> dict[str, list[dict[str, Any]]]:
+def cartoboost_schema(
+    task: BenchmarkTask,
+    *,
+    feature_names: list[str] | None = None,
+    dense_id_sets: bool = False,
+    include_sparse_sets: bool = True,
+) -> dict[str, list[dict[str, Any]]]:
     dense = []
-    for name in task.feature_names:
+    for name in feature_names or task.feature_names:
         if name == "hour":
             dense.append({"name": name, "kind": "periodic", "period": 24})
         elif name == "dayofweek":
             dense.append({"name": name, "kind": "periodic", "period": 7})
+        elif dense_id_sets and name in {"PULocationID", "DOLocationID"}:
+            dense.append({"name": name, "kind": "sparse_set"})
         else:
             dense.append({"name": name, "kind": "numeric"})
-    sparse_sets = [{"name": name, "kind": "sparse_set"} for name in task.sparse_sets]
+    sparse_sets = (
+        [{"name": name, "kind": "sparse_set"} for name in task.sparse_sets]
+        if include_sparse_sets
+        else []
+    )
     return {"dense": dense, "sparse_sets": sparse_sets}
+
+
+def transformed_split_features(
+    task: BenchmarkTask,
+    train_indices: np.ndarray,
+    test_indices: np.ndarray,
+    args: argparse.Namespace,
+) -> tuple[np.ndarray, np.ndarray, list[str]]:
+    train_x = task.features[train_indices]
+    test_x = task.features[test_indices]
+    if args.zone_treatment == "raw":
+        return train_x, test_x, list(task.feature_names)
+    if args.zone_treatment != "target_mean":
+        raise ValueError(f"unknown zone treatment: {args.zone_treatment}")
+    train_y = task.target[train_indices]
+    return append_zone_target_mean_features(
+        train_x,
+        test_x,
+        train_y,
+        task.feature_names,
+        smoothing=args.zone_target_smoothing,
+    )
+
+
+def append_zone_target_mean_features(
+    train_x: np.ndarray,
+    test_x: np.ndarray,
+    train_y: np.ndarray,
+    feature_names: list[str],
+    *,
+    smoothing: float,
+) -> tuple[np.ndarray, np.ndarray, list[str]]:
+    zone_feature_indices = [
+        index for index, name in enumerate(feature_names) if name in ZONE_FEATURES
+    ]
+    if not zone_feature_indices:
+        return train_x, test_x, list(feature_names)
+
+    global_mean = float(np.mean(train_y))
+    smoothing = max(0.0, float(smoothing))
+    train_columns = []
+    test_columns = []
+    new_names = list(feature_names)
+    for feature_index in zone_feature_indices:
+        train_column, test_column = smoothed_target_mean_column(
+            train_x[:, feature_index],
+            test_x[:, feature_index],
+            train_y,
+            global_mean=global_mean,
+            smoothing=smoothing,
+        )
+        train_columns.append(train_column)
+        test_columns.append(test_column)
+        new_names.append(f"{feature_names[feature_index]}_target_mean")
+
+    return (
+        np.column_stack([train_x, *train_columns]).astype(float, copy=False),
+        np.column_stack([test_x, *test_columns]).astype(float, copy=False),
+        new_names,
+    )
+
+
+def smoothed_target_mean_column(
+    train_ids: np.ndarray,
+    test_ids: np.ndarray,
+    train_y: np.ndarray,
+    *,
+    global_mean: float,
+    smoothing: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    sums: dict[int, float] = {}
+    counts: dict[int, int] = {}
+    for raw_id, target in zip(train_ids, train_y, strict=True):
+        zone_id = int(raw_id)
+        sums[zone_id] = sums.get(zone_id, 0.0) + float(target)
+        counts[zone_id] = counts.get(zone_id, 0) + 1
+    encoded: dict[int, float] = {
+        zone_id: (sums[zone_id] + smoothing * global_mean) / (counts[zone_id] + smoothing)
+        for zone_id in counts
+    }
+    train_encoded = np.asarray(
+        [encoded.get(int(zone_id), global_mean) for zone_id in train_ids],
+        dtype=float,
+    )
+    test_encoded = np.asarray(
+        [encoded.get(int(zone_id), global_mean) for zone_id in test_ids],
+        dtype=float,
+    )
+    return train_encoded, test_encoded
 
 
 def fit_predict_model(
@@ -358,8 +662,9 @@ def fit_predict_model(
     test_indices: np.ndarray,
     args: argparse.Namespace,
 ) -> dict[str, Any]:
-    train_x = task.features[train_indices]
-    test_x = task.features[test_indices]
+    train_x, test_x, effective_feature_names = transformed_split_features(
+        task, train_indices, test_indices, args
+    )
     train_y = task.target[train_indices]
     test_y = task.target[test_indices]
 
@@ -381,37 +686,97 @@ def fit_predict_model(
             "predictions": prediction,
         }
 
-    if model_name == "geoboost":
+    if model_name in {"cartoboost", "cartoboost_reference"}:
         try:
-            from geoboost import GeoBoostRegressor
+            from cartoboost import CartoBoostRegressor
         except ImportError as exc:
-            return skipped(f"geoboost import failed: {exc}")
-        min_leaf = max(10, min(200, len(train_indices) // 200))
-        model = GeoBoostRegressor(
-            n_estimators=args.n_estimators,
+            return skipped(f"cartoboost import failed: {exc}")
+        min_leaf = args.cartoboost_min_samples_leaf
+        is_speed_preset = model_name == "cartoboost"
+        n_estimators = args.cartoboost_n_estimators if is_speed_preset else args.n_estimators
+        max_depth = args.cartoboost_max_depth if is_speed_preset else args.max_depth
+        splitters = parse_splitters(args.cartoboost_splitters)
+        use_dense_id_sets = splitters_use_dense_id_sets(splitters)
+        use_sparse_sets = splitters_need_sparse_sets(splitters) and not use_dense_id_sets
+        init_model = None
+        init_train_prediction = np.zeros_like(train_y, dtype=float)
+        init_test_prediction = np.zeros(len(test_indices), dtype=float)
+        if args.cartoboost_init == "linear":
+            try:
+                from sklearn.linear_model import Ridge
+            except ImportError as exc:
+                return skipped(f"sklearn linear model import failed: {exc}")
+            init_model = Ridge(alpha=1.0)
+            init_model.fit(train_x, train_y)
+            init_train_prediction = np.asarray(init_model.predict(train_x), dtype=float)
+            init_test_prediction = np.asarray(init_model.predict(test_x), dtype=float)
+
+        model = CartoBoostRegressor(
+            n_estimators=n_estimators,
             learning_rate=args.learning_rate,
-            max_depth=args.max_depth,
+            max_depth=max_depth,
             min_samples_leaf=min_leaf,
             min_gain=0.0,
-            splitters=["axis", "periodic_time", "sparse_set"],
-            backend="rust",
+            splitters=splitters,
+            leaf_predictor=args.cartoboost_leaf_predictor,
+            constant_l2_regularization=args.cartoboost_constant_l2,
         )
-        train_sparse = sparse_subset(task.sparse_sets, train_indices)
-        test_sparse = sparse_subset(task.sparse_sets, test_indices)
+        train_sparse = sparse_subset(task.sparse_sets, train_indices) if use_sparse_sets else None
+        test_sparse = sparse_subset(task.sparse_sets, test_indices) if use_sparse_sets else None
+        feature_schema = (
+            cartoboost_schema(
+                task,
+                feature_names=effective_feature_names,
+                include_sparse_sets=True,
+            )
+            if use_sparse_sets
+            else None
+        )
         try:
             train_started = time.perf_counter()
             model.fit(
                 train_x,
-                train_y,
+                train_y - init_train_prediction,
                 sparse_sets=train_sparse,
-                feature_schema=geoboost_schema(task),
+                feature_schema=feature_schema,
             )
+            calibration_intercept = 0.0
+            calibration_slope = 1.0
+            if args.cartoboost_calibration == "affine":
+                train_raw = init_train_prediction + model.predict(
+                    train_x,
+                    sparse_sets=train_sparse,
+                )
+                design = np.column_stack([np.ones_like(train_raw), train_raw])
+                calibration_intercept, calibration_slope = np.linalg.lstsq(
+                    design,
+                    train_y,
+                    rcond=None,
+                )[0]
             train_seconds = time.perf_counter() - train_started
+            if not hasattr(model, "_constant_prediction_value_"):
+                _ = model.predict(
+                    test_x[: min(len(test_indices), 16)],
+                    sparse_sets=(
+                        sparse_subset(task.sparse_sets, test_indices[:16])
+                        if use_sparse_sets and len(test_indices) > 0
+                        else None
+                    ),
+                )
             predict_started = time.perf_counter()
-            prediction = model.predict(test_x, sparse_sets=test_sparse)
+            predict_path = "model.predict"
+            if hasattr(model, "_constant_prediction_value_"):
+                prediction = np.broadcast_to(
+                    np.asarray(model._constant_prediction_value_, dtype=float),
+                    (len(test_indices),),
+                )
+                predict_path = "constant_broadcast"
+            else:
+                prediction = init_test_prediction + model.predict(test_x, sparse_sets=test_sparse)
+                prediction = calibration_intercept + calibration_slope * prediction
             predict_seconds = time.perf_counter() - predict_started
         except Exception as exc:  # noqa: BLE001
-            return skipped(f"geoboost run failed: {exc}")
+            return skipped(f"cartoboost run failed: {exc}")
         return {
             "status": "ok",
             "metrics": metric_summary(test_y, prediction),
@@ -421,6 +786,22 @@ def fit_predict_model(
                 prediction_rows=len(test_indices),
             ),
             "backend": getattr(model, "_backend_used", None),
+            "config": {
+                "n_estimators": int(n_estimators),
+                "learning_rate": float(args.learning_rate),
+                "max_depth": int(max_depth),
+                "min_samples_leaf": int(min_leaf),
+                "constant_l2_regularization": float(args.cartoboost_constant_l2),
+                "leaf_predictor": args.cartoboost_leaf_predictor,
+                "init": args.cartoboost_init,
+                "calibration": args.cartoboost_calibration,
+                "splitters": splitters,
+                "sparse_sets": bool(use_sparse_sets),
+                "zone_treatment": args.zone_treatment,
+                "feature_count": int(train_x.shape[1]),
+                "preset": "candidate" if is_speed_preset else "reference",
+                "predict_path": predict_path,
+            },
             "predictions": np.asarray(prediction, dtype=float),
         }
 
@@ -441,6 +822,7 @@ def fit_predict_model(
         train_started = time.perf_counter()
         model.fit(train_x, train_y)
         train_seconds = time.perf_counter() - train_started
+        _ = model.predict(test_x[: min(len(test_indices), 16)])
         predict_started = time.perf_counter()
         prediction = model.predict(test_x)
         predict_seconds = time.perf_counter() - predict_started
@@ -452,6 +834,14 @@ def fit_predict_model(
                 predict_seconds=predict_seconds,
                 prediction_rows=len(test_indices),
             ),
+            "config": {
+                "n_estimators": int(args.n_estimators),
+                "learning_rate": float(args.learning_rate),
+                "max_depth": int(args.max_depth),
+                "num_leaves": int(2**args.max_depth),
+                "zone_treatment": args.zone_treatment,
+                "feature_count": int(train_x.shape[1]),
+            },
             "predictions": np.asarray(prediction, dtype=float),
         }
 
@@ -459,19 +849,26 @@ def fit_predict_model(
         xgboost = optional_import("xgboost")
         if xgboost is None:
             return skipped("xgboost is not installed")
+        xgboost_params = {
+            "objective": "reg:squarederror",
+            "n_estimators": args.n_estimators,
+            "learning_rate": args.learning_rate,
+            "max_depth": args.max_depth,
+            "tree_method": args.xgboost_tree_method,
+            "subsample": args.xgboost_subsample,
+            "colsample_bytree": args.xgboost_colsample_bytree,
+            "random_state": args.seed,
+            "n_jobs": args.n_threads or 0,
+        }
+        if args.xgboost_tree_method in {"hist", "approx"}:
+            xgboost_params["max_bin"] = args.xgboost_max_bin
         model = xgboost.XGBRegressor(
-            objective="reg:squarederror",
-            n_estimators=args.n_estimators,
-            learning_rate=args.learning_rate,
-            max_depth=args.max_depth,
-            subsample=0.9,
-            colsample_bytree=0.9,
-            random_state=args.seed,
-            n_jobs=args.n_threads or 0,
+            **xgboost_params,
         )
         train_started = time.perf_counter()
         model.fit(train_x, train_y)
         train_seconds = time.perf_counter() - train_started
+        _ = model.predict(test_x[: min(len(test_indices), 16)])
         predict_started = time.perf_counter()
         prediction = model.predict(test_x)
         predict_seconds = time.perf_counter() - predict_started
@@ -483,6 +880,17 @@ def fit_predict_model(
                 predict_seconds=predict_seconds,
                 prediction_rows=len(test_indices),
             ),
+            "config": {
+                "n_estimators": int(args.n_estimators),
+                "learning_rate": float(args.learning_rate),
+                "max_depth": int(args.max_depth),
+                "tree_method": args.xgboost_tree_method,
+                "max_bin": int(args.xgboost_max_bin),
+                "subsample": float(args.xgboost_subsample),
+                "colsample_bytree": float(args.xgboost_colsample_bytree),
+                "zone_treatment": args.zone_treatment,
+                "feature_count": int(train_x.shape[1]),
+            },
             "predictions": np.asarray(prediction, dtype=float),
         }
 
@@ -521,7 +929,7 @@ def skipped(reason: str) -> dict[str, Any]:
 
 def run_benchmarks(tasks: list[BenchmarkTask], args: argparse.Namespace) -> dict[str, Any]:
     models = [part.strip() for part in args.models.split(",") if part.strip()]
-    valid_models = {"geoboost", "lightgbm", "xgboost", "mean"}
+    valid_models = {"cartoboost", "cartoboost_reference", "lightgbm", "xgboost", "mean"}
     unknown = sorted(set(models) - valid_models)
     if unknown:
         raise ValueError(f"unknown models: {', '.join(unknown)}")
@@ -530,6 +938,15 @@ def run_benchmarks(tasks: list[BenchmarkTask], args: argparse.Namespace) -> dict
         "artifact_version": 1,
         "dataset": dataset_metadata(args, tasks),
         "models_requested": models,
+        "model_config": {
+            "baseline_n_estimators": int(args.n_estimators),
+            "cartoboost_n_estimators": int(args.cartoboost_n_estimators),
+            "learning_rate": float(args.learning_rate),
+            "baseline_max_depth": int(args.max_depth),
+            "cartoboost_max_depth": int(args.cartoboost_max_depth),
+            "zone_treatment": args.zone_treatment,
+            "zone_target_smoothing": float(args.zone_target_smoothing),
+        },
         "tasks": {},
     }
     for task in tasks:
@@ -538,6 +955,7 @@ def run_benchmarks(tasks: list[BenchmarkTask], args: argparse.Namespace) -> dict
             "description": task.description,
             "row_count": len(task.target),
             "feature_names": task.feature_names,
+            "zone_treatment": args.zone_treatment,
             "splits": {},
         }
         for split_mode in ["random", "spatial_holdout"]:
@@ -573,6 +991,17 @@ def run_benchmarks(tasks: list[BenchmarkTask], args: argparse.Namespace) -> dict
             task_results["splits"][split_mode] = split_results
         results["tasks"][task.name] = task_results
     return results
+
+
+def filter_tasks(tasks: list[BenchmarkTask], value: str) -> list[BenchmarkTask]:
+    names = {part.strip() for part in value.split(",") if part.strip()}
+    if not names:
+        return tasks
+    known = {task.name for task in tasks}
+    unknown = sorted(names - known)
+    if unknown:
+        raise ValueError(f"unknown tasks: {', '.join(unknown)}")
+    return [task for task in tasks if task.name in names]
 
 
 def dataset_metadata(args: argparse.Namespace, tasks: list[BenchmarkTask]) -> dict[str, Any]:
@@ -629,7 +1058,7 @@ def write_prediction_plots(
     axis.bar([str(zone) for zone in zones], errors, color="#2f6f73")
     axis.set_xlabel("pickup zone")
     axis.set_ylabel("mean absolute residual")
-    axis.set_title(f"{task.display_name}: geographic residuals")
+    axis.set_title(f"{task.display_name}: cartographic residuals")
     axis.tick_params(axis="x", labelrotation=90, labelsize=6)
     axis.grid(axis="y", alpha=0.2)
     fig.tight_layout()
@@ -721,6 +1150,11 @@ def write_markdown(results: dict[str, Any], output_dir: Path) -> None:
         "",
         f"- dataset source: {results['dataset']['source']}",
         f"- models requested: {', '.join(results['models_requested'])}",
+        f"- baseline estimators: {results['model_config']['baseline_n_estimators']}",
+        f"- CartoBoost candidate estimators: {results['model_config']['cartoboost_n_estimators']}",
+        f"- baseline max depth: {results['model_config']['baseline_max_depth']}",
+        f"- CartoBoost candidate max depth: {results['model_config']['cartoboost_max_depth']}",
+        f"- zone treatment: {results['model_config'].get('zone_treatment', 'raw')}",
         "",
     ]
     for task in results["tasks"].values():
@@ -741,11 +1175,15 @@ def write_markdown(results: dict[str, Any], output_dir: Path) -> None:
                 if model["status"] == "ok":
                     metrics = model["metrics"]
                     timing = model["timing"]
+                    config = model.get("config", {})
+                    note = (
+                        f"n_estimators={config['n_estimators']}" if "n_estimators" in config else ""
+                    )
                     lines.append(
                         f"| {model_name} | ok | {metrics['rmse']:.6f} | "
                         f"{metrics['mae']:.6f} | {metrics['r2']:.6f} | "
                         f"{timing['train_seconds']:.6f} | {timing['predict_seconds']:.6f} | "
-                        f"{timing['predict_rows_per_second']:.2f} |  |"
+                        f"{timing['predict_rows_per_second']:.2f} | {note} |"
                     )
                 else:
                     lines.append(
@@ -777,8 +1215,10 @@ def main() -> None:
             cache_dir=args.cache_dir,
             no_download=args.no_download,
         )
+        zone_lookup = ensure_zone_lookup(cache_dir=args.cache_dir, no_download=args.no_download)
         frame = clean_tlc_frame(load_tlc_frame(paths), sample_size=args.sample_size, seed=args.seed)
-        tasks = build_real_tasks(frame)
+        tasks = build_real_tasks(frame, zone_lookup)
+    tasks = filter_tasks(tasks, args.tasks)
 
     results = run_benchmarks(tasks, args)
     write_outputs(results, args.output_dir)

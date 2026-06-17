@@ -9,7 +9,7 @@
         "priority": 1.25,
         "service_level": "same_day"
       },
-      "geometry": {
+      "cartometry": {
         "type": "Polygon",
         "coordinates": [
           [
@@ -29,7 +29,7 @@
         "priority": 0.85,
         "service_level": "standard"
       },
-      "geometry": {
+      "cartometry": {
         "type": "Polygon",
         "coordinates": [
           [

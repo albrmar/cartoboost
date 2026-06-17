@@ -75,7 +75,7 @@ def binary_metrics(pairs: list[tuple[float, float]]) -> dict[str, float]:
 
 def render_markdown(path: Path, task: str, metrics: dict[str, float]) -> str:
     lines = [
-        "# GeoBoost validation report",
+        "# CartoBoost validation report",
         "",
         f"- source: `{path}`",
         f"- task: `{task}`",

@@ -1,311 +1,214 @@
-# geoboost
+# CartoBoost
 
-Regression tools for tabular and spatiotemporal features, exposed through Rust,
-Python, and a small command-line interface.
+[![PyPI](https://img.shields.io/pypi/v/cartoboost.svg)](https://pypi.org/project/cartoboost/)
+[![Python](https://img.shields.io/pypi/pyversions/cartoboost.svg)](https://pypi.org/project/cartoboost/)
+[![CI](https://github.com/TheCulliganMan/CartoBoost/actions/workflows/ci.yml/badge.svg)](https://github.com/TheCulliganMan/CartoBoost/actions/workflows/ci.yml)
+[![Docs](https://github.com/TheCulliganMan/CartoBoost/actions/workflows/pages.yml/badge.svg)](https://github.com/TheCulliganMan/CartoBoost/actions/workflows/pages.yml)
+[![Publish](https://github.com/TheCulliganMan/CartoBoost/actions/workflows/publish-pypi.yml/badge.svg)](https://github.com/TheCulliganMan/CartoBoost/actions/workflows/publish-pypi.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-## Current Scope
+CartoBoost is a Rust-backed Python regressor for temporal-spatial problems:
+demand by zone and time, route or lane performance, delivery ETA residuals,
+pickup/dropoff pricing effects, and other targets where place, time, and sparse
+location memberships matter.
 
-GeoBoost is a regression-only alpha focused on deterministic training,
-inspectable model artifacts, and explicit API limits. The Rust backend owns the
-advanced behavior:
+CartoBoost is useful when a plain tabular booster needs a lot of manual feature
+engineering to see the structure in the data. It can train with:
 
-- L2 gradient boosting with constant or linear leaves.
-- Axis, diagonal 2D, Gaussian/radial 2D, periodic, sparse-set, and fuzzy splits.
-- Fractional fuzzy training and weighted prediction recursion.
-- Dense numeric features plus list-valued sparse route-cell-style columns.
-- Optional feature schema metadata for numeric, periodic, and sparse-set
-  feature declarations.
-- Versioned JSON artifacts with Python and CLI loading paths.
+- Periodic splitters for hour-of-day, weekday, seasonality, or other wraparound
+  time features.
+- Diagonal 2D and Gaussian/radial splitters for spatial boundaries and local
+  neighborhoods.
+- Sparse-set splitters for route cells, zones, grid cells, encoded H3 cells, or
+  other list-valued location memberships.
+- Fuzzy routing for smoother behavior near split boundaries.
+- Linear leaves for local residual trends after the tree finds a region.
 
-The pure-Python fallback exists for sklearn ergonomics and dense axis-split
-experiments. Advanced splitters, sparse sets, schema-driven training, fuzzy
-training, and linear leaves require the Rust native extension.
+The Python API follows sklearn conventions, so a data scientist can fit,
+evaluate, tune, explain, and save a model without working directly in Rust.
 
-## Project Layout
+## Install
 
-- `crates/geoboost-core`: Rust library for core training, prediction, and model
-  artifacts.
-- `crates/geoboost-cli`: Dense numeric CSV command-line interface.
-- `crates/geoboost-py`: PyO3/maturin extension crate that publishes
-  `geoboost._native`.
-- `python/geoboost`: Python package surface.
-- `configs`: Example training configuration files.
-- `docs`: API, testing, artifact, sparse-feature, schema, and release docs.
-- `tests`: Python and integration tests.
-- `fuzz`: cargo-fuzz harnesses.
-- `benches`: Criterion benchmark scaffolding.
+Install the released Python package from PyPI:
 
-## Installation
+```sh
+pip install cartoboost
+```
 
-Development requires stable Rust, Python 3.10 or newer, and `uv` 0.7 or newer.
+The PyPI release includes prebuilt Rust extension wheels for CPython 3.10-3.13
+on Linux, macOS, and Windows. For optional integrations:
+
+```sh
+pip install "cartoboost[explain]"  # SHAP support
+pip install "cartoboost[optuna]"   # Optuna tuning
+pip install "cartoboost[polars]"   # Polars inputs
+pip install "cartoboost[onnx]"     # ONNX export subset
+```
+
+Verify the install:
+
+```sh
+python -c "import cartoboost; print(cartoboost.__version__)"
+cartoboost --help
+```
+
+From a source checkout, use the development environment:
 
 ```sh
 uv sync --group dev
 uv run --group dev maturin develop
 ```
 
-The second command builds and installs the native extension into the development
-environment. Use `backend="rust"` when you want failures to be explicit if the
-native extension is unavailable.
+`maturin develop` builds `cartoboost._native` into the local `uv` environment.
 
-## Dense Python Example
+To tune CartoBoost with Optuna, install the optional dependency:
+
+```sh
+pip install "cartoboost[optuna]"
+```
+
+## Basic Regression
 
 ```python
-from geoboost import GeoBoostRegressor
+from cartoboost import CartoBoostRegressor
 
-X = [[0.0], [1.0], [2.0], [3.0]]
-y = [0.0, 1.0, 2.0, 3.0]
-
-model = GeoBoostRegressor(
-    n_estimators=20,
-    learning_rate=0.1,
-    max_depth=2,
+model = CartoBoostRegressor(
+    n_estimators=100,
+    learning_rate=0.05,
+    max_depth=4,
+    min_samples_leaf=20,
     splitters=["axis"],
-    backend="rust",
 )
-model.fit(X, y)
-predictions = model.predict(X)
+
+model.fit(X_train, y_train)
+predictions = model.predict(X_test)
 ```
 
 The estimator supports sklearn-style `get_params`, `set_params`, `clone`,
-`Pipeline`, `GridSearchCV`, and NumPy-array predictions for the covered API.
+`Pipeline`, `GridSearchCV`, and NumPy-array predictions.
 
-## Sparse Route-Cell Example
-
-List-valued sparse features are passed as a mapping from sparse column name to
-one list of IDs per row.
+Optuna works with the estimator through the standard sklearn contract:
 
 ```python
-from geoboost import GeoBoostRegressor
+import optuna
+from sklearn.model_selection import cross_val_score
 
-X_dense = [[0.0], [0.0], [0.0], [0.0]]
-y = [10.0, 10.0, 0.0, 0.0]
-route_cells = [[7, 11], [11], [3], []]
+from cartoboost import CartoBoostRegressor
 
-model = GeoBoostRegressor(
-    n_estimators=2,
-    learning_rate=0.5,
-    max_depth=1,
-    min_samples_leaf=1,
-    splitters=["sparse_set"],
-    backend="rust",
-)
-model.fit(X_dense, y, sparse_sets={"route_cells": route_cells})
-predictions = model.predict(X_dense, sparse_sets={"route_cells": route_cells})
+
+def objective(trial):
+  model = CartoBoostRegressor(
+    n_estimators=trial.suggest_int("n_estimators", 50, 300),
+    learning_rate=trial.suggest_float("learning_rate", 0.01, 0.2, log=True),
+    max_depth=trial.suggest_int("max_depth", 1, 6),
+    min_samples_leaf=trial.suggest_int("min_samples_leaf", 1, 32),
+  )
+  scores = cross_val_score(
+    model,
+    X_train,
+    y_train,
+    cv=3,
+    scoring="neg_mean_squared_error",
+  )
+  return float(-scores.mean())
+
+
+study = optuna.create_study(direction="minimize")
+study.optimize(objective, n_trials=30)
+best_model = CartoBoostRegressor(**study.best_params).fit(X_train, y_train)
 ```
 
-Sparse IDs must be non-negative integers. Duplicate IDs in a row are normalized
-by the Rust dataset layer. A model containing sparse-list splits requires
-`sparse_sets=` at prediction time.
+## Temporal-Spatial Example
 
-## Feature Schema Example
-
-Schemas tell the Rust trainer which dense features are numeric or periodic and
-which sparse columns are sparse-set columns.
+Use dense columns for numeric location and time features, and sparse-set columns
+for memberships such as route cells or zones.
 
 ```python
+from cartoboost import CartoBoostRegressor
+
 schema = {
     "dense": [
-        {"name": "distance_m", "kind": "numeric"},
+        {"name": "pickup_x", "kind": "numeric"},
+        {"name": "pickup_y", "kind": "numeric"},
         {"name": "hour_of_day", "kind": "periodic", "period": 24},
+        {"name": "trip_distance", "kind": "numeric"},
     ],
     "sparse_sets": [
         {"name": "route_cells", "kind": "sparse_set"},
     ],
 }
 
-model = GeoBoostRegressor(
-    splitters=["axis", "periodic:24", "sparse_set"],
-    backend="rust",
+model = CartoBoostRegressor(
+    n_estimators=200,
+    learning_rate=0.04,
+    max_depth=5,
+    min_samples_leaf=30,
+    splitters=["axis", "diagonal_2d", "gaussian_2d", "periodic:24", "sparse_set"],
+    fuzzy=True,
+    fuzzy_bandwidth=0.05,
 )
+
 model.fit(
-    X_dense,
-    y,
-    sparse_sets={"route_cells": route_cells},
+    X_train_dense,
+    y_train,
+    sparse_sets={"route_cells": route_cells_train},
     feature_schema=schema,
 )
-```
 
-Schema length must equal the dense feature count plus the sparse-set column
-count. Periodic splitters use declared periods when a schema is present instead
-of relying on observed coverage heuristics.
-
-## ZIP and Geo Context Example
-
-`ozip` and `dzip` should be fed to sparse-set columns so the model can learn
-with explicit geographic context, including ZIP parents.
-
-```python
-from geoboost import GeoBoostRegressor, build_zip_sparse_sets
-
-zip_sparse_sets = build_zip_sparse_sets(
-    origin_zip=ozip,
-    destination_zip=dzip,
-    parent_prefixes=(3, 2),
+predictions = model.predict(
+    X_test_dense,
+    sparse_sets={"route_cells": route_cells_test},
 )
-schema = {
-    "dense": [
-        {"name": "distance_m", "kind": "numeric"},
-    ],
-    "sparse_sets": [
-        {"name": "ozip_zip5", "kind": "zip_sparse_set"},
-        {"name": "ozip_zip_p3", "kind": "zip_sparse_set"},
-        {"name": "dzip_zip5", "kind": "zip_sparse_set"},
-    ],
-}
-
-model = GeoBoostRegressor(backend="rust", splitters=["axis", "sparse_set"])
-model.fit(X_dense, y, sparse_sets=zip_sparse_sets, feature_schema=schema)
 ```
 
-Use abstract geo features (state, county, zone, region, market, etc.) as sparse
-columns with explicit semantics:
+Why this helps:
+
+- `periodic:24` can split midnight-adjacent hours as neighbors instead of
+  treating `23` and `0` as far apart.
+- `diagonal_2d` can learn oblique spatial boundaries that axis-only trees need
+  many steps to approximate.
+- `gaussian_2d` can isolate radial neighborhoods around a local hotspot.
+- `sparse_set` can split on list-valued route or cell membership without
+  building a wide one-hot matrix.
+- `fuzzy=True` can reduce hard jumps near spatial or temporal split boundaries.
+
+## Save, Load, And Explain
 
 ```python
-from geoboost import GeoBoostRegressor, build_geo_sparse_sets
+model.save("model.cartoboost.json")
+loaded = CartoBoostRegressor.load("model.cartoboost.json")
 
-geo_sparse_sets = build_geo_sparse_sets(
-    {
-        "pickup_zone": ["Z1", "Z2", "Z3"],
-        "delivery_zone": ["D1", "D2", "D3"],
-    },
-    namespace="market",
+explanation = loaded.explain_shap(
+    X_test_dense,
+    background=X_train_dense,
+    sparse_sets={"route_cells": route_cells_test},
+    background_sparse_sets={"route_cells": route_cells_train},
 )
-schema = {
-    "dense": [{"name": "distance_m", "kind": "numeric"}],
-    "sparse_sets": [
-        {"name": "pickup_zone", "kind": "zone_sparse_set"},
-        {"name": "delivery_zone", "kind": "region_sparse_set"},
-    ],
-}
-
-model = GeoBoostRegressor(backend="rust", splitters=["axis", "sparse_set"])
-model.fit(X_dense, y, sparse_sets=geo_sparse_sets, feature_schema=schema)
-```
-
-```python
-state_geo_sparse_sets = build_geo_sparse_sets(
-    {
-        "state": ["CA", "NY", "CA", "TX"],
-        "county": ["001", "067", "067", "201"],
-    },
-    namespace="policy",
-)
-
-state_schema = {
-    "dense": [{"name": "distance_m", "kind": "numeric"}],
-    "sparse_sets": [
-        {"name": "state", "kind": "geo_sparse_set"},
-        {"name": "county", "kind": "zone_sparse_set"},
-    ],
-}
-
-model.fit(X_dense, y, sparse_sets=state_geo_sparse_sets, feature_schema=state_schema)
-```
-
-## Save And Load
-
-```python
-model.save("model.geoboost.json")
-
-loaded = GeoBoostRegressor.load("model.geoboost.json")
-assert loaded.get_params()["splitters"] == model.get_params()["splitters"]
-predictions = loaded.predict(X_dense, sparse_sets={"route_cells": route_cells})
 ```
 
 Native artifacts are versioned JSON and include optional metadata, feature
 schema, and training configuration fields. See
-[`docs/model_artifact.md`](docs/model_artifact.md).
+[Model Artifacts](docs/model_artifact.md) and [SHAP Support](docs/shap.md).
 
-## SHAP Explanations
+## CLI
 
-Install the optional SHAP dependency, then explain predictions through the
-Python estimator:
-
-```sh
-pip install "geoboost[explain]"
-```
-
-```python
-import shap
-
-explainer = shap.Explainer(model, X_train)
-explanation = explainer(X_test)
-```
-
-The returned object is a `shap.Explanation` and can be used with SHAP plots.
-`model.explain_shap(X_test, background=X_train)` is also available as a
-convenience helper. Sparse-list models are supported through the helper by
-passing `sparse_sets=` and `background_sparse_sets=`. See
-[`docs/shap.md`](docs/shap.md).
-
-## CLI Dense CSV Example
-
-The CLI v1 contract is dense numeric CSV train/predict/eval. Python is the v1
-surface for list-valued sparse route-cell features.
+The CLI handles dense numeric CSV train, predict, eval, and inspect workflows.
+Use the Python API for list-valued sparse route-cell features.
 
 ```sh
-geoboost train --data train.csv --config configs/regression.toml --model-out model.json
-geoboost predict --model model.json --input test.csv --predictions-out predictions.csv
-geoboost eval --model model.json --data test_with_target.csv
+cartoboost train --data train.csv --config configs/regression.toml --model-out model.json
+cartoboost predict --model model.json --input test.csv --predictions-out predictions.csv
+cartoboost eval --model model.json --data test_with_target.csv
 ```
-
-The CLI rejects unknown commands, malformed config, unknown splitters, unknown
-leaf predictors, missing targets, and wrong feature counts with nonzero exit
-status and actionable messages.
-
-## Validation
-
-Local validation source of truth:
-
-```sh
-just validate
-```
-
-Equivalent command sequence:
-
-```sh
-cargo fmt --all --check
-cargo clippy --workspace --all-targets -- -D warnings
-cargo test --workspace
-uv sync --group dev
-uv run --group dev ruff format --check python tests scripts
-uv run --group dev ruff check python tests scripts
-uv run --group dev maturin develop
-uv run --group dev pytest
-uv run --group dev python scripts/run_full_validation.py
-uv run --group dev python scripts/run_v1_validation.py
-cargo bench --workspace --no-run
-```
-
-Generated validation artifacts are written under `target/validation/`. They are
-deterministic checks over synthetic fixtures and are intended to catch behavior
-regressions during development.
 
 ## Documentation
 
-- [v1 API](docs/v1_api.md)
-- [Sparse Features](docs/sparse_features.md)
+- [Getting Started](docs/getting-started.md)
+- [Python Estimator](docs/user-guide/python-estimator.md)
+- [Parameters](docs/user-guide/parameters.md)
+- [Spatial Modeling](docs/spatial_modeling.md)
+- [Evaluation Protocol](docs/evaluation_protocol.md)
 - [Feature Schema](docs/feature_schema.md)
-- [SHAP Support](docs/shap.md)
-- [Model Artifact](docs/model_artifact.md)
-- [Testing Strategy](docs/testing_strategy.md)
+- [Sparse Features](docs/sparse_features.md)
+- [Model Artifacts](docs/model_artifact.md)
 - [Limitations](docs/limitations.md)
-- [Implementation Status](docs/implementation_status.md)
-- [v1 Release Checklist](docs/v1_release_checklist.md)
-
-## Limitations
-
-- Regression only; no classification objectives.
-- Advanced behavior requires the native Rust backend.
-- CLI v1 is dense numeric CSV only.
-- Validation uses deterministic synthetic fixtures, not broad production
-  benchmarks.
-- Artifact version `1` supports backward-compatible optional metadata fields,
-  but there is no multi-version migration framework yet.
-- Schema support covers numeric, periodic, and sparse-set declarations; named
-  spatial-pair contracts remain future hardening.
-
-## License
-
-MIT

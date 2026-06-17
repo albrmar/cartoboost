@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate GeoBoost validation artifacts used by local and CI smoke checks."""
+"""Generate CartoBoost validation artifacts used by local and CI smoke checks."""
 
 from __future__ import annotations
 
@@ -70,7 +70,7 @@ def main() -> None:
     (VALIDATION_DIR / "metrics.json").write_text(json.dumps(summary, indent=2) + "\n")
 
     lines = [
-        "# GeoBoost full validation",
+        "# CartoBoost full validation",
         "",
         f"- splitter phases: {summary['splitter_phase_count']}",
         f"- lane-level phases: {summary['lane_level_phase_count']}",

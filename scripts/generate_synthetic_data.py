@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate small synthetic CSV datasets for GeoBoost examples.
+"""Generate small synthetic CSV datasets for CartoBoost examples.
 
 The output format is intentionally simple:
 
@@ -7,7 +7,7 @@ The output format is intentionally simple:
 * target is named target
 * ranking data includes a query_id column
 
-No GeoBoost package import is required, which keeps this usable while the public
+No CartoBoost package import is required, which keeps this usable while the public
 API is still being built.
 """
 

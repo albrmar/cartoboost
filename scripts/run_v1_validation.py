@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate a deterministic v1 validation report for GeoBoost release checks."""
+"""Generate a deterministic v1 validation report for CartoBoost release checks."""
 
 from __future__ import annotations
 
@@ -23,28 +23,28 @@ PHASE_METADATA: dict[str, dict[str, Any]] = {
     "axis_threshold": {
         "config": {"splitters": ["axis"], "n_estimators": 1, "max_depth": 1},
         "baseline": "constant initialization",
-        "geoboost": "axis threshold stump",
+        "cartoboost": "axis threshold stump",
         "proves": "A clean dense threshold can be recovered by the axis splitter.",
         "does_not_prove": "General dense tabular accuracy or production calibration.",
     },
     "diagonal_2d": {
         "config": {"splitters": ["diagonal_2d"], "n_estimators": 1, "max_depth": 1},
         "baseline": "one axis stump on the same 2D boundary",
-        "geoboost": "diagonal 2D stump",
+        "cartoboost": "diagonal 2D stump",
         "proves": "A declared oblique splitter can recover an x + y decision boundary.",
         "does_not_prove": "Arbitrary-angle spatial optimality or large-scale search speed.",
     },
     "gaussian_2d": {
         "config": {"splitters": ["gaussian_2d"], "n_estimators": 1, "max_depth": 1},
         "baseline": "one axis stump on the same radial boundary",
-        "geoboost": "Gaussian/radial 2D stump",
+        "cartoboost": "Gaussian/radial 2D stump",
         "proves": "A radial splitter can recover a center-versus-outside fixture.",
         "does_not_prove": "Robust hotspot discovery on noisy production maps.",
     },
     "periodic_wraparound": {
         "config": {"splitters": ["periodic_time"], "n_estimators": 1, "max_depth": 1},
         "baseline": "axis hour split",
-        "geoboost": "periodic interval split",
+        "cartoboost": "periodic interval split",
         "proves": "Wraparound intervals such as late-night hours can route together.",
         "does_not_prove": "All calendar, timezone, or holiday effects.",
     },
@@ -56,7 +56,7 @@ PHASE_METADATA: dict[str, dict[str, Any]] = {
             "n_estimators": 1,
         },
         "baseline": "hard axis stump",
-        "geoboost": "fuzzy axis stump",
+        "cartoboost": "fuzzy axis stump",
         "proves": "Boundary predictions can be smoothed by fractional fuzzy routing.",
         "does_not_prove": "Probabilistic uncertainty calibration.",
     },
@@ -67,14 +67,14 @@ PHASE_METADATA: dict[str, dict[str, Any]] = {
             "linear_leaf_features": ["0"],
         },
         "baseline": "constant leaves",
-        "geoboost": "linear leaf predictor",
+        "cartoboost": "linear leaf predictor",
         "proves": "A linear residual trend can be represented inside leaves.",
         "does_not_prove": "High-dimensional regularized linear modeling quality.",
     },
     "sparse_set": {
         "config": {"splitters": ["sparse_set"], "n_estimators": 1, "max_depth": 1},
         "baseline": "axis split over scalar IDs",
-        "geoboost": "sparse set membership split",
+        "cartoboost": "sparse set membership split",
         "proves": "High-cardinality ID membership can be tested without dense one-hot columns.",
         "does_not_prove": "Memory profile on production-scale route-cell lists.",
     },
@@ -85,7 +85,7 @@ PHASE_METADATA: dict[str, dict[str, Any]] = {
             "max_depth": 2,
         },
         "baseline": "axis-only lane model",
-        "geoboost": "combined sparse, spatial, temporal lane model",
+        "cartoboost": "combined sparse, spatial, temporal lane model",
         "proves": "Route, lane, and hour effects can combine on a deterministic fixture.",
         "does_not_prove": "Real marketplace lift or serving latency.",
     },
@@ -151,8 +151,7 @@ def collect_report() -> dict[str, Any]:
         "scope": "deterministic v1 release-candidate validation fixtures",
         "claim_policy": (
             "These fixtures provide regression evidence for implemented behavior. "
-            "They do not claim equivalence to Lyft's proprietary implementation or "
-            "broad production superiority."
+            "They do not claim broad production superiority."
         ),
         "phases": phases,
     }
@@ -163,17 +162,17 @@ def collect_report() -> dict[str, Any]:
 
 def render_markdown(report: dict[str, Any]) -> str:
     lines = [
-        "# GeoBoost v1 Validation Report",
+        "# CartoBoost v1 Validation Report",
         "",
         report["claim_policy"],
         "",
-        "| phase | baseline | geoboost | gates |",
+        "| phase | baseline | cartoboost | gates |",
         "| --- | --- | --- | ---: |",
     ]
     for phase_name, phase in report["phases"].items():
         gate_summary = phase["gate_summary"]
         lines.append(
-            f"| {phase_name} | {phase['baseline']} | {phase['geoboost']} | "
+            f"| {phase_name} | {phase['baseline']} | {phase['cartoboost']} | "
             f"{gate_summary['passed_count']}/{gate_summary['total_count']} |"
         )
     lines.extend(["", "## Phase Details", ""])

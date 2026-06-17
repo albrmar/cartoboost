@@ -6,13 +6,19 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import sys
 from pathlib import Path
 from typing import Any
 
 import numpy as np
-from geoboost import GeoBoostRegressor
 
 ROOT = Path(__file__).resolve().parents[1]
+PYTHON_SOURCE = ROOT / "python"
+if str(PYTHON_SOURCE) not in sys.path:
+    sys.path.insert(0, str(PYTHON_SOURCE))
+
+from cartoboost import CartoBoostRegressor  # noqa: E402
+
 DEFAULT_OUTPUT_DIR = ROOT / "target" / "validation" / "splitter_tests"
 
 
@@ -63,8 +69,8 @@ def fit_model(
     linear_leaf_features: list[str] | None = None,
     fuzzy: bool = False,
     fuzzy_bandwidth: float = 0.0,
-) -> GeoBoostRegressor:
-    model = GeoBoostRegressor(
+) -> CartoBoostRegressor:
+    model = CartoBoostRegressor(
         n_estimators=n_estimators,
         learning_rate=learning_rate,
         max_depth=max_depth,
@@ -76,7 +82,6 @@ def fit_model(
         fuzzy=fuzzy,
         fuzzy_bandwidth=fuzzy_bandwidth,
         l2_regularization=0.0,
-        backend="rust",
     )
     model.fit(x, y)
     return model
@@ -590,7 +595,7 @@ def collect_metrics() -> dict[str, Any]:
 
 def render_markdown(metrics: dict[str, Any]) -> str:
     lines = [
-        "# GeoBoost splitter acceptance metrics",
+        "# CartoBoost splitter acceptance metrics",
         "",
         "Synthetic checks are generated from deterministic fixtures. They prove exact behavior for",
         "fixed examples and qualitative splitter superiority on designed structures; they do not",

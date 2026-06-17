@@ -1,22 +1,23 @@
-GeoBoost benchmark scaffold
-===========================
+# CartoBoost Benchmarks
 
-These Criterion benches cover the current public `geoboost-core` surfaces with
-small deterministic fixtures:
+This directory contains low-level Rust timing benchmarks. Most data-science
+model comparisons should use the benchmark guides under `docs/benchmarks/`,
+especially the NYC taxi and lane-level temporal-spatial reports.
 
-* `training.rs` benchmarks `Booster::fit` on bounded synthetic matrices.
-* `prediction.rs` benchmarks `Model::predict` on lightweight synthetic batches.
-* `serialize.rs` benchmarks in-memory JSON serialization and deserialization.
+Files:
 
-They are wired through `crates/geoboost-core/Cargo.toml` with `harness = false`.
-The fixture sizes intentionally stay small so the benches are suitable as
-low-memory scaffolding while the implementation is still evolving.
+- `training.rs`: `Booster::fit` on bounded synthetic matrices.
+- `prediction.rs`: `Model::predict` and flat prediction paths on synthetic
+  batches.
+- `serialize.rs`: in-memory JSON serialization and deserialization.
 
-For qualitative model comparison rather than microbenchmarks, run:
+Commands:
 
 ```sh
-uv run --group dev python scripts/compare_baselines.py
+cargo bench --workspace --no-run
+cargo bench --workspace
+uv run --group dev python scripts/plot_benchmarks.py
 ```
 
-That writes a deterministic GeoBoost-vs-sklearn report under
-`target/validation/baseline_comparison.json`.
+Use these timings for local performance checks. Use dataset benchmarks for
+claims about model quality.

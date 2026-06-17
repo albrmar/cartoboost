@@ -1,13 +1,17 @@
 # Feature Schema
 
-Feature schemas make training contracts explicit for dense numeric, dense
-periodic, and sparse-set columns.
+Feature schemas tell CartoBoost which columns are ordinary numeric features,
+which dense columns wrap around like time, and which columns are list-valued
+sparse memberships. They are especially useful for temporal-spatial models where
+column roles matter.
 
 ## Compact Python Format
 
 ```python
 schema = {
     "dense": [
+        {"name": "pickup_x", "kind": "numeric"},
+        {"name": "pickup_y", "kind": "numeric"},
         {"name": "distance_m", "kind": "numeric"},
         {"name": "hour_of_day", "kind": "periodic", "period": 24},
     ],
@@ -37,8 +41,8 @@ payload:
 
 ```json
 {
-  "names": ["distance_m", "hour_of_day", "route_cells"],
-  "kinds": ["Numeric", {"Periodic": {"period": 24}}, "SparseSet"]
+  "names": ["pickup_x", "pickup_y", "distance_m", "hour_of_day", "route_cells"],
+  "kinds": ["Numeric", "Numeric", "Numeric", {"Periodic": {"period": 24}}, "SparseSet"]
 }
 ```
 
@@ -65,8 +69,13 @@ When a schema is present:
 - Sparse splitters prefer schema-declared sparse-set columns.
 - Numeric dense columns remain eligible for numeric/spatial split candidates.
 
+For example, declaring `hour_of_day` with `period=24` lets `periodic:24` treat
+late-night and early-morning rows as neighboring values. Declaring
+`route_cells` as sparse-set tells CartoBoost to use list membership instead of
+expecting a scalar numeric feature.
+
 ## Limitations
 
-The current schema does not yet express named latitude/longitude pairs or richer
+The current schema does not express named latitude/longitude pairs or richer
 spatial roles. Diagonal and Gaussian splitters still work from dense numeric
-feature pairs according to the current Rust candidate search.
+feature pairs according to the current candidate search.

@@ -33,7 +33,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5baebc0774151f905a1a2cc41989300b1e6fbb29aff0ceffa1064fdd3088d582"
 
 [[package]]
-name = "geoboost-core"
+name = "cartoboost-core"
 version = "0.1.0"
 dependencies = [
  "serde",
@@ -42,10 +42,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "geoboost-fuzz"
+name = "cartoboost-fuzz"
 version = "0.0.0"
 dependencies = [
- "geoboost-core",
+ "cartoboost-core",
  "libfuzzer-sys",
  "serde_json",
 ]

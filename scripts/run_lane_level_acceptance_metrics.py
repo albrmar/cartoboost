@@ -1,19 +1,25 @@
 #!/usr/bin/env python3
-"""Run synthetic lane-level GeoBoost checks and write committed diagnostics."""
+"""Run synthetic lane-level CartoBoost checks and write committed diagnostics."""
 
 from __future__ import annotations
 
 import argparse
 import json
 import math
+import sys
 from pathlib import Path
 from typing import Any
 
 import matplotlib.pyplot as plt
 import numpy as np
-from geoboost import GeoBoostRegressor
 
 ROOT = Path(__file__).resolve().parents[1]
+PYTHON_SOURCE = ROOT / "python"
+if str(PYTHON_SOURCE) not in sys.path:
+    sys.path.insert(0, str(PYTHON_SOURCE))
+
+from cartoboost import CartoBoostRegressor  # noqa: E402
+
 DEFAULT_OUTPUT_DIR = ROOT / "docs" / "assets" / "lane_level_tests"
 
 REGIONS = np.array(
@@ -67,8 +73,8 @@ def fit_model(
     min_samples_leaf: int = 1,
     fuzzy: bool = False,
     fuzzy_bandwidth: float = 0.0,
-) -> GeoBoostRegressor:
-    model = GeoBoostRegressor(
+) -> CartoBoostRegressor:
+    model = CartoBoostRegressor(
         n_estimators=n_estimators,
         learning_rate=1.0,
         max_depth=max_depth,
@@ -77,7 +83,6 @@ def fit_model(
         splitters=splitters,
         fuzzy=fuzzy,
         fuzzy_bandwidth=fuzzy_bandwidth,
-        backend="rust",
     )
     model.fit(x, y)
     return model
@@ -176,7 +181,7 @@ def sparse_lane_metrics() -> dict[str, Any]:
     }
 
 
-def route_geometry_metrics() -> dict[str, Any]:
+def route_cartometry_metrics() -> dict[str, Any]:
     x = lane_rows(repeats_per_hour=3)
     y = route_midpoint_target(x)
     axis = fit_model(x[:, [6, 7]], y, splitters=["axis"], min_samples_leaf=12)
@@ -208,8 +213,11 @@ def route_geometry_metrics() -> dict[str, Any]:
             gate("center_outer_margin_gt_100", margin > 100.0, margin, 100.0, ">"),
         ],
         "future_checks": [
-            "Gaussian 2D routing should recover center-focused route geometry.",
-            "This validates lane geometry from observable midpoint features, not hidden metadata.",
+            "Gaussian 2D routing should recover center-focused route cartometry.",
+            (
+                "This validates lane cartometry from observable midpoint features, "
+                "not hidden metadata."
+            ),
         ],
     }
 
@@ -308,7 +316,7 @@ def regional_lane_boosting_metrics() -> dict[str, Any]:
 def collect_metrics() -> dict[str, Any]:
     return {
         "sparse_lane_membership": sparse_lane_metrics(),
-        "route_midpoint_geometry": route_geometry_metrics(),
+        "route_midpoint_cartometry": route_cartometry_metrics(),
         "wraparound_lane_hour": wraparound_hour_metrics(),
         "regional_lane_boosting": regional_lane_boosting_metrics(),
     }
@@ -319,7 +327,7 @@ def render_markdown(metrics: dict[str, Any]) -> str:
         return f"{value:.8e}"
 
     lines = [
-        "# GeoBoost lane-level acceptance metrics",
+        "# CartoBoost lane-level acceptance metrics",
         "",
         "These deterministic fixtures adapt the upstream regional lane CPM idea to this repo's",
         "current API. The matrix columns are observable route features: origin/destination",
@@ -376,7 +384,7 @@ def render_readme(metrics: dict[str, Any]) -> str:
             "",
             "- `lane_heatmap.png`: lane-level prediction table for the combined model.",
             "- `hour_profile.png`: wraparound-hour predictions from axis and periodic splitters.",
-            "- `route_midpoint_geometry.png`: radial route-midpoint fixture and predictions.",
+            "- `route_midpoint_cartometry.png`: radial route-midpoint fixture and predictions.",
             "",
         ]
     )
@@ -441,7 +449,7 @@ def save_hour_profile(path: Path) -> None:
     plt.close(fig)
 
 
-def save_route_geometry(path: Path) -> None:
+def save_route_cartometry(path: Path) -> None:
     grid = np.linspace(-1.5, 1.5, 121)
     xx, yy = np.meshgrid(grid, grid)
     probe = np.column_stack([xx.ravel(), yy.ravel()])
@@ -502,7 +510,7 @@ def main() -> None:
     (args.output_dir / "README.md").write_text(render_readme(metrics), encoding="utf-8")
     save_lane_heatmap(args.output_dir / "lane_heatmap.png")
     save_hour_profile(args.output_dir / "hour_profile.png")
-    save_route_geometry(args.output_dir / "route_midpoint_geometry.png")
+    save_route_cartometry(args.output_dir / "route_midpoint_cartometry.png")
 
 
 if __name__ == "__main__":

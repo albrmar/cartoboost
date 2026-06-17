@@ -2,7 +2,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from geoboost import GeoBoostRegressor, make_shap_explainer
+from cartoboost import CartoBoostRegressor, make_shap_explainer
 
 shap = pytest.importorskip("shap")
 
@@ -19,14 +19,13 @@ def _fit_or_skip(model, *args, **kwargs):
         pytest.skip(str(exc))
 
 
-def test_shap_explainer_accepts_geoboost_estimator_directly():
+def test_shap_explainer_accepts_cartoboost_estimator_directly():
     X = np.asarray([[0.0], [1.0], [2.0], [3.0]], dtype=float)
     y = np.asarray([0.0, 1.0, 2.0, 3.0], dtype=float)
-    model = GeoBoostRegressor(
+    model = CartoBoostRegressor(
         n_estimators=3,
         learning_rate=0.5,
         min_samples_leaf=1,
-        backend="python",
     ).fit(X, y)
 
     explainer = shap.Explainer(model, X, algorithm="exact")
@@ -37,7 +36,7 @@ def test_shap_explainer_accepts_geoboost_estimator_directly():
     _assert_additive(explanation, model.predict(X[:2]))
 
 
-def test_explain_shap_returns_additive_explanation_for_python_backend():
+def test_explain_shap_returns_additive_explanation_for_native_backend():
     X = np.asarray(
         [
             [0.0, 0.0],
@@ -50,12 +49,11 @@ def test_explain_shap_returns_additive_explanation_for_python_backend():
         dtype=float,
     )
     y = np.asarray([0.0, 0.5, 2.0, 2.5, 4.0, 4.5], dtype=float)
-    model = GeoBoostRegressor(
+    model = CartoBoostRegressor(
         n_estimators=4,
         learning_rate=0.5,
         max_depth=1,
         min_samples_leaf=1,
-        backend="python",
     ).fit(X, y)
 
     explanation = model.explain_shap(X[:3], background=X, algorithm="exact")
@@ -68,11 +66,10 @@ def test_explain_shap_returns_additive_explanation_for_python_backend():
 def test_make_shap_explainer_public_helper_matches_method():
     X = np.asarray([[0.0], [1.0], [2.0], [3.0]], dtype=float)
     y = np.asarray([0.0, 1.0, 2.0, 3.0], dtype=float)
-    model = GeoBoostRegressor(
+    model = CartoBoostRegressor(
         n_estimators=3,
         learning_rate=0.5,
         min_samples_leaf=1,
-        backend="python",
     ).fit(X, y)
 
     helper_explainer = make_shap_explainer(model, X, algorithm="exact")
@@ -85,15 +82,44 @@ def test_make_shap_explainer_public_helper_matches_method():
     assert helper_explanation.base_values == pytest.approx(method_explanation.base_values)
 
 
+def test_shap_decomposes_additive_weights_for_weighted_native_backend():
+    X = np.asarray([[0.0], [1.0], [2.0], [3.0]], dtype=float)
+    y = np.asarray([0.0, 1.0, 4.0, 9.0], dtype=float)
+    sample_weight = np.asarray([4.0, 1.0, 1.0, 2.0], dtype=float)
+    model = CartoBoostRegressor(
+        n_estimators=3,
+        learning_rate=0.5,
+        max_depth=1,
+        min_samples_leaf=1,
+    ).fit(X, y, sample_weight=sample_weight)
+
+    additive = model.predict_additive_values(X[:2])
+    assert additive.shape[0] == 2
+    assert additive.sum(axis=1) == pytest.approx(model.predict(X[:2]))
+
+    explanation = model.explain_shap(
+        X[:2],
+        background=X,
+        algorithm="exact",
+        decomposition="weights",
+    )
+
+    assert list(explanation.feature_names) == [
+        "init_prediction",
+        *[f"tree_{idx}" for idx in range(additive.shape[1] - 1)],
+    ]
+    assert explanation.values.shape == additive.shape
+    _assert_additive(explanation, model.predict(X[:2]))
+
+
 def test_shap_preserves_pandas_feature_names():
     pd = pytest.importorskip("pandas")
     X = pd.DataFrame({"distance_m": [0.0, 1.0, 2.0, 3.0], "hour": [0.0, 1.0, 0.0, 1.0]})
     y = np.asarray([0.0, 1.5, 2.0, 3.5], dtype=float)
-    model = GeoBoostRegressor(
+    model = CartoBoostRegressor(
         n_estimators=3,
         learning_rate=0.5,
         min_samples_leaf=1,
-        backend="python",
     ).fit(X, y)
 
     explanation = model.explain_shap(X.iloc[:2], background=X, algorithm="exact")
@@ -128,13 +154,12 @@ def test_shap_preserves_pandas_feature_names():
 )
 def test_shap_additivity_for_rust_dense_splitters(splitters, X, y, extra):
     rows = np.asarray(X, dtype=float)
-    model = GeoBoostRegressor(
+    model = CartoBoostRegressor(
         n_estimators=2,
         learning_rate=0.5,
         max_depth=1,
         min_samples_leaf=1,
         splitters=splitters,
-        backend="rust",
     )
     _fit_or_skip(model, rows, y, **extra)
 
@@ -154,12 +179,11 @@ def test_shap_additivity_for_rust_dense_splitters(splitters, X, y, extra):
 def test_shap_additivity_for_rust_fuzzy_and_linear_leaf(params):
     X = np.asarray([[0.0], [1.0], [2.0], [3.0]], dtype=float)
     y = np.asarray([1.0, 3.0, 5.0, 7.0], dtype=float)
-    model = GeoBoostRegressor(
+    model = CartoBoostRegressor(
         n_estimators=1,
         learning_rate=0.5,
         max_depth=1,
         min_samples_leaf=1,
-        backend="rust",
         **params,
     )
     _fit_or_skip(model, X, y)
@@ -172,16 +196,15 @@ def test_shap_additivity_for_rust_fuzzy_and_linear_leaf(params):
 def test_shap_additivity_after_save_load(tmp_path: Path):
     X = np.asarray([[0.0], [1.0], [2.0], [3.0]], dtype=float)
     y = np.asarray([0.0, 1.0, 2.0, 3.0], dtype=float)
-    model = GeoBoostRegressor(
+    model = CartoBoostRegressor(
         n_estimators=2,
         learning_rate=0.5,
         min_samples_leaf=1,
-        backend="rust",
     )
     _fit_or_skip(model, X, y)
-    path = tmp_path / "model.geoboost.json"
+    path = tmp_path / "model.cartoboost.json"
     model.save(path)
-    loaded = GeoBoostRegressor.load(path)
+    loaded = CartoBoostRegressor.load(path)
 
     explanation = loaded.explain_shap(X[:2], background=X, algorithm="exact")
 
@@ -192,13 +215,12 @@ def test_shap_supports_sparse_set_models_with_augmented_features():
     X = np.asarray([[0.0], [0.0], [0.0], [0.0]], dtype=float)
     y = np.asarray([10.0, 10.0, 0.0, 0.0], dtype=float)
     sparse_sets = {"route_cells": [[7], [7, 11], [3], []]}
-    model = GeoBoostRegressor(
+    model = CartoBoostRegressor(
         n_estimators=2,
         learning_rate=0.5,
         max_depth=1,
         min_samples_leaf=1,
         splitters=["sparse_set"],
-        backend="rust",
     )
     _fit_or_skip(model, X, y, sparse_sets=sparse_sets)
 
@@ -217,6 +239,45 @@ def test_shap_supports_sparse_set_models_with_augmented_features():
         "route_cells=11",
     ]
     assert explanation.values.shape == (2, 4)
+    _assert_additive(
+        explanation,
+        model.predict(X[:2], sparse_sets={"route_cells": sparse_sets["route_cells"][:2]}),
+    )
+
+
+def test_shap_decomposes_additive_weights_for_sparse_set_models():
+    X = np.asarray([[0.0], [0.0], [0.0], [0.0]], dtype=float)
+    y = np.asarray([10.0, 10.0, 0.0, 0.0], dtype=float)
+    sparse_sets = {"route_cells": [[7], [7, 11], [3], []]}
+    model = CartoBoostRegressor(
+        n_estimators=2,
+        learning_rate=0.5,
+        max_depth=1,
+        min_samples_leaf=1,
+        splitters=["sparse_set"],
+    )
+    _fit_or_skip(model, X, y, sparse_sets=sparse_sets)
+
+    additive = model.predict_additive_values(
+        X[:2],
+        sparse_sets={"route_cells": sparse_sets["route_cells"][:2]},
+    )
+    assert additive.shape == (2, 3)
+    assert additive.sum(axis=1) == pytest.approx(
+        model.predict(X[:2], sparse_sets={"route_cells": sparse_sets["route_cells"][:2]})
+    )
+
+    explanation = model.explain_shap(
+        X[:2],
+        background=X,
+        sparse_sets={"route_cells": sparse_sets["route_cells"][:2]},
+        background_sparse_sets=sparse_sets,
+        algorithm="exact",
+        decomposition="weights",
+    )
+
+    assert list(explanation.feature_names) == ["init_prediction", "tree_0", "tree_1"]
+    assert explanation.values.shape == additive.shape
     _assert_additive(
         explanation,
         model.predict(X[:2], sparse_sets={"route_cells": sparse_sets["route_cells"][:2]}),

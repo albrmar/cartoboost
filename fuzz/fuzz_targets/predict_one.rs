@@ -1,7 +1,7 @@
 #![no_main]
 
-use geoboost_core::tree::{Node, Tree, MODEL_ARTIFACT_VERSION};
-use geoboost_core::Model;
+use cartoboost_core::tree::{Node, Tree, MODEL_ARTIFACT_VERSION};
+use cartoboost_core::Model;
 use libfuzzer_sys::fuzz_target;
 
 fuzz_target!(|data: &[u8]| {

@@ -35,12 +35,28 @@ jobs:
         run: cargo test --workspace
 
   python:
-    name: Python
-    runs-on: ubuntu-latest
+    name: Python (${{ matrix.os }}, py${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12", "3.13"]
+        include:
+          - os: ubuntu-latest
+            python-version: "3.10"
+          - os: ubuntu-latest
+            python-version: "3.11"
+          - os: ubuntu-latest
+            python-version: "3.12"
+          - os: ubuntu-latest
+            python-version: "3.13"
+          - os: macos-latest
+            python-version: "3.10"
+          - os: macos-latest
+            python-version: "3.13"
+          - os: windows-latest
+            python-version: "3.10"
+          - os: windows-latest
+            python-version: "3.13"
 
     steps:
       - name: Checkout
@@ -66,9 +82,13 @@ jobs:
         run: uv sync --group dev --python ${{ matrix.python-version }}
 
       - name: Lint Python
+        if: matrix.os == 'ubuntu-latest'
         run: |
           uv run --group dev ruff format --check python tests scripts
           uv run --group dev ruff check python tests scripts
+
+      - name: Install native extension
+        run: uv run --group dev maturin develop
 
       - name: Test Python
         run: uv run --group dev pytest --ignore=tests/python/test_full_validation_artifacts.py
@@ -124,28 +144,95 @@ jobs:
       - name: Compile benchmarks
         run: cargo bench --workspace --no-run
 
-  wheels:
-    name: Wheels
+  sdist:
+    name: Source distribution
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Build wheels
+      - name: Build source distribution
+        uses: PyO3/maturin-action@v1
+        with:
+          command: sdist
+          args: --out dist
+
+      - name: Upload source distribution
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdist
+          path: dist
+
+  wheels:
+    name: Wheels (${{ matrix.platform.name }}, py${{ matrix.python-version }})
+    runs-on: ${{ matrix.platform.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+        platform:
+          - name: linux-x86_64
+            runner: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            manylinux: "2014"
+          - name: linux-aarch64
+            runner: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            manylinux: "2014"
+          - name: macos-x86_64
+            runner: macos-15-intel
+            target: x86_64-apple-darwin
+            manylinux: auto
+          - name: macos-aarch64
+            runner: macos-15
+            target: aarch64-apple-darwin
+            manylinux: auto
+          - name: windows-x86_64
+            runner: windows-latest
+            target: x86_64-pc-windows-msvc
+            manylinux: auto
+          - name: windows-aarch64
+            runner: windows-11-arm
+            target: aarch64-pc-windows-msvc
+            manylinux: auto
+        exclude:
+          - platform:
+              name: windows-aarch64
+              runner: windows-11-arm
+              target: aarch64-pc-windows-msvc
+              manylinux: auto
+            python-version: "3.10"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        if: ${{ !startsWith(matrix.platform.name, 'linux-') }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: wheels-${{ matrix.platform.target }}-${{ matrix.python-version }}
+
+      - name: Build wheel
         uses: PyO3/maturin-action@v1
         with:
           command: build
+          target: ${{ matrix.platform.target }}
+          manylinux: ${{ matrix.platform.manylinux }}
           args: >-
             --release
+            --locked
+            --compatibility pypi
             --out dist
-            --interpreter python3.10
-            --interpreter python3.11
-            --interpreter python3.12
-            --interpreter python3.13
-          manylinux: auto
+            --interpreter ${{ startsWith(matrix.platform.name, 'linux-') && format('python{0}', matrix.python-version) || 'python' }}
 
-      - name: Upload wheels
+      - name: Upload wheel
         uses: actions/upload-artifact@v4
         with:
-          name: wheels
-          path: dist
+          name: wheels-${{ matrix.platform.name }}-py${{ matrix.python-version }}
+          path: dist/*.whl

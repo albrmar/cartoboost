@@ -1,8 +1,8 @@
-"""Validate committed GeoBoost fixtures and golden files.
+"""Validate committed CartoBoost fixtures and golden files.
 
 These tests intentionally exercise only the static contract data. They give
 implementation workers immediate feedback when fixture updates drift from the
-documented GeoBoost test schema.
+documented CartoBoost test schema.
 """
 
 from __future__ import annotations
@@ -30,8 +30,8 @@ def test_neighborhood_points_fixture_shape(neighborhood_points: dict[str, Any]) 
         assert feature["type"] == "Feature"
         assert feature["id"] not in seen_ids
         seen_ids.add(feature["id"])
-        assert feature["geometry"]["type"] == "Point"
-        _assert_position(feature["geometry"]["coordinates"])
+        assert feature["cartometry"]["type"] == "Point"
+        _assert_position(feature["cartometry"]["coordinates"])
 
         properties = feature["properties"]
         assert properties["kind"] == "synthetic_site"
@@ -47,11 +47,11 @@ def test_delivery_zones_fixture_shape(delivery_zones: dict[str, Any]) -> None:
 
     for feature in delivery_zones["features"]:
         assert feature["type"] == "Feature"
-        assert feature["geometry"]["type"] == "Polygon"
+        assert feature["cartometry"]["type"] == "Polygon"
         assert feature["properties"]["service_level"] in {"same_day", "standard"}
         assert feature["properties"]["priority"] > 0
 
-        rings = feature["geometry"]["coordinates"]
+        rings = feature["cartometry"]["coordinates"]
         assert len(rings) == 1
         exterior = rings[0]
         assert exterior[0] == exterior[-1]

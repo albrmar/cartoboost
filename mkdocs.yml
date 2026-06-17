@@ -1,0 +1,81 @@
+site_name: CartoBoost
+site_description: User documentation for CartoBoost regression tooling.
+site_url: https://theculliganman.github.io/CartoBoost/
+repo_url: https://github.com/TheCulliganMan/CartoBoost
+repo_name: TheCulliganMan/CartoBoost
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  language: en
+  features:
+    - content.action.edit
+    - content.code.copy
+    - navigation.footer
+    - navigation.indexes
+    - navigation.sections
+    - navigation.tabs
+    - search.highlight
+    - search.suggest
+    - toc.follow
+  palette:
+    - scheme: default
+      primary: teal
+      accent: deep orange
+    - scheme: slate
+      primary: teal
+      accent: amber
+      toggle:
+        icon: material/weather-night
+        name: Switch to light mode
+  font:
+    text: Inter
+    code: JetBrains Mono
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+
+plugins:
+  - search
+
+exclude_docs: |
+  README.md
+  AGENTS.md
+  */AGENTS.md
+  */*/AGENTS.md
+  */*/*/AGENTS.md
+
+not_in_nav: |
+  assets/lane_level_tests/acceptance_metrics.md
+  assets/nyc_taxi_benchmarks/repeated_results.md
+  assets/nyc_taxi_benchmarks/results.md
+
+nav:
+  - Home: index.md
+  - Installation: installation.md
+  - Getting Started: getting-started.md
+  - User Guide:
+      - Python Estimator: user-guide/python-estimator.md
+      - Parameters: user-guide/parameters.md
+      - Objectives: objectives.md
+      - Constraints: constraints.md
+      - Spatial Modeling: spatial_modeling.md
+      - Evaluation Protocol: evaluation_protocol.md
+      - Feature Schema: feature_schema.md
+      - Sparse Features: sparse_features.md
+      - SHAP Support: shap.md
+      - CLI: user-guide/cli.md
+      - Model Artifacts: model_artifact.md
+      - Limitations: limitations.md
+  - Reference:
+      - Python API: reference/python-api.md
+      - CLI Reference: reference/cli.md
+  - Benchmarks:
+      - Overview: benchmarks/index.md
+      - NYC Taxi Benchmarks: benchmarks/nyc-taxi.md
+      - Lane-Level Acceptance: benchmarks/lane-level.md

@@ -1,49 +1,56 @@
 # Limitations
 
-GeoBoost is currently a strong alpha moving toward a v1 release candidate. The
-implementation is useful for deterministic regression experiments and API
-hardening, but it is not positioned as production-grade infrastructure.
+CartoBoost is a regression package with a temporal-spatial modeling focus. It is
+not a universal replacement for XGBoost, LightGBM, scikit-learn, or production
+cartospatial systems. Treat those tools as baselines and choose CartoBoost when its
+splitters match the structure in your data.
 
-## Product Scope
+## Modeling Scope
 
-- Regression only; no classification, ranking, quantile, or survival objectives.
-- L2 loss only.
-- No claim of equivalence to Lyft's proprietary GeoBoost implementation.
-- No claim of general superiority over LightGBM, XGBoost, scikit-learn, or
-  production geospatial systems.
+- Regression only; classification, ranking, and survival objectives are not
+  supported.
+- Public regression objectives are L2, L1, Huber, LogL2, and quantile.
+- CartoBoost should not be described as generally superior to other boosters.
+  Compare on the same data, split strategy, features, and metrics.
 
 ## Backend Scope
 
-- Advanced splitters, fuzzy training, list-valued sparse features, schema-driven
-  training, and linear leaves require the Rust native backend.
-- The pure-Python fallback is intentionally limited to dense axis-split
-  constant-leaf workflows.
+- The Python estimator requires the Rust native extension.
+- Training and prediction require that extension.
 
 ## Data Scope
 
 - Python sparse features require non-negative integer IDs.
-- CLI v1 accepts dense numeric CSV workflows only.
-- No missing-value policy beyond current finite-value validation.
-- No native pandas-specific schema contract beyond generic iterable handling and
-  feature-name capture where available.
+- The CLI accepts dense numeric CSV workflows only.
+- Missing values are not handled beyond current finite-value validation.
+- pandas inputs are accepted through generic estimator handling; there is no
+  pandas-specific schema API beyond feature-name capture where available.
 
-## Schema Scope
+## Temporal-Spatial Scope
 
-- Current schema kinds are numeric, periodic, and sparse-set.
-- Named spatial pairs and richer geospatial role declarations remain future
-  hardening.
+- Periodic features require the caller to provide the period, such as `24` for
+  hour-of-day.
+- Diagonal and Gaussian/radial splitters operate on numeric feature pairs; the
+  current schema does not declare named coordinate pairs.
+- H3, S2, grid, zone, or route-cell IDs must be precomputed by the caller and
+  passed as sparse integer IDs.
+- Fuzzy bandwidth is on the scale of your input features, so coordinate system
+  and units matter.
+- Fuzzy kernels change only the interpolation shape inside the fuzzy band; they
+  do not learn a bandwidth automatically.
 
 ## Artifact Scope
 
-- Artifact version `1` is supported.
-- Optional metadata and training configuration restore public estimator params
-  when present.
-- There is no multi-version artifact migration framework yet.
+- CartoBoost JSON model and weights artifacts are the recommended save/load path.
+- ONNX export supports only dense axis-tree constant-leaf models.
+- Unknown future artifact versions fail clearly instead of attempting an
+  implicit migration.
 
-## Validation Scope
+## Benchmark Scope
 
-- Validation fixtures are deterministic synthetic checks.
-- They demonstrate intended behavior on narrow fixtures and do not certify
-  production accuracy, latency, robustness, or superiority.
-- NYC taxi quality benchmarks are optional real-data comparisons with documented
-  setup and generated artifacts; they are not universal superiority claims.
+- Benchmark reports are setup-specific evidence, not universal superiority
+  claims.
+- LightGBM and XGBoost are optional benchmark dependencies, not runtime
+  dependencies of CartoBoost.
+- Any cross-package comparison should state the command, data version, feature
+  handling, estimator settings, dependency versions, and holdout strategy.

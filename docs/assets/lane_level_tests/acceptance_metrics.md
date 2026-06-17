@@ -1,4 +1,4 @@
-# GeoBoost lane-level acceptance metrics
+# CartoBoost lane-level acceptance metrics
 
 These deterministic fixtures adapt the upstream regional lane CPM idea to this repo's
 current API. The matrix columns are observable route features: origin/destination
@@ -8,8 +8,8 @@ coordinates, lane ID, hour of day, route midpoint, and route distance.
 | --- | --- | --- | ---: |
 | sparse_lane_membership | axis_lane_id | train_rmse | 5.19615242e+01 |
 | sparse_lane_membership | sparse_lane_id | train_rmse | 0.00000000e+00 |
-| route_midpoint_geometry | axis_midpoint | train_rmse | 6.94022094e+01 |
-| route_midpoint_geometry | gaussian_midpoint | train_rmse | 0.00000000e+00 |
+| route_midpoint_cartometry | axis_midpoint | train_rmse | 6.94022094e+01 |
+| route_midpoint_cartometry | gaussian_midpoint | train_rmse | 0.00000000e+00 |
 | wraparound_lane_hour | axis_hour | train_rmse | 3.15772547e+01 |
 | wraparound_lane_hour | periodic_hour | train_rmse | 1.98951966e-13 |
 | regional_lane_boosting | axis_only | holdout_rmse | 1.26819804e+01 |
@@ -27,7 +27,7 @@ coordinates, lane ID, hour of day, route midpoint, and route distance.
 - `sparse_beats_axis_lane_id`: PASS (0.00000000e+00 < 5.00000000e-02)
 - `hot_lane_margin_gt_200`: PASS (2.40000000e+02 > 2.00000000e+02)
 
-### route_midpoint_geometry
+### route_midpoint_cartometry
 - `center_lane_prediction`: 2.60000000e+02
 - `outer_lane_prediction`: 9.00000000e+01
 - `center_outer_margin`: 1.70000000e+02
