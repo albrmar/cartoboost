@@ -1,71 +1,214 @@
-# Neural Features (Phase 1)
+# Neural Features (Phase 1): Embedding-Table → CartoBoost Hybrid
 
-Phase 1 introduces `NeuralEmbeddingFeatures` for **embedding-table** generators only.
-This keeps CartoBoost as the runtime scorer and keeps inference in Rust.
+This document defines the complete hybrid pattern used in this repository:
 
-## Principle
+1. Train neural-style embeddings offline (Python).
+2. Serialize embeddings into a versioned artifact.
+3. Load and validate embeddings at inference (Rust).
+4. Append generated dense vectors to the input matrix.
+5. Keep `CartoBoostRegressor` as the final scorer.
 
-Neural output is materialized as regular dense columns before scoring.
-CartoBoost never calls a neural model at serve time.
+This keeps all gradient-boosting behavior in the existing CartoBoost runtime while
+adding learned dense context through generated columns.
 
-- Dense input rows remain unchanged in row count.
-- Generated features are appended to the dense feature matrix.
-- Row order is preserved.
+## 1) Why this architecture
 
-## Runtime split
+A hybrid is intentionally conservative in phase 1.
 
-- Python owns:
-  - neural training/optimization loops
-  - fitting an embedding table
-  - writing embedding-table artifacts
-  - offline/online export helpers
-- Rust owns:
-  - artifact loading and schema validation
-  - fallback behavior
-  - lookup speed and feature append into dense matrices
-  - final CartoBoost tree model scoring
+- **No neural runtime inside scoring path**: inference remains deterministic Rust
+  and fast.
+- **No API split in the final model**: the booster still sees only numeric dense
+  + sparse inputs.
+- **Stable ordering and contracts**: generated feature names and counts are fixed
+  by the artifact.
 
-## Supported type in this PR
+The pattern is:
 
-### Embedding table
+```text
+raw row/context
+    ↓
+existing feature assembler
+    ↓
+structured dense + sparse
+    ↓
+NeuralEmbeddingFeatures lookup
+    ↓
+append generated dense embedding columns
+    ↓
+CartoBoost predict
+```
 
-Input: categorical IDs (for example H3/S2 cell IDs) → learned vector per ID.
+## 2) What is an embedding feature here?
 
-Artifact fields required:
+For this phase, a **neural feature** is a deterministic vector lookup keyed by an
+ID:
 
-- artifact version
-- embedding dimension
-- id type
-- row count
-- checksum/hash
+- **Input**: one or more IDs per row (e.g. cell IDs).
+- **Output**: `dim` floating columns for each logical feature.
 
-Fallbacks are implemented as:
+Example for `dim=16` and origin cell embedding:
+
+- `neural.origin_h3_r7_emb_00`
+- `neural.origin_h3_r7_emb_01`
+- `...`
+- `neural.origin_h3_r7_emb_15`
+
+Important: these are just dense feature columns from the perspective of the
+booster.
+
+## 3) Implementation surface (Phase 1)
+
+### Python ownership
+
+- `python/cartoboost/neural/features.py`
+  - `NeuralEmbeddingFeatures`
+  - Fits per-ID vectors from an ID/value stream.
+  - Exports a JSON artifact with version/metadata and checksum.
+  - Loads artifact for parity checks.
+
+- `python/cartoboost/neural/pipeline.py`
+  - `NeuralEmbeddingRegressor`
+  - Orchestrates residual pipeline and final `CartoBoostRegressor` fit.
+  - Appends embedding columns at training and inference time.
+
+- `scripts/run_neural_embedding_benchmark.py`
+  - Quick structured-only vs hybrid comparison on synthetic data.
+
+### Rust ownership
+
+- `crates/cartoboost-neural/`
+  - `EmbeddingTable` artifact parsing/validation
+  - fallback logic (`zero`, `global_mean`, parent placeholder)
+  - encoder trait and dense block assembly utilities
+  - deterministic feature name generation (`name_00`, `name_01`, ...)
+
+## 4) Full training flow (residual mode)
+
+By default, `NeuralEmbeddingRegressor` uses residual training:
+
+1. Fit a baseline CartoBoost model with only structured inputs.
+2. Compute residuals:
+
+```python
+residual = y - baseline.predict(X_structured)
+```
+
+3. Fit neural embedding table on `(ids, residual)`.
+4. Transform `ids` into embedding matrix:
+   `Z_train = embedding_transformer.transform(ids_train)`.
+5. Concatenate:
+   `X_aug = [X_structured, Z_train]`.
+6. Fit final `CartoBoostRegressor` on `X_aug` and `y`.
+
+### Why residual mode first
+
+The residual model focuses on what the structured model misses. Instead of directly
+adding neural residuals into the final output, we expose learned representation to
+CartoBoost and let trees decide when that signal is useful.
+
+### Optional non-residual mode
+
+`use_residual=False` trains embeddings on raw target `y` directly. This is
+available but less common in this phase.
+
+## 5) Inference flow
+
+Given input rows and IDs:
+
+1. Assemble dense features.
+2. Build/validate ID list from:
+   - explicit `ids` argument, or
+   - `id_column` reference.
+3. Convert IDs to embedding matrix via loaded embedding table.
+4. Append embedding columns to dense matrix.
+5. Call final CartoBoost model `predict`.
+
+Row count is preserved through the process.
+
+## 6) API contracts
+
+### Required artifact metadata (Phase 1)
+
+- `artifact_type`
+- `artifact_version`
+- `dim`
+- `id_type` (currently `u64`)
+- `row_count`
+- `checksum`/`hash`
+- `fallback` strategy
+
+Checksum is computed over sorted rows and metadata and validated on load.
+
+### Fallback strategies
+
+Missing IDs are resolved by strategy in this order (implemented in Rust):
 
 - `zero_vector`
 - `global_mean_vector`
-- `parent_cell` placeholder (callback hook in Rust)
+- `parent_cell` (placeholder callback path present; parent resolution currently via callback)
 
-At inference each ID becomes columns:
+### Feature naming and order
 
-- `neural.<name>_00`
-- `neural.<name>_01`
-- ...
-- `neural.<name>_<d-1>`
+For prefix `name = neural.origin_cell`, `dim = 4`:
 
-## Why this is first
+- `neural.origin_cell_00`
+- `neural.origin_cell_01`
+- `neural.origin_cell_02`
+- `neural.origin_cell_03`
 
-Embedding-table inference is deterministic, fast, and Rust-native.
-It avoids ONNX in this phase and keeps the model artifact flow straightforward.
+The booster input matrix for each row is:
 
-## Future PRs
+```text
+[original_dense_features..., neural feature block]
+```
 
-ONNX encoders (lane residual encoders, temporal encoders, calibration heads) are
-planned for later phases and are not part of Phase 1.
+## 7) End-to-end code example
 
-## Benchmarking the phase-1 path
+```python
+import numpy as np
+from cartoboost import NeuralEmbeddingRegressor
 
-You can compare structured-only CartoBoost against the hybrid residual embedding
-pipeline with one command:
+rng = np.random.default_rng(0)
+rows = 1000
+ids = rng.integers(1, 200, size=rows, dtype=np.uint64)
+X = rng.normal(size=(rows, 8))
+y = 1.2 * X[:, 0] - 0.8 * X[:, 1] + (ids % 7) * 0.1 + rng.normal(0.0, 0.1, size=rows)
+
+model = NeuralEmbeddingRegressor(
+    dim=16,
+    id_column=None,
+    final_model_kwargs={
+        "n_estimators": 80,
+        "learning_rate": 0.08,
+        "max_depth": 4,
+        "min_gain": 0.0,
+    },
+)
+
+# ids provided directly
+model.fit(X, y, ids=ids)
+pred = model.predict(X, ids=ids)
+print(pred[:3])
+```
+
+Benchmark helper for quick smoke checks:
+
+```python
+from cartoboost import benchmark_neural_vs_cartoboost
+
+results = benchmark_neural_vs_cartoboost(
+    X,
+    y,
+    ids=ids,
+    split_ratio=0.8,
+    cartoboost_kwargs={"n_estimators": 40, "learning_rate": 0.08, "max_depth": 4},
+)
+print(results)
+```
+
+## 8) Benchmarking and acceptance
+
+Use the repository script:
 
 ```bash
 uv run --group dev python scripts/run_neural_embedding_benchmark.py \
@@ -77,8 +220,31 @@ uv run --group dev python scripts/run_neural_embedding_benchmark.py \
   --output target/validation/neural_embedding_benchmark.json
 ```
 
-The output JSON reports `mae`, `fit_ms`, and `predict_ms` for each model family:
+The JSON report contains MAE and latency timing for:
 
-- `cartoboost`: structured-only baseline
-- `neural_embedding_hybrid`: residual embedding-table + CartoBoost
-- `sklearn_gbr` (when `--include-sklearn` is set): sklearn baseline for comparison
+- structured-only `cartoboost`
+- `neural_embedding_hybrid`
+- optional `sklearn_gbr`
+
+A useful check is to require improvement on blocked/shifted splits, not only
+random splits.
+
+## 9) Failure modes and guardrails
+
+- **ID drift**: ID column encoding must stay stable between training/inference.
+- **Row ordering**: IDs and rows must align (same order) before transform.
+- **Sparse splits**: ensure sparse-set feature configuration is identical across
+  baseline and hybrid training.
+- **Non-finite IDs**: missing/infinite IDs cannot be encoded.
+- **Dimension mismatch**: embedding `dim` in transformer and model must match.
+
+## 10) What changed in this implementation
+
+- Added hybrid estimator + benchmark helper:
+  - `python/cartoboost/neural/pipeline.py`
+- Exported at package root:
+  - `cartoboost.NeuralEmbeddingRegressor`
+  - `cartoboost.benchmark_neural_vs_cartoboost`
+- Added Python regression tests + benchmark script.
+- Added Python API docs for this feature in:
+  - `docs/reference/python-api.md`
