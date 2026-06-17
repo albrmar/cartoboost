@@ -4,7 +4,7 @@ CartoBoost supports the Python `shap` package through the estimator prediction
 API. Install the optional dependency before using SHAP:
 
 ```sh
-pip install "cartoboost[explain]"
+uv add "cartoboost[explain]"
 ```
 
 For a source checkout:

@@ -28,7 +28,7 @@ estimator parameters.
 ## Quick Start
 
 ```sh
-pip install cartoboost
+uv add cartoboost
 ```
 
 ```python

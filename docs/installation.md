@@ -7,7 +7,7 @@ Rust toolchain.
 ## Install From PyPI
 
 ```sh
-pip install cartoboost
+uv add cartoboost
 ```
 
 The published wheels target CPython 3.10, 3.11, 3.12, and 3.13 on:
@@ -16,8 +16,8 @@ The published wheels target CPython 3.10, 3.11, 3.12, and 3.13 on:
 - macOS x86_64 and arm64.
 - Windows x86_64 and arm64.
 
-If a matching wheel is available, `pip` installs the compiled Rust extension
-directly. If no compatible wheel exists, `pip` may try to build from source,
+If a matching wheel is available, `uv` installs the compiled Rust extension
+directly. If no compatible wheel exists, `uv` may try to build from source,
 which requires Rust and the Python build toolchain.
 
 ## Optional Extras
@@ -25,10 +25,10 @@ which requires Rust and the Python build toolchain.
 Install optional integrations with extras:
 
 ```sh
-pip install "cartoboost[explain]"
-pip install "cartoboost[optuna]"
-pip install "cartoboost[polars]"
-pip install "cartoboost[onnx]"
+uv add "cartoboost[explain]"
+uv add "cartoboost[optuna]"
+uv add "cartoboost[polars]"
+uv add "cartoboost[onnx]"
 ```
 
 | Extra | Adds |
@@ -82,5 +82,5 @@ just validate
 | Symptom | Fix |
 | --- | --- |
 | `ImportError: cartoboost._native` | Reinstall from PyPI or run `uv run --group dev maturin develop` in a source checkout. |
-| `pip` tries to compile from source | Use CPython 3.10-3.13 on a supported platform, or install Rust before building. |
+| `uv` tries to compile from source | Use CPython 3.10-3.13 on a supported platform, or install Rust before building. |
 | `cartoboost` command not found | Make sure the Python environment where `cartoboost` was installed is active. |

@@ -8,7 +8,7 @@ route-cell behavior on deterministic synthetic data.
 Install from PyPI for normal use:
 
 ```sh
-pip install cartoboost
+uv add cartoboost
 ```
 
 From a source checkout, rebuild the local native extension before regenerating

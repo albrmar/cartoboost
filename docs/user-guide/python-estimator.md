@@ -5,7 +5,7 @@ conventions for parameter inspection, cloning, pipelines, and grid search over
 the supported API surface.
 
 Optuna tuning works through the same estimator contract. Install the optional
-dependency with `pip install "cartoboost[optuna]"`, then optimize an objective
+dependency with `uv add "cartoboost[optuna]"`, then optimize an objective
 that constructs a fresh
 `CartoBoostRegressor` for each trial.
 
@@ -163,7 +163,7 @@ explainer = model.make_shap_explainer(X_background)
 explanation = model.explain_shap(X_test, background=X_background)
 ```
 
-Run `pip install "cartoboost[explain]"` or add the optional SHAP dependency in
+Run `uv add "cartoboost[explain]"` or add the optional SHAP dependency in
 your local environment.
 Sparse-list models can be explained through the helper by supplying matching
 foreground and background sparse sets.

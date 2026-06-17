@@ -27,7 +27,7 @@ Benchmark scripts are repository workflows. Install the package from PyPI for
 normal model use:
 
 ```sh
-pip install cartoboost
+uv add cartoboost
 ```
 
 For reproducible benchmark development from a source checkout, use a release

@@ -11,7 +11,7 @@ workflows.
 Install from PyPI to get both the Python estimator and the `cartoboost` command:
 
 ```sh
-pip install cartoboost
+uv add cartoboost
 ```
 
 ```sh

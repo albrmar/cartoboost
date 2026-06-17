@@ -65,13 +65,13 @@ prediction.
 ## Install
 
 ```sh
-pip install cartoboost
+uv add cartoboost
 ```
 
 Optional extras are available for SHAP, Optuna, Polars, and ONNX:
 
 ```sh
-pip install "cartoboost[explain,optuna,polars,onnx]"
+uv add "cartoboost[explain,optuna,polars,onnx]"
 ```
 
 ## Typical Workflow

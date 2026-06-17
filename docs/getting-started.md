@@ -6,12 +6,12 @@ checks prediction from Python and the CLI.
 ## Requirements
 
 - Python 3.10 or newer.
-- `pip`.
+- `uv`.
 
 ## Install
 
 ```sh
-pip install cartoboost
+uv add cartoboost
 ```
 
 The PyPI package includes `cartoboost._native`, the Rust native extension used

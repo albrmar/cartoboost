@@ -32,17 +32,17 @@ evaluate, tune, explain, and save a model without working directly in Rust.
 Install the released Python package from PyPI:
 
 ```sh
-pip install cartoboost
+uv add cartoboost
 ```
 
 The PyPI release includes prebuilt Rust extension wheels for CPython 3.10-3.13
 on Linux, macOS, and Windows. For optional integrations:
 
 ```sh
-pip install "cartoboost[explain]"  # SHAP support
-pip install "cartoboost[optuna]"   # Optuna tuning
-pip install "cartoboost[polars]"   # Polars inputs
-pip install "cartoboost[onnx]"     # ONNX export subset
+uv add "cartoboost[explain]"  # SHAP support
+uv add "cartoboost[optuna]"   # Optuna tuning
+uv add "cartoboost[polars]"   # Polars inputs
+uv add "cartoboost[onnx]"     # ONNX export subset
 ```
 
 Verify the install:
@@ -64,7 +64,7 @@ uv run --group dev maturin develop
 To tune CartoBoost with Optuna, install the optional dependency:
 
 ```sh
-pip install "cartoboost[optuna]"
+uv add "cartoboost[optuna]"
 ```
 
 ## Basic Regression
