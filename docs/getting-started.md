@@ -59,6 +59,58 @@ Use `periodic:24` for hour-of-day, diagonal or Gaussian 2D splitters for
 coordinate pairs, and `sparse_set` when rows have route-cell or zone
 memberships.
 
+## Add Neural Features (Hybrid)
+
+Use `NeuralEmbeddingRegressor` for Phase 1 neural features: learn a small ID-based
+embedding table from residuals, then append those dense vectors to your model input.
+
+```python
+import numpy as np
+from cartoboost import NeuralEmbeddingRegressor
+
+X_train = np.array(
+    [
+        [0.2, 8.0],
+        [1.4, 9.0],
+        [2.1, 17.0],
+        [3.3, 18.0],
+    ]
+)
+y_train = np.array([10.5, 11.0, 12.4, 13.2], dtype=float)
+ids_train = np.array([101, 102, 101, 103], dtype=np.uint64)
+
+X_test = np.array([[1.0, 16.0], [3.0, 19.0]])
+ids_test = np.array([101, 104], dtype=np.uint64)
+
+neural_model = NeuralEmbeddingRegressor(
+    dim=8,
+    base_model_kwargs=dict(
+        n_estimators=40,
+        learning_rate=0.08,
+        max_depth=3,
+        min_samples_leaf=2,
+        splitters=["axis"],
+    ),
+    final_model_kwargs=dict(
+        n_estimators=120,
+        learning_rate=0.05,
+        max_depth=4,
+        min_samples_leaf=4,
+        splitters=["axis", "periodic:24"],
+    ),
+)
+
+neural_model.fit(X_train, y_train, ids=ids_train)
+predictions = neural_model.predict(X_test, ids=ids_test)
+```
+
+Pass `ids` directly as shown above, or pass `id_column="cell_id"` with a pandas
+dataframe input. Neural features are added as additional numeric columns before
+training and inference.
+
+See [Neural Features](neural-features.md) for full pipeline details, artifact
+format, and benchmarks.
+
 ## Train From Dense CSV
 
 Create a small file named `train.csv`:
