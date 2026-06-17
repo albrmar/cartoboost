@@ -9,7 +9,7 @@ This generated report compares CartoBoost against optional XGBoost and LightGBM 
 ## Configuration
 
 - Seed: `42`
-- Rows per workload: `1200`
+- Rows per workload: `2400`
 - Train fraction: `0.8`
 - Models requested: `mean, cartoboost, cartoboost_neural, cartoboost_graph, xgboost, lightgbm`
 
@@ -21,16 +21,16 @@ IID dense numeric regression with nonlinear feature interactions.
 
 #### random
 
-Train rows: `960`; test rows: `240`.
+Train rows: `1920`; test rows: `480`.
 
 | Model | Status | MAE | RMSE | R2 | Train s | Predict rows/s |
 | --- | --- | ---: | ---: | ---: | ---: | ---: |
-| mean | ok | 1.7165 | 2.0972 | -0.0000 | 0.0000 | 64707478 |
-| cartoboost | ok | 0.4468 | 0.5861 | 0.9219 | 0.2082 | 502529 |
+| mean | ok | 1.7284 | 2.1533 | -0.0000 | 0.0000 | 114068267 |
+| cartoboost | ok | 0.3821 | 0.5082 | 0.9443 | 0.1497 | 846996 |
 | cartoboost_neural | skipped: workload has no embedding ids |  |  |  |  |  |
 | cartoboost_graph | skipped: workload has no graph topology |  |  |  |  |  |
-| xgboost | ok | 0.4427 | 0.5913 | 0.9205 | 0.1149 | 230059 |
-| lightgbm | ok | 0.4511 | 0.5875 | 0.9215 | 0.0937 | 154735 |
+| xgboost | ok | 0.3810 | 0.5173 | 0.9423 | 0.0812 | 1084645 |
+| lightgbm | ok | 0.3783 | 0.5080 | 0.9443 | 0.1158 | 527738 |
 
 ### Neural ID
 
@@ -38,29 +38,29 @@ Dense regression with repeated cell IDs whose residual signal is learnable by em
 
 #### random
 
-Train rows: `960`; test rows: `240`.
+Train rows: `1920`; test rows: `480`.
 
 | Model | Status | MAE | RMSE | R2 | Train s | Predict rows/s |
 | --- | --- | ---: | ---: | ---: | ---: | ---: |
-| mean | ok | 1.4357 | 1.7831 | -0.0016 | 0.0000 | 81135788 |
-| cartoboost | ok | 0.4680 | 0.5895 | 0.8905 | 0.2894 | 329595 |
-| cartoboost_neural | ok | 0.3977 | 0.5108 | 0.9178 | 0.2983 | 325939 |
+| mean | ok | 1.3848 | 1.7144 | -0.0005 | 0.0000 | 213333089 |
+| cartoboost | ok | 0.4420 | 0.5523 | 0.8962 | 0.1376 | 1049274 |
+| cartoboost_neural | ok | 0.3386 | 0.4360 | 0.9353 | 0.3928 | 407125 |
 | cartoboost_graph | skipped: workload has no graph topology |  |  |  |  |  |
-| xgboost | ok | 0.4625 | 0.5906 | 0.8901 | 0.0783 | 648137 |
-| lightgbm | ok | 0.4982 | 0.6151 | 0.8808 | 0.0850 | 392691 |
+| xgboost | ok | 0.4492 | 0.5636 | 0.8919 | 0.0823 | 1107905 |
+| lightgbm | ok | 0.4291 | 0.5368 | 0.9019 | 0.1145 | 703426 |
 
 #### group_holdout
 
-Train rows: `962`; test rows: `238`.
+Train rows: `1945`; test rows: `455`.
 
 | Model | Status | MAE | RMSE | R2 | Train s | Predict rows/s |
 | --- | --- | ---: | ---: | ---: | ---: | ---: |
-| mean | ok | 1.4153 | 1.7390 | -0.0110 | 0.0000 | 102014598 |
-| cartoboost | ok | 0.5211 | 0.6455 | 0.8607 | 0.1083 | 750493 |
-| cartoboost_neural | ok | 0.7384 | 0.8807 | 0.7407 | 0.3063 | 344055 |
+| mean | ok | 1.3599 | 1.6951 | -0.0034 | 0.0000 | 222929860 |
+| cartoboost | ok | 0.4529 | 0.5740 | 0.8849 | 0.1627 | 533881 |
+| cartoboost_neural | ok | 0.6737 | 0.7955 | 0.7790 | 0.6037 | 256615 |
 | cartoboost_graph | skipped: workload has no graph topology |  |  |  |  |  |
-| xgboost | ok | 0.5229 | 0.6591 | 0.8548 | 0.0883 | 616713 |
-| lightgbm | ok | 0.5048 | 0.6300 | 0.8673 | 0.1010 | 333236 |
+| xgboost | ok | 0.4686 | 0.5985 | 0.8749 | 0.1201 | 777944 |
+| lightgbm | ok | 0.4402 | 0.5677 | 0.8875 | 0.1663 | 482439 |
 
 ### Graph source-target
 
@@ -68,29 +68,29 @@ Directed source-target regression where graph topology and node features carry p
 
 #### random
 
-Train rows: `960`; test rows: `240`.
+Train rows: `1920`; test rows: `480`.
 
 | Model | Status | MAE | RMSE | R2 | Train s | Predict rows/s |
 | --- | --- | ---: | ---: | ---: | ---: | ---: |
-| mean | ok | 1.2035 | 1.5113 | -0.0252 | 0.0000 | 101052481 |
-| cartoboost | ok | 0.3893 | 0.5001 | 0.8878 | 0.0931 | 744091 |
+| mean | ok | 1.2321 | 1.5445 | -0.0000 | 0.0000 | 155692248 |
+| cartoboost | ok | 0.4123 | 0.5118 | 0.8902 | 0.1799 | 599594 |
 | cartoboost_neural | skipped: workload has no embedding ids |  |  |  |  |  |
-| cartoboost_graph | ok | 0.3879 | 0.4977 | 0.8888 | 0.2258 | 806834 |
-| xgboost | ok | 0.3888 | 0.5067 | 0.8848 | 0.0707 | 672897 |
-| lightgbm | ok | 0.3895 | 0.4971 | 0.8891 | 0.0810 | 528004 |
+| cartoboost_graph | ok | 0.4167 | 0.5191 | 0.8870 | 0.5091 | 604978 |
+| xgboost | ok | 0.4140 | 0.5154 | 0.8886 | 0.1120 | 905804 |
+| lightgbm | ok | 0.3994 | 0.4987 | 0.8957 | 0.1635 | 457979 |
 
 #### group_holdout
 
-Train rows: `964`; test rows: `236`.
+Train rows: `1906`; test rows: `494`.
 
 | Model | Status | MAE | RMSE | R2 | Train s | Predict rows/s |
 | --- | --- | ---: | ---: | ---: | ---: | ---: |
-| mean | ok | 1.2119 | 1.5581 | -0.0316 | 0.0000 | 96013004 |
-| cartoboost | ok | 0.3953 | 0.5017 | 0.8930 | 0.0841 | 959837 |
+| mean | ok | 1.2678 | 1.5773 | -0.0127 | 0.0000 | 148170195 |
+| cartoboost | ok | 0.4393 | 0.5481 | 0.8777 | 0.1704 | 872021 |
 | cartoboost_neural | skipped: workload has no embedding ids |  |  |  |  |  |
-| cartoboost_graph | ok | 0.3907 | 0.4950 | 0.8959 | 0.2250 | 856886 |
-| xgboost | ok | 0.3946 | 0.5092 | 0.8898 | 0.0735 | 683810 |
-| lightgbm | ok | 0.3900 | 0.4910 | 0.8976 | 0.0820 | 472276 |
+| cartoboost_graph | ok | 0.4644 | 0.5737 | 0.8660 | 0.3930 | 527426 |
+| xgboost | ok | 0.4401 | 0.5460 | 0.8786 | 0.0897 | 1041645 |
+| lightgbm | ok | 0.4257 | 0.5343 | 0.8838 | 0.1409 | 399892 |
 
 ## Plots
 

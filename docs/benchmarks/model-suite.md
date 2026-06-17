@@ -12,8 +12,7 @@ Command:
 
 ```sh
 uv run --group dev --group bench python scripts/run_model_benchmark_suite.py \
-  --output-dir docs/assets/model_benchmarks \
-  --n-rows 1200
+  --output-dir docs/assets/model_benchmarks
 ```
 
 Generated evidence:
@@ -47,10 +46,10 @@ skipped rows rather than causing the whole suite to fail.
 
 ## Interpretation
 
-On the latest run, CartoBoost, XGBoost, and LightGBM land in a similar quality
-range on the normal dense workload. That workload is intentionally not spatial
-or graph-heavy; it is a baseline check that CartoBoost remains competitive on a
-plain numeric regression surface.
+On the latest full run, CartoBoost, XGBoost, and LightGBM land in a similar
+quality range on the normal dense workload, with LightGBM slightly ahead on MAE.
+That workload is intentionally not spatial or graph-heavy; it is a baseline
+check that CartoBoost remains competitive on a plain numeric regression surface.
 
 The neural-ID workload separates repeated-ID learning from cold-ID deployment.
 `cartoboost_neural` improves the random split because validation rows reuse IDs
@@ -61,9 +60,10 @@ not as a universal quality improvement.
 
 The graph workload fits GraphSAGE features from train topology and node
 features, then appends source and target embeddings to CartoBoost inputs. The
-latest graph run shows small quality gains for graph augmentation on both
-random and group holdout splits, with extra training cost from graph feature
-construction.
+latest full graph run exercises the graph augmentation path, but the augmented
+CartoBoost row does not beat the plain CartoBoost or LightGBM rows on MAE. Treat
+that as a negative benchmark result for this synthetic topology, not as a graph
+feature failure; the value of graph features remains split- and signal-dependent.
 
 ## Reproducibility Rules
 
