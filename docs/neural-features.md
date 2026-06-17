@@ -140,15 +140,15 @@ Training flow for `Φ` and final model:
 
 ```mermaid
 flowchart TD
-    D0[Input: X, y, ids]
-    D1[Prepare structured features X_s]
-    D2[Fit baseline CartoBoost f0(X_s)]
-    D3[Compute residuals r = y - f0(X_s)]
-    D4[Fit embedding table on (id, r)]
-    D5[Export embedding artifact + checksum]
-    D6[Transform ids to Z = Φ(ids)]
-    D7[Concatenate X_plus = [X_s, Z]]
-    D8[Fit final CartoBoost g(X_plus)]
+    D0["Input: X, y, ids"]
+    D1["Prepare structured features X_s"]
+    D2["Fit baseline CartoBoost on structured features"]
+    D3["Compute residuals r = y - baseline(X_s)"]
+    D4["Fit embedding table on ids and residuals"]
+    D5["Export embedding artifact + checksum"]
+    D6["Transform ids to embedding Z = Φ(ids)"]
+    D7["Concatenate X_plus = (X_s plus Z)"]
+    D8["Fit final CartoBoost model g(X_plus)"]
     D0 --> D1 --> D2 --> D3 --> D4 --> D5 --> D6 --> D7 --> D8
 ```
 
