@@ -38,6 +38,7 @@ jobs:
           python - <<'PY'
           import os
           import re
+          import subprocess
           from pathlib import Path
 
           bump_level = os.environ["BUMP_LEVEL"]
@@ -69,6 +70,7 @@ jobs:
 
           current = versions.pop()
           major, minor, patch = map(int, current.split("."))
+
           if bump_level == "major":
               major += 1
               minor = 0
@@ -80,6 +82,20 @@ jobs:
               patch += 1
 
           next_version = f"{major}.{minor}.{patch}"
+
+          def git_tag_exists(tag: str) -> bool:
+              cmd_local = ["git", "rev-parse", "-q", "--verify", f"refs/tags/{tag}"]
+              if subprocess.run(cmd_local, check=False, capture_output=True).returncode == 0:
+                  return True
+
+              cmd_remote = ["git", "ls-remote", "--exit-code", "--tags", "origin", f"refs/tags/{tag}"]
+              return subprocess.run(cmd_remote, check=False, capture_output=True).returncode == 0
+
+          while git_tag_exists(f"v{next_version}"):
+              major, minor, patch = map(int, next_version.split("."))
+              patch += 1
+              next_version = f"{major}.{minor}.{patch}"
+
           next_tag = f"v{next_version}"
 
           for path in files:
