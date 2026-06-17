@@ -4,9 +4,8 @@ use cartoboost_core::tree::{FlatAxisPredictor, FuzzyKernel, LeafPredictorKind, S
 use cartoboost_core::{Booster, BoosterConfig, CartoBoostError, Dataset, Model};
 use cartoboost_neural::{
     build_embedding_table_artifact, fit_embedding_table, write_embedding_table_artifact,
-    ArtifactFallbackKind, EmbeddingTable,
-    GraphSageConfig, GraphSageEncoder, HeteroGraphSageConfig, HeteroGraphSageEncoder,
-    HeteroGraph, HeteroTypedEdge, HomogeneousGraph,
+    ArtifactFallbackKind, EmbeddingTable, GraphSageConfig, GraphSageEncoder, HeteroGraph,
+    HeteroGraphSageConfig, HeteroGraphSageEncoder, HeteroTypedEdge, HomogeneousGraph,
 };
 use numpy::{IntoPyArray, PyArray1, PyReadonlyArray1, PyReadonlyArray2, PyUntypedArrayMethods};
 use pyo3::exceptions::{PyIOError, PyRuntimeError, PyValueError};
@@ -856,8 +855,8 @@ impl NativeGraphSageEncoder {
             l2_regularization,
         };
 
-        let encoder = GraphSageEncoder::new(config.clone(), input_dim)
-            .map_err(to_py_neural_error)?;
+        let encoder =
+            GraphSageEncoder::new(config.clone(), input_dim).map_err(to_py_neural_error)?;
 
         Ok(Self { config, encoder })
     }
@@ -873,7 +872,9 @@ impl NativeGraphSageEncoder {
             .map_err(to_py_neural_error)?;
         let mut model = GraphSageEncoder::new(self.config.clone(), self.encoder.input_dim())
             .map_err(to_py_neural_error)?;
-        let embedding = model.fit(&graph, &node_features).map_err(to_py_neural_error)?;
+        let embedding = model
+            .fit(&graph, &node_features)
+            .map_err(to_py_neural_error)?;
         self.encoder = model;
         Ok(embedding.into_inner())
     }
@@ -897,19 +898,14 @@ impl NativeGraphSageEncoder {
     }
 
     fn to_artifact_json(&self) -> PyResult<String> {
-        self.encoder
-            .to_artifact_json()
-            .map_err(to_py_neural_error)
+        self.encoder.to_artifact_json().map_err(to_py_neural_error)
     }
 
     #[classmethod]
     fn load_artifact_json(_cls: &Bound<'_, PyType>, path: String) -> PyResult<Self> {
         let encoder = GraphSageEncoder::load_artifact_json(path).map_err(to_py_neural_error)?;
         let config = encoder.config();
-        Ok(Self {
-            encoder,
-            config,
-        })
+        Ok(Self { encoder, config })
     }
 
     #[getter]
@@ -993,9 +989,8 @@ impl NativeHeteroGraphSageEncoder {
             seed,
             l2_regularization,
         };
-        let encoder =
-            HeteroGraphSageEncoder::new(config.clone(), input_dim, relation_count)
-                .map_err(to_py_neural_error)?;
+        let encoder = HeteroGraphSageEncoder::new(config.clone(), input_dim, relation_count)
+            .map_err(to_py_neural_error)?;
         Ok(Self {
             config,
             relation_count,
@@ -1018,16 +1013,17 @@ impl NativeHeteroGraphSageEncoder {
                 relation,
             })
             .collect::<Vec<_>>();
-        let graph =
-            HeteroGraph::from_typed_edges(node_count, self.relation_count, &typed_edges)
-                .map_err(to_py_neural_error)?;
+        let graph = HeteroGraph::from_typed_edges(node_count, self.relation_count, &typed_edges)
+            .map_err(to_py_neural_error)?;
         let mut model = HeteroGraphSageEncoder::new(
             self.config.clone(),
             self.encoder.input_dim(),
             self.relation_count,
         )
         .map_err(to_py_neural_error)?;
-        let embedding = model.fit(&graph, &node_features).map_err(to_py_neural_error)?;
+        let embedding = model
+            .fit(&graph, &node_features)
+            .map_err(to_py_neural_error)?;
         self.encoder = model;
         Ok(embedding.into_inner())
     }
@@ -1051,14 +1047,13 @@ impl NativeHeteroGraphSageEncoder {
     }
 
     fn to_artifact_json(&self) -> PyResult<String> {
-        self.encoder
-            .to_artifact_json()
-            .map_err(to_py_neural_error)
+        self.encoder.to_artifact_json().map_err(to_py_neural_error)
     }
 
     #[classmethod]
     fn load_artifact_json(_cls: &Bound<'_, PyType>, path: String) -> PyResult<Self> {
-        let encoder = HeteroGraphSageEncoder::load_artifact_json(path).map_err(to_py_neural_error)?;
+        let encoder =
+            HeteroGraphSageEncoder::load_artifact_json(path).map_err(to_py_neural_error)?;
         let config = encoder.config();
         Ok(Self {
             relation_count: encoder.relation_count(),

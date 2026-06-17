@@ -8,8 +8,8 @@ from cartoboost.graph import (
     binary_auc,
     binary_average_precision,
     mean_reciprocal_rank,
-    top_k_metrics,
     normalize_heterogeneous_graph,
+    top_k_metrics,
 )
 
 

@@ -1,6 +1,6 @@
 use cartoboost_neural::{
-    GraphSageConfig, GraphSageEncoder, GraphSageModelArtifact, HeteroGraph,
-    HeteroGraphSageConfig, HeteroGraphSageEncoder, HeteroTypedEdge, HomogeneousGraph,
+    GraphSageConfig, GraphSageEncoder, GraphSageModelArtifact, HeteroGraph, HeteroGraphSageConfig,
+    HeteroGraphSageEncoder, HeteroTypedEdge, HomogeneousGraph,
 };
 use tempfile::tempdir;
 
@@ -170,7 +170,8 @@ fn fits_hinsage_heterogeneous_graph_with_relation_conditioning() {
 
 #[test]
 fn validates_feature_shape_failures_on_fit_and_encode() {
-    let graph = HomogeneousGraph::from_directed_edges(3, &[(0, 1), (1, 2)]).expect("graph should build");
+    let graph =
+        HomogeneousGraph::from_directed_edges(3, &[(0, 1), (1, 2)]).expect("graph should build");
     let config = GraphSageConfig {
         hidden_dims: vec![2],
         epochs: 1,
@@ -290,7 +291,10 @@ fn hinsage_artifact_roundtrip_preserves_state() {
     let mut model = HeteroGraphSageEncoder::new(config, 2, 2).unwrap();
     let _fitted = model.fit(&graph, &features).unwrap();
 
-    assert!(matches!(model.to_artifact().model, GraphSageModelArtifact::Hetero(_)));
+    assert!(matches!(
+        model.to_artifact().model,
+        GraphSageModelArtifact::Hetero(_)
+    ));
 
     let artifact = model.to_artifact();
     let reloaded = HeteroGraphSageEncoder::from_artifact(artifact).unwrap();

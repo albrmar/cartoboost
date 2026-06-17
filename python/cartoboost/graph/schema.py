@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Any, Sequence
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -27,7 +28,7 @@ class GraphSchema:
     directed: bool = True
     timestamp_col: str | None = None
 
-    def validate(self) -> "GraphSchema":
+    def validate(self) -> GraphSchema:
         if not self.node_types:
             raise ValueError("node_types must be non-empty")
         if not self.edge_types:

@@ -1,5 +1,7 @@
 """Python interface for the clean-room CartoBoost-inspired regressor."""
 
+from . import graph
+from ._native import GraphSageEncoder, HeteroGraphSageEncoder
 from .evaluation import (
     grouped_blocked_cv,
     out_of_time_split,
@@ -28,8 +30,6 @@ from .neural import (
     NeuralEmbeddingRegressor,
     benchmark_neural_vs_cartoboost,
 )
-from ._native import GraphSageEncoder, HeteroGraphSageEncoder
-from . import graph
 from .overlay import OverlayConfig, weighted_overlay
 from .regressor import CartoBoostRegressor
 from .schema import FeatureKind, FeatureSchema

@@ -14,8 +14,8 @@ pub use encoder::{EmbeddingTableEncoder, NeuralEncoder};
 pub use error::{NeuralError, Result};
 pub use features::NeuralFeatureBlock;
 pub use graphsage::{
-    GraphSageConfig, GraphSageEncoder, GraphSageEncoderArtifact, GraphSageModelArtifact,
-    GraphSageLoss, HeteroGraph, HeteroGraphSageConfig, HeteroGraphSageEncoder,
+    GraphSageConfig, GraphSageEncoder, GraphSageEncoderArtifact, GraphSageLoss,
+    GraphSageModelArtifact, HeteroGraph, HeteroGraphSageConfig, HeteroGraphSageEncoder,
     HeteroGraphSageEncoderArtifact, HeteroTypedEdge, HomogeneousGraph,
 };
 pub use trainer::fit_embedding_table;

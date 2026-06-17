@@ -3,8 +3,8 @@
 from .builder import (
     HeterogeneousGraph,
     HomogeneousGraph,
-    normalize_homogeneous_graph,
     normalize_heterogeneous_graph,
+    normalize_homogeneous_graph,
 )
 from .encoders import (
     GraphFeatureTransformer,

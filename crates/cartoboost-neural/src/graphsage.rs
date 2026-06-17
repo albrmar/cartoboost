@@ -893,10 +893,8 @@ fn forward_hetero(
                 let mut value = layer.bias[out];
                 for index in 0..layer.in_dim {
                     value += current[node][index] * layer.self_weight[index * layer.out_dim + out];
-                    for (relation, means_by_relation) in relation_means[node]
-                        .iter()
-                        .enumerate()
-                        .take(relation_count)
+                    for (relation, means_by_relation) in
+                        relation_means[node].iter().enumerate().take(relation_count)
                     {
                         value += means_by_relation[index]
                             * layer.relation_weights[relation][index * layer.out_dim + out];
@@ -1044,10 +1042,8 @@ fn apply_hetero_backward(
                     next_grad[node][index] += layer.self_weight[weight_index] * grad;
                 }
 
-                for (relation, neighbors_for_relation) in neighbors[node]
-                    .iter()
-                    .enumerate()
-                    .take(relation_count)
+                for (relation, neighbors_for_relation) in
+                    neighbors[node].iter().enumerate().take(relation_count)
                 {
                     if neighbors_for_relation.is_empty() {
                         continue;
@@ -1076,8 +1072,7 @@ fn apply_hetero_backward(
             .take(relation_count)
         {
             for (index, weight) in relation_weights.iter_mut().enumerate() {
-                *weight -=
-                    learning_rate * (relation_grad_row[index] + l2_regularization * *weight);
+                *weight -= learning_rate * (relation_grad_row[index] + l2_regularization * *weight);
             }
         }
         for (index, value) in layer.bias.iter_mut().enumerate() {

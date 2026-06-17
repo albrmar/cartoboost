@@ -2,19 +2,22 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any, Mapping, Sequence
+from typing import Any
 
 from .._native import (
     GraphSageEncoder as _NativeGraphSageEncoder,
+)
+from .._native import (
     HeteroGraphSageEncoder as _NativeHeteroGraphSageEncoder,
 )
 from .builder import (
     HeterogeneousGraph,
     HomogeneousGraph,
     ensure_node_features_shape,
-    normalize_homogeneous_graph,
     normalize_heterogeneous_graph,
+    normalize_homogeneous_graph,
 )
 from .features import GraphFeatureBundle
 
@@ -108,7 +111,7 @@ class GraphSageFeatureEncoder:
         self._encoder.save_artifact_json(path)
 
     @classmethod
-    def from_config(cls, config: Mapping[str, Any]) -> "GraphSageFeatureEncoder":
+    def from_config(cls, config: Mapping[str, Any]) -> GraphSageFeatureEncoder:
         input_dim = _coerce_dim(int(config["input_dim"]), "input_dim")
         hidden_dims = _coerce_hidden_dims(config.get("hidden_dims", [16]))
         return cls(
@@ -198,9 +201,7 @@ class HeteroGraphSageFeatureEncoder:
         return GraphFeatureBundle(
             embeddings=emb,
             node_ids=list(graph.node_ids),
-            feature_names=[
-                f"graph_sage_hetero_{index:02d}" for index in range(len(emb[0]))
-            ],
+            feature_names=[f"graph_sage_hetero_{index:02d}" for index in range(len(emb[0]))],
         )
 
     def encode(
@@ -214,9 +215,7 @@ class HeteroGraphSageFeatureEncoder:
         return GraphFeatureBundle(
             embeddings=emb,
             node_ids=list(self.graph.node_ids),
-            feature_names=[
-                f"graph_sage_hetero_{index:02d}" for index in range(len(emb[0]))
-            ],
+            feature_names=[f"graph_sage_hetero_{index:02d}" for index in range(len(emb[0]))],
         )
 
     def loss_curve(self) -> list[float]:
@@ -226,7 +225,7 @@ class HeteroGraphSageFeatureEncoder:
     def from_config(
         cls,
         config: Mapping[str, Any],
-    ) -> "HeteroGraphSageFeatureEncoder":
+    ) -> HeteroGraphSageFeatureEncoder:
         input_dim = _coerce_dim(int(config["input_dim"]), "input_dim")
         hidden_dims = _coerce_hidden_dims(config.get("hidden_dims", [16]))
         return cls(
@@ -261,7 +260,7 @@ class GraphFeatureTransformer:
         self._target_input_dim: int | None = None
 
     @classmethod
-    def from_config(cls, cfg: Mapping[str, Any]) -> "GraphFeatureTransformer":
+    def from_config(cls, cfg: Mapping[str, Any]) -> GraphFeatureTransformer:
         if not isinstance(cfg, Mapping):
             raise TypeError("graph config must be a mapping")
         graph_cfg = cfg.get("graph_embeddings")
