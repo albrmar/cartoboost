@@ -6,6 +6,7 @@ use crate::tree::{
     TrainingConfigMetadata, TreeBuilder, MODEL_ARTIFACT_VERSION,
 };
 use crate::{CartoBoostError, Result};
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
 
@@ -138,18 +139,20 @@ impl Booster {
 
         for _ in 0..self.config.n_estimators {
             profile::timed(profile::RESIDUAL, || {
-                for ((residual, target), prediction) in
-                    residuals.iter_mut().zip(training_targets).zip(&pred)
-                {
-                    *residual = match self.config.loss {
-                        LossConfig::L2 | LossConfig::LogL2(_) => target - prediction,
-                        LossConfig::L1 => target - prediction,
-                        LossConfig::Huber(config) => {
-                            (target - prediction).clamp(-config.delta, config.delta)
-                        }
-                        LossConfig::Quantile(_) => target - prediction,
-                    };
-                }
+                residuals
+                    .par_iter_mut()
+                    .zip(training_targets.par_iter())
+                    .zip(pred.par_iter())
+                    .for_each(|((residual, target), prediction)| {
+                        *residual = match self.config.loss {
+                            LossConfig::L2 | LossConfig::LogL2(_) => target - prediction,
+                            LossConfig::L1 => target - prediction,
+                            LossConfig::Huber(config) => {
+                                (target - prediction).clamp(-config.delta, config.delta)
+                            }
+                            LossConfig::Quantile(_) => target - prediction,
+                        };
+                    });
             });
             let use_leaf_updates = !self.config.fuzzy
                 && matches!(self.config.leaf_predictor, LeafPredictorKind::Constant);
@@ -161,9 +164,11 @@ impl Booster {
                     builder.fit_with_leaf_updates_in_context(x, &residuals, &weights, &fit_context)
                 });
                 profile::timed(profile::PRED_UPDATE, || {
-                    for (prediction, update) in pred.iter_mut().zip(updates) {
-                        *prediction += self.config.learning_rate * update;
-                    }
+                    pred.par_iter_mut()
+                        .zip(updates.par_iter())
+                        .for_each(|(prediction, update)| {
+                            *prediction += self.config.learning_rate * update;
+                        });
                 });
                 tree
             } else {
@@ -171,9 +176,12 @@ impl Booster {
                     builder.fit_in_context(x, &residuals, &weights, &fit_context)
                 });
                 profile::timed(profile::PRED_UPDATE, || {
-                    for (row, prediction) in pred.iter_mut().enumerate() {
-                        *prediction += self.config.learning_rate * tree.predict_dataset_row(x, row);
-                    }
+                    pred.par_iter_mut()
+                        .enumerate()
+                        .for_each(|(row, prediction)| {
+                            *prediction +=
+                                self.config.learning_rate * tree.predict_dataset_row(x, row);
+                        });
                 });
                 tree
             };

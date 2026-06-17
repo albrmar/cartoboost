@@ -104,5 +104,5 @@ Train rows: `1906`; test rows: `494`.
 
 - The normal workload checks dense numeric behavior without ID or graph augmentation.
 - The neural workload includes repeated IDs and a group holdout split, so `cartoboost_neural` should be read as an embedding augmentation check rather than a replacement for external neural networks.
-- The graph workload fits GraphSAGE features from train topology and node features, then trains CartoBoost on augmented source-target rows.
+- The graph workload can benchmark node2vec, GraphSAGE, HeteroGraphSAGE, and HinSAGE feature augmentation from train topology before fitting CartoBoost on source-target rows.
 - XGBoost and LightGBM rows are skipped when their optional benchmark dependencies are not installed.

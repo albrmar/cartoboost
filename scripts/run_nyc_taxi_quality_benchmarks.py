@@ -28,6 +28,7 @@ DEFAULT_OUTPUT_DIR = ROOT / "docs" / "assets" / "nyc_taxi_benchmarks"
 TLC_TRIP_RECORD_PAGE = "https://www.nyc.gov/site/tlc/about/tlc-trip-record-data.page"
 TLC_PARQUET_BASE = "https://d37ci6vzurychx.cloudfront.net/trip-data"
 TAXI_ZONE_LOOKUP_URL = "https://d37ci6vzurychx.cloudfront.net/misc/taxi_zone_lookup.csv"
+PLOT_SCATTER_MAX_POINTS = 50_000
 
 ROW_FEATURES = [
     "trip_distance",
@@ -93,9 +94,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--no-download", action="store_true")
     parser.add_argument(
         "--models",
-        default="cartoboost,cartoboost_reference,lightgbm,xgboost,mean",
+        default=(
+            "cartoboost,cartoboost_reference,cartoboost_neural,"
+            "cartoboost_graph,lightgbm,xgboost,mean"
+        ),
         help=(
-            "Comma-separated models from: cartoboost, cartoboost_reference, lightgbm, xgboost, mean"
+            "Comma-separated models from: cartoboost, cartoboost_reference, "
+            "cartoboost_neural, cartoboost_graph, lightgbm, xgboost, mean"
         ),
     )
     parser.add_argument("--n-estimators", type=int, default=100)
@@ -171,6 +176,30 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--xgboost-subsample", type=float, default=1.0)
     parser.add_argument("--xgboost-colsample-bytree", type=float, default=1.0)
+    parser.add_argument(
+        "--neural-dim",
+        type=int,
+        default=12,
+        help="Embedding dimension for the CartoBoost neural benchmark branch.",
+    )
+    parser.add_argument(
+        "--graph-dim",
+        type=int,
+        default=8,
+        help="Graph embedding dimension for the CartoBoost graph benchmark branch.",
+    )
+    parser.add_argument(
+        "--graph-epochs",
+        type=int,
+        default=8,
+        help="Graph encoder training epochs for the CartoBoost graph benchmark branch.",
+    )
+    parser.add_argument(
+        "--graph-family",
+        choices=["node2vec", "graphsage", "hetero_graphsage", "hinsage"],
+        default="graphsage",
+        help="Graph encoder family for cartoboost_graph.",
+    )
     parser.add_argument(
         "--zone-treatment",
         default="target_mean",
@@ -654,6 +683,160 @@ def smoothed_target_mean_column(
     return train_encoded, test_encoded
 
 
+def task_zone_column(task: BenchmarkTask, name: str) -> np.ndarray | None:
+    if name not in task.feature_names:
+        return None
+    index = task.feature_names.index(name)
+    return task.features[:, index].astype(np.int64)
+
+
+def task_embedding_ids(task: BenchmarkTask) -> np.ndarray:
+    pickup = task_zone_column(task, "PULocationID")
+    if pickup is None:
+        return np.arange(len(task.target), dtype=np.uint64)
+    dropoff = task_zone_column(task, "DOLocationID")
+    if dropoff is None:
+        return pickup.astype(np.uint64)
+    return (pickup.astype(np.uint64) * np.uint64(1_000) + dropoff.astype(np.uint64)).astype(
+        np.uint64
+    )
+
+
+def graph_augmented_split_features(
+    task: BenchmarkTask,
+    train_indices: np.ndarray,
+    test_indices: np.ndarray,
+    train_x: np.ndarray,
+    test_x: np.ndarray,
+    args: argparse.Namespace,
+) -> tuple[np.ndarray, np.ndarray, dict[str, Any]]:
+    pickup = task_zone_column(task, "PULocationID")
+    if pickup is None:
+        raise ValueError("graph benchmark requires PULocationID")
+    dropoff = task_zone_column(task, "DOLocationID")
+    if dropoff is None:
+        dropoff = pickup
+
+    max_zone = int(max(np.max(pickup), np.max(dropoff), 1))
+    node_count = max_zone + 1
+    train_pickup = pickup[train_indices]
+    train_dropoff = dropoff[train_indices]
+    edges = sorted(
+        {
+            (int(source), int(target))
+            for source, target in zip(train_pickup, train_dropoff, strict=True)
+        }
+    )
+    if not edges:
+        edges = [(int(zone), int(zone)) for zone in np.unique(train_pickup)]
+
+    node_features = np.zeros((node_count, 4), dtype=np.float64)
+    node_features[:, 0] = np.arange(node_count, dtype=np.float64) / float(max(node_count - 1, 1))
+    pickup_counts = np.bincount(train_pickup, minlength=node_count).astype(np.float64)
+    dropoff_counts = np.bincount(train_dropoff, minlength=node_count).astype(np.float64)
+    node_features[:, 1] = np.log1p(pickup_counts)
+    node_features[:, 2] = np.log1p(dropoff_counts)
+    node_features[:, 3] = (pickup_counts + dropoff_counts > 0).astype(np.float64)
+
+    from cartoboost.graph import (
+        DirectionalFeature,
+        DirectionalityConfig,
+        GraphEmbeddingsConfig,
+        GraphEncoderConfig,
+        GraphEncoderFamily,
+        GraphFeatureTransformer,
+    )
+
+    if args.graph_family == "node2vec":
+        encoder = GraphEncoderConfig(
+            family=GraphEncoderFamily.NODE2VEC,
+            dim=int(args.graph_dim),
+            walk_length=16,
+            walks_per_node=4,
+            window_size=4,
+            epochs=int(args.graph_epochs),
+            negative_samples=3,
+            seed=int(args.seed),
+        )
+        fit_edges: list[tuple[int, int]] | list[tuple[int, int, int]] = edges
+        fit_kwargs: dict[str, Any] = {}
+    elif args.graph_family == "hetero_graphsage":
+        encoder = GraphEncoderConfig(
+            family=GraphEncoderFamily.HINSAGE,
+            hetero=True,
+            input_dim=int(node_features.shape[1]),
+            hidden_dims=(int(args.graph_dim),),
+            epochs=int(args.graph_epochs),
+            seed=int(args.seed),
+        )
+        fit_edges = [(source, target, 0) for source, target in edges]
+        fit_kwargs = {"relation_ids": [0]}
+    elif args.graph_family == "hinsage":
+        encoder = GraphEncoderConfig(
+            family=GraphEncoderFamily.HINSAGE,
+            input_dim=int(node_features.shape[1]),
+            node_type_count=1,
+            edge_type_triples=((0, 0, 0),),
+            hidden_dims=(int(args.graph_dim),),
+            epochs=int(args.graph_epochs),
+            seed=int(args.seed),
+            neighbor_samples=(8,),
+        )
+        fit_edges = [(source, target, 0) for source, target in edges]
+        fit_kwargs = {"node_types": [0] * node_count}
+    else:
+        encoder = GraphEncoderConfig(
+            family=GraphEncoderFamily.GRAPHSAGE,
+            input_dim=int(node_features.shape[1]),
+            hidden_dims=(int(args.graph_dim),),
+            epochs=int(args.graph_epochs),
+            seed=int(args.seed),
+        )
+        fit_edges = edges
+        fit_kwargs = {}
+
+    transformer = GraphFeatureTransformer.from_config(
+        GraphEmbeddingsConfig(
+            encoder=encoder,
+            directionality=DirectionalityConfig(
+                compute_asymmetry_features=True,
+                directional_feature_prefix="graph",
+                directional_features=(
+                    DirectionalFeature.SOURCE_TARGET_AFFINITY,
+                    DirectionalFeature.FLOW_IMBALANCE_RATIO,
+                ),
+            ),
+        )
+    )
+    bundle = transformer.fit_transform(
+        node_features=node_features,
+        edges=fit_edges,
+        node_count=node_count,
+        directed=True,
+        **fit_kwargs,
+    )
+    embeddings = np.asarray(bundle.embeddings, dtype=np.float64)
+    source_embeddings = embeddings[pickup]
+    target_embeddings = embeddings[dropoff]
+    graph_features = (
+        source_embeddings
+        if task_zone_column(task, "DOLocationID") is None
+        else np.hstack([source_embeddings, target_embeddings])
+    )
+    return (
+        np.hstack([train_x, graph_features[train_indices]]),
+        np.hstack([test_x, graph_features[test_indices]]),
+        {
+            "graph_dim": int(args.graph_dim),
+            "graph_epochs": int(args.graph_epochs),
+            "graph_family": str(args.graph_family),
+            "graph_edges": int(len(edges)),
+            "graph_node_count": int(node_count),
+            "graph_feature_count": int(graph_features.shape[1]),
+        },
+    )
+
+
 def fit_predict_model(
     *,
     model_name: str,
@@ -805,6 +988,126 @@ def fit_predict_model(
             "predictions": np.asarray(prediction, dtype=float),
         }
 
+    if model_name == "cartoboost_neural":
+        try:
+            from cartoboost import NeuralEmbeddingRegressor
+        except ImportError as exc:
+            return skipped(f"cartoboost neural import failed: {exc}")
+        ids = task_embedding_ids(task)
+        model = NeuralEmbeddingRegressor(
+            dim=args.neural_dim,
+            drop_id_column=False,
+            id_column=None,
+            random_state=args.seed,
+            base_model_kwargs={
+                "n_estimators": max(10, args.cartoboost_n_estimators // 2),
+                "learning_rate": args.learning_rate,
+                "max_depth": args.cartoboost_max_depth,
+                "min_samples_leaf": args.cartoboost_min_samples_leaf,
+                "min_gain": 0.0,
+                "splitters": ["axis_histogram:256"],
+                "n_threads": args.n_threads or None,
+            },
+            final_model_kwargs={
+                "n_estimators": args.cartoboost_n_estimators,
+                "learning_rate": args.learning_rate,
+                "max_depth": args.cartoboost_max_depth,
+                "min_samples_leaf": args.cartoboost_min_samples_leaf,
+                "min_gain": 0.0,
+                "splitters": ["axis_histogram:256"],
+                "n_threads": args.n_threads or None,
+            },
+        )
+        try:
+            train_started = time.perf_counter()
+            model.fit(train_x, train_y, ids=ids[train_indices])
+            train_seconds = time.perf_counter() - train_started
+            _ = model.predict(
+                test_x[: min(len(test_indices), 16)],
+                ids=ids[test_indices[: min(len(test_indices), 16)]],
+            )
+            predict_started = time.perf_counter()
+            prediction = model.predict(test_x, ids=ids[test_indices])
+            predict_seconds = time.perf_counter() - predict_started
+        except Exception as exc:  # noqa: BLE001
+            return skipped(f"cartoboost neural run failed: {exc}")
+        return {
+            "status": "ok",
+            "metrics": metric_summary(test_y, prediction),
+            "timing": timing_summary(
+                train_seconds=train_seconds,
+                predict_seconds=predict_seconds,
+                prediction_rows=len(test_indices),
+            ),
+            "config": {
+                "n_estimators": int(args.cartoboost_n_estimators),
+                "learning_rate": float(args.learning_rate),
+                "max_depth": int(args.cartoboost_max_depth),
+                "min_samples_leaf": int(args.cartoboost_min_samples_leaf),
+                "neural_dim": int(args.neural_dim),
+                "id_source": "PULocationID_DOLocationID"
+                if "DOLocationID" in task.feature_names
+                else "PULocationID",
+                "zone_treatment": args.zone_treatment,
+                "feature_count": int(train_x.shape[1] + args.neural_dim),
+                "fit_stages_ms": model.timings,
+            },
+            "predictions": np.asarray(prediction, dtype=float),
+        }
+
+    if model_name == "cartoboost_graph":
+        try:
+            from cartoboost import CartoBoostRegressor
+        except ImportError as exc:
+            return skipped(f"cartoboost import failed: {exc}")
+        try:
+            train_started = time.perf_counter()
+            train_augmented, test_augmented, graph_config = graph_augmented_split_features(
+                task,
+                train_indices,
+                test_indices,
+                train_x,
+                test_x,
+                args,
+            )
+            model = CartoBoostRegressor(
+                n_estimators=args.cartoboost_n_estimators,
+                learning_rate=args.learning_rate,
+                max_depth=args.cartoboost_max_depth,
+                min_samples_leaf=args.cartoboost_min_samples_leaf,
+                min_gain=0.0,
+                splitters=["axis_histogram:256"],
+                n_threads=args.n_threads or None,
+            )
+            model.fit(train_augmented, train_y)
+            train_seconds = time.perf_counter() - train_started
+            _ = model.predict(test_augmented[: min(len(test_indices), 16)])
+            predict_started = time.perf_counter()
+            prediction = model.predict(test_augmented)
+            predict_seconds = time.perf_counter() - predict_started
+        except Exception as exc:  # noqa: BLE001
+            return skipped(f"cartoboost graph run failed: {exc}")
+        return {
+            "status": "ok",
+            "metrics": metric_summary(test_y, prediction),
+            "timing": timing_summary(
+                train_seconds=train_seconds,
+                predict_seconds=predict_seconds,
+                prediction_rows=len(test_indices),
+            ),
+            "backend": getattr(model, "_backend_used", None),
+            "config": {
+                "n_estimators": int(args.cartoboost_n_estimators),
+                "learning_rate": float(args.learning_rate),
+                "max_depth": int(args.cartoboost_max_depth),
+                "min_samples_leaf": int(args.cartoboost_min_samples_leaf),
+                "zone_treatment": args.zone_treatment,
+                "feature_count": int(train_augmented.shape[1]),
+                **graph_config,
+            },
+            "predictions": np.asarray(prediction, dtype=float),
+        }
+
     if model_name == "lightgbm":
         lightgbm = optional_import("lightgbm")
         if lightgbm is None:
@@ -929,7 +1232,15 @@ def skipped(reason: str) -> dict[str, Any]:
 
 def run_benchmarks(tasks: list[BenchmarkTask], args: argparse.Namespace) -> dict[str, Any]:
     models = [part.strip() for part in args.models.split(",") if part.strip()]
-    valid_models = {"cartoboost", "cartoboost_reference", "lightgbm", "xgboost", "mean"}
+    valid_models = {
+        "cartoboost",
+        "cartoboost_reference",
+        "cartoboost_neural",
+        "cartoboost_graph",
+        "lightgbm",
+        "xgboost",
+        "mean",
+    }
     unknown = sorted(set(models) - valid_models)
     if unknown:
         raise ValueError(f"unknown models: {', '.join(unknown)}")
@@ -944,6 +1255,10 @@ def run_benchmarks(tasks: list[BenchmarkTask], args: argparse.Namespace) -> dict
             "learning_rate": float(args.learning_rate),
             "baseline_max_depth": int(args.max_depth),
             "cartoboost_max_depth": int(args.cartoboost_max_depth),
+            "neural_dim": int(args.neural_dim),
+            "graph_dim": int(args.graph_dim),
+            "graph_epochs": int(args.graph_epochs),
+            "graph_family": str(args.graph_family),
             "zone_treatment": args.zone_treatment,
             "zone_target_smoothing": float(args.zone_target_smoothing),
         },
@@ -969,6 +1284,11 @@ def run_benchmarks(tasks: list[BenchmarkTask], args: argparse.Namespace) -> dict
                 "models": {},
             }
             for model_name in models:
+                print(
+                    f"running task={task.name} split={split_mode} model={model_name} "
+                    f"train_rows={len(train_indices)} test_rows={len(test_indices)}",
+                    flush=True,
+                )
                 result = fit_predict_model(
                     model_name=model_name,
                     task=task,
@@ -1034,10 +1354,18 @@ def write_prediction_plots(
     plot_dir = output_dir / "plots"
     plot_dir.mkdir(parents=True, exist_ok=True)
 
+    plot_actual = actual
+    plot_predicted = predicted
+    if actual.size > PLOT_SCATTER_MAX_POINTS:
+        rng = np.random.default_rng(0)
+        plot_indices = rng.choice(actual.size, size=PLOT_SCATTER_MAX_POINTS, replace=False)
+        plot_actual = actual[plot_indices]
+        plot_predicted = predicted[plot_indices]
+
     fig, axis = plt.subplots(figsize=(5.5, 4.5))
-    axis.scatter(actual, predicted, s=8, alpha=0.35)
-    low = float(min(np.min(actual), np.min(predicted)))
-    high = float(max(np.max(actual), np.max(predicted)))
+    axis.scatter(plot_actual, plot_predicted, s=8, alpha=0.35)
+    low = float(min(np.min(plot_actual), np.min(plot_predicted)))
+    high = float(max(np.max(plot_actual), np.max(plot_predicted)))
     axis.plot([low, high], [low, high], color="#303030", linewidth=1.0)
     axis.set_xlabel("actual target")
     axis.set_ylabel("predicted target")

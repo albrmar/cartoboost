@@ -30,7 +30,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--sample-size", type=int, default=25_000)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--tasks", default="")
-    parser.add_argument("--models", default="cartoboost,cartoboost_reference,lightgbm,xgboost,mean")
+    parser.add_argument(
+        "--models",
+        default=(
+            "cartoboost,cartoboost_reference,cartoboost_neural,"
+            "cartoboost_graph,lightgbm,xgboost,mean"
+        ),
+    )
     parser.add_argument("--n-estimators", type=int, default=100)
     parser.add_argument("--cartoboost-n-estimators", type=int, default=100)
     parser.add_argument("--learning-rate", type=float, default=0.08)

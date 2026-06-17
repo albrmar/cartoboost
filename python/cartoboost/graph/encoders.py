@@ -18,6 +18,9 @@ from .._native import (
     HinSageEncoder as _NativeHinSageEncoder,
 )
 from .._native import (
+    Node2VecEncoder as _NativeNode2VecEncoder,
+)
+from .._native import (
     graph_compute_directional_features as _native_compute_directional_features,
 )
 from .builder import (
@@ -28,8 +31,26 @@ from .builder import (
     normalize_heterogeneous_graph,
     normalize_homogeneous_graph,
 )
+from .config import GraphEmbeddingsConfig, GraphFeatureConfig
 from .features import GraphFeatureBundle
 from .schema import DirectionalityConfig
+
+
+def _graph_embeddings_mapping(
+    cfg: Mapping[str, Any] | GraphEmbeddingsConfig | GraphFeatureConfig,
+) -> Mapping[str, Any]:
+    if isinstance(cfg, GraphFeatureConfig):
+        return cfg.transformer_config()["graph_embeddings"]
+    if isinstance(cfg, GraphEmbeddingsConfig):
+        return cfg.as_graph_embeddings_dict()["graph_embeddings"]
+    if not isinstance(cfg, Mapping):
+        raise TypeError("graph config must be a mapping or graph config dataclass")
+    graph_cfg = cfg.get("graph_embeddings")
+    if graph_cfg is None:
+        graph_cfg = cfg.get("graph_sage", {})
+    if not isinstance(graph_cfg, Mapping):
+        raise TypeError("graph configuration must be a mapping")
+    return graph_cfg
 
 
 def _compute_homogeneous_directional_features(
@@ -102,10 +123,17 @@ def _expand_pair_node_values(values: list[float] | None) -> list[float] | None:
 
 def _directionality_from_graph_config(
     graph_cfg: Mapping[str, Any],
-    encoder_cfg: Mapping[str, Any],
+    _encoder_cfg: Mapping[str, Any],
 ) -> DirectionalityConfig:
-    raw_directionality = graph_cfg.get("directionality", encoder_cfg.get("directionality", {}))
+    raw_directionality = graph_cfg.get("directionality", {})
     directionality_payload = DirectionalityConfig.from_config(raw_directionality).as_dict()
+    prefix = str(directionality_payload.get("directional_feature_prefix", "graph"))
+    configured_features = directionality_payload.get("directional_features", ())
+    if configured_features:
+        directionality_payload["directional_features"] = [
+            _normalize_directional_feature_name(str(feature), prefix)
+            for feature in configured_features
+        ]
 
     outputs = graph_cfg.get("outputs", {})
     if outputs is not None:
@@ -113,7 +141,6 @@ def _directionality_from_graph_config(
             raise TypeError("outputs block must be a mapping")
         output_features = outputs.get("directional_features", ())
         if output_features:
-            prefix = str(directionality_payload.get("directional_feature_prefix", "graph"))
             directionality_payload["directional_features"] = [
                 _normalize_directional_feature_name(str(feature), prefix)
                 for feature in output_features
@@ -224,7 +251,12 @@ class GraphSageFeatureEncoder:
         self._encoder.save_artifact_json(path)
 
     @classmethod
-    def from_config(cls, config: Mapping[str, Any]) -> GraphSageFeatureEncoder:
+    def from_config(
+        cls,
+        config: Mapping[str, Any] | GraphSageConfig,
+    ) -> GraphSageFeatureEncoder:
+        if isinstance(config, GraphSageConfig):
+            return cls(config)
         input_dim = _coerce_dim(int(config["input_dim"]), "input_dim")
         hidden_dims = _coerce_hidden_dims(config.get("hidden_dims", [16]))
         return cls(
@@ -264,6 +296,123 @@ class HinSageConfig:
     seed: int = 0xA11C_E5A6_5EED_1234
     l2_regularization: float = 1e-5
     neighbor_samples: list[int] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class Node2VecConfig:
+    dim: int = 16
+    walk_length: int = 16
+    walks_per_node: int = 8
+    window_size: int = 5
+    epochs: int = 3
+    learning_rate: float = 0.025
+    min_learning_rate: float = 0.0001
+    negative_samples: int = 5
+    p: float = 1.0
+    q: float = 1.0
+    seed: int = 0xA2B2_C2D2_E2F2_1234
+    l2_regularization: float = 0.0
+    normalize: bool = True
+
+
+class Node2VecFeatureEncoder:
+    """Thin wrapper around the native Rust node2vec encoder."""
+
+    def __init__(self, config: Node2VecConfig) -> None:
+        self.config = config
+        self._encoder = _NativeNode2VecEncoder(
+            dim=config.dim,
+            walk_length=config.walk_length,
+            walks_per_node=config.walks_per_node,
+            window_size=config.window_size,
+            epochs=config.epochs,
+            learning_rate=float(config.learning_rate),
+            min_learning_rate=float(config.min_learning_rate),
+            negative_samples=config.negative_samples,
+            p=float(config.p),
+            q=float(config.q),
+            seed=int(config.seed),
+            l2_regularization=float(config.l2_regularization),
+            normalize=bool(config.normalize),
+        )
+        self.graph: HomogeneousGraph | None = None
+
+    def fit(
+        self,
+        edges: Sequence[tuple[Any, Any]],
+        *,
+        node_ids: Sequence[Any] | None = None,
+        node_count: int | None = None,
+        directed: bool = True,
+        edge_weights: Sequence[float] | None = None,
+    ) -> GraphFeatureBundle:
+        graph = normalize_homogeneous_graph(
+            edges=edges,
+            node_ids=node_ids,
+            node_count=node_count,
+            directed=directed,
+        )
+        weights = _align_edge_values(edge_weights, len(edges), len(graph.edges))
+        emb = self._encoder.fit(
+            graph.node_count,
+            graph.edges,
+            weights,
+        )
+        self.graph = graph
+        return GraphFeatureBundle(
+            embeddings=emb,
+            node_ids=list(graph.node_ids),
+            feature_names=[f"node2vec_{index:02d}" for index in range(self.config.dim)],
+            provenance={
+                "encoder": "node2vec",
+                "directed": directed,
+                "weighted": edge_weights is not None,
+                "p": float(self.config.p),
+                "q": float(self.config.q),
+                "walk_length": int(self.config.walk_length),
+                "walks_per_node": int(self.config.walks_per_node),
+                "window_size": int(self.config.window_size),
+                "epochs": int(self.config.epochs),
+                "native": "rust",
+            },
+        )
+
+    def encode(self) -> GraphFeatureBundle:
+        if self.graph is None:
+            raise RuntimeError("Node2VecFeatureEncoder must be fitted first")
+        emb = self._encoder.encode()
+        return GraphFeatureBundle(
+            embeddings=emb,
+            node_ids=list(self.graph.node_ids),
+            feature_names=[f"node2vec_{index:02d}" for index in range(self.config.dim)],
+            provenance={"encoder": "node2vec", "native": "rust"},
+        )
+
+    def loss_curve(self) -> list[float]:
+        return self._encoder.loss_curve()
+
+    def save_artifact_json(self, path: str) -> None:
+        self._encoder.save_artifact_json(path)
+
+    @classmethod
+    def from_config(cls, config: Mapping[str, Any]) -> Node2VecFeatureEncoder:
+        return cls(
+            Node2VecConfig(
+                dim=int(config.get("dim", config.get("output_dim", 16))),
+                walk_length=int(config.get("walk_length", 16)),
+                walks_per_node=int(config.get("walks_per_node", 8)),
+                window_size=int(config.get("window_size", 5)),
+                epochs=int(config.get("epochs", 3)),
+                learning_rate=float(config.get("learning_rate", 0.025)),
+                min_learning_rate=float(config.get("min_learning_rate", 0.0001)),
+                negative_samples=int(config.get("negative_samples", 5)),
+                p=float(config.get("p", 1.0)),
+                q=float(config.get("q", 1.0)),
+                seed=int(config.get("seed", 0xA2B2_C2D2_E2F2_1234)),
+                l2_regularization=float(config.get("l2_regularization", 0.0)),
+                normalize=bool(config.get("normalize", True)),
+            )
+        )
 
 
 class HinSageFeatureEncoder:
@@ -341,7 +490,12 @@ class HinSageFeatureEncoder:
         self._encoder.save_artifact_json(path)
 
     @classmethod
-    def from_config(cls, config: Mapping[str, Any]) -> HinSageFeatureEncoder:
+    def from_config(
+        cls,
+        config: Mapping[str, Any] | HinSageConfig,
+    ) -> HinSageFeatureEncoder:
+        if isinstance(config, HinSageConfig):
+            return cls(config)
         input_dim = _coerce_dim(int(config["input_dim"]), "input_dim")
         node_type_count = _coerce_dim(int(config["node_type_count"]), "node_type_count")
         triples = config.get("edge_type_triples")
@@ -465,8 +619,10 @@ class HeteroGraphSageFeatureEncoder:
     @classmethod
     def from_config(
         cls,
-        config: Mapping[str, Any],
+        config: Mapping[str, Any] | HeteroGraphSageConfig,
     ) -> HeteroGraphSageFeatureEncoder:
+        if isinstance(config, HeteroGraphSageConfig):
+            return cls(config)
         input_dim = _coerce_dim(int(config["input_dim"]), "input_dim")
         hidden_dims = _coerce_hidden_dims(config.get("hidden_dims", [16]))
         return cls(
@@ -490,38 +646,43 @@ class GraphFeatureTransformer:
         *,
         use_hetero: bool = False,
         use_hinsage: bool = False,
+        use_node2vec: bool = False,
         sage_kwargs: Mapping[str, Any] | None = None,
         hetero_kwargs: Mapping[str, Any] | None = None,
         hinsage_kwargs: Mapping[str, Any] | None = None,
+        node2vec_kwargs: Mapping[str, Any] | None = None,
         directionality: Mapping[str, Any] | None = None,
     ) -> None:
         self.use_hetero = bool(use_hetero)
         self.use_hinsage = bool(use_hinsage)
+        self.use_node2vec = bool(use_node2vec)
         self.sage_kwargs = dict(sage_kwargs or {})
         self.hetero_kwargs = dict(hetero_kwargs or {})
         self.hinsage_kwargs = dict(hinsage_kwargs or {})
+        self.node2vec_kwargs = dict(node2vec_kwargs or {})
         self.directionality = DirectionalityConfig.from_config(directionality)
         self.encoder: (
-            GraphSageFeatureEncoder | HeteroGraphSageFeatureEncoder | HinSageFeatureEncoder | None
+            GraphSageFeatureEncoder
+            | HeteroGraphSageFeatureEncoder
+            | HinSageFeatureEncoder
+            | Node2VecFeatureEncoder
+            | None
         ) = None
         self._target_input_dim: int | None = None
 
     @classmethod
-    def from_config(cls, cfg: Mapping[str, Any]) -> GraphFeatureTransformer:
-        if not isinstance(cfg, Mapping):
-            raise TypeError("graph config must be a mapping")
-        graph_cfg = cfg.get("graph_embeddings")
-        if graph_cfg is None:
-            graph_cfg = cfg.get("graph_sage", {})
-        if not isinstance(graph_cfg, Mapping):
-            raise TypeError("graph configuration must be a mapping")
+    def from_config(
+        cls,
+        cfg: Mapping[str, Any] | GraphEmbeddingsConfig | GraphFeatureConfig,
+    ) -> GraphFeatureTransformer:
+        graph_cfg = _graph_embeddings_mapping(cfg)
 
         encoder_cfg = graph_cfg.get("encoder", graph_cfg)
         if not isinstance(encoder_cfg, Mapping):
             raise TypeError("graph encoder configuration must be a mapping")
 
         family = str(encoder_cfg.get("family", "graphsage")).lower()
-        if family not in {"graphsage", "hinsage", "sage"}:
+        if family not in {"graphsage", "hinsage", "sage", "node2vec"}:
             raise ValueError(f"unsupported graph family {family!r}")
 
         use_hetero = bool(encoder_cfg.get("hetero", graph_cfg.get("hetero", False)))
@@ -530,6 +691,12 @@ class GraphFeatureTransformer:
             "node_type_count",
             "edge_type_triples",
         }.issubset(encoder_cfg)
+        if family == "node2vec":
+            return cls(
+                use_node2vec=True,
+                node2vec_kwargs=dict(encoder_cfg),
+                directionality=directionality,
+            )
         if use_hinsage:
             return cls(
                 use_hetero=True,
@@ -568,6 +735,17 @@ class GraphFeatureTransformer:
         self._target_input_dim = len(feature_rows[0])
         self._validate_input_dim()
 
+        if self.use_node2vec:
+            return self._fit_node2vec(
+                feature_rows,
+                edges=edges,  # type: ignore[arg-type]
+                node_ids=node_ids,
+                node_count=node_count,
+                directed=directed,
+                directionality=self.directionality,
+                edge_weights=edge_weights,
+                edge_timestamps=edge_timestamps,
+            )
         if self.use_hinsage:
             return self._fit_hinsage(
                 feature_rows,
@@ -602,10 +780,19 @@ class GraphFeatureTransformer:
 
     def _ensure_encoder(
         self,
-    ) -> GraphSageFeatureEncoder | HeteroGraphSageFeatureEncoder | HinSageFeatureEncoder:
+    ) -> (
+        GraphSageFeatureEncoder
+        | HeteroGraphSageFeatureEncoder
+        | HinSageFeatureEncoder
+        | Node2VecFeatureEncoder
+    ):
         if self._target_input_dim is None:
             raise RuntimeError("GraphFeatureTransformer.fit_transform has not been initialized")
         if self.encoder is not None:
+            return self.encoder
+
+        if self.use_node2vec:
+            self.encoder = Node2VecFeatureEncoder.from_config(self.node2vec_kwargs)
             return self.encoder
 
         if self.use_hinsage:
@@ -632,7 +819,9 @@ class GraphFeatureTransformer:
     def _validate_input_dim(self) -> None:
         if self._target_input_dim is None or self._target_input_dim <= 0:
             raise ValueError("node features must have at least one column")
-        if self.use_hinsage:
+        if self.use_node2vec:
+            configured = None
+        elif self.use_hinsage:
             configured = self.hinsage_kwargs.get("input_dim")
         elif self.use_hetero:
             configured = self.hetero_kwargs.get("input_dim")
@@ -647,6 +836,50 @@ class GraphFeatureTransformer:
                 f"configured input_dim {configured_dim} does not match feature width "
                 f"{self._target_input_dim}"
             )
+
+    def _fit_node2vec(
+        self,
+        feature_rows: list[list[float]],
+        edges: Sequence[tuple[Any, Any]],
+        *,
+        node_ids: Sequence[Any] | None = None,
+        node_count: int | None = None,
+        directed: bool = True,
+        directionality: Mapping[str, Any] | None = None,
+        edge_weights: Sequence[float] | None = None,
+        edge_timestamps: Sequence[float] | None = None,
+    ) -> GraphFeatureBundle:
+        encoder = self._ensure_encoder()
+        if not isinstance(encoder, Node2VecFeatureEncoder):
+            raise RuntimeError("configured encoder mismatch; expected node2vec")
+        graph = normalize_homogeneous_graph(
+            edges=edges,
+            node_ids=node_ids,
+            node_count=node_count,
+            directed=directed,
+        )
+        ensure_node_features_shape(feature_rows, graph.node_count)
+        directionality = DirectionalityConfig.from_config(directionality)
+        directionality.validate(directed=directed)
+        bundle = encoder.fit(
+            edges=edges,
+            node_ids=node_ids,
+            node_count=node_count,
+            directed=directed,
+            edge_weights=edge_weights,
+        )
+        directional_features, directional_names = _compute_homogeneous_directional_features(
+            directionality=directionality,
+            node_count=graph.node_count,
+            edges=graph.edges,
+            embeddings=bundle.embeddings,
+            feature_prefix=directionality.directional_feature_prefix,
+            edge_weights=_align_edge_values(edge_weights, len(edges), len(graph.edges)),
+            edge_timestamps=_align_edge_values(edge_timestamps, len(edges), len(graph.edges)),
+        )
+        if directional_features.size == 0:
+            return bundle
+        return bundle.with_directional_features(directional_features, directional_names)
 
     def _fit_homo(
         self,

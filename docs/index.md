@@ -7,30 +7,33 @@
 [![Publish](https://github.com/TheCulliganMan/CartoBoost/actions/workflows/publish-pypi.yml/badge.svg)](https://github.com/TheCulliganMan/CartoBoost/actions/workflows/publish-pypi.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/TheCulliganMan/CartoBoost/blob/main/LICENSE)
 
-CartoBoost is a Python regression package for temporal-spatial problems: demand
-by zone and time, route or lane performance, ETA residuals, local pricing
-effects, and other targets where place, time, and sparse location memberships
-carry signal. It is designed for data scientists who want an estimator workflow
-that feels familiar from scikit-learn, XGBoost, and LightGBM while exposing
-split types that directly model temporal and spatial structure.
+CartoBoost is a Rust-backed Python regression toolkit for temporal, spatial,
+geotemporal, and graph-derived prediction problems. It is built for teams that
+want a familiar estimator workflow while giving the model explicit structure for
+place, time, sparse route membership, source-target directionality, and learned
+graph context.
 
 ## Start Here
 
-- [Installation](installation.md) covers PyPI installs, extras, verification,
-  and source-checkout development.
-- [Getting Started](getting-started.md) trains a first model from an installed
-  package.
-- [Python Estimator](user-guide/python-estimator.md) shows the sklearn-style
-  fit, predict, save, load, and explanation workflow.
-- [Parameters](user-guide/parameters.md) lists the model controls and supported
+- [Installation](installation.md): PyPI installs, optional extras, source
+  development, and troubleshooting.
+- [Getting Started](getting-started.md): train a first model, use neural
+  embeddings, save artifacts, and run local checks.
+- [Python Estimator](user-guide/python-estimator.md): sklearn-style fit,
+  predict, save, load, and explanation workflow.
+- [Parameters](user-guide/parameters.md): estimator controls and supported
   splitters.
-- [Objectives](objectives.md) covers L2 and quantile regression.
-- [Spatial Modeling](spatial_modeling.md) explains coordinate features,
-  route-cell sparse sets, fuzzy routing, and blocked evaluation.
-- [CLI](user-guide/cli.md) covers dense numeric CSV training and prediction.
-- [Benchmarks](benchmarks/index.md) explains reproducible comparison reports.
-- [Neural Embedding Benchmark](benchmarks/neural-embedding-benchmark-latest.md) shows the latest hybrid embedding-vs-baseline MAE comparison.
-- [Neural Hybrid Guide](neural-features.md) explains the Rust-native ID embedding pipeline and how to run it.
+- [Spatial Modeling](spatial_modeling.md): coordinate features, route-cell
+  sparse sets, fuzzy routing, and blocked evaluation.
+- [Graph Features](graph-features.md): Node2Vec, GraphSAGE, HeteroGraphSAGE,
+  HinSAGE, directed source-target features, metapaths, and graph feature
+  bundles.
+- [Neural Features](neural-features.md): Rust-native embedding features and
+  neural-augmented boosted models.
+- [Evaluation Protocol](evaluation_protocol.md): out-of-time, spatial-blocked,
+  grouped, and leakage-aware validation.
+- [Benchmarks](benchmarks/index.md): reproducible comparison reports and
+  acceptance metrics.
 
 ## What CartoBoost Supports
 
@@ -39,17 +42,20 @@ split types that directly model temporal and spatial structure.
 - Axis, histogram-axis, diagonal 2D, Gaussian/radial 2D, periodic, sparse-set,
   and fuzzy split behavior.
 - Dense numeric arrays plus list-valued sparse-set columns in Python.
-- Feature schemas for numeric, periodic, and sparse-set declarations.
-- Versioned JSON model and weights artifacts, with optional ONNX export for a
-  dense axis-tree subset.
-- sklearn-compatible estimator workflows including `Pipeline`, `GridSearchCV`,
-  `get_params`, `set_params`, and `clone`.
+- Feature schemas for numeric, periodic, sparse-set, and contract validation.
+- Versioned JSON model and weights artifacts.
+- Optional SHAP explanations, Optuna tuning, Polars input support, and ONNX
+  export for the supported dense axis-tree subset.
+- Rust-native neural embedding features.
+- Rust-native node2vec, GraphSAGE, heterogeneous GraphSAGE, and typed-schema
+  HinSAGE graph encoders exposed through Python wrappers.
 
 ## Why It Helps Temporal-Spatial Models
 
-Standard tabular boosters are strong baselines, but they usually see location
-and time as ordinary scalar columns unless you pre-engineer richer features.
-CartoBoost adds splitters that match common temporal-spatial patterns:
+Standard tabular boosters are strong baselines, but they usually see location,
+time, and graph relationships as ordinary scalar columns unless you pre-engineer
+the structure. CartoBoost adds primitives that match common temporal-spatial and
+geotemporal patterns:
 
 - Periodic splitters keep wraparound time features, such as hour `23` and hour
   `0`, adjacent.
@@ -60,9 +66,11 @@ CartoBoost adds splitters that match common temporal-spatial patterns:
   one-hot matrix.
 - Fuzzy routing softens hard boundaries where nearby locations or times should
   behave similarly.
+- Directional graph features preserve source-target semantics such as
+  `origin -> destination`, `upstream -> downstream`, and `supply -> demand`.
 
-The PyPI package ships the Rust native extension required for training and
-prediction.
+The PyPI package ships the Rust native extension required for training,
+prediction, neural embeddings, and graph encoders.
 
 ## Install
 
@@ -86,7 +94,7 @@ model = CartoBoostRegressor(
     learning_rate=0.05,
     max_depth=4,
     min_samples_leaf=20,
-    splitters=["axis"],
+    splitters=["axis", "periodic:24"],
 )
 
 model.fit(X_train, y_train)
@@ -94,6 +102,6 @@ predictions = model.predict(X_test)
 model.save("model.cartoboost.json")
 ```
 
-Use CartoBoost like other gradient-boosting regressors: choose features, split the
-data, fit the estimator, compare metrics against baselines, inspect residuals,
-and save the fitted model artifact.
+Use CartoBoost like other gradient-boosting regressors: choose features, split
+the data correctly, fit the estimator, compare against baselines, inspect
+residuals, and save the fitted artifact.

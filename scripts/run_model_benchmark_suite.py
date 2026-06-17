@@ -23,6 +23,13 @@ if str(PYTHON_SOURCE) not in sys.path:
     sys.path.insert(0, str(PYTHON_SOURCE))
 
 DEFAULT_OUTPUT_DIR = ROOT / "docs" / "assets" / "model_benchmarks"
+GRAPH_MODEL_FAMILIES = {
+    "cartoboost_graph": "graphsage",
+    "cartoboost_graph_node2vec": "node2vec",
+    "cartoboost_graph_graphsage": "graphsage",
+    "cartoboost_graph_hetero_graphsage": "hetero_graphsage",
+    "cartoboost_graph_hinsage": "hinsage",
+}
 
 
 @dataclass(frozen=True)
@@ -53,10 +60,15 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--models",
-        default="mean,cartoboost,cartoboost_neural,cartoboost_graph,xgboost,lightgbm",
+        default=(
+            "mean,cartoboost,cartoboost_neural,cartoboost_graph_node2vec,"
+            "cartoboost_graph_graphsage,cartoboost_graph_hetero_graphsage,"
+            "cartoboost_graph_hinsage,xgboost,lightgbm"
+        ),
         help=(
             "Comma-separated models from: mean, cartoboost, cartoboost_neural, "
-            "cartoboost_graph, xgboost, lightgbm"
+            "cartoboost_graph, cartoboost_graph_node2vec, cartoboost_graph_graphsage, "
+            "cartoboost_graph_hetero_graphsage, cartoboost_graph_hinsage, xgboost, lightgbm"
         ),
     )
     parser.add_argument("--n-estimators", type=int, default=80)
@@ -348,6 +360,7 @@ def graph_augmented_features(
     workload: Workload,
     train_idx: np.ndarray,
     args: argparse.Namespace,
+    graph_family: str,
 ) -> np.ndarray:
     if (
         workload.graph_source is None
@@ -363,32 +376,84 @@ def graph_augmented_features(
         for index in train_idx
     }
     train_edges = sorted(train_pairs) or workload.graph_edges
+    from cartoboost.graph import (
+        DirectionalFeature,
+        DirectionalityConfig,
+        GraphEmbeddingsConfig,
+        GraphEncoderConfig,
+        GraphEncoderFamily,
+    )
+
+    node_count = int(workload.graph_node_features.shape[0])
+    if graph_family == "node2vec":
+        encoder = GraphEncoderConfig(
+            family=GraphEncoderFamily.NODE2VEC,
+            dim=int(args.graph_dim),
+            walk_length=16,
+            walks_per_node=4,
+            window_size=4,
+            epochs=int(args.graph_epochs),
+            negative_samples=3,
+            seed=int(args.seed),
+        )
+        fit_edges: list[tuple[int, int]] | list[tuple[int, int, int]] = train_edges
+        fit_kwargs: dict[str, Any] = {}
+    elif graph_family == "hetero_graphsage":
+        encoder = GraphEncoderConfig(
+            family=GraphEncoderFamily.HINSAGE,
+            hetero=True,
+            input_dim=int(workload.graph_node_features.shape[1]),
+            hidden_dims=(int(args.graph_dim),),
+            epochs=int(args.graph_epochs),
+            seed=int(args.seed),
+        )
+        fit_edges = [(source, target, 0) for source, target in train_edges]
+        fit_kwargs = {"relation_ids": [0]}
+    elif graph_family == "hinsage":
+        encoder = GraphEncoderConfig(
+            family=GraphEncoderFamily.HINSAGE,
+            input_dim=int(workload.graph_node_features.shape[1]),
+            node_type_count=1,
+            edge_type_triples=((0, 0, 0),),
+            hidden_dims=(int(args.graph_dim),),
+            epochs=int(args.graph_epochs),
+            seed=int(args.seed),
+            neighbor_samples=(8,),
+        )
+        fit_edges = [(source, target, 0) for source, target in train_edges]
+        fit_kwargs = {"node_types": [0] * node_count}
+    elif graph_family == "graphsage":
+        encoder = GraphEncoderConfig(
+            family=GraphEncoderFamily.GRAPHSAGE,
+            input_dim=int(workload.graph_node_features.shape[1]),
+            hidden_dims=(int(args.graph_dim),),
+            epochs=int(args.graph_epochs),
+            seed=int(args.seed),
+        )
+        fit_edges = train_edges
+        fit_kwargs = {}
+    else:
+        raise ValueError(f"unsupported graph family {graph_family!r}")
+
     transformer = GraphFeatureTransformer.from_config(
-        {
-            "graph_embeddings": {
-                "encoder": {
-                    "family": "graphsage",
-                    "input_dim": int(workload.graph_node_features.shape[1]),
-                    "hidden_dims": [int(args.graph_dim)],
-                    "epochs": int(args.graph_epochs),
-                    "seed": int(args.seed),
-                },
-                "directionality": {
-                    "compute_asymmetry_features": True,
-                    "directional_feature_prefix": "graph",
-                    "directional_features": [
-                        "graph_source_target_affinity",
-                        "graph_flow_imbalance_ratio",
-                    ],
-                },
-            },
-        }
+        GraphEmbeddingsConfig(
+            encoder=encoder,
+            directionality=DirectionalityConfig(
+                compute_asymmetry_features=True,
+                directional_feature_prefix="graph",
+                directional_features=(
+                    DirectionalFeature.SOURCE_TARGET_AFFINITY,
+                    DirectionalFeature.FLOW_IMBALANCE_RATIO,
+                ),
+            ),
+        )
     )
     bundle = transformer.fit_transform(
         node_features=workload.graph_node_features,
-        edges=train_edges,
-        node_count=workload.graph_node_features.shape[0],
+        edges=fit_edges,
+        node_count=node_count,
         directed=True,
+        **fit_kwargs,
     )
     node_embeddings = bundle.embeddings.astype(np.float64)
     source_emb = node_embeddings[workload.graph_source]
@@ -401,15 +466,22 @@ def run_graph(
     train_idx: np.ndarray,
     test_idx: np.ndarray,
     args: argparse.Namespace,
+    graph_family: str,
 ) -> tuple[np.ndarray, dict[str, float], dict[str, Any]]:
-    augmented = graph_augmented_features(workload, train_idx, args)
+    augmented = graph_augmented_features(workload, train_idx, args, graph_family)
     prediction, timing, config = run_cartoboost(
         augmented[train_idx],
         workload.target[train_idx],
         augmented[test_idx],
         args,
     )
-    config.update({"graph_dim": int(args.graph_dim), "graph_epochs": int(args.graph_epochs)})
+    config.update(
+        {
+            "graph_family": graph_family,
+            "graph_dim": int(args.graph_dim),
+            "graph_epochs": int(args.graph_epochs),
+        }
+    )
     return prediction, timing, config
 
 
@@ -487,10 +559,16 @@ def run_one_model(
             if workload.embedding_ids is None:
                 return {"status": "skipped", "reason": "workload has no embedding ids"}
             prediction, timing, config = run_neural(workload, train_idx, test_idx, args)
-        elif model_name == "cartoboost_graph":
+        elif model_name in GRAPH_MODEL_FAMILIES:
             if workload.graph_edges is None:
                 return {"status": "skipped", "reason": "workload has no graph topology"}
-            prediction, timing, config = run_graph(workload, train_idx, test_idx, args)
+            prediction, timing, config = run_graph(
+                workload,
+                train_idx,
+                test_idx,
+                args,
+                GRAPH_MODEL_FAMILIES[model_name],
+            )
         elif model_name == "xgboost":
             prediction, timing, config = run_xgboost(train_x, train_y, test_x, args)
         elif model_name == "lightgbm":
@@ -510,7 +588,14 @@ def run_one_model(
 
 def run_suite(workloads: list[Workload], args: argparse.Namespace) -> dict[str, Any]:
     models = [part.strip() for part in args.models.split(",") if part.strip()]
-    valid = {"mean", "cartoboost", "cartoboost_neural", "cartoboost_graph", "xgboost", "lightgbm"}
+    valid = {
+        "mean",
+        "cartoboost",
+        "cartoboost_neural",
+        "xgboost",
+        "lightgbm",
+        *GRAPH_MODEL_FAMILIES,
+    }
     unknown = sorted(set(models) - valid)
     if unknown:
         raise ValueError(f"unknown models: {', '.join(unknown)}")
@@ -528,6 +613,7 @@ def run_suite(workloads: list[Workload], args: argparse.Namespace) -> dict[str, 
             "neural_dim": int(args.neural_dim),
             "graph_dim": int(args.graph_dim),
             "graph_epochs": int(args.graph_epochs),
+            "graph_model_families": dict(GRAPH_MODEL_FAMILIES),
         },
         "workloads": {},
     }
@@ -648,8 +734,9 @@ def write_markdown(payload: dict[str, Any], output_path: Path) -> None:
                 "than a replacement for external neural networks."
             ),
             (
-                "- The graph workload fits GraphSAGE features from train topology and node "
-                "features, then trains CartoBoost on augmented source-target rows."
+                "- The graph workload benchmarks node2vec, GraphSAGE, HeteroGraphSAGE, and "
+                "HinSAGE feature augmentation from train topology before fitting CartoBoost "
+                "on augmented source-target rows."
             ),
             (
                 "- XGBoost and LightGBM rows are skipped when their optional benchmark "

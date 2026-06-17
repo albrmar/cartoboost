@@ -6,6 +6,7 @@ use crate::loss::{
 };
 use crate::predictors::LinearLeafPredictor;
 use crate::profile;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::time::Instant;
@@ -121,6 +122,7 @@ impl FitContext {
         });
         let sorted_dense_rows = if needs_exact_axis_order {
             (0..x.n_cols())
+                .into_par_iter()
                 .map(|feature| {
                     let mut rows = (0..x.n_rows())
                         .filter(|&row| x.get(row, feature).is_finite())
@@ -139,20 +141,23 @@ impl FitContext {
         let histogram_features: Vec<Option<HistogramFeature>> = histogram_bins
             .map(|bins| {
                 (0..x.n_cols())
+                    .into_par_iter()
                     .map(|feature| prebinned_histogram_feature(x, feature, bins))
                     .collect()
             })
             .unwrap_or_default();
         let histogram_row_bins = if histogram_bins.is_some() {
             let mut row_bins = vec![MISSING_BIN; x.n_rows() * x.n_cols()];
-            for (feature, histogram_feature) in histogram_features.iter().enumerate() {
-                let Some(histogram_feature) = histogram_feature else {
-                    continue;
-                };
-                for row in 0..x.n_rows() {
-                    row_bins[row * x.n_cols() + feature] = histogram_feature.bins[row];
-                }
-            }
+            row_bins
+                .par_chunks_mut(x.n_cols())
+                .enumerate()
+                .for_each(|(row, row_bins)| {
+                    for (feature, histogram_feature) in histogram_features.iter().enumerate() {
+                        if let Some(histogram_feature) = histogram_feature {
+                            row_bins[feature] = histogram_feature.bins[row];
+                        }
+                    }
+                });
             row_bins
         } else {
             Vec::new()
@@ -456,32 +461,40 @@ impl TreeBuilder {
                 right_upper_bound,
             );
         } else {
-            left_node = self.build_node_inner(
-                x,
-                target,
-                left_weight_values,
-                &left,
-                depth + 1,
-                context,
-                None,
-                left_histogram_stats.as_deref(),
-                left_node_stats,
-                left_lower_bound,
-                left_upper_bound,
+            let (built_left, built_right) = rayon::join(
+                || {
+                    self.build_node_inner(
+                        x,
+                        target,
+                        left_weight_values,
+                        &left,
+                        depth + 1,
+                        context,
+                        None,
+                        left_histogram_stats.as_deref(),
+                        left_node_stats,
+                        left_lower_bound,
+                        left_upper_bound,
+                    )
+                },
+                || {
+                    self.build_node_inner(
+                        x,
+                        target,
+                        right_weight_values,
+                        &right,
+                        depth + 1,
+                        context,
+                        None,
+                        right_histogram_stats.as_deref(),
+                        right_node_stats,
+                        right_lower_bound,
+                        right_upper_bound,
+                    )
+                },
             );
-            right_node = self.build_node_inner(
-                x,
-                target,
-                right_weight_values,
-                &right,
-                depth + 1,
-                context,
-                None,
-                right_histogram_stats.as_deref(),
-                right_node_stats,
-                right_lower_bound,
-                right_upper_bound,
-            );
+            left_node = built_left;
+            right_node = built_right;
         }
         Node::Branch {
             split,
@@ -648,86 +661,37 @@ impl TreeBuilder {
                         stats,
                     )
                 });
-                for &feature in &context.histogram_feature_indices {
-                    let histogram_feature = context.histogram_features[feature]
+                let mut candidates = context
+                    .histogram_feature_indices
+                    .par_iter()
+                    .filter_map(|&feature| {
+                        self.best_histogram_candidate_for_feature(
+                            feature,
+                            bins,
+                            context,
+                            stats,
+                            common_total,
+                            parent_sse,
+                        )
+                    })
+                    .collect::<Vec<_>>();
+                candidates.sort_by_key(|candidate| candidate.feature().unwrap_or(usize::MAX));
+                for candidate in candidates {
+                    if best
                         .as_ref()
-                        .expect("histogram_feature_indices contains prebinned features");
-                    let feature_stats = &stats[feature * bins..(feature + 1) * bins];
-                    let total = common_total.unwrap_or_else(|| {
-                        feature_stats
-                            .iter()
-                            .fold(CandidateStats::default(), |mut total, item| {
-                                total.count += item.count;
-                                total.weight_sum += item.weight_sum;
-                                total.weighted_target_sum += item.weighted_target_sum;
-                                total.weighted_target_square_sum += item.weighted_target_square_sum;
-                                total
-                            })
-                    });
-                    if total.count < self.min_samples_leaf * 2 {
+                        .is_some_and(|old| !is_better_split(candidate.gain, &candidate.split, old))
+                    {
                         continue;
                     }
-
-                    let parent_loss = if parent_sse == 0.0 {
-                        total.sse()
-                    } else {
-                        parent_sse
-                    };
-                    let mut left_stats = CandidateStats::default();
-                    for (split_bin, bin_stats) in feature_stats.iter().enumerate().take(bins - 1) {
-                        left_stats.count += bin_stats.count;
-                        left_stats.weight_sum += bin_stats.weight_sum;
-                        left_stats.weighted_target_sum += bin_stats.weighted_target_sum;
-                        left_stats.weighted_target_square_sum +=
-                            bin_stats.weighted_target_square_sum;
-                        let right_count = total.count - left_stats.count;
-                        if left_stats.count < self.min_samples_leaf
-                            || right_count < self.min_samples_leaf
-                        {
-                            continue;
-                        }
-                        let right_weight_sum = total.weight_sum - left_stats.weight_sum;
-                        let right_target_sum =
-                            total.weighted_target_sum - left_stats.weighted_target_sum;
-                        let right_target_square_sum = total.weighted_target_square_sum
-                            - left_stats.weighted_target_square_sum;
-                        let threshold = histogram_feature.thresholds[split_bin];
-                        let gain = parent_loss
-                            - left_stats.sse()
-                            - weighted_sse_from_sums(
-                                right_weight_sum,
-                                right_target_sum,
-                                right_target_square_sum,
-                            );
-                        let split = Split::Axis {
-                            feature,
-                            threshold,
-                            missing_goes_left: true,
-                        };
-                        if best
-                            .as_ref()
-                            .is_some_and(|old| !is_better_split(gain, &split, old))
-                        {
-                            continue;
-                        }
-                        if histogram_candidate.as_ref().is_none_or(|old| {
-                            is_better_split_candidate(gain, &split, old.gain, &old.split)
-                        }) {
-                            histogram_candidate = Some(BestHistogramCandidate {
-                                split,
-                                gain,
-                                split_bin,
-                                left_capacity: left_stats.count,
-                                right_capacity: right_count,
-                                left_stats,
-                                right_stats: CandidateStats {
-                                    count: right_count,
-                                    weight_sum: right_weight_sum,
-                                    weighted_target_sum: right_target_sum,
-                                    weighted_target_square_sum: right_target_square_sum,
-                                },
-                            });
-                        }
+                    if histogram_candidate.as_ref().is_none_or(|old| {
+                        is_better_split_candidate(
+                            candidate.gain,
+                            &candidate.split,
+                            old.gain,
+                            &old.split,
+                        )
+                    }) {
+                        histogram_candidate = Some(candidate);
                     }
                 }
             });
@@ -994,6 +958,92 @@ impl TreeBuilder {
         })
     }
 
+    fn best_histogram_candidate_for_feature(
+        &self,
+        feature: usize,
+        bins: usize,
+        context: &FitContext,
+        stats: &[CandidateStats],
+        common_total: Option<CandidateStats>,
+        parent_sse: f64,
+    ) -> Option<BestHistogramCandidate> {
+        let histogram_feature = context.histogram_features[feature]
+            .as_ref()
+            .expect("histogram_feature_indices contains prebinned features");
+        let feature_stats = &stats[feature * bins..(feature + 1) * bins];
+        let total = common_total.unwrap_or_else(|| {
+            feature_stats
+                .iter()
+                .fold(CandidateStats::default(), |mut total, item| {
+                    total.count += item.count;
+                    total.weight_sum += item.weight_sum;
+                    total.weighted_target_sum += item.weighted_target_sum;
+                    total.weighted_target_square_sum += item.weighted_target_square_sum;
+                    total
+                })
+        });
+        if total.count < self.min_samples_leaf * 2 {
+            return None;
+        }
+
+        let parent_loss = if parent_sse == 0.0 {
+            total.sse()
+        } else {
+            parent_sse
+        };
+        let mut left_stats = CandidateStats::default();
+        let mut candidate: Option<BestHistogramCandidate> = None;
+        for (split_bin, bin_stats) in feature_stats.iter().enumerate().take(bins - 1) {
+            left_stats.count += bin_stats.count;
+            left_stats.weight_sum += bin_stats.weight_sum;
+            left_stats.weighted_target_sum += bin_stats.weighted_target_sum;
+            left_stats.weighted_target_square_sum += bin_stats.weighted_target_square_sum;
+            let right_count = total.count - left_stats.count;
+            if left_stats.count < self.min_samples_leaf || right_count < self.min_samples_leaf {
+                continue;
+            }
+            let right_weight_sum = total.weight_sum - left_stats.weight_sum;
+            let right_target_sum = total.weighted_target_sum - left_stats.weighted_target_sum;
+            let right_target_square_sum =
+                total.weighted_target_square_sum - left_stats.weighted_target_square_sum;
+            let threshold = histogram_feature.thresholds[split_bin];
+            let gain = parent_loss
+                - left_stats.sse()
+                - weighted_sse_from_sums(
+                    right_weight_sum,
+                    right_target_sum,
+                    right_target_square_sum,
+                );
+            let split = Split::Axis {
+                feature,
+                threshold,
+                missing_goes_left: true,
+            };
+            if candidate
+                .as_ref()
+                .is_some_and(|old| !is_better_split_candidate(gain, &split, old.gain, &old.split))
+            {
+                continue;
+            }
+            candidate = Some(BestHistogramCandidate {
+                split,
+                gain,
+                split_bin,
+                left_capacity: left_stats.count,
+                right_capacity: right_count,
+                left_stats,
+                right_stats: CandidateStats {
+                    count: right_count,
+                    weight_sum: right_weight_sum,
+                    weighted_target_sum: right_target_sum,
+                    weighted_target_square_sum: right_target_square_sum,
+                },
+            });
+        }
+
+        candidate
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn axis_candidates(
         &self,
@@ -1015,37 +1065,17 @@ impl TreeBuilder {
         }
 
         let active = active_row_mask(x.n_rows(), indices);
-        for feature in 0..x.n_cols() {
-            if !dense_feature_allows_axis(x, feature) {
-                continue;
-            }
-            let Some(sorted_rows) = context.sorted_rows(feature) else {
-                continue;
-            };
-            let pairs = sorted_rows
-                .iter()
-                .copied()
-                .filter(|&idx| active[idx])
-                .filter_map(|idx| {
-                    let value = x.get(idx, feature);
-                    value.is_finite().then_some((value, idx))
-                })
-                .collect::<Vec<_>>();
-
-            for window in pairs.windows(2) {
-                let (a, _) = window[0];
-                let (b, _) = window[1];
-                if a == b {
-                    continue;
-                }
-                let threshold = (a + b) / 2.0;
-                let split = Split::Axis {
-                    feature,
-                    threshold,
-                    missing_goes_left: true,
-                };
-                self.consider_split(split, x, target, weights, indices, parent_sse, best);
-            }
+        let mut candidates = (0..x.n_cols())
+            .into_par_iter()
+            .filter_map(|feature| {
+                self.best_axis_exact_candidate_for_feature(
+                    x, target, weights, indices, feature, parent_sse, context, &active,
+                )
+            })
+            .collect::<Vec<_>>();
+        candidates.sort_by_key(|(feature, _)| *feature);
+        for (_, candidate) in candidates {
+            merge_best_split(best, Some(candidate));
         }
     }
 
@@ -1061,37 +1091,64 @@ impl TreeBuilder {
         best: &mut Option<BestSplit>,
     ) {
         let active = active_row_mask(x.n_rows(), indices);
-        for feature in 0..x.n_cols() {
-            if !dense_feature_allows_axis(x, feature) {
-                continue;
-            }
-            let Some(sorted_rows) = context.sorted_rows(feature) else {
-                continue;
-            };
-            let pairs = sorted_rows
-                .iter()
-                .copied()
-                .filter(|&idx| active[idx])
-                .filter_map(|idx| {
-                    let value = x.get(idx, feature);
-                    value.is_finite().then_some((value, idx))
-                })
-                .collect::<Vec<_>>();
-
-            for window in pairs.windows(2) {
-                let (a, _) = window[0];
-                let (b, _) = window[1];
-                if a == b {
-                    continue;
-                }
-                let split = Split::Axis {
-                    feature,
-                    threshold: (a + b) / 2.0,
-                    missing_goes_left: true,
-                };
-                self.consider_split(split, x, target, weights, indices, parent_sse, best);
-            }
+        let mut candidates = (0..x.n_cols())
+            .into_par_iter()
+            .filter_map(|feature| {
+                self.best_axis_exact_candidate_for_feature(
+                    x, target, weights, indices, feature, parent_sse, context, &active,
+                )
+            })
+            .collect::<Vec<_>>();
+        candidates.sort_by_key(|(feature, _)| *feature);
+        for (_, candidate) in candidates {
+            merge_best_split(best, Some(candidate));
         }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn best_axis_exact_candidate_for_feature(
+        &self,
+        x: &Dataset,
+        target: &[f64],
+        weights: &[f64],
+        indices: &[usize],
+        feature: usize,
+        parent_sse: f64,
+        context: &FitContext,
+        active: &[bool],
+    ) -> Option<(usize, BestSplit)> {
+        if !dense_feature_allows_axis(x, feature) {
+            return None;
+        }
+        let sorted_rows = context.sorted_rows(feature)?;
+        let pairs = sorted_rows
+            .iter()
+            .copied()
+            .filter(|&idx| active[idx])
+            .filter_map(|idx| {
+                let value = x.get(idx, feature);
+                value.is_finite().then_some((value, idx))
+            })
+            .collect::<Vec<_>>();
+
+        let mut best = None;
+        for window in pairs.windows(2) {
+            let (a, _) = window[0];
+            let (b, _) = window[1];
+            if a == b {
+                continue;
+            }
+            let split = Split::Axis {
+                feature,
+                threshold: (a + b) / 2.0,
+                missing_goes_left: true,
+            };
+            merge_best_split(
+                &mut best,
+                self.evaluate_split_candidate(split, x, target, weights, indices, parent_sse),
+            );
+        }
+        best.map(|best| (feature, best))
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1107,35 +1164,63 @@ impl TreeBuilder {
         best: &mut Option<BestSplit>,
     ) {
         let bins = bins.clamp(2, 1024);
-        for feature in 0..x.n_cols() {
-            if !dense_feature_allows_axis(x, feature) {
-                continue;
-            }
-            let thresholds =
-                if let Some(histogram_feature) = context.histogram_feature(feature, bins) {
-                    histogram_feature.thresholds.clone()
-                } else {
-                    let mut values = Vec::with_capacity(indices.len());
-                    for &idx in indices {
-                        let value = x.get(idx, feature);
-                        if value.is_finite() {
-                            values.push(value);
-                        }
-                    }
-                    quantile_histogram_thresholds(values, bins)
-                };
-            if thresholds.is_empty() {
-                continue;
-            }
-            for threshold in thresholds {
-                let split = Split::Axis {
-                    feature,
-                    threshold,
-                    missing_goes_left: true,
-                };
-                self.consider_split(split, x, target, weights, indices, parent_sse, best);
-            }
+        let mut candidates = (0..x.n_cols())
+            .into_par_iter()
+            .filter_map(|feature| {
+                self.best_axis_histogram_exact_candidate_for_feature(
+                    x, target, weights, indices, parent_sse, bins, context, feature,
+                )
+            })
+            .collect::<Vec<_>>();
+        candidates.sort_by_key(|(feature, _)| *feature);
+        for (_, candidate) in candidates {
+            merge_best_split(best, Some(candidate));
         }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn best_axis_histogram_exact_candidate_for_feature(
+        &self,
+        x: &Dataset,
+        target: &[f64],
+        weights: &[f64],
+        indices: &[usize],
+        parent_sse: f64,
+        bins: usize,
+        context: &FitContext,
+        feature: usize,
+    ) -> Option<(usize, BestSplit)> {
+        if !dense_feature_allows_axis(x, feature) {
+            return None;
+        }
+        let thresholds = if let Some(histogram_feature) = context.histogram_feature(feature, bins) {
+            histogram_feature.thresholds.clone()
+        } else {
+            let mut values = Vec::with_capacity(indices.len());
+            for &idx in indices {
+                let value = x.get(idx, feature);
+                if value.is_finite() {
+                    values.push(value);
+                }
+            }
+            quantile_histogram_thresholds(values, bins)
+        };
+        if thresholds.is_empty() {
+            return None;
+        }
+        let mut best = None;
+        for threshold in thresholds {
+            let split = Split::Axis {
+                feature,
+                threshold,
+                missing_goes_left: true,
+            };
+            merge_best_split(
+                &mut best,
+                self.evaluate_split_candidate(split, x, target, weights, indices, parent_sse),
+            );
+        }
+        best.map(|best| (feature, best))
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1151,108 +1236,135 @@ impl TreeBuilder {
     ) {
         let active = active_row_mask(x.n_rows(), indices);
         let mut axis_candidate: Option<BestAxisCandidate> = None;
-        for feature in 0..x.n_cols() {
-            if !dense_feature_allows_axis(x, feature) {
+        let mut candidates = (0..x.n_cols())
+            .into_par_iter()
+            .filter_map(|feature| {
+                self.best_axis_prefix_candidate_for_feature(
+                    x, target, weights, feature, parent_sse, context, &active,
+                )
+            })
+            .collect::<Vec<_>>();
+        candidates.sort_by_key(|candidate| candidate.feature);
+        for candidate in candidates {
+            if best
+                .as_ref()
+                .is_some_and(|old| !is_better_split(candidate.gain, &candidate.split, old))
+            {
                 continue;
             }
-            let Some(sorted_rows) = context.sorted_rows(feature) else {
-                continue;
-            };
-
-            let mut total_weight = 0.0;
-            let mut total_weighted_target = 0.0;
-            let mut total_weighted_target_sq = 0.0;
-            let mut active_count = 0usize;
-            for &idx in sorted_rows {
-                if !active[idx] {
-                    continue;
-                }
-                let weight = weights[idx];
-                let value = target[idx];
-                total_weight += weight;
-                total_weighted_target += weight * value;
-                total_weighted_target_sq += weight * value * value;
-                active_count += 1;
-            }
-            if active_count < self.min_samples_leaf * 2 {
-                continue;
-            }
-
-            let mut left_weight = 0.0;
-            let mut left_weighted_target = 0.0;
-            let mut left_weighted_target_sq = 0.0;
-            let mut left_count = 0usize;
-            let mut previous: Option<(f64, usize)> = None;
-            for &idx in sorted_rows {
-                if !active[idx] {
-                    continue;
-                }
-                let current_value = x.get(idx, feature);
-                let Some((previous_value, previous_idx)) = previous else {
-                    previous = Some((current_value, idx));
-                    continue;
-                };
-                let weight = weights[previous_idx];
-                let value = target[previous_idx];
-                left_weight += weight;
-                left_weighted_target += weight * value;
-                left_weighted_target_sq += weight * value * value;
-                left_count += 1;
-
-                if previous_value == current_value {
-                    previous = Some((current_value, idx));
-                    continue;
-                }
-
-                let right_count = active_count - left_count;
-                if left_count < self.min_samples_leaf || right_count < self.min_samples_leaf {
-                    previous = Some((current_value, idx));
-                    continue;
-                }
-
-                let right_weight = total_weight - left_weight;
-                let right_weighted_target = total_weighted_target - left_weighted_target;
-                let right_weighted_target_sq = total_weighted_target_sq - left_weighted_target_sq;
-                let gain = parent_sse
-                    - weighted_sse_from_sums(
-                        left_weight,
-                        left_weighted_target,
-                        left_weighted_target_sq,
-                    )
-                    - weighted_sse_from_sums(
-                        right_weight,
-                        right_weighted_target,
-                        right_weighted_target_sq,
-                    );
-                let split = Split::Axis {
-                    feature,
-                    threshold: (previous_value + current_value) / 2.0,
-                    missing_goes_left: true,
-                };
-                if best
-                    .as_ref()
-                    .is_some_and(|old| !is_better_split(gain, &split, old))
-                {
-                    previous = Some((current_value, idx));
-                    continue;
-                }
-                if axis_candidate
-                    .as_ref()
-                    .is_none_or(|old| is_better_split_candidate(gain, &split, old.gain, &old.split))
-                {
-                    axis_candidate = Some(BestAxisCandidate {
-                        split,
-                        gain,
-                        feature,
-                        split_position: left_count - 1,
-                        left_capacity: left_count,
-                        right_capacity: right_count,
-                    });
-                }
-                previous = Some((current_value, idx));
+            if axis_candidate.as_ref().is_none_or(|old| {
+                is_better_split_candidate(candidate.gain, &candidate.split, old.gain, &old.split)
+            }) {
+                axis_candidate = Some(candidate);
             }
         }
         materialize_axis_candidate(&mut axis_candidate, context, &active, best);
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn best_axis_prefix_candidate_for_feature(
+        &self,
+        x: &Dataset,
+        target: &[f64],
+        weights: &[f64],
+        feature: usize,
+        parent_sse: f64,
+        context: &FitContext,
+        active: &[bool],
+    ) -> Option<BestAxisCandidate> {
+        if !dense_feature_allows_axis(x, feature) {
+            return None;
+        }
+        let sorted_rows = context.sorted_rows(feature)?;
+
+        let mut total_weight = 0.0;
+        let mut total_weighted_target = 0.0;
+        let mut total_weighted_target_sq = 0.0;
+        let mut active_count = 0usize;
+        for &idx in sorted_rows {
+            if !active[idx] {
+                continue;
+            }
+            let weight = weights[idx];
+            let value = target[idx];
+            total_weight += weight;
+            total_weighted_target += weight * value;
+            total_weighted_target_sq += weight * value * value;
+            active_count += 1;
+        }
+        if active_count < self.min_samples_leaf * 2 {
+            return None;
+        }
+
+        let mut left_weight = 0.0;
+        let mut left_weighted_target = 0.0;
+        let mut left_weighted_target_sq = 0.0;
+        let mut left_count = 0usize;
+        let mut previous: Option<(f64, usize)> = None;
+        let mut candidate: Option<BestAxisCandidate> = None;
+        for &idx in sorted_rows {
+            if !active[idx] {
+                continue;
+            }
+            let current_value = x.get(idx, feature);
+            let Some((previous_value, previous_idx)) = previous else {
+                previous = Some((current_value, idx));
+                continue;
+            };
+            let weight = weights[previous_idx];
+            let value = target[previous_idx];
+            left_weight += weight;
+            left_weighted_target += weight * value;
+            left_weighted_target_sq += weight * value * value;
+            left_count += 1;
+
+            if previous_value == current_value {
+                previous = Some((current_value, idx));
+                continue;
+            }
+
+            let right_count = active_count - left_count;
+            if left_count < self.min_samples_leaf || right_count < self.min_samples_leaf {
+                previous = Some((current_value, idx));
+                continue;
+            }
+
+            let right_weight = total_weight - left_weight;
+            let right_weighted_target = total_weighted_target - left_weighted_target;
+            let right_weighted_target_sq = total_weighted_target_sq - left_weighted_target_sq;
+            let gain = parent_sse
+                - weighted_sse_from_sums(
+                    left_weight,
+                    left_weighted_target,
+                    left_weighted_target_sq,
+                )
+                - weighted_sse_from_sums(
+                    right_weight,
+                    right_weighted_target,
+                    right_weighted_target_sq,
+                );
+            let split = Split::Axis {
+                feature,
+                threshold: (previous_value + current_value) / 2.0,
+                missing_goes_left: true,
+            };
+            if candidate
+                .as_ref()
+                .is_none_or(|old| is_better_split_candidate(gain, &split, old.gain, &old.split))
+            {
+                candidate = Some(BestAxisCandidate {
+                    split,
+                    gain,
+                    feature,
+                    split_position: left_count - 1,
+                    left_capacity: left_count,
+                    right_capacity: right_count,
+                });
+            }
+            previous = Some((current_value, idx));
+        }
+
+        candidate
     }
 
     fn diagonal_candidates(
@@ -1268,43 +1380,81 @@ impl TreeBuilder {
             return;
         }
         let normals = [(1.0, 1.0), (1.0, -1.0), (-1.0, 1.0)];
-        for x_feature in 0..x.n_cols() {
-            if !dense_feature_allows_spatial(x, x_feature) {
-                continue;
-            }
-            for y_feature in (x_feature + 1)..x.n_cols() {
-                if !dense_feature_allows_spatial(x, y_feature) {
-                    continue;
-                }
-                for (normal_x, normal_y) in normals {
-                    let mut pairs = indices
-                        .iter()
-                        .map(|&idx| {
-                            (
-                                normal_x * x.get(idx, x_feature) + normal_y * x.get(idx, y_feature),
-                                idx,
-                            )
-                        })
-                        .collect::<Vec<_>>();
-                    pairs.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
-                    for window in pairs.windows(2) {
-                        let threshold = (window[0].0 + window[1].0) / 2.0;
-                        if window[0].0 == window[1].0 {
-                            continue;
-                        }
-                        let split = Split::Diagonal2D {
-                            x_feature,
-                            y_feature,
-                            normal_x,
-                            normal_y,
-                            threshold,
-                            missing_goes_left: true,
-                        };
-                        self.consider_split(split, x, target, weights, indices, parent_sse, best);
+        let mut candidates = (0..x.n_cols())
+            .into_par_iter()
+            .flat_map_iter(|x_feature| {
+                let mut work = Vec::new();
+                for y_feature in (x_feature + 1)..x.n_cols() {
+                    for (normal_idx, (normal_x, normal_y)) in normals.iter().copied().enumerate() {
+                        work.push((x_feature, y_feature, normal_idx, normal_x, normal_y));
                     }
                 }
-            }
+                work
+            })
+            .filter_map(|(x_feature, y_feature, normal_idx, normal_x, normal_y)| {
+                self.best_diagonal_candidate_for_projection(
+                    x, target, weights, indices, parent_sse, x_feature, y_feature, normal_idx,
+                    normal_x, normal_y,
+                )
+            })
+            .collect::<Vec<_>>();
+        candidates.sort_by_key(|(x_feature, y_feature, normal_idx, _)| {
+            (*x_feature, *y_feature, *normal_idx)
+        });
+        for (_, _, _, candidate) in candidates {
+            merge_best_split(best, Some(candidate));
         }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn best_diagonal_candidate_for_projection(
+        &self,
+        x: &Dataset,
+        target: &[f64],
+        weights: &[f64],
+        indices: &[usize],
+        parent_sse: f64,
+        x_feature: usize,
+        y_feature: usize,
+        normal_idx: usize,
+        normal_x: f64,
+        normal_y: f64,
+    ) -> Option<(usize, usize, usize, BestSplit)> {
+        if !dense_feature_allows_spatial(x, x_feature)
+            || !dense_feature_allows_spatial(x, y_feature)
+        {
+            return None;
+        }
+        let mut pairs = indices
+            .iter()
+            .map(|&idx| {
+                (
+                    normal_x * x.get(idx, x_feature) + normal_y * x.get(idx, y_feature),
+                    idx,
+                )
+            })
+            .collect::<Vec<_>>();
+        pairs.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
+        let mut best = None;
+        for window in pairs.windows(2) {
+            let threshold = (window[0].0 + window[1].0) / 2.0;
+            if window[0].0 == window[1].0 {
+                continue;
+            }
+            let split = Split::Diagonal2D {
+                x_feature,
+                y_feature,
+                normal_x,
+                normal_y,
+                threshold,
+                missing_goes_left: true,
+            };
+            merge_best_split(
+                &mut best,
+                self.evaluate_split_candidate(split, x, target, weights, indices, parent_sse),
+            );
+        }
+        best.map(|best| (x_feature, y_feature, normal_idx, best))
     }
 
     fn gaussian_candidates(
@@ -1319,48 +1469,78 @@ impl TreeBuilder {
         if x.n_cols() < 2 || indices.is_empty() {
             return;
         }
-        for x_feature in 0..x.n_cols() {
-            if !dense_feature_allows_spatial(x, x_feature) {
-                continue;
-            }
-            for y_feature in (x_feature + 1)..x.n_cols() {
-                if !dense_feature_allows_spatial(x, y_feature) {
+        let mut candidates = (0..x.n_cols())
+            .into_par_iter()
+            .flat_map_iter(|x_feature| {
+                ((x_feature + 1)..x.n_cols())
+                    .map(move |y_feature| (x_feature, y_feature))
+                    .collect::<Vec<_>>()
+            })
+            .filter_map(|(x_feature, y_feature)| {
+                self.best_gaussian_candidate_for_pair(
+                    x, target, weights, indices, parent_sse, x_feature, y_feature,
+                )
+            })
+            .collect::<Vec<_>>();
+        candidates.sort_by_key(|(x_feature, y_feature, _)| (*x_feature, *y_feature));
+        for (_, _, candidate) in candidates {
+            merge_best_split(best, Some(candidate));
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn best_gaussian_candidate_for_pair(
+        &self,
+        x: &Dataset,
+        target: &[f64],
+        weights: &[f64],
+        indices: &[usize],
+        parent_sse: f64,
+        x_feature: usize,
+        y_feature: usize,
+    ) -> Option<(usize, usize, BestSplit)> {
+        if !dense_feature_allows_spatial(x, x_feature)
+            || !dense_feature_allows_spatial(x, y_feature)
+        {
+            return None;
+        }
+        let mut best = None;
+        for (center_x, center_y) in
+            self.gaussian_centers(x, target, weights, indices, x_feature, y_feature)
+        {
+            let mut distances = indices
+                .iter()
+                .map(|&idx| {
+                    (
+                        ((x.get(idx, x_feature) - center_x).powi(2)
+                            + (x.get(idx, y_feature) - center_y).powi(2))
+                        .sqrt(),
+                        idx,
+                    )
+                })
+                .filter(|(distance, _)| distance.is_finite())
+                .collect::<Vec<_>>();
+            distances.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
+            for window in distances.windows(2) {
+                if window[0].0 == window[1].0 {
                     continue;
                 }
-                for (center_x, center_y) in
-                    self.gaussian_centers(x, target, weights, indices, x_feature, y_feature)
-                {
-                    let mut distances = indices
-                        .iter()
-                        .map(|&idx| {
-                            (
-                                ((x.get(idx, x_feature) - center_x).powi(2)
-                                    + (x.get(idx, y_feature) - center_y).powi(2))
-                                .sqrt(),
-                                idx,
-                            )
-                        })
-                        .filter(|(distance, _)| distance.is_finite())
-                        .collect::<Vec<_>>();
-                    distances.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
-                    for window in distances.windows(2) {
-                        if window[0].0 == window[1].0 {
-                            continue;
-                        }
-                        let radius = (window[0].0 + window[1].0) / 2.0;
-                        let split = Split::Gaussian2D {
-                            x_feature,
-                            y_feature,
-                            center_x,
-                            center_y,
-                            radius,
-                            missing_goes_left: true,
-                        };
-                        self.consider_split(split, x, target, weights, indices, parent_sse, best);
-                    }
-                }
+                let radius = (window[0].0 + window[1].0) / 2.0;
+                let split = Split::Gaussian2D {
+                    x_feature,
+                    y_feature,
+                    center_x,
+                    center_y,
+                    radius,
+                    missing_goes_left: true,
+                };
+                merge_best_split(
+                    &mut best,
+                    self.evaluate_split_candidate(split, x, target, weights, indices, parent_sse),
+                );
             }
         }
+        best.map(|best| (x_feature, y_feature, best))
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1458,53 +1638,78 @@ impl TreeBuilder {
         if period <= 0.0 || !period.is_finite() {
             return;
         }
-        for feature in 0..x.n_cols() {
-            let Some(feature_period) = periodic_period_for_feature(x, indices, feature, period)
-            else {
-                continue;
-            };
-            let mut values = indices
-                .iter()
-                .filter_map(|&idx| {
-                    let value = x.get(idx, feature);
-                    value
-                        .is_finite()
-                        .then_some(super::normalize_periodic(value, feature_period))
-                })
-                .collect::<Vec<_>>();
-            values.sort_by(f64::total_cmp);
-            values.dedup_by(|a, b| (*a - *b).abs() < 1e-12);
-            if values.len() < 2 {
-                continue;
-            }
+        let mut candidates = (0..x.n_cols())
+            .into_par_iter()
+            .filter_map(|feature| {
+                self.best_periodic_candidate_for_feature(
+                    x, target, weights, indices, parent_sse, period, feature,
+                )
+            })
+            .collect::<Vec<_>>();
+        candidates.sort_by_key(|(feature, _)| *feature);
+        for (_, candidate) in candidates {
+            merge_best_split(best, Some(candidate));
+        }
+    }
 
-            let mut boundaries = values.clone();
-            for idx in 0..values.len() {
-                let current = values[idx];
-                let next = values[(idx + 1) % values.len()];
-                let gap = (next - current).rem_euclid(feature_period);
-                boundaries.push(super::normalize_periodic(
-                    current + gap / 2.0,
-                    feature_period,
-                ));
-            }
+    #[allow(clippy::too_many_arguments)]
+    fn best_periodic_candidate_for_feature(
+        &self,
+        x: &Dataset,
+        target: &[f64],
+        weights: &[f64],
+        indices: &[usize],
+        parent_sse: f64,
+        period: f64,
+        feature: usize,
+    ) -> Option<(usize, BestSplit)> {
+        let feature_period = periodic_period_for_feature(x, indices, feature, period)?;
+        let mut values = indices
+            .iter()
+            .filter_map(|&idx| {
+                let value = x.get(idx, feature);
+                value
+                    .is_finite()
+                    .then_some(super::normalize_periodic(value, feature_period))
+            })
+            .collect::<Vec<_>>();
+        values.sort_by(f64::total_cmp);
+        values.dedup_by(|a, b| (*a - *b).abs() < 1e-12);
+        if values.len() < 2 {
+            return None;
+        }
 
-            for start_idx in 0..boundaries.len() {
-                for end_idx in 0..boundaries.len() {
-                    if start_idx == end_idx {
-                        continue;
-                    }
-                    let split = Split::PeriodicInterval {
-                        feature,
-                        period: feature_period,
-                        start: boundaries[start_idx],
-                        end: boundaries[end_idx],
-                        missing_goes_left: true,
-                    };
-                    self.consider_split(split, x, target, weights, indices, parent_sse, best);
+        let mut boundaries = values.clone();
+        for idx in 0..values.len() {
+            let current = values[idx];
+            let next = values[(idx + 1) % values.len()];
+            let gap = (next - current).rem_euclid(feature_period);
+            boundaries.push(super::normalize_periodic(
+                current + gap / 2.0,
+                feature_period,
+            ));
+        }
+
+        let mut best = None;
+        for start_idx in 0..boundaries.len() {
+            for end_idx in 0..boundaries.len() {
+                if start_idx == end_idx {
+                    continue;
                 }
+                let split = Split::PeriodicInterval {
+                    feature,
+                    period: feature_period,
+                    start: boundaries[start_idx],
+                    end: boundaries[end_idx],
+                    missing_goes_left: true,
+                };
+                merge_best_split(
+                    &mut best,
+                    self.evaluate_split_candidate(split, x, target, weights, indices, parent_sse),
+                );
             }
         }
+        best.map(|best| (feature, best))
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1521,155 +1726,176 @@ impl TreeBuilder {
         if period <= 0.0 || !period.is_finite() {
             return;
         }
-        for feature in 0..x.n_cols() {
-            let Some(feature_period) = periodic_period_for_feature(x, indices, feature, period)
-            else {
-                continue;
-            };
+        let mut candidates = (0..x.n_cols())
+            .into_par_iter()
+            .filter_map(|feature| {
+                self.best_periodic_grouped_candidate_for_feature(
+                    x, target, weights, indices, parent_sse, period, feature,
+                )
+            })
+            .collect::<Vec<_>>();
+        candidates.sort_by_key(|(feature, _)| *feature);
+        for (_, candidate) in candidates {
+            merge_best_split(best, Some(candidate));
+        }
+    }
 
-            let mut values = indices
-                .iter()
-                .filter_map(|&idx| {
-                    let value = x.get(idx, feature);
-                    value
-                        .is_finite()
-                        .then_some((super::normalize_periodic(value, feature_period), idx))
-                })
-                .collect::<Vec<_>>();
-            values.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
-            if values.len() < self.min_samples_leaf * 2 {
-                continue;
-            }
+    #[allow(clippy::too_many_arguments)]
+    fn best_periodic_grouped_candidate_for_feature(
+        &self,
+        x: &Dataset,
+        target: &[f64],
+        weights: &[f64],
+        indices: &[usize],
+        parent_sse: f64,
+        period: f64,
+        feature: usize,
+    ) -> Option<(usize, BestSplit)> {
+        let feature_period = periodic_period_for_feature(x, indices, feature, period)?;
 
-            let mut groups: Vec<PeriodicValueGroup> = Vec::new();
-            for (value, idx) in values {
-                let weight = weights[idx];
-                let target_value = target[idx];
-                if let Some(group) = groups
-                    .last_mut()
-                    .filter(|group| (group.value - value).abs() < 1e-12)
-                {
-                    group.count += 1;
-                    group.weight_sum += weight;
-                    group.weighted_target_sum += weight * target_value;
-                    group.weighted_target_square_sum += weight * target_value * target_value;
-                } else {
-                    groups.push(PeriodicValueGroup {
-                        value,
-                        count: 1,
-                        weight_sum: weight,
-                        weighted_target_sum: weight * target_value,
-                        weighted_target_square_sum: weight * target_value * target_value,
-                    });
-                }
-            }
-            if groups.len() < 2 {
-                continue;
-            }
+        let mut values = indices
+            .iter()
+            .filter_map(|&idx| {
+                let value = x.get(idx, feature);
+                value
+                    .is_finite()
+                    .then_some((super::normalize_periodic(value, feature_period), idx))
+            })
+            .collect::<Vec<_>>();
+        values.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
+        if values.len() < self.min_samples_leaf * 2 {
+            return None;
+        }
 
-            let mut boundaries = groups.iter().map(|group| group.value).collect::<Vec<_>>();
-            for idx in 0..groups.len() {
-                let current = groups[idx].value;
-                let next = groups[(idx + 1) % groups.len()].value;
-                let gap = (next - current).rem_euclid(feature_period);
-                boundaries.push(super::normalize_periodic(
-                    current + gap / 2.0,
-                    feature_period,
-                ));
-            }
-
-            let total_count = groups.iter().map(|group| group.count).sum::<usize>();
-            let total_weight = groups.iter().map(|group| group.weight_sum).sum::<f64>();
-            let total_weighted_target = groups
-                .iter()
-                .map(|group| group.weighted_target_sum)
-                .sum::<f64>();
-            let total_weighted_target_sq = groups
-                .iter()
-                .map(|group| group.weighted_target_square_sum)
-                .sum::<f64>();
-
-            for &start in &boundaries {
-                for &end in &boundaries {
-                    if (start - end).abs() < 1e-12 {
-                        continue;
-                    }
-
-                    let mut left_count = 0usize;
-                    let mut left_weight = 0.0;
-                    let mut left_weighted_target = 0.0;
-                    let mut left_weighted_target_sq = 0.0;
-                    for group in &groups {
-                        if super::periodic_contains(group.value, feature_period, start, end) {
-                            left_count += group.count;
-                            left_weight += group.weight_sum;
-                            left_weighted_target += group.weighted_target_sum;
-                            left_weighted_target_sq += group.weighted_target_square_sum;
-                        }
-                    }
-
-                    let right_count = total_count - left_count;
-                    if left_count < self.min_samples_leaf || right_count < self.min_samples_leaf {
-                        continue;
-                    }
-
-                    let right_weight = total_weight - left_weight;
-                    let right_weighted_target = total_weighted_target - left_weighted_target;
-                    let right_weighted_target_sq =
-                        total_weighted_target_sq - left_weighted_target_sq;
-                    let gain = parent_sse
-                        - weighted_sse_from_sums(
-                            left_weight,
-                            left_weighted_target,
-                            left_weighted_target_sq,
-                        )
-                        - weighted_sse_from_sums(
-                            right_weight,
-                            right_weighted_target,
-                            right_weighted_target_sq,
-                        );
-                    let split = Split::PeriodicInterval {
-                        feature,
-                        period: feature_period,
-                        start,
-                        end,
-                        missing_goes_left: true,
-                    };
-                    if best
-                        .as_ref()
-                        .is_some_and(|old| !is_better_split(gain, &split, old))
-                    {
-                        continue;
-                    }
-
-                    let mut left = Vec::with_capacity(left_count);
-                    let mut right = Vec::with_capacity(right_count);
-                    for &idx in indices {
-                        if super::periodic_contains(x.get(idx, feature), feature_period, start, end)
-                        {
-                            left.push(idx);
-                        } else {
-                            right.push(idx);
-                        }
-                    }
-
-                    *best = Some(BestSplit {
-                        split,
-                        gain,
-                        left,
-                        right,
-                        left_direct_node: None,
-                        right_direct_node: None,
-                        left_weights: None,
-                        right_weights: None,
-                        left_node_stats: None,
-                        right_node_stats: None,
-                        left_histogram_stats: None,
-                        right_histogram_stats: None,
-                    });
-                }
+        let mut groups: Vec<PeriodicValueGroup> = Vec::new();
+        for (value, idx) in values {
+            let weight = weights[idx];
+            let target_value = target[idx];
+            if let Some(group) = groups
+                .last_mut()
+                .filter(|group| (group.value - value).abs() < 1e-12)
+            {
+                group.count += 1;
+                group.weight_sum += weight;
+                group.weighted_target_sum += weight * target_value;
+                group.weighted_target_square_sum += weight * target_value * target_value;
+            } else {
+                groups.push(PeriodicValueGroup {
+                    value,
+                    count: 1,
+                    weight_sum: weight,
+                    weighted_target_sum: weight * target_value,
+                    weighted_target_square_sum: weight * target_value * target_value,
+                });
             }
         }
+        if groups.len() < 2 {
+            return None;
+        }
+
+        let mut boundaries = groups.iter().map(|group| group.value).collect::<Vec<_>>();
+        for idx in 0..groups.len() {
+            let current = groups[idx].value;
+            let next = groups[(idx + 1) % groups.len()].value;
+            let gap = (next - current).rem_euclid(feature_period);
+            boundaries.push(super::normalize_periodic(
+                current + gap / 2.0,
+                feature_period,
+            ));
+        }
+
+        let total_count = groups.iter().map(|group| group.count).sum::<usize>();
+        let total_weight = groups.iter().map(|group| group.weight_sum).sum::<f64>();
+        let total_weighted_target = groups
+            .iter()
+            .map(|group| group.weighted_target_sum)
+            .sum::<f64>();
+        let total_weighted_target_sq = groups
+            .iter()
+            .map(|group| group.weighted_target_square_sum)
+            .sum::<f64>();
+        let mut best = None;
+
+        for &start in &boundaries {
+            for &end in &boundaries {
+                if (start - end).abs() < 1e-12 {
+                    continue;
+                }
+
+                let mut left_count = 0usize;
+                let mut left_weight = 0.0;
+                let mut left_weighted_target = 0.0;
+                let mut left_weighted_target_sq = 0.0;
+                for group in &groups {
+                    if super::periodic_contains(group.value, feature_period, start, end) {
+                        left_count += group.count;
+                        left_weight += group.weight_sum;
+                        left_weighted_target += group.weighted_target_sum;
+                        left_weighted_target_sq += group.weighted_target_square_sum;
+                    }
+                }
+
+                let right_count = total_count - left_count;
+                if left_count < self.min_samples_leaf || right_count < self.min_samples_leaf {
+                    continue;
+                }
+
+                let right_weight = total_weight - left_weight;
+                let right_weighted_target = total_weighted_target - left_weighted_target;
+                let right_weighted_target_sq = total_weighted_target_sq - left_weighted_target_sq;
+                let gain = parent_sse
+                    - weighted_sse_from_sums(
+                        left_weight,
+                        left_weighted_target,
+                        left_weighted_target_sq,
+                    )
+                    - weighted_sse_from_sums(
+                        right_weight,
+                        right_weighted_target,
+                        right_weighted_target_sq,
+                    );
+                let split = Split::PeriodicInterval {
+                    feature,
+                    period: feature_period,
+                    start,
+                    end,
+                    missing_goes_left: true,
+                };
+                if best
+                    .as_ref()
+                    .is_some_and(|old| !is_better_split(gain, &split, old))
+                {
+                    continue;
+                }
+
+                let mut left = Vec::with_capacity(left_count);
+                let mut right = Vec::with_capacity(right_count);
+                for &idx in indices {
+                    if super::periodic_contains(x.get(idx, feature), feature_period, start, end) {
+                        left.push(idx);
+                    } else {
+                        right.push(idx);
+                    }
+                }
+
+                best = Some(BestSplit {
+                    split,
+                    gain,
+                    left,
+                    right,
+                    left_direct_node: None,
+                    right_direct_node: None,
+                    left_weights: None,
+                    right_weights: None,
+                    left_node_stats: None,
+                    right_node_stats: None,
+                    left_histogram_stats: None,
+                    right_histogram_stats: None,
+                });
+            }
+        }
+
+        best.map(|best| (feature, best))
     }
 
     fn sparse_set_candidates(
@@ -1686,51 +1912,110 @@ impl TreeBuilder {
             return;
         }
 
-        for sparse_feature in 0..x.n_sparse_sets() {
-            if !sparse_feature_allows_sparse_set(x, sparse_feature) {
-                continue;
-            }
-            let mut ids = Vec::new();
-            for &idx in indices {
-                if let Some(row_ids) = x.sparse_set_row(idx, sparse_feature) {
-                    ids.extend_from_slice(row_ids);
-                }
-            }
-            ids.sort_unstable();
-            ids.dedup();
-            for id in ids {
-                let split = Split::SparseListContainsAny {
+        let mut sparse_candidates = (0..x.n_sparse_sets())
+            .into_par_iter()
+            .filter_map(|sparse_feature| {
+                self.best_sparse_list_candidate_for_feature(
+                    x,
+                    target,
+                    weights,
+                    indices,
+                    parent_sse,
                     sparse_feature,
-                    ids: vec![id],
-                    missing_goes_left: false,
-                };
-                self.consider_split(split, x, target, weights, indices, parent_sse, best);
-            }
+                )
+            })
+            .collect::<Vec<_>>();
+        sparse_candidates.sort_by_key(|(sparse_feature, _)| *sparse_feature);
+        for (_, candidate) in sparse_candidates {
+            merge_best_split(best, Some(candidate));
         }
 
-        for feature in 0..x.n_cols() {
-            if !dense_feature_allows_sparse_set(x, feature) {
-                continue;
-            }
-            let mut ids = indices
-                .iter()
-                .filter_map(|&idx| {
-                    let value = x.get(idx, feature);
-                    let id = value as u64;
-                    (value.is_finite() && value >= 0.0 && value == id as f64).then_some(id)
-                })
-                .collect::<Vec<_>>();
-            ids.sort_unstable();
-            ids.dedup();
-            for id in ids {
-                let split = Split::SparseSetContainsAny {
-                    feature,
-                    ids: vec![id],
-                    missing_goes_left: false,
-                };
-                self.consider_split(split, x, target, weights, indices, parent_sse, best);
+        let mut dense_candidates = (0..x.n_cols())
+            .into_par_iter()
+            .filter_map(|feature| {
+                self.best_dense_sparse_candidate_for_feature(
+                    x, target, weights, indices, parent_sse, feature,
+                )
+            })
+            .collect::<Vec<_>>();
+        dense_candidates.sort_by_key(|(feature, _)| *feature);
+        for (_, candidate) in dense_candidates {
+            merge_best_split(best, Some(candidate));
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn best_sparse_list_candidate_for_feature(
+        &self,
+        x: &Dataset,
+        target: &[f64],
+        weights: &[f64],
+        indices: &[usize],
+        parent_sse: f64,
+        sparse_feature: usize,
+    ) -> Option<(usize, BestSplit)> {
+        if !sparse_feature_allows_sparse_set(x, sparse_feature) {
+            return None;
+        }
+        let mut ids = Vec::new();
+        for &idx in indices {
+            if let Some(row_ids) = x.sparse_set_row(idx, sparse_feature) {
+                ids.extend_from_slice(row_ids);
             }
         }
+        ids.sort_unstable();
+        ids.dedup();
+        let mut best = None;
+        for id in ids {
+            let split = Split::SparseListContainsAny {
+                sparse_feature,
+                ids: vec![id],
+                missing_goes_left: false,
+            };
+            merge_best_split(
+                &mut best,
+                self.evaluate_split_candidate(split, x, target, weights, indices, parent_sse),
+            );
+        }
+        best.map(|best| (sparse_feature, best))
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn best_dense_sparse_candidate_for_feature(
+        &self,
+        x: &Dataset,
+        target: &[f64],
+        weights: &[f64],
+        indices: &[usize],
+        parent_sse: f64,
+        feature: usize,
+    ) -> Option<(usize, BestSplit)> {
+        if !dense_feature_allows_sparse_set(x, feature) {
+            return None;
+        }
+        let mut ids = indices
+            .iter()
+            .filter_map(|&idx| {
+                let value = x.get(idx, feature);
+                let id = value as u64;
+                (value.is_finite() && value >= 0.0 && value == id as f64).then_some(id)
+            })
+            .collect::<Vec<_>>();
+        ids.sort_unstable();
+        ids.dedup();
+        let mut best = None;
+        for id in ids {
+            let split = Split::SparseSetContainsAny {
+                feature,
+                ids: vec![id],
+                missing_goes_left: false,
+            };
+            merge_best_split(
+                &mut best,
+                self.evaluate_split_candidate(split, x, target, weights, indices, parent_sse),
+            );
+        }
+        best.map(|best| (feature, best))
     }
 
     fn sparse_set_candidates_grouped(
@@ -1743,94 +2028,50 @@ impl TreeBuilder {
     ) {
         let total = candidate_stats(indices.iter().copied(), target, weights);
 
-        for sparse_feature in 0..x.n_sparse_sets() {
-            if !sparse_feature_allows_sparse_set(x, sparse_feature) {
-                continue;
-            }
-            let mut by_id = BTreeMap::<u64, CandidateStats>::new();
-            for &idx in indices {
-                if let Some(row_ids) = x.sparse_set_row(idx, sparse_feature) {
-                    for &id in row_ids {
-                        by_id.entry(id).or_default().add_row(idx, target, weights);
-                    }
-                }
-            }
-            for (id, stats) in by_id {
-                let split = Split::SparseListContainsAny {
+        let mut sparse_candidates = (0..x.n_sparse_sets())
+            .into_par_iter()
+            .filter_map(|sparse_feature| {
+                self.best_sparse_list_grouped_candidate_for_feature(
+                    x,
+                    target,
+                    weights,
+                    indices,
+                    &total,
                     sparse_feature,
-                    ids: vec![id],
-                    missing_goes_left: false,
-                };
-                self.consider_grouped_binary_split(split, stats, &total, best);
-                if best.as_ref().is_some_and(|current| {
-                    matches!(
-                        current.split,
-                        Split::SparseListContainsAny {
-                            sparse_feature: current_feature,
-                            ref ids,
-                            ..
-                        } if current_feature == sparse_feature && ids == &[id]
-                    )
-                }) {
-                    materialize_sparse_list_split(sparse_feature, id, x, indices, best);
-                }
-            }
+                )
+            })
+            .collect::<Vec<_>>();
+        sparse_candidates.sort_by_key(|(sparse_feature, _)| *sparse_feature);
+        for (_, candidate) in sparse_candidates {
+            merge_best_split(best, Some(candidate));
         }
 
-        for feature in 0..x.n_cols() {
-            if !dense_feature_allows_sparse_set(x, feature) {
-                continue;
-            }
-            let mut by_id = BTreeMap::<u64, CandidateStats>::new();
-            for &idx in indices {
-                let value = x.get(idx, feature);
-                let id = value as u64;
-                if value.is_finite() && value >= 0.0 && value == id as f64 {
-                    by_id.entry(id).or_default().add_row(idx, target, weights);
-                }
-            }
-            for (id, stats) in by_id {
-                let split = Split::SparseSetContainsAny {
-                    feature,
-                    ids: vec![id],
-                    missing_goes_left: false,
-                };
-                self.consider_grouped_binary_split(split, stats, &total, best);
-                if best.as_ref().is_some_and(|current| {
-                    matches!(
-                        current.split,
-                        Split::SparseSetContainsAny {
-                            feature: current_feature,
-                            ref ids,
-                            ..
-                        } if current_feature == feature && ids == &[id]
-                    )
-                }) {
-                    materialize_dense_sparse_split(feature, id, x, indices, best);
-                }
-            }
+        let mut dense_candidates = (0..x.n_cols())
+            .into_par_iter()
+            .filter_map(|feature| {
+                self.best_dense_sparse_grouped_candidate_for_feature(
+                    x, target, weights, indices, &total, feature,
+                )
+            })
+            .collect::<Vec<_>>();
+        dense_candidates.sort_by_key(|(feature, _)| *feature);
+        for (_, candidate) in dense_candidates {
+            merge_best_split(best, Some(candidate));
         }
     }
 
-    fn consider_grouped_binary_split(
+    fn grouped_binary_split_candidate(
         &self,
         split: Split,
         left_stats: CandidateStats,
         total_stats: &CandidateStats,
-        best: &mut Option<BestSplit>,
-    ) {
+    ) -> Option<BestSplit> {
         let right_stats = total_stats.minus(&left_stats);
         if left_stats.count < self.min_samples_leaf || right_stats.count < self.min_samples_leaf {
-            return;
+            return None;
         }
         let gain = total_stats.sse() - left_stats.sse() - right_stats.sse();
-        if best
-            .as_ref()
-            .is_some_and(|old| !is_better_split(gain, &split, old))
-        {
-            return;
-        }
-        *best = Some(BestSplit {
+        Some(BestSplit {
             split,
             gain,
             left: Vec::with_capacity(left_stats.count),
@@ -1843,7 +2084,75 @@ impl TreeBuilder {
             right_node_stats: Some(right_stats),
             left_histogram_stats: None,
             right_histogram_stats: None,
-        });
+        })
+    }
+
+    fn best_sparse_list_grouped_candidate_for_feature(
+        &self,
+        x: &Dataset,
+        target: &[f64],
+        weights: &[f64],
+        indices: &[usize],
+        total: &CandidateStats,
+        sparse_feature: usize,
+    ) -> Option<(usize, BestSplit)> {
+        if !sparse_feature_allows_sparse_set(x, sparse_feature) {
+            return None;
+        }
+        let mut by_id = BTreeMap::<u64, CandidateStats>::new();
+        for &idx in indices {
+            if let Some(row_ids) = x.sparse_set_row(idx, sparse_feature) {
+                for &id in row_ids {
+                    by_id.entry(id).or_default().add_row(idx, target, weights);
+                }
+            }
+        }
+        let mut best = None;
+        for (id, stats) in by_id {
+            let split = Split::SparseListContainsAny {
+                sparse_feature,
+                ids: vec![id],
+                missing_goes_left: false,
+            };
+            let mut candidate = self.grouped_binary_split_candidate(split, stats, total);
+            materialize_sparse_list_split(sparse_feature, id, x, indices, &mut candidate);
+            merge_best_split(&mut best, candidate);
+        }
+        best.map(|best| (sparse_feature, best))
+    }
+
+    fn best_dense_sparse_grouped_candidate_for_feature(
+        &self,
+        x: &Dataset,
+        target: &[f64],
+        weights: &[f64],
+        indices: &[usize],
+        total: &CandidateStats,
+        feature: usize,
+    ) -> Option<(usize, BestSplit)> {
+        if !dense_feature_allows_sparse_set(x, feature) {
+            return None;
+        }
+        let mut by_id = BTreeMap::<u64, CandidateStats>::new();
+        for &idx in indices {
+            let value = x.get(idx, feature);
+            let id = value as u64;
+            if value.is_finite() && value >= 0.0 && value == id as f64 {
+                by_id.entry(id).or_default().add_row(idx, target, weights);
+            }
+        }
+        let mut best = None;
+        for (id, stats) in by_id {
+            let split = Split::SparseSetContainsAny {
+                feature,
+                ids: vec![id],
+                missing_goes_left: false,
+            };
+            let mut candidate = self.grouped_binary_split_candidate(split, stats, total);
+            materialize_dense_sparse_split(feature, id, x, indices, &mut candidate);
+            merge_best_split(&mut best, candidate);
+        }
+        best.map(|best| (feature, best))
     }
 
     fn uses_l2_split_score(&self) -> bool {
@@ -1995,7 +2304,7 @@ impl TreeBuilder {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn consider_split(
+    fn evaluate_split_candidate(
         &self,
         split: Split,
         x: &Dataset,
@@ -2003,8 +2312,7 @@ impl TreeBuilder {
         weights: &[f64],
         indices: &[usize],
         parent_sse: f64,
-        best: &mut Option<BestSplit>,
-    ) {
+    ) -> Option<BestSplit> {
         let scoring_split = if self.fuzzy && self.fuzzy_bandwidth > 0.0 {
             Split::Fuzzy {
                 base: Box::new(split),
@@ -2030,7 +2338,7 @@ impl TreeBuilder {
             }
         }
         if left.len() < self.min_samples_leaf || right.len() < self.min_samples_leaf {
-            return;
+            return None;
         }
         if !self.monotonic_split_allowed(
             &scoring_split,
@@ -2040,30 +2348,25 @@ impl TreeBuilder {
             &left,
             &right,
         ) {
-            return;
+            return None;
         }
         let gain = parent_sse
             - self.node_loss(target, &left_weights, &left)
             - self.node_loss(target, &right_weights, &right);
-        if best
-            .as_ref()
-            .is_none_or(|old| is_better_split(gain, &scoring_split, old))
-        {
-            *best = Some(BestSplit {
-                split: scoring_split,
-                gain,
-                left_weights: Some(left_weights),
-                right_weights: Some(right_weights),
-                left,
-                right,
-                left_direct_node: None,
-                right_direct_node: None,
-                left_node_stats: None,
-                right_node_stats: None,
-                left_histogram_stats: None,
-                right_histogram_stats: None,
-            });
-        }
+        Some(BestSplit {
+            split: scoring_split,
+            gain,
+            left_weights: Some(left_weights),
+            right_weights: Some(right_weights),
+            left,
+            right,
+            left_direct_node: None,
+            right_direct_node: None,
+            left_node_stats: None,
+            right_node_stats: None,
+            left_histogram_stats: None,
+            right_histogram_stats: None,
+        })
     }
 }
 
@@ -2757,6 +3060,18 @@ fn periodic_period_for_feature(
         },
         None => looks_like_periodic_feature(x, indices, feature, requested_period)
             .then_some(requested_period),
+    }
+}
+
+fn merge_best_split(best: &mut Option<BestSplit>, candidate: Option<BestSplit>) {
+    let Some(candidate) = candidate else {
+        return;
+    };
+    if best
+        .as_ref()
+        .is_none_or(|old| is_better_split(candidate.gain, &candidate.split, old))
+    {
+        *best = Some(candidate);
     }
 }
 

@@ -43,11 +43,13 @@ still be treated as dense-axis-tree only; graph encoders and random-walk
 precomputation are not represented inside ONNX.
 
 Rust-native graph encoder artifacts are separate from the booster artifact.
-`GraphSageEncoder`, `HeteroGraphSageEncoder`, and `HinSageEncoder` can be saved
-as JSON through their encoder APIs. HinSAGE artifacts include the typed node
-schema, relation triples, relation-ordered neighbor sampling settings, fitted
-weights, and training loss curve. Persist the encoder artifact path or checksum
-in booster metadata when graph features are generated offline.
+`Node2VecEncoder`, `GraphSageEncoder`, `HeteroGraphSageEncoder`, and
+`HinSageEncoder` can be saved as JSON through their encoder APIs. node2vec
+artifacts include walk/training hyperparameters and fitted node embeddings;
+HinSAGE artifacts include the typed node schema, relation triples,
+relation-ordered neighbor sampling settings, fitted weights, and training loss
+curve. Persist the encoder artifact path or checksum in booster metadata when
+graph features are generated offline.
 
 ## Save And Load
 

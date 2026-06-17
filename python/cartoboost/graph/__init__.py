@@ -8,7 +8,16 @@ from .builder import (
     normalize_heterogeneous_graph,
     normalize_homogeneous_graph,
 )
-from .config import GraphFeatureConfig
+from .config import (
+    DirectionalFeature,
+    GraphBackend,
+    GraphEmbeddingsConfig,
+    GraphEncoderConfig,
+    GraphEncoderFamily,
+    GraphFeatureConfig,
+    GraphOutputsConfig,
+    GraphTaskMode,
+)
 from .encoders import (
     GraphFeatureTransformer,
     GraphSageConfig,
@@ -17,6 +26,8 @@ from .encoders import (
     HeteroGraphSageFeatureEncoder,
     HinSageConfig,
     HinSageFeatureEncoder,
+    Node2VecConfig,
+    Node2VecFeatureEncoder,
 )
 from .eval import (
     binary_auc,
@@ -42,6 +53,13 @@ __all__ = [
     "DirectedMetaPath",
     "GraphSchema",
     "GraphFeatureConfig",
+    "GraphEmbeddingsConfig",
+    "GraphEncoderConfig",
+    "GraphEncoderFamily",
+    "GraphBackend",
+    "GraphTaskMode",
+    "GraphOutputsConfig",
+    "DirectionalFeature",
     "TemporalEdge",
     "as_edge_types",
     "HomogeneousGraph",
@@ -53,9 +71,11 @@ __all__ = [
     "GraphSageConfig",
     "HeteroGraphSageConfig",
     "HinSageConfig",
+    "Node2VecConfig",
     "GraphSageFeatureEncoder",
     "HeteroGraphSageFeatureEncoder",
     "HinSageFeatureEncoder",
+    "Node2VecFeatureEncoder",
     "GraphFeatureTransformer",
     "GraphFeatureBundle",
     "MetaPathWalkGenerator",

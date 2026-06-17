@@ -94,3 +94,33 @@ def test_nyc_taxi_quality_benchmark_skips_missing_optional_models(tmp_path: Path
                 model = split["models"][model_name]
                 if model["status"] == "skipped":
                     assert "not installed" in model["reason"]
+
+
+def test_nyc_taxi_quality_benchmark_runs_neural_and_graph_models(tmp_path: Path):
+    repo_root = Path(__file__).resolve().parents[2]
+    output_dir = tmp_path / "nyc_taxi_neural_graph"
+    script = repo_root / "scripts" / "run_nyc_taxi_quality_benchmarks.py"
+
+    subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--synthetic-smoke",
+            "--tasks",
+            "duration",
+            "--models",
+            "cartoboost_neural,cartoboost_graph",
+            "--output-dir",
+            str(output_dir),
+        ],
+        check=True,
+        cwd=repo_root,
+    )
+
+    results = json.loads((output_dir / "results.json").read_text(encoding="utf-8"))
+    task = results["tasks"]["duration"]
+    for split in task["splits"].values():
+        assert split["models"]["cartoboost_neural"]["status"] == "ok"
+        assert split["models"]["cartoboost_graph"]["status"] == "ok"
+        assert split["models"]["cartoboost_neural"]["config"]["neural_dim"] > 0
+        assert split["models"]["cartoboost_graph"]["config"]["graph_edges"] > 0

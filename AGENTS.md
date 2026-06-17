@@ -5,6 +5,7 @@
 - Use `uv sync --group dev` to prepare the Python development environment.
 - Use `uv run --group dev maturin develop` after native binding changes so `cartoboost._native` is available to Python tests.
 - Keep shared model behavior in `crates/cartoboost-core`; keep CLI-only behavior in `crates/cartoboost-cli`, PyO3 bindings in `crates/cartoboost-py`, and Python API ergonomics in `python/cartoboost`.
+- Implement ALL algorithms and ALL behavior in Rust under `crates/`; Python classes should be thin configuration and ergonomics wrappers over native bindings.
 - Do not edit build output, virtualenvs, caches, downloaded data, or benchmark output under `target/`, `.venv/`, `.pytest_cache/`, `data/`, or generated plot folders unless the task explicitly asks for generated artifacts.
 
 ## Testing instructions

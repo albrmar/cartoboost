@@ -4,9 +4,14 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Any
 
 from .._native import graph_validate_directed_metapath as _native_validate_directed_metapath
+
+
+def _enum_value(value: Any) -> Any:
+    return value.value if isinstance(value, Enum) else value
 
 
 @dataclass(frozen=True)
@@ -86,7 +91,9 @@ class DirectionalityConfig:
         if self.reverse_relation_map is not None:
             payload["reverse_relation_map"] = dict(self.reverse_relation_map)
         if self.directional_features:
-            payload["directional_features"] = list(self.directional_features)
+            payload["directional_features"] = [
+                str(_enum_value(feature)) for feature in self.directional_features
+            ]
         return payload
 
     @classmethod
@@ -106,7 +113,7 @@ class DirectionalityConfig:
         elif isinstance(features, str):
             features_tuple = (features,)
         else:
-            features_tuple = tuple(str(feature) for feature in features)
+            features_tuple = tuple(str(_enum_value(feature)) for feature in features)
         reverse_relation_map = config.get("reverse_relation_map")
         if reverse_relation_map is not None and not isinstance(
             reverse_relation_map,

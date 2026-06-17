@@ -75,16 +75,18 @@ the expanded matrix.
 | `score(X, y, sparse_sets=None, id_column=None, ids=None)` | `float` | Computes mean absolute error on predictions. |
 | `timings` | `dict[str, float]` | Fit timing components in milliseconds: `base_fit_ms`, `neural_fit_ms`, `final_fit_ms`. |
 
-## `cartoboost.GraphSageEncoder` and `cartoboost.HeteroGraphSageEncoder`
+## Graph Encoders
 
 Rust-native neighborhood-based encoders for downstream boosting workflows.
 
+`Node2VecEncoder` is for transductive directed/weighted random-walk embeddings;
 `GraphSageEncoder` is for homogeneous graphs; `HeteroGraphSageEncoder` is for
 typed relations; `HinSageEncoder` is the typed-schema HinSAGE surface with
 native Rust validation, relation-aware sampling, and link feature construction.
 
 | Method | Returns | Notes |
 | --- | --- | --- |
+| `fit(node_count, edges, edge_weights=None)` | `list[list[float]]` | Trains `Node2VecEncoder` on directed edges with optional non-negative weights. |
 | `fit(node_count, edges, node_features)` | `list[list[float]]` | Trains GraphSAGE encoder weights on an edge list and returns node embeddings. |
 | `fit(node_types, edges, node_features)` | `list[list[float]]` | Trains `HinSageEncoder` on typed nodes and `(source, target, relation)` edges validated against `edge_type_triples`. |
 | `encode(node_features)` | `list[list[float]]` | Encodes features with learned weights for inference. |
@@ -92,7 +94,7 @@ native Rust validation, relation-aware sampling, and link feature construction.
 | `loss_curve()` | `list[float]` | Per-epoch training loss history. |
 | `save_artifact_json(path)` | `None` | Persists deterministic encoder artifact. |
 | `to_artifact_json()` | `str` | Emits JSON artifact payload. |
-| `load_artifact_json(path)` | `GraphSageEncoder` / `HeteroGraphSageEncoder` / `HinSageEncoder` | Loads serialized encoder state. |
+| `load_artifact_json(path)` | `Node2VecEncoder` / `GraphSageEncoder` / `HeteroGraphSageEncoder` / `HinSageEncoder` | Loads serialized encoder state. |
 
 ## `cartoboost.graph` feature helpers
 
@@ -104,7 +106,8 @@ precompute dense and sparse graph inputs before fitting `CartoBoostRegressor`.
 | `GraphFeatureConfig.from_config(cfg)` | Validates YAML-style graph config blocks with schema, directionality, metapaths, encoder settings, and outputs. |
 | `GraphSchema`, `EdgeType`, `DirectionalityConfig` | Describe directed heterogeneous graph schemas and source-target requirements. |
 | `DirectedMetaPath` | Validates typed node/relation/node metapaths against a `GraphSchema`. |
-| `GraphFeatureTransformer.from_config(cfg)` | Fits native GraphSAGE, HeteroGraphSAGE, or typed-schema HinSAGE encoders and emits a `GraphFeatureBundle`. |
+| `GraphFeatureTransformer.from_config(cfg)` | Fits native node2vec, GraphSAGE, HeteroGraphSAGE, or typed-schema HinSAGE encoders and emits a `GraphFeatureBundle`. |
+| `Node2VecFeatureEncoder.from_config(cfg)` | Thin Python wrapper around Rust-native node2vec with `dim`, `walk_length`, `walks_per_node`, `window_size`, `p`, `q`, and optional edge weights. |
 | `HinSageFeatureEncoder.from_config(cfg)` | Thin Python wrapper around Rust-native HinSAGE with `node_type_count`, `edge_type_triples`, and optional per-relation `neighbor_samples`. |
 | `GraphFeatureBundle` | Carries dense graph columns, optional sparse sets, feature names, node IDs, and provenance metadata. |
 | `MetaPathWalkGenerator`, `TemporalWalkGenerator` | Generate constrained directed metapath walks and monotonic temporal walks. |

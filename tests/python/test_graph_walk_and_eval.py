@@ -1,14 +1,24 @@
 from __future__ import annotations
 
+import json
+import tempfile
+
+import numpy as np
 from cartoboost.graph import (
     DirectedMetaPath,
+    DirectionalFeature,
     DirectionalityConfig,
     EdgeType,
+    GraphEmbeddingsConfig,
+    GraphEncoderConfig,
+    GraphEncoderFamily,
     GraphFeatureConfig,
     GraphFeatureTransformer,
+    GraphOutputsConfig,
     GraphSchema,
     HinSageFeatureEncoder,
     MetaPathWalkGenerator,
+    Node2VecFeatureEncoder,
     SignedEdgeSampler,
     TemporalWalkGenerator,
     binary_auc,
@@ -160,6 +170,241 @@ def test_graph_feature_transformer_rejects_mismatched_input_dim() -> None:
         raise AssertionError("expected input_dim mismatch to raise")
 
 
+def test_native_node2vec_feature_encoder_fits_directed_weighted_graph() -> None:
+    encoder = Node2VecFeatureEncoder.from_config(
+        {
+            "dim": 4,
+            "walk_length": 5,
+            "walks_per_node": 3,
+            "window_size": 2,
+            "epochs": 2,
+            "negative_samples": 2,
+            "seed": 13,
+        },
+    )
+    bundle = encoder.fit(
+        edges=[(0, 1), (1, 2), (2, 0), (2, 3)],
+        node_count=4,
+        directed=True,
+        edge_weights=[1.0, 2.0, 1.0, 3.0],
+    )
+
+    assert bundle.embeddings.shape == (4, 4)
+    assert bundle.feature_names == [
+        "node2vec_00",
+        "node2vec_01",
+        "node2vec_02",
+        "node2vec_03",
+    ]
+    assert bundle.provenance["encoder"] == "node2vec"
+    assert bundle.provenance["native"] == "rust"
+    assert len(encoder.loss_curve()) == 2
+
+
+def test_native_node2vec_encode_returns_fitted_embeddings_and_node_ids() -> None:
+    encoder = Node2VecFeatureEncoder.from_config(
+        {
+            "dim": 3,
+            "walk_length": 4,
+            "walks_per_node": 2,
+            "window_size": 1,
+            "epochs": 1,
+            "negative_samples": 1,
+            "seed": 19,
+        },
+    )
+    fitted = encoder.fit(
+        edges=[("a", "b"), ("b", "c")],
+        node_ids=["a", "b", "c"],
+        directed=True,
+    )
+    encoded = encoder.encode()
+
+    assert encoded.node_ids == ["a", "b", "c"]
+    assert encoded.feature_names == fitted.feature_names
+    np.testing.assert_allclose(encoded.embeddings, fitted.embeddings)
+
+
+def test_native_node2vec_rejects_invalid_config_and_inputs() -> None:
+    try:
+        Node2VecFeatureEncoder.from_config({"dim": 0})
+    except ValueError as error:
+        assert "dim must be positive" in str(error)
+    else:
+        raise AssertionError("expected invalid node2vec dim to raise")
+
+    encoder = Node2VecFeatureEncoder.from_config(
+        {
+            "dim": 2,
+            "walk_length": 4,
+            "walks_per_node": 1,
+            "window_size": 1,
+            "epochs": 1,
+            "negative_samples": 1,
+        },
+    )
+    try:
+        encoder.encode()
+    except RuntimeError as error:
+        assert "must be fitted" in str(error)
+    else:
+        raise AssertionError("expected encode before fit to raise")
+
+    try:
+        encoder.fit(edges=[(0, 1)], node_count=2, edge_weights=[1.0, 2.0])
+    except ValueError as error:
+        assert "edge value length" in str(error)
+    else:
+        raise AssertionError("expected edge weight length mismatch to raise")
+
+    try:
+        encoder.fit(edges=[(0, 1)], node_count=2, edge_weights=[-1.0])
+    except ValueError as error:
+        assert "edge_weights" in str(error)
+    else:
+        raise AssertionError("expected negative edge weight to raise")
+
+
+def test_native_node2vec_writes_artifact_json() -> None:
+    encoder = Node2VecFeatureEncoder.from_config(
+        {
+            "dim": 2,
+            "walk_length": 4,
+            "walks_per_node": 2,
+            "window_size": 1,
+            "epochs": 1,
+            "negative_samples": 1,
+            "seed": 23,
+        },
+    )
+    encoder.fit(edges=[(0, 1), (1, 2)], node_count=3)
+
+    with tempfile.NamedTemporaryFile(suffix=".json") as file:
+        encoder.save_artifact_json(file.name)
+        payload = json.loads(open(file.name, encoding="utf-8").read())
+
+    assert payload["artifact_type"] == "cartoboost.neural.node2vec_encoder"
+    assert payload["artifact_version"] == 1
+    assert payload["node_count"] == 3
+    assert payload["output_dim"] == 2
+    assert len(payload["embeddings"]) == 3
+
+
+def test_graph_feature_transformer_node2vec_undirected_weights_expand() -> None:
+    transformer = GraphFeatureTransformer.from_config(
+        {
+            "graph_embeddings": {
+                "encoder": {
+                    "family": "node2vec",
+                    "dim": 2,
+                    "walk_length": 4,
+                    "walks_per_node": 1,
+                    "window_size": 1,
+                    "epochs": 1,
+                    "negative_samples": 1,
+                    "seed": 29,
+                },
+                "outputs": {
+                    "directional_features": [
+                        "source_outbound_strength",
+                        "target_inbound_strength",
+                    ],
+                },
+                "directionality": {
+                    "preserve_source_target_roles": False,
+                },
+            },
+        },
+    )
+    bundle = transformer.fit_transform(
+        node_features=[[0.1], [0.2]],
+        edges=[(0, 1)],
+        node_count=2,
+        directed=False,
+        edge_weights=[7.0],
+    )
+
+    assert bundle.provenance["directed"] is False
+    assert bundle.embeddings.shape == (2, 4)
+    assert list(bundle.embeddings[:, -2]) == [7.0, 7.0]
+    assert list(bundle.embeddings[:, -1]) == [7.0, 7.0]
+
+
+def test_graph_feature_transformer_node2vec_augments_booster_dense_schema() -> None:
+    transformer = GraphFeatureTransformer.from_config(
+        {
+            "graph_embeddings": {
+                "encoder": {
+                    "family": "node2vec",
+                    "dim": 3,
+                    "walk_length": 4,
+                    "walks_per_node": 2,
+                    "window_size": 1,
+                    "epochs": 1,
+                    "negative_samples": 1,
+                    "seed": 7,
+                },
+            },
+        },
+    )
+    bundle = transformer.fit_transform(
+        node_features=[[0.1], [0.2], [0.3]],
+        edges=[(0, 1), (1, 2)],
+        node_count=3,
+        directed=True,
+    )
+    dense = bundle.augment_dense([[1.0], [2.0], [3.0]])
+
+    assert bundle.embeddings.shape == (3, 3)
+    assert dense.shape == (3, 4)
+    assert bundle.feature_schema_payload()["names"] == [
+        "node2vec_00",
+        "node2vec_01",
+        "node2vec_02",
+    ]
+    assert bundle.feature_schema_payload()["kinds"] == ["Numeric", "Numeric", "Numeric"]
+
+
+def test_graph_feature_transformer_node2vec_emits_directional_features() -> None:
+    transformer = GraphFeatureTransformer.from_config(
+        {
+            "graph_embeddings": {
+                "encoder": {
+                    "family": "node2vec",
+                    "dim": 2,
+                    "walk_length": 4,
+                    "walks_per_node": 2,
+                    "window_size": 1,
+                    "epochs": 1,
+                    "negative_samples": 1,
+                    "seed": 11,
+                },
+                "outputs": {
+                    "directional_features": [
+                        "source_outbound_strength",
+                        "target_inbound_strength",
+                        "flow_imbalance_ratio",
+                    ],
+                },
+            },
+        },
+    )
+    bundle = transformer.fit_transform(
+        node_features=[[0.1], [0.2], [0.3]],
+        edges=[(0, 1), (1, 0), (0, 2)],
+        node_count=3,
+        directed=True,
+        edge_weights=[2.0, 5.0, 3.0],
+    )
+
+    assert bundle.feature_names[-3:] == [
+        "graph_source_outbound_strength",
+        "graph_target_inbound_strength",
+        "graph_flow_imbalance_ratio",
+    ]
+    assert bundle.embeddings.shape == (3, 5)
+
+
 def test_graph_transformer_accepts_graph_embeddings_config_namespace() -> None:
     features = [[0.1, 0.2], [0.0, 0.3], [0.2, 0.7]]
     edges = [(0, 1), (1, 2)]
@@ -181,6 +426,36 @@ def test_graph_transformer_accepts_graph_embeddings_config_namespace() -> None:
         node_count=3,
     )
     assert bundle.embeddings.shape == (3, 2)
+
+
+def test_graph_transformer_accepts_dataclass_graph_embeddings_config() -> None:
+    transformer = GraphFeatureTransformer.from_config(
+        GraphEmbeddingsConfig(
+            encoder=GraphEncoderConfig(
+                family=GraphEncoderFamily.HINSAGE,
+                input_dim=2,
+                node_type_count=2,
+                edge_type_triples=((0, 0, 1), (1, 1, 0)),
+                hidden_dims=(2,),
+                epochs=2,
+                neighbor_samples=(1, 0),
+            ),
+            directionality=DirectionalityConfig(
+                preserve_source_target_roles=True,
+                compute_asymmetry_features=True,
+                directional_features=(DirectionalFeature.SOURCE_TARGET_EMBEDDING,),
+            ),
+        )
+    )
+    bundle = transformer.fit_transform(
+        node_features=[[1.0, 0.0], [0.0, 1.0], [0.4, 0.2]],
+        edges=[(0, 1, 0), (0, 2, 0), (1, 0, 1)],
+        node_types=[0, 1, 1],
+    )
+
+    assert bundle.embeddings.shape[0] == 3
+    assert bundle.provenance["encoder"] == "hinsage"
+    assert bundle.feature_names[-1] == "graph_source_target_embedding"
 
 
 def test_graph_feature_transformer_directional_features_disabled_by_default() -> None:
@@ -293,10 +568,13 @@ def test_graph_feature_transformer_directional_features_reject_invalid_names() -
     edges = [(0, 1), (1, 2)]
     transformer = GraphFeatureTransformer.from_config(
         {
-            "graph_sage": {
-                "input_dim": 2,
-                "hidden_dims": [2],
-                "epochs": 2,
+            "graph_embeddings": {
+                "encoder": {
+                    "family": "graphsage",
+                    "input_dim": 2,
+                    "hidden_dims": [2],
+                    "epochs": 2,
+                },
                 "directionality": {
                     "compute_asymmetry_features": True,
                     "directional_features": ["unknown_feature"],
@@ -575,6 +853,64 @@ def test_graph_feature_config_parses_directional_yaml_shape() -> None:
     assert config.transformer_config()["graph_embeddings"]["directionality"][
         "compute_asymmetry_features"
     ]
+
+
+def test_graph_feature_config_accepts_dataclass_config() -> None:
+    config = GraphFeatureConfig.from_config(
+        GraphEmbeddingsConfig(
+            encoder=GraphEncoderConfig(
+                family="graphsage",
+                input_dim=2,
+                hidden_dims=(2,),
+                epochs=2,
+            ),
+            directionality=DirectionalityConfig(
+                compute_asymmetry_features=True,
+                directional_feature_prefix="graph",
+            ),
+            outputs=GraphOutputsConfig(
+                directional_features=(DirectionalFeature.SOURCE_TARGET_EMBEDDING,),
+            ),
+        )
+    )
+
+    assert config.encoder.family == "graphsage"
+    transformer_config = config.transformer_config()["graph_embeddings"]
+    assert transformer_config["encoder"]["input_dim"] == 2
+    assert transformer_config["outputs"]["directional_features"] == ["source_target_embedding"]
+
+
+def test_graph_feature_config_preserves_node2vec_settings_and_root_directionality() -> None:
+    config = GraphFeatureConfig.from_config(
+        {
+            "graph_embeddings": {
+                "encoder": {
+                    "family": "node2vec",
+                    "dim": 6,
+                    "walk_length": 7,
+                    "walks_per_node": 3,
+                    "window_size": 2,
+                    "epochs": 2,
+                    "negative_samples": 2,
+                    "p": 0.5,
+                    "q": 2.0,
+                    "normalize": False,
+                },
+                "directionality": {"compute_asymmetry_features": True},
+            },
+        },
+    )
+    transformer_config = config.transformer_config()["graph_embeddings"]
+
+    assert transformer_config["encoder"]["family"] == "node2vec"
+    assert transformer_config["encoder"]["dim"] == 6
+    assert transformer_config["encoder"]["walk_length"] == 7
+    assert transformer_config["encoder"]["walks_per_node"] == 3
+    assert transformer_config["encoder"]["window_size"] == 2
+    assert transformer_config["encoder"]["p"] == 0.5
+    assert transformer_config["encoder"]["q"] == 2.0
+    assert transformer_config["encoder"]["normalize"] is False
+    assert transformer_config["directionality"]["compute_asymmetry_features"] is True
 
 
 def test_graph_feature_bundle_exposes_schema_and_training_metadata() -> None:

@@ -4,7 +4,8 @@ The model benchmark suite is the maintained synthetic comparison for dense,
 neural-ID, and graph-feature regression workloads. It complements the NYC taxi
 benchmarks by keeping the data generation deterministic and small enough for
 local iteration while still exercising CartoBoost, XGBoost, LightGBM, neural
-embedding augmentation, and graph augmentation.
+embedding augmentation, and graph augmentation. The graph workload includes
+separate CartoBoost rows for node2vec, GraphSAGE, HeteroGraphSAGE, and HinSAGE.
 
 ## Latest Run
 
@@ -58,12 +59,11 @@ recover unseen ID effects and the plain dense baselines are stronger. Treat this
 as a guardrail: neural ID features should be reported with the split protocol,
 not as a universal quality improvement.
 
-The graph workload fits GraphSAGE features from train topology and node
-features, then appends source and target embeddings to CartoBoost inputs. The
-latest full graph run exercises the graph augmentation path, but the augmented
-CartoBoost row does not beat the plain CartoBoost or LightGBM rows on MAE. Treat
-that as a negative benchmark result for this synthetic topology, not as a graph
-feature failure; the value of graph features remains split- and signal-dependent.
+The graph workload fits node2vec, GraphSAGE, HeteroGraphSAGE, and HinSAGE
+features from train topology, then appends source and target embeddings to
+CartoBoost inputs. Treat graph rows as encoder-specific evidence for this
+synthetic topology; graph feature value remains split-, topology-, and
+signal-dependent.
 
 ## Reproducibility Rules
 

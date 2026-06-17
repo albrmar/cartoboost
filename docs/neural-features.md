@@ -1,7 +1,7 @@
-# Neural Features (Phase 1): Embedding-Table → Neural-Augmented Boosted Model
+# Neural And Graph-Derived Features
 
-This document defines the complete neural hybrid (neural-augmented boosting) pattern
-used in this repository:
+This document defines the neural and graph-derived feature pattern used in this
+repository:
 
 1. Train neural-style embeddings using the Rust-native `NeuralEmbeddingFeatures.fit`.
 2. Serialize embeddings into a versioned artifact.
@@ -12,9 +12,9 @@ used in this repository:
 This keeps all gradient-boosting behavior in the existing CartoBoost runtime while
 adding learned dense context through generated columns.
 
-## 1) Why this architecture
+## Why This Architecture
 
-Neural-augmented boosting is intentionally conservative in phase 1.
+Neural-augmented boosting is intentionally conservative.
 
 - **No neural runtime inside scoring path**: inference remains deterministic Rust
   and fast.
@@ -27,15 +27,15 @@ The pattern is:
 
 ```text
 raw row/context
-    ↓
+    |
 existing feature assembler
-    ↓
+    |
 structured dense + sparse
-    ↓
+    |
 NeuralEmbeddingFeatures lookup
-    ↓
+    |
 append generated dense embedding columns
-    ↓
+    |
 CartoBoost predict
 ```
 
@@ -49,7 +49,7 @@ flowchart LR
     E --> F[Final prediction]
 ```
 
-## 2) What is an embedding feature here?
+## Embedding Feature Contract
 
 For this phase, a **neural feature** is a deterministic vector lookup keyed by an
 ID:
@@ -67,7 +67,7 @@ Example for `dim=16` and origin cell embedding:
 Important: these are just dense feature columns from the perspective of the
 booster.
 
-## 3) Implementation surface (Phase 1)
+## Implementation Surface
 
 ### Python ownership
 
@@ -92,16 +92,17 @@ booster.
   - fallback logic (`zero`, `global_mean`, parent placeholder)
   - encoder trait and dense block assembly utilities
   - deterministic feature name generation (`name_00`, `name_01`, ...)
+  - node2vec, GraphSAGE, heterogeneous GraphSAGE, and typed-schema HinSAGE encoders
 
 Graph neural support follows the same ownership rule: typed graph semantics and
-HinSAGE execution live in Rust, while Python provides configuration and wrapper
-ergonomics. The native HinSAGE surface validates node types, relation triples,
-edge type consistency, relation-ordered neighbor sampling caps, artifact
-serialization, and link-prediction feature construction. Python callers pass
-typed integer arrays into the Rust encoder rather than reimplementing HinSAGE
-logic in Python.
+node2vec, GraphSAGE, HeteroGraphSAGE, and HinSAGE execution live in Rust, while
+Python provides configuration and wrapper ergonomics. The native HinSAGE surface
+validates node types, relation triples, edge type consistency, relation-ordered
+neighbor sampling caps, artifact serialization, and link-prediction feature
+construction. Python callers pass typed integer arrays into the Rust encoder
+rather than reimplementing graph encoder logic in Python.
 
-## Directional geotemporal graph features (required for OD-style signals)
+## Directional Geotemporal Graph Features
 
 CartoBoost graph support should treat directionality as a first-class schema
 concept. Many geotemporal prediction problems are not symmetric: movement from
@@ -533,7 +534,7 @@ flowchart TD
 
 ## 6) API contracts
 
-### Required artifact metadata (Phase 1)
+### Required Artifact Metadata
 
 - `artifact_type`
 - `artifact_version`
@@ -714,7 +715,7 @@ in cold-sparse settings by widening the feature space with structured dense embe
 - **Non-finite IDs**: missing/infinite IDs cannot be encoded.
 - **Dimension mismatch**: embedding `dim` in transformer and model must match.
 
-## 10) What changed in this implementation
+## 10) Implementation Summary
 
 - Added neural-augmented boosted estimator + benchmark helper:
   - `python/cartoboost/neural/pipeline.py`
@@ -725,10 +726,12 @@ in cold-sparse settings by widening the feature space with structured dense embe
 - Added Python API docs for this feature in:
   - `docs/reference/python-api.md`
 
-## 11) GraphSAGE performance and benchmark notes
+## 11) Graph Encoder Performance Notes
 
-GraphSAGE/HIN-SAGE encoders are now available through the Rust-native classes:
-`cartoboost.GraphSageEncoder` and `cartoboost.HeteroGraphSageEncoder`.
+node2vec, GraphSAGE, heterogeneous GraphSAGE, and HinSAGE encoders are
+available through Rust-native classes: `cartoboost.Node2VecEncoder`,
+`cartoboost.GraphSageEncoder`, `cartoboost.HeteroGraphSageEncoder`, and
+`cartoboost.HinSageEncoder`.
 
 Complexity is approximately:
 
