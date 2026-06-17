@@ -111,6 +111,79 @@ CartoBoost and let trees decide when that signal is useful.
 `use_residual=False` trains embeddings on raw target `y` directly. This is
 available but less common in this phase.
 
+## 4.5) Transformer setup and internals (`NeuralEmbeddingFeatures`)
+
+Phase 1 currently uses a deterministic embedding-table transformer, not a deep
+model runtime.
+
+### What this transformer is
+
+- It is keyed by one or more IDs (`u64` keys).
+- It learns one fixed vector per ID in `fit()`.
+- It exports rows to JSON artifact for Rust-native lookup.
+- At inference, it emits a dense matrix of shape `(n_rows, dim)`.
+
+### How it is trained in code (`fit`)
+
+From `python/cartoboost/neural/features.py`:
+
+1. Cast `ids` to `uint64` and `target` to float32.
+2. Aggregate per ID:
+   - `sum[target][id] += residual[id]`
+   - `count[id] += 1`
+3. Compute per-ID mean target:
+   - `mean_id = sum[id] / count[id]`
+4. Create per-ID vector using seeded noise:
+   - `z ~ Normal(0, 0.1^2)` with seed from `blake2b(id, random_state)`
+   - `vector = z`
+   - `vector[0] += mean_id`
+5. Store each vector in memory map `_embeddings[id]`.
+
+So today’s phase 1 learner is: deterministic seed + first-dimension residual
+signal injection, then full vector reuse at serve time.
+
+### How lookup works at transform time (`transform`)
+
+For each row id:
+
+- If `id` exists in map: return learned vector.
+- Else:
+  - `zero_vector`: all zeros
+  - `global_mean_vector`: use global mean of learned vectors
+  - `parent_cell`: deferred callback hook in Rust path
+
+The output has:
+
+- `rows = n_rows`
+- `cols = dim`
+- dtype `float32`
+
+### Artifact and schema details
+
+`export(path)` writes:
+
+- `metadata.artifact_type = "cartoboost.neural.embedding_table"`
+- `metadata.artifact_version = 1`
+- `metadata.dim`
+- `metadata.id_type = "u64"`
+- `metadata.row_count`
+- `metadata.fallback` with strategy fields
+- `metadata.checksum` over sorted rows + metadata
+- `rows[]` entries with `{id, values}`
+
+`from_artifact(path)` validates:
+
+- artifact type/version
+- row count
+- per-row width (`len(values) == dim`)
+- checksum integrity
+
+### Why this is called a “transformer” despite being a table
+
+Because it transforms raw row context into new dense columns before the booster
+consumes them. It is a feature-generation primitive and is intentionally
+deterministic in phase 1 to de-risk serving.
+
 ## 5) Inference flow
 
 Given input rows and IDs:
