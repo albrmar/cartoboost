@@ -60,6 +60,9 @@ nyc-quality-benchmark-repeated:
     uv run --group dev maturin develop --release
     PYTHONPATH=python uv run --group dev --group bench python scripts/run_repeated_nyc_taxi_benchmarks.py --no-download
 
+model-benchmark-suite:
+    PYTHONPATH=python uv run --group dev --group bench python scripts/run_model_benchmark_suite.py
+
 clean:
     cargo clean
     rm -rf build dist target wheels *.egg-info .pytest_cache .ruff_cache .venv

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import subprocess
+import sys
 from pathlib import Path
 
 
@@ -31,3 +33,32 @@ def test_ci_installs_native_extension_before_validation_artifacts():
     validation_step = workflow.index("uv run --group dev python scripts/run_full_validation.py")
 
     assert install_step < validation_step
+
+
+def test_model_benchmark_suite_smoke(tmp_path):
+    repo_root = Path(__file__).resolve().parents[2]
+    output_dir = tmp_path / "model_benchmarks"
+
+    subprocess.run(
+        [
+            sys.executable,
+            str(repo_root / "scripts" / "run_model_benchmark_suite.py"),
+            "--output-dir",
+            str(output_dir),
+            "--datasets",
+            "normal",
+            "--models",
+            "mean,cartoboost",
+            "--n-rows",
+            "120",
+            "--no-plots",
+        ],
+        cwd=repo_root,
+        check=True,
+    )
+
+    results = output_dir / "results.json"
+    report = output_dir / "results.md"
+    assert results.exists()
+    assert report.exists()
+    assert "Normal dense" in report.read_text(encoding="utf-8")

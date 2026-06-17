@@ -7,6 +7,7 @@ XGBoost, LightGBM, or a mean baseline.
 
 | Page | Question |
 | --- | --- |
+| [Model Benchmark Suite](model-suite.md) | How do CartoBoost, neural augmentation, graph augmentation, XGBoost, and LightGBM compare on deterministic synthetic workloads? |
 | [NYC Taxi Benchmarks](nyc-taxi.md) | Does CartoBoost help on real temporal-spatial taxi tasks with random and spatial holdouts? |
 | [Lane-Level Acceptance](lane-level.md) | Does the model capture route-cell, temporal, spatial, and combined lane behavior on a controlled dataset? |
 | [Neural Embedding Benchmark (latest)](neural-embedding-benchmark-latest.md) | How much does neural feature augmentation improve MAE under synthetic temporal-spatial holdouts? |
@@ -40,6 +41,12 @@ Run dependency-light NYC smoke validation:
 uv run --group dev --group bench python scripts/run_nyc_taxi_quality_benchmarks.py \
   --synthetic-smoke \
   --models mean
+```
+
+Run the synthetic model suite with optional XGBoost and LightGBM baselines:
+
+```sh
+uv run --group dev --group bench python scripts/run_model_benchmark_suite.py
 ```
 
 Run the maintained NYC comparison target:

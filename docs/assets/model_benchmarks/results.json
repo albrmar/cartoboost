@@ -1,0 +1,490 @@
+{
+  "artifact_version": 1,
+  "seed": 42,
+  "n_rows": 1200,
+  "train_frac": 0.8,
+  "models_requested": [
+    "mean",
+    "cartoboost",
+    "cartoboost_neural",
+    "cartoboost_graph",
+    "xgboost",
+    "lightgbm"
+  ],
+  "model_config": {
+    "n_estimators": 80,
+    "learning_rate": 0.08,
+    "max_depth": 4,
+    "neural_dim": 12,
+    "graph_dim": 8,
+    "graph_epochs": 8
+  },
+  "workloads": {
+    "normal": {
+      "display_name": "Normal dense",
+      "description": "IID dense numeric regression with nonlinear feature interactions.",
+      "row_count": 1200,
+      "feature_count": 10,
+      "splits": {
+        "random": {
+          "train_rows": 960,
+          "test_rows": 240,
+          "models": {
+            "mean": {
+              "status": "ok",
+              "metrics": {
+                "mae": 1.7165360709690618,
+                "rmse": 2.0971652810858243,
+                "r2": -6.580016358448404e-07
+              },
+              "timing": {
+                "train_seconds": 1.925000105984509e-05,
+                "predict_seconds": 3.7089994293637574e-06,
+                "predict_rows_per_second": 64707478.27566252
+              },
+              "config": {}
+            },
+            "cartoboost": {
+              "status": "ok",
+              "metrics": {
+                "mae": 0.44676743989658607,
+                "rmse": 0.5861192235283463,
+                "r2": 0.9218899531321004
+              },
+              "timing": {
+                "train_seconds": 0.2081969169958029,
+                "predict_seconds": 0.00047758399887243286,
+                "predict_rows_per_second": 502529.399156244
+              },
+              "config": {
+                "backend": "rust"
+              }
+            },
+            "cartoboost_neural": {
+              "status": "skipped",
+              "reason": "workload has no embedding ids"
+            },
+            "cartoboost_graph": {
+              "status": "skipped",
+              "reason": "workload has no graph topology"
+            },
+            "xgboost": {
+              "status": "ok",
+              "metrics": {
+                "mae": 0.44272854009248674,
+                "rmse": 0.5913080451050644,
+                "r2": 0.9205008394334593
+              },
+              "timing": {
+                "train_seconds": 0.11488041700067697,
+                "predict_seconds": 0.0010432089984533377,
+                "predict_rows_per_second": 230059.36524303773
+              },
+              "config": {
+                "tree_method": "hist"
+              }
+            },
+            "lightgbm": {
+              "status": "ok",
+              "metrics": {
+                "mae": 0.4511086647922586,
+                "rmse": 0.5874822179945864,
+                "r2": 0.9215262477782263
+              },
+              "timing": {
+                "train_seconds": 0.09370979200321017,
+                "predict_seconds": 0.001551041001221165,
+                "predict_rows_per_second": 154734.787675531
+              },
+              "config": {
+                "num_leaves": 16
+              }
+            }
+          }
+        }
+      }
+    },
+    "neural": {
+      "display_name": "Neural ID",
+      "description": "Dense regression with repeated cell IDs whose residual signal is learnable by embedding features.",
+      "row_count": 1200,
+      "feature_count": 9,
+      "splits": {
+        "random": {
+          "train_rows": 960,
+          "test_rows": 240,
+          "models": {
+            "mean": {
+              "status": "ok",
+              "metrics": {
+                "mae": 1.4356969612519914,
+                "rmse": 1.7831142872224677,
+                "r2": -0.001621732841763146
+              },
+              "timing": {
+                "train_seconds": 8.458999218419194e-06,
+                "predict_seconds": 2.958004188258201e-06,
+                "predict_rows_per_second": 81135787.75604177
+              },
+              "config": {}
+            },
+            "cartoboost": {
+              "status": "ok",
+              "metrics": {
+                "mae": 0.4679897908804099,
+                "rmse": 0.5895171533617317,
+                "r2": 0.8905191218231389
+              },
+              "timing": {
+                "train_seconds": 0.2894467079968308,
+                "predict_seconds": 0.000728166000044439,
+                "predict_rows_per_second": 329595.17470652726
+              },
+              "config": {
+                "backend": "rust"
+              }
+            },
+            "cartoboost_neural": {
+              "status": "ok",
+              "metrics": {
+                "mae": 0.3976636867082338,
+                "rmse": 0.5107689477282733,
+                "r2": 0.9178146607284757
+              },
+              "timing": {
+                "train_seconds": 0.2983009999952628,
+                "predict_seconds": 0.0007363330005318858,
+                "predict_rows_per_second": 325939.4863827065
+              },
+              "config": {
+                "embedding_dim": 12,
+                "fit_stages_ms": {
+                  "base_fit_ms": 63.48324999999022,
+                  "neural_fit_ms": 9.89924999885261,
+                  "final_fit_ms": 222.86208299919963
+                }
+              }
+            },
+            "cartoboost_graph": {
+              "status": "skipped",
+              "reason": "workload has no graph topology"
+            },
+            "xgboost": {
+              "status": "ok",
+              "metrics": {
+                "mae": 0.46250002973021426,
+                "rmse": 0.5906467318708162,
+                "r2": 0.8900991655035082
+              },
+              "timing": {
+                "train_seconds": 0.07825633299944457,
+                "predict_seconds": 0.000370291993021965,
+                "predict_rows_per_second": 648137.1580339941
+              },
+              "config": {
+                "tree_method": "hist"
+              }
+            },
+            "lightgbm": {
+              "status": "ok",
+              "metrics": {
+                "mae": 0.4981840987984817,
+                "rmse": 0.6150921990457864,
+                "r2": 0.8808138427416311
+              },
+              "timing": {
+                "train_seconds": 0.08504141600133153,
+                "predict_seconds": 0.0006111670008976944,
+                "predict_rows_per_second": 392691.35874070943
+              },
+              "config": {
+                "num_leaves": 16
+              }
+            }
+          }
+        },
+        "group_holdout": {
+          "train_rows": 962,
+          "test_rows": 238,
+          "models": {
+            "mean": {
+              "status": "ok",
+              "metrics": {
+                "mae": 1.4152791824177244,
+                "rmse": 1.7390255695317727,
+                "r2": -0.011007663214771757
+              },
+              "timing": {
+                "train_seconds": 3.916000423487276e-06,
+                "predict_seconds": 2.3329994291998446e-06,
+                "predict_rows_per_second": 102014598.46975939
+              },
+              "config": {}
+            },
+            "cartoboost": {
+              "status": "ok",
+              "metrics": {
+                "mae": 0.5210718498046373,
+                "rmse": 0.6455460988314379,
+                "r2": 0.8606852711371986
+              },
+              "timing": {
+                "train_seconds": 0.1082942919965717,
+                "predict_seconds": 0.00031712499912828207,
+                "predict_rows_per_second": 750492.7099857089
+              },
+              "config": {
+                "backend": "rust"
+              }
+            },
+            "cartoboost_neural": {
+              "status": "ok",
+              "metrics": {
+                "mae": 0.7383571360815169,
+                "rmse": 0.8806781769030962,
+                "r2": 0.7407152455861284
+              },
+              "timing": {
+                "train_seconds": 0.30629220900300425,
+                "predict_seconds": 0.0006917499995324761,
+                "predict_rows_per_second": 344054.93337311735
+              },
+              "config": {
+                "embedding_dim": 12,
+                "fit_stages_ms": {
+                  "base_fit_ms": 57.401917001698166,
+                  "neural_fit_ms": 6.9932500045979396,
+                  "final_fit_ms": 240.26329199841712
+                }
+              }
+            },
+            "cartoboost_graph": {
+              "status": "skipped",
+              "reason": "workload has no graph topology"
+            },
+            "xgboost": {
+              "status": "ok",
+              "metrics": {
+                "mae": 0.5228865079703163,
+                "rmse": 0.6590587114061527,
+                "r2": 0.8547919404252018
+              },
+              "timing": {
+                "train_seconds": 0.08825383300427347,
+                "predict_seconds": 0.0003859170028590597,
+                "predict_rows_per_second": 616712.9155667694
+              },
+              "config": {
+                "tree_method": "hist"
+              }
+            },
+            "lightgbm": {
+              "status": "ok",
+              "metrics": {
+                "mae": 0.5048401002570756,
+                "rmse": 0.6299576910114026,
+                "r2": 0.8673322764316463
+              },
+              "timing": {
+                "train_seconds": 0.10097870900062844,
+                "predict_seconds": 0.0007142079994082451,
+                "predict_rows_per_second": 333236.2563807661
+              },
+              "config": {
+                "num_leaves": 16
+              }
+            }
+          }
+        }
+      }
+    },
+    "graph": {
+      "display_name": "Graph source-target",
+      "description": "Directed source-target regression where graph topology and node features carry predictive signal.",
+      "row_count": 1200,
+      "feature_count": 8,
+      "splits": {
+        "random": {
+          "train_rows": 960,
+          "test_rows": 240,
+          "models": {
+            "mean": {
+              "status": "ok",
+              "metrics": {
+                "mae": 1.2034998970877167,
+                "rmse": 1.5113450952039158,
+                "r2": -0.025203821705805485
+              },
+              "timing": {
+                "train_seconds": 5.583002348430455e-06,
+                "predict_seconds": 2.3750035325065255e-06,
+                "predict_rows_per_second": 101052481.2764002
+              },
+              "config": {}
+            },
+            "cartoboost": {
+              "status": "ok",
+              "metrics": {
+                "mae": 0.3892585671272303,
+                "rmse": 0.500072236002599,
+                "r2": 0.8877598028156262
+              },
+              "timing": {
+                "train_seconds": 0.0931427910036291,
+                "predict_seconds": 0.0003225410036975518,
+                "predict_rows_per_second": 744091.4403089324
+              },
+              "config": {
+                "backend": "rust"
+              }
+            },
+            "cartoboost_neural": {
+              "status": "skipped",
+              "reason": "workload has no embedding ids"
+            },
+            "cartoboost_graph": {
+              "status": "ok",
+              "metrics": {
+                "mae": 0.38787344565153575,
+                "rmse": 0.49774750362607095,
+                "r2": 0.8888009400773107
+              },
+              "timing": {
+                "train_seconds": 0.22580500000185566,
+                "predict_seconds": 0.00029745899519184604,
+                "predict_rows_per_second": 806833.8960306516
+              },
+              "config": {
+                "backend": "rust",
+                "graph_dim": 8,
+                "graph_epochs": 8
+              }
+            },
+            "xgboost": {
+              "status": "ok",
+              "metrics": {
+                "mae": 0.38882571481020917,
+                "rmse": 0.5067013561444836,
+                "r2": 0.8847642937384157
+              },
+              "timing": {
+                "train_seconds": 0.07072762500320096,
+                "predict_seconds": 0.0003566670056898147,
+                "predict_rows_per_second": 672896.5566518442
+              },
+              "config": {
+                "tree_method": "hist"
+              }
+            },
+            "lightgbm": {
+              "status": "ok",
+              "metrics": {
+                "mae": 0.38951502770298313,
+                "rmse": 0.4971349258422397,
+                "r2": 0.8890744769880685
+              },
+              "timing": {
+                "train_seconds": 0.08098283300205367,
+                "predict_seconds": 0.0004545419942587614,
+                "predict_rows_per_second": 528004.0194996217
+              },
+              "config": {
+                "num_leaves": 16
+              }
+            }
+          }
+        },
+        "group_holdout": {
+          "train_rows": 964,
+          "test_rows": 236,
+          "models": {
+            "mean": {
+              "status": "ok",
+              "metrics": {
+                "mae": 1.211896104142782,
+                "rmse": 1.5580820445620236,
+                "r2": -0.03156764112229338
+              },
+              "timing": {
+                "train_seconds": 4.916000762023032e-06,
+                "predict_seconds": 2.458000381011516e-06,
+                "predict_rows_per_second": 96013003.83154592
+              },
+              "config": {}
+            },
+            "cartoboost": {
+              "status": "ok",
+              "metrics": {
+                "mae": 0.3952700124879285,
+                "rmse": 0.5017146273674329,
+                "r2": 0.8930377349960387
+              },
+              "timing": {
+                "train_seconds": 0.08406962500157533,
+                "predict_seconds": 0.0002458750022924505,
+                "predict_rows_per_second": 959837.3067600223
+              },
+              "config": {
+                "backend": "rust"
+              }
+            },
+            "cartoboost_neural": {
+              "status": "skipped",
+              "reason": "workload has no embedding ids"
+            },
+            "cartoboost_graph": {
+              "status": "ok",
+              "metrics": {
+                "mae": 0.3907186642862733,
+                "rmse": 0.4950287852721083,
+                "r2": 0.8958694957233354
+              },
+              "timing": {
+                "train_seconds": 0.2250426669997978,
+                "predict_seconds": 0.0002754160013864748,
+                "predict_rows_per_second": 856885.5796756533
+              },
+              "config": {
+                "backend": "rust",
+                "graph_dim": 8,
+                "graph_epochs": 8
+              }
+            },
+            "xgboost": {
+              "status": "ok",
+              "metrics": {
+                "mae": 0.39460321141415416,
+                "rmse": 0.5092298619162922,
+                "r2": 0.8898093381560416
+              },
+              "timing": {
+                "train_seconds": 0.07351054200262297,
+                "predict_seconds": 0.000345124994055368,
+                "predict_rows_per_second": 683810.2254690334
+              },
+              "config": {
+                "tree_method": "hist"
+              }
+            },
+            "lightgbm": {
+              "status": "ok",
+              "metrics": {
+                "mae": 0.3899717744218853,
+                "rmse": 0.49096461044228434,
+                "r2": 0.8975722949833933
+              },
+              "timing": {
+                "train_seconds": 0.08201637499587378,
+                "predict_seconds": 0.0004997079959139228,
+                "predict_rows_per_second": 472275.8129342645
+              },
+              "config": {
+                "num_leaves": 16
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

@@ -78,5 +78,6 @@ nav:
       - CLI Reference: reference/cli.md
   - Benchmarks:
       - Overview: benchmarks/index.md
+      - Model Benchmark Suite: benchmarks/model-suite.md
       - NYC Taxi Benchmarks: benchmarks/nyc-taxi.md
       - Lane-Level Acceptance: benchmarks/lane-level.md
