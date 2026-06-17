@@ -313,7 +313,7 @@ impl Model {
                 self.feature_count
             )));
         }
-        if values.iter().any(|value| !value.is_finite()) {
+        if values.par_iter().any(|value| !value.is_finite()) {
             return Err(CartoBoostError::InvalidInput(
                 "dataset values must be finite".to_string(),
             ));
@@ -412,7 +412,7 @@ impl Model {
                 self.feature_count
             )));
         }
-        if values.iter().any(|value| !value.is_finite()) {
+        if values.par_iter().any(|value| !value.is_finite()) {
             return Err(CartoBoostError::InvalidInput(
                 "dataset values must be finite".to_string(),
             ));
@@ -466,7 +466,7 @@ impl Model {
                 self.feature_count
             )));
         }
-        if values.iter().any(|value| !value.is_finite()) {
+        if values.par_iter().any(|value| !value.is_finite()) {
             return Err(CartoBoostError::InvalidInput(
                 "dataset values must be finite".to_string(),
             ));

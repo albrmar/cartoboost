@@ -77,13 +77,13 @@ impl Booster {
                 "X row count must match y length".to_string(),
             ));
         }
-        if y.iter().any(|v| !v.is_finite()) {
+        if y.par_iter().any(|v| !v.is_finite()) {
             return Err(CartoBoostError::InvalidInput(
                 "targets must be finite".to_string(),
             ));
         }
         if let LossConfig::LogL2(config) = self.config.loss {
-            if y.iter().any(|value| *value + config.offset <= 0.0) {
+            if y.par_iter().any(|value| *value + config.offset <= 0.0) {
                 return Err(CartoBoostError::InvalidInput(
                     "log_l2 targets must be greater than -offset".to_string(),
                 ));
@@ -95,7 +95,7 @@ impl Booster {
         let training_targets = match self.config.loss {
             LossConfig::LogL2(config) => {
                 transformed_y = y
-                    .iter()
+                    .par_iter()
                     .map(|value| (*value + config.offset).ln())
                     .collect::<Vec<_>>();
                 &transformed_y
