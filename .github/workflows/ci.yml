@@ -213,6 +213,11 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform.target }}
+
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
         with:
@@ -226,7 +231,6 @@ jobs:
           manylinux: ${{ matrix.platform.manylinux }}
           args: >-
             --release
-            --locked
             --compatibility pypi
             --out dist
             --interpreter ${{ startsWith(matrix.platform.name, 'linux-') && format('python{0}', matrix.python-version) || 'python' }}
