@@ -1,6 +1,6 @@
-# Neural Features (Phase 1): Embedding-Table → CartoBoost Hybrid
+# Neural Features (Phase 1): Embedding-Table → Neural-Augmented Boosted Model
 
-This document defines the complete hybrid pattern used in this repository:
+This document defines the complete neural-augmented boosting pattern used in this repository:
 
 1. Train neural-style embeddings using the Rust-native `NeuralEmbeddingFeatures.fit`.
 2. Serialize embeddings into a versioned artifact.
@@ -13,7 +13,7 @@ adding learned dense context through generated columns.
 
 ## 1) Why this architecture
 
-A hybrid is intentionally conservative in phase 1.
+Neural-augmented boosting is intentionally conservative in phase 1.
 
 - **No neural runtime inside scoring path**: inference remains deterministic Rust
   and fast.
@@ -82,7 +82,7 @@ booster.
   - Appends embedding columns at training and inference time.
 
 - `scripts/run_neural_embedding_benchmark.py`
-  - Quick structured-only vs hybrid comparison on synthetic data.
+  - Quick structured-only vs neural-augmented boosted comparison on synthetic data.
 
 ### Rust ownership
 
@@ -452,13 +452,13 @@ in cold-sparse settings by widening the feature space with structured dense embe
 - **ID drift**: ID column encoding must stay stable between training/inference.
 - **Row ordering**: IDs and rows must align (same order) before transform.
 - **Sparse splits**: ensure sparse-set feature configuration is identical across
-  baseline and hybrid training.
+  baseline and neural-augmented boosted training.
 - **Non-finite IDs**: missing/infinite IDs cannot be encoded.
 - **Dimension mismatch**: embedding `dim` in transformer and model must match.
 
 ## 10) What changed in this implementation
 
-- Added hybrid estimator + benchmark helper:
+- Added neural-augmented boosted estimator + benchmark helper:
   - `python/cartoboost/neural/pipeline.py`
 - Exported at package root:
   - `cartoboost.NeuralEmbeddingRegressor`

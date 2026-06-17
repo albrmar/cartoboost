@@ -63,8 +63,9 @@ regressor = NeuralEmbeddingRegressor(
 )
 ```
 
-Rust-native hybrid estimator that appends offline `NeuralEmbeddingFeatures` to
-dense features and trains `CartoBoostRegressor` on the expanded matrix.
+Rust-native neural-augmented boosted estimator that appends offline
+`NeuralEmbeddingFeatures` to dense features and trains `CartoBoostRegressor` on
+the expanded matrix.
 
 | Method | Returns | Notes |
 | --- | --- | --- |
@@ -90,12 +91,12 @@ benchmark_neural_vs_cartoboost(
 Returns:
 
 - `structured_mae`
-- `hybrid_mae`
+- `neural_mae` (reported as `hybrid_mae` in the current helper payload)
 - `improvement`
 - `cartoboost_fit_ms`
 - `cartoboost_predict_ms`
-- `hybrid_fit_ms`
-- `hybrid_predict_ms`
+- `neural_fit_ms` (reported as `hybrid_fit_ms` in the current helper payload)
+- `neural_predict_ms` (reported as `hybrid_predict_ms` in the current helper payload)
 
 Use this helper for quick, deterministic smoke comparisons on a held-out split.
 
