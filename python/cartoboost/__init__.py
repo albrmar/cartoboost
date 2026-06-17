@@ -19,11 +19,14 @@ from .metrics import (
 from .overlay import OverlayConfig, weighted_overlay
 from .regressor import CartoBoostRegressor
 from .schema import FeatureKind, FeatureSchema
+from .neural import ArtifactFallback, NeuralEmbeddingFeatures
 
 __version__ = "0.1.0"
 
 __all__ = [
+    "ArtifactFallback",
     "FeatureSchema",
+    "NeuralEmbeddingFeatures",
     "FeatureKind",
     "CartoBoostRegressor",
     "OverlayConfig",
