@@ -1,9 +1,55 @@
-# llms.txt
+# CartoBoost Agent Operating Guide
 
-A proposal that those interested in providing LLM-friendly content add a /llms.txt file to their site. This is a markdown file that provides brief background information and guidance, along with links to markdown files providing more detailed information.
+> CartoBoost is a Rust-first temporal-spatial regression toolbox with a Python API, CLI tooling, and a benchmark-driven validation pipeline.
 
-## Docs
+Use this guide as the first read before making changes. Start in the relevant code component, then update contracts, then run the validation commands defined in AGENTS.
 
-- [llms.txt proposal](https://llmstxt.org/index.md): The proposal for llms.txt
-- [Python library docs](https://llmstxt.org/intro.html.md): Docs for `llms-txt` python lib
-- [ed demo](https://llmstxt.org/ed-commonmark.md): Tongue-in-cheek example of how llms.txt could be used in the classic `ed` editor, used to show how editors could incorporate llms.txt in general.
+## Workspace Overview
+- [Repository README](../README.md): global project intent, quick workflow examples, and component-level capabilities.
+- [Root AGENTS instructions](../AGENTS.md): workspace development rules, validation commands, and release caveats.
+- [Cargo workspace manifest](../Cargo.toml): workspace members and shared build configuration.
+- [Python project manifest](../pyproject.toml): dependency groups and Python packaging settings.
+- [Python environment lockfile](../uv.lock): pinned dependency state for reproducible Python builds.
+- [Docs home](index.md): documentation index and user-facing map.
+
+## Core Components
+- [cartoboost-core crate](../crates/cartoboost-core): shared modeling core, splitters, objective logic, and schema contracts.
+- [cartoboost-cli crate](../crates/cartoboost-cli): command implementation for `train`, `predict`, `eval`, and `inspect`.
+- [cartoboost-neural crate](../crates/cartoboost-neural): experimental neural feature integration path.
+- [cartoboost-py crate](../crates/cartoboost-py): PyO3 binding layer.
+- [Python package API](../python/cartoboost): user-facing Python package and ergonomic wrappers.
+- [Benchmarks crate workspace](../benches): timing, benchmark definitions, and reporting harnesses.
+- [Scripts folder](../scripts): acceptance metrics and dataset generation utilities used for validation.
+
+## Documentation Contracts
+- [Docs index](index.md): entrypoint and topical structure.
+- [Installation guide](installation.md): install paths and optional extras.
+- [Getting started](getting-started.md): first run flow and local checks.
+- [Python API reference](reference/python-api.md): authoritative API contracts.
+- [CLI reference](reference/cli.md): argument/flag behavior and output formats.
+- [Python estimator guide](user-guide/python-estimator.md): estimator usage and expected semantics.
+- [CLI guide](user-guide/cli.md): workflow-oriented CLI usage patterns.
+- [Feature schema](feature_schema.md): data schema and validation contract.
+- [Model artifact format](model_artifact.md): serialization and compatibility assumptions.
+- [Constraints](constraints.md): legal/algorithmic domain constraints.
+- [Spatial modeling](spatial_modeling.md): modeling assumptions for route/time/geographic features.
+- [Evaluation protocol](evaluation_protocol.md): protocol for trustworthy evaluations.
+- [Benchmarks overview](benchmarks/index.md), [NYC Taxi](benchmarks/nyc-taxi.md), [Lane-level acceptance](benchmarks/lane-level.md): expected evidence format.
+
+## Where to Edit by Change Type
+- For core algorithm changes: edit `crates/cartoboost-core` and then update [feature schema](feature_schema.md) + [tests](../tests) as needed.
+- For CLI behavior and I/O format changes: edit `crates/cartoboost-cli/src/main.rs`, update [CLI guide](user-guide/cli.md), [CLI reference](reference/cli.md), and integration tests under `../tests/integration`.
+- For Python API changes: edit `python/cartoboost`, update [Python API reference](reference/python-api.md), and add/adjust tests under `../tests/python`.
+- For bindings/debugging interop: edit `crates/cartoboost-py/src/lib.rs`, then run `uv run --group dev maturin develop` after any native changes.
+- For benchmark or acceptance behavior changes: edit `scripts`, benchmark sources in `benches`, and benchmark docs under `docs/benchmarks`.
+
+## Validation and Runtime Checks
+- Run `cargo fmt --all --check` before any Rust merge attempt.
+- Run `cargo clippy --workspace --all-targets -- -D warnings` before finalizing CLI/core edits.
+- Run `cargo test --workspace` for native Rust behavior changes.
+- Run `uv run --group dev ruff format --check python tests scripts` and `uv run --group dev ruff check python tests scripts` after Python-facing edits.
+- Run `uv run --group dev pytest` after changing Python APIs or estimator behavior.
+- Use `just validate` for full local validation only when comprehensive smoke coverage is needed.
+
+## Optional
+- [llms.txt spec](https://llmstxt.org/index.md): authoritative markdown format this file follows.
