@@ -1,6 +1,7 @@
 # Neural Features (Phase 1): Embedding-Table → Neural-Augmented Boosted Model
 
-This document defines the complete neural-augmented boosting pattern used in this repository:
+This document defines the complete neural hybrid (neural-augmented boosting) pattern
+used in this repository:
 
 1. Train neural-style embeddings using the Rust-native `NeuralEmbeddingFeatures.fit`.
 2. Serialize embeddings into a versioned artifact.

@@ -87,7 +87,11 @@ predictions = model.predict(X_test)
 The estimator supports sklearn-style `get_params`, `set_params`, `clone`,
 `Pipeline`, `GridSearchCV`, and NumPy-array predictions.
 
-## Boosted-only vs Neural-Augmented Boosted
+## Neural Hybrid: Boosted-only vs Neural-Augmented Boosted
+
+The **neural hybrid** path is the ID-aware extension that appends learned embeddings
+to the boosted pipeline. Use it when entities (route IDs, H3 cells, users,
+locations) carry stable signal.
 
 Use **boosted-only** when you want CartoBoost by itself:
 
@@ -100,7 +104,7 @@ pred = model.predict(X_test)
 ```
 
 Use **neural-augmented boosted** when you have high-cardinality IDs and want to
-append learned ID embeddings to the tree input:
+append learned ID embeddings to the tree input. This is the hybrid workflow:
 
 ```python
 from cartoboost import NeuralEmbeddingRegressor
@@ -122,6 +126,11 @@ from cartoboost import benchmark_neural_vs_cartoboost
 
 results = benchmark_neural_vs_cartoboost(X, y, ids, split_ratio=0.8)
 ```
+
+Return keys to inspect include:
+`structured_mae`, `hybrid_mae` (improvement over baseline), `cartoboost_fit_ms`,
+and `hybrid_fit_ms`. Use the helper as a quick signal check, then validate on your
+real temporal/spatial splits.
 
 Optuna works with the estimator through the standard sklearn contract:
 
