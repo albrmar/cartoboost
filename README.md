@@ -87,6 +87,42 @@ predictions = model.predict(X_test)
 The estimator supports sklearn-style `get_params`, `set_params`, `clone`,
 `Pipeline`, `GridSearchCV`, and NumPy-array predictions.
 
+## Boosted-only vs Neural-Augmented Boosted
+
+Use **boosted-only** when you want CartoBoost by itself:
+
+```python
+from cartoboost import CartoBoostRegressor
+
+model = CartoBoostRegressor(n_estimators=100, splitters=["axis", "periodic:24"])
+model.fit(X_train, y_train)
+pred = model.predict(X_test)
+```
+
+Use **neural-augmented boosted** when you have high-cardinality IDs and want to
+append learned ID embeddings to the tree input:
+
+```python
+from cartoboost import NeuralEmbeddingRegressor
+
+neural_model = NeuralEmbeddingRegressor(
+    dim=16,
+    use_residual=True,
+    base_model_kwargs={"n_estimators": 80, "splitters": ["axis"]},
+    final_model_kwargs={"n_estimators": 120, "splitters": ["axis", "periodic:24"]},
+)
+neural_model.fit(X_train, y_train, ids=ids_train)
+pred = neural_model.predict(X_test, ids=ids_test)
+```
+
+For a quick head-to-head comparison on one split, use:
+
+```python
+from cartoboost import benchmark_neural_vs_cartoboost
+
+results = benchmark_neural_vs_cartoboost(X, y, ids, split_ratio=0.8)
+```
+
 Optuna works with the estimator through the standard sklearn contract:
 
 ```python
@@ -211,4 +247,5 @@ cartoboost eval --model model.json --data test_with_target.csv
 - [Feature Schema](docs/feature_schema.md)
 - [Sparse Features](docs/sparse_features.md)
 - [Model Artifacts](docs/model_artifact.md)
+- [Neural Features](docs/neural-features.md)
 - [Limitations](docs/limitations.md)
