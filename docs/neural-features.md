@@ -388,11 +388,11 @@ Keep these fixed between runs:
 - train/test split order (last-window holdout in benchmark script)
 
 This benchmark script is synthetic and for smoke testing only. For thesis-style
-validation, pair it with blocked validation from `cartoboost.spatial_blocked_cv`
-and `cartoboost.temporal_blocked_cv` to stress generalization.
+validation, use blocked protocols by design and compare against random as a lower
+barrier baseline.
 
 ```python
-from cartoboost import spatial_blocked_cv, temporal_blocked_cv
+from cartoboost import out_of_time_split
 
 train_idx, valid_idx = out_of_time_split(
     times,
@@ -400,6 +400,16 @@ train_idx, valid_idx = out_of_time_split(
     gap=0,
 )
 ```
+
+Split protocol options for the benchmark script:
+
+- `tail`: deterministic tail holdout.
+- `random`: random holdout with explicit `--random-state`.
+- `temporal_blocked`: out-of-time split from synthetic `times` field.
+- `geo_blocked`: single holdout block in coordinate space.
+- `cold_origin`: hold out one/two origin groups via grouped block split.
+- `cold_destination`: hold out one/two destination groups via grouped block split.
+- `all`: run all six protocols in one run (default).
 
 Use the repository script:
 
@@ -409,15 +419,39 @@ uv run --group dev python scripts/run_neural_embedding_benchmark.py \
   --n-features 8 \
   --n-cells 128 \
   --n-neural-dim 16 \
+  --split-mode all \
   --include-sklearn \
   --output target/validation/neural_embedding_benchmark.json
 ```
 
-The JSON report contains MAE and latency timing for:
+Run one blocked protocol only:
 
-- structured-only `cartoboost`
-- `neural_embedding_hybrid`
-- optional `sklearn_gbr`
+```bash
+uv run --group dev python scripts/run_neural_embedding_benchmark.py \
+  --split-mode cold_origin \
+  --n-splits 6 \
+  --block-fold 2 \
+  --output target/validation/neural_embedding_benchmark.json
+```
+
+The JSON report is now scenario-based. Example shape:
+
+```json
+{
+  "split_mode": "all",
+  "scenarios": {
+    "cold_origin": {
+      "split_size": {"train_rows": 1600, "test_rows": 400},
+      "ids": "origin",
+      "results": {
+        "cartoboost": {"mae": 1.12, "fit_ms": 120.1, "predict_ms": 1.7},
+        "neural_embedding_hybrid": {"mae": 0.89, "fit_ms": 214.9, "predict_ms": 2.4},
+        "hybrid_vs_baseline_improvement_mae": 0.23
+      }
+    }
+  }
+}
+```
 
 A useful check is to require improvement on blocked/shifted splits, not only
 random splits.
