@@ -63,8 +63,8 @@ regressor = NeuralEmbeddingRegressor(
 )
 ```
 
-Phase-1 hybrid estimator that appends offline `NeuralEmbeddingFeatures` to dense
-features and trains `CartoBoostRegressor` on the expanded matrix.
+Rust-native hybrid estimator that appends offline `NeuralEmbeddingFeatures` to
+dense features and trains `CartoBoostRegressor` on the expanded matrix.
 
 | Method | Returns | Notes |
 | --- | --- | --- |

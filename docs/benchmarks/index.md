@@ -9,6 +9,7 @@ XGBoost, LightGBM, or a mean baseline.
 | --- | --- |
 | [NYC Taxi Benchmarks](nyc-taxi.md) | Does CartoBoost help on real temporal-spatial taxi tasks with random and spatial holdouts? |
 | [Lane-Level Acceptance](lane-level.md) | Does the model capture route-cell, temporal, spatial, and combined lane behavior on a controlled dataset? |
+| [Neural Embedding Benchmark (latest)](neural-embedding-benchmark-latest.md) | How much does neural feature augmentation improve MAE under synthetic temporal-spatial holdouts? |
 
 ## Evaluation Helpers
 

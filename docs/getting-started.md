@@ -61,8 +61,9 @@ memberships.
 
 ## Add Neural Features (Hybrid)
 
-Use `NeuralEmbeddingRegressor` for Phase 1 neural features: learn a small ID-based
-embedding table from residuals, then append those dense vectors to your model input.
+Use `NeuralEmbeddingRegressor` for neural features: learn a small ID-based
+embedding table from residuals via the Rust-backed trainer, then append those
+dense vectors to your model input.
 
 ```python
 import numpy as np

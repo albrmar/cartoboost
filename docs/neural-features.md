@@ -2,7 +2,7 @@
 
 This document defines the complete hybrid pattern used in this repository:
 
-1. Train neural-style embeddings offline (Python).
+1. Train neural-style embeddings using the Rust-native `NeuralEmbeddingFeatures.fit`.
 2. Serialize embeddings into a versioned artifact.
 3. Load and validate embeddings at inference (Rust).
 4. Append generated dense vectors to the input matrix.
@@ -72,7 +72,7 @@ booster.
 
 - `python/cartoboost/neural/features.py`
   - `NeuralEmbeddingFeatures`
-  - Fits per-ID vectors from an ID/value stream.
+  - Wraps Rust-native embedding training behind a Python API.
   - Exports a JSON artifact with version/metadata and checksum.
   - Loads artifact for parity checks.
 
@@ -112,16 +112,8 @@ If residual training is enabled:
 
 `r_i = y_i - f0(x_i)`.
 
-`Φ` is then fit only to summarize residual behavior by ID family. In the current
-implementation, fit is moment-based and deterministic:
-
-`mean_k = mean(r_i | id_i = k)`
-
-`Φ(k)[0] = mean_k + ε_{k,0}`, `Φ(k)[d] = ε_{k,d}` for `d>0`,  
-with `ε_{k,d} ~ N(0, 0.1^2)` seeded from `(random_state, k)`.
-
-This is deliberately simple. The intention is to validate the feature pipeline and
-contract before introducing a trained neural encoder in phase 2.
+`Φ` is then fit only to summarize residual behavior by ID family using the Rust
+native implementation.
 
 Key property:
 
@@ -181,8 +173,8 @@ available but less common in this phase.
 
 ## 4.5) Transformer setup and internals (`NeuralEmbeddingFeatures`)
 
-Phase 1 currently uses a deterministic embedding-table transformer, not a deep
-model runtime.
+The embedding trainer is implemented in Rust; Python orchestration remains
+minimal and deterministic.
 
 ### What this transformer is
 
@@ -193,22 +185,10 @@ model runtime.
 
 ### How it is trained in code (`fit`)
 
-From `python/cartoboost/neural/features.py`:
-
-1. Cast `ids` to `uint64` and `target` to float32.
-2. Aggregate per ID:
-   - `sum[target][id] += residual[id]`
-   - `count[id] += 1`
-3. Compute per-ID mean target:
-   - `mean_id = sum[id] / count[id]`
-4. Create per-ID vector using seeded noise:
-   - `z ~ Normal(0, 0.1^2)` with seed from `blake2b(id, random_state)`
-   - `vector = z`
-   - `vector[0] += mean_id`
-5. Store each vector in memory map `_embeddings[id]`.
-
-So today’s phase 1 learner is: deterministic seed + first-dimension residual
-signal injection, then full vector reuse at serve time.
+From Python, `NeuralEmbeddingFeatures.fit(ids, target)` validates inputs and
+delegates to `cartoboost._native.NeuralEmbeddingFeatures.fit`.
+The trained vectors are exposed through `transform()` and persisted via
+`export()` as artifact rows + metadata.
 
 ### How lookup works at transform time (`transform`)
 

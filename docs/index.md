@@ -29,6 +29,7 @@ split types that directly model temporal and spatial structure.
   route-cell sparse sets, fuzzy routing, and blocked evaluation.
 - [CLI](user-guide/cli.md) covers dense numeric CSV training and prediction.
 - [Benchmarks](benchmarks/index.md) explains reproducible comparison reports.
+- [Neural Embedding Benchmark](benchmarks/neural-embedding-benchmark-latest.md) shows the latest hybrid embedding-vs-baseline MAE comparison.
 
 ## What CartoBoost Supports
 
