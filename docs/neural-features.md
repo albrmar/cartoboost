@@ -61,3 +61,24 @@ It avoids ONNX in this phase and keeps the model artifact flow straightforward.
 
 ONNX encoders (lane residual encoders, temporal encoders, calibration heads) are
 planned for later phases and are not part of Phase 1.
+
+## Benchmarking the phase-1 path
+
+You can compare structured-only CartoBoost against the hybrid residual embedding
+pipeline with one command:
+
+```bash
+uv run --group dev python scripts/run_neural_embedding_benchmark.py \
+  --n-rows 2000 \
+  --n-features 8 \
+  --n-cells 128 \
+  --n-neural-dim 16 \
+  --include-sklearn \
+  --output target/validation/neural_embedding_benchmark.json
+```
+
+The output JSON reports `mae`, `fit_ms`, and `predict_ms` for each model family:
+
+- `cartoboost`: structured-only baseline
+- `neural_embedding_hybrid`: residual embedding-table + CartoBoost
+- `sklearn_gbr` (when `--include-sklearn` is set): sklearn baseline for comparison

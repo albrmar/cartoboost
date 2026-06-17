@@ -16,10 +16,15 @@ from .metrics import (
     pinball_loss,
     residual_morans_i,
 )
+from .neural import (
+    ArtifactFallback,
+    NeuralEmbeddingFeatures,
+    NeuralEmbeddingRegressor,
+    benchmark_neural_vs_cartoboost,
+)
 from .overlay import OverlayConfig, weighted_overlay
 from .regressor import CartoBoostRegressor
 from .schema import FeatureKind, FeatureSchema
-from .neural import ArtifactFallback, NeuralEmbeddingFeatures
 
 __version__ = "0.1.0"
 
@@ -27,6 +32,8 @@ __all__ = [
     "ArtifactFallback",
     "FeatureSchema",
     "NeuralEmbeddingFeatures",
+    "NeuralEmbeddingRegressor",
+    "benchmark_neural_vs_cartoboost",
     "FeatureKind",
     "CartoBoostRegressor",
     "OverlayConfig",
