@@ -60,6 +60,8 @@ def normalize_feature_kind(kind: Any, entry: dict[str, Any] | None = None) -> An
         "ZipSparseSet",
         "zip_sparse_set",
         "zip-sparse-set",
+        "zip3_sparse_set",
+        "zip3-sparse-set",
         "GeoSparseSet",
         "geo_sparse_set",
         "geo-sparse-set",

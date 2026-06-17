@@ -36,9 +36,10 @@ zip_sparse_sets = build_zip_sparse_sets(
 schema = {
     "dense": [{"name": "distance_m", "kind": "numeric"}],
     "sparse_sets": [
-        {"name": "ozip_zip5", "kind": "zip_sparse_set"},
-        {"name": "ozip_zip_p3", "kind": "zip_sparse_set"},
-        {"name": "dzip_zip5", "kind": "zip_sparse_set"},
+    {"name": "ozip_zip5", "kind": "zip_sparse_set"},
+    {"name": "ozip_zip_p3", "kind": "zip_sparse_set"},
+    {"name": "dzip_zip5", "kind": "zip_sparse_set"},
+    {"name": "dzip_zip_p3", "kind": "zip3_sparse_set"},
     ],
 }
 
