@@ -1,0 +1,130 @@
+name: Auto version and release
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+    inputs:
+      bump_level:
+        description: "SemVer bump level for this release."
+        required: false
+        default: "patch"
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+permissions:
+  contents: write
+
+jobs:
+  bump-and-tag:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Bump versions and prepare release tag
+        id: version
+        env:
+          BUMP_LEVEL: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.bump_level || 'patch' }}
+        run: |
+          set -euo pipefail
+
+          python - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          bump_level = os.environ["BUMP_LEVEL"]
+          files = [
+              "Cargo.toml",
+              "crates/cartoboost-core/Cargo.toml",
+              "crates/cartoboost-neural/Cargo.toml",
+              "crates/cartoboost-cli/Cargo.toml",
+              "crates/cartoboost-py/Cargo.toml",
+              "crates/cartoboost-py/pyproject.toml",
+              "pyproject.toml",
+              "python/cartoboost/__init__.py",
+          ]
+
+          toml_version_re = re.compile(r'(?m)^(?P<prefix>[ \t]*version[ \t]*=[ \t]*)"(?P<version>\d+\.\d+\.\d+)"')
+          py_version_re = re.compile(r'(?m)^(?P<prefix>__version__[ \t]*=[ \t]*)"(?P<version>\d+\.\d+\.\d+)"')
+
+          def extract_version(path: str) -> str:
+              text = Path(path).read_text(encoding="utf-8")
+              pattern = py_version_re if path.endswith("__init__.py") else toml_version_re
+              match = pattern.search(text)
+              if not match:
+                  raise SystemExit(f"Version key not found in {path}")
+              return match.group("version")
+
+          versions = {extract_version(path) for path in files}
+          if len(versions) != 1:
+              raise SystemExit(f"Inconsistent version declarations: {sorted(versions)}")
+
+          current = versions.pop()
+          major, minor, patch = map(int, current.split("."))
+          if bump_level == "major":
+              major += 1
+              minor = 0
+              patch = 0
+          elif bump_level == "minor":
+              minor += 1
+              patch = 0
+          else:
+              patch += 1
+
+          next_version = f"{major}.{minor}.{patch}"
+          next_tag = f"v{next_version}"
+
+          for path in files:
+              text = Path(path).read_text(encoding="utf-8")
+              pattern = py_version_re if path.endswith("__init__.py") else toml_version_re
+              replaced, count = pattern.subn(
+                  lambda match: f'{match.group("prefix")}"{next_version}"',
+                  text,
+                  count=1,
+              )
+              if count != 1:
+                  raise SystemExit(f"Could not replace version in {path}")
+              Path(path).write_text(replaced, encoding="utf-8")
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
+              out.write(f"version={next_version}\n")
+              out.write(f"tag={next_tag}\n")
+          PY
+
+      - name: Commit version bump and push tag
+        if: steps.version.outputs.tag != ''
+        env:
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+
+          git add Cargo.toml
+          git add crates/cartoboost-core/Cargo.toml
+          git add crates/cartoboost-neural/Cargo.toml
+          git add crates/cartoboost-cli/Cargo.toml
+          git add crates/cartoboost-py/Cargo.toml
+          git add crates/cartoboost-py/pyproject.toml
+          git add pyproject.toml
+          git add python/cartoboost/__init__.py
+
+          if git diff --cached --quiet; then
+            echo "No version changes detected."
+            exit 0
+          fi
+
+          git commit -m "chore: bump version to ${RELEASE_TAG} [skip ci]"
+          git tag "${RELEASE_TAG}"
+          git push origin HEAD:main
+          git push origin "${RELEASE_TAG}"
+
