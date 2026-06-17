@@ -7,7 +7,7 @@ use cartoboost_neural::{
     materialize_source_target_pair_nodes, validate_directed_metapath,
     write_embedding_table_artifact, ArtifactFallbackKind, EmbeddingTable, GraphSageConfig,
     GraphSageEncoder, HeteroGraph, HeteroGraphSageConfig, HeteroGraphSageEncoder, HeteroTypedEdge,
-    HomogeneousGraph,
+    HinSageConfig, HinSageEncoder, HinSageGraph, HomogeneousGraph,
 };
 use numpy::{IntoPyArray, PyArray1, PyReadonlyArray1, PyReadonlyArray2, PyUntypedArrayMethods};
 use pyo3::exceptions::{PyIOError, PyRuntimeError, PyValueError};
@@ -892,6 +892,22 @@ impl NativeGraphSageEncoder {
         Ok(embedding.into_inner())
     }
 
+    #[pyo3(signature = (node_count, edges, node_features))]
+    fn encode_graph(
+        &self,
+        node_count: usize,
+        edges: Vec<(usize, usize)>,
+        node_features: Vec<Vec<f32>>,
+    ) -> PyResult<Vec<Vec<f32>>> {
+        let graph = HomogeneousGraph::from_directed_edges(node_count, &edges)
+            .map_err(to_py_neural_error)?;
+        let embedding = self
+            .encoder
+            .encode_graph(&graph, &node_features)
+            .map_err(to_py_neural_error)?;
+        Ok(embedding.into_inner())
+    }
+
     fn loss_curve(&self) -> Vec<f32> {
         self.encoder.loss_curve().values().to_vec()
     }
@@ -1042,6 +1058,30 @@ impl NativeHeteroGraphSageEncoder {
         Ok(embedding.into_inner())
     }
 
+    #[pyo3(signature = (node_count, edges, node_features))]
+    fn encode_graph(
+        &self,
+        node_count: usize,
+        edges: Vec<(usize, usize, usize)>,
+        node_features: Vec<Vec<f32>>,
+    ) -> PyResult<Vec<Vec<f32>>> {
+        let typed_edges = edges
+            .into_iter()
+            .map(|(source, target, relation)| HeteroTypedEdge {
+                source,
+                target,
+                relation,
+            })
+            .collect::<Vec<_>>();
+        let graph = HeteroGraph::from_typed_edges(node_count, self.relation_count, &typed_edges)
+            .map_err(to_py_neural_error)?;
+        let embedding = self
+            .encoder
+            .encode_graph(&graph, &node_features)
+            .map_err(to_py_neural_error)?;
+        Ok(embedding.into_inner())
+    }
+
     fn loss_curve(&self) -> Vec<f32> {
         self.encoder.loss_curve().values().to_vec()
     }
@@ -1081,6 +1121,173 @@ impl NativeHeteroGraphSageEncoder {
     #[getter]
     fn output_dim(&self) -> usize {
         self.encoder.output_dim()
+    }
+
+    #[getter]
+    fn is_fitted(&self) -> bool {
+        !self.encoder.loss_curve().values().is_empty()
+    }
+}
+
+#[pyclass(name = "HinSageEncoder")]
+#[derive(Clone)]
+struct NativeHinSageEncoder {
+    config: HinSageConfig,
+    node_type_count: usize,
+    edge_type_triples: Vec<(usize, usize, usize)>,
+    encoder: HinSageEncoder,
+}
+
+#[pymethods]
+impl NativeHinSageEncoder {
+    #[new]
+    #[pyo3(signature = (input_dim, node_type_count, edge_type_triples, hidden_dims=None, epochs=20, learning_rate=0.05, negative_samples=4, seed=0xA11C_E5A6_5EED_1234, l2_regularization=1e-5, neighbor_samples=None))]
+    #[allow(clippy::too_many_arguments)]
+    fn new(
+        input_dim: usize,
+        node_type_count: usize,
+        edge_type_triples: Vec<(usize, usize, usize)>,
+        hidden_dims: Option<Vec<usize>>,
+        epochs: usize,
+        learning_rate: f32,
+        negative_samples: usize,
+        seed: u64,
+        l2_regularization: f32,
+        neighbor_samples: Option<Vec<usize>>,
+    ) -> PyResult<Self> {
+        let config = HinSageConfig {
+            hidden_dims: hidden_dims.unwrap_or_else(|| vec![16]),
+            epochs,
+            learning_rate,
+            negative_samples,
+            seed,
+            l2_regularization,
+            neighbor_samples: neighbor_samples.unwrap_or_default(),
+        };
+        let encoder = HinSageEncoder::new(
+            config.clone(),
+            input_dim,
+            node_type_count,
+            edge_type_triples.clone(),
+        )
+        .map_err(to_py_neural_error)?;
+        Ok(Self {
+            config,
+            node_type_count,
+            edge_type_triples,
+            encoder,
+        })
+    }
+
+    #[pyo3(signature = (node_types, edges, node_features))]
+    fn fit(
+        &mut self,
+        node_types: Vec<usize>,
+        edges: Vec<(usize, usize, usize)>,
+        node_features: Vec<Vec<f32>>,
+    ) -> PyResult<Vec<Vec<f32>>> {
+        let typed_edges = edges
+            .into_iter()
+            .map(|(source, target, relation)| HeteroTypedEdge {
+                source,
+                target,
+                relation,
+            })
+            .collect::<Vec<_>>();
+        let graph = HinSageGraph::from_typed_schema(
+            node_types,
+            self.node_type_count,
+            self.edge_type_triples.len(),
+            self.edge_type_triples.clone(),
+            typed_edges,
+        )
+        .map_err(to_py_neural_error)?;
+        let mut model = HinSageEncoder::new(
+            self.config.clone(),
+            self.encoder.input_dim(),
+            self.node_type_count,
+            self.edge_type_triples.clone(),
+        )
+        .map_err(to_py_neural_error)?;
+        let embedding = model
+            .fit(&graph, &node_features)
+            .map_err(to_py_neural_error)?;
+        self.encoder = model;
+        Ok(embedding.into_inner())
+    }
+
+    fn encode(&self, node_features: Vec<Vec<f32>>) -> PyResult<Vec<Vec<f32>>> {
+        let embedding = self
+            .encoder
+            .encode(&node_features)
+            .map_err(to_py_neural_error)?;
+        Ok(embedding.into_inner())
+    }
+
+    fn link_embeddings(
+        &self,
+        embeddings: Vec<Vec<f32>>,
+        pairs: Vec<(usize, usize)>,
+    ) -> PyResult<Vec<Vec<f32>>> {
+        self.encoder
+            .link_embeddings(&embeddings, &pairs)
+            .map_err(to_py_neural_error)
+    }
+
+    fn loss_curve(&self) -> Vec<f32> {
+        self.encoder.loss_curve().values().to_vec()
+    }
+
+    fn save_artifact_json(&self, path: String) -> PyResult<()> {
+        self.encoder
+            .save_artifact_json(path)
+            .map_err(to_py_neural_error)
+    }
+
+    fn to_artifact_json(&self) -> PyResult<String> {
+        self.encoder.to_artifact_json().map_err(to_py_neural_error)
+    }
+
+    #[classmethod]
+    fn load_artifact_json(_cls: &Bound<'_, PyType>, path: String) -> PyResult<Self> {
+        let encoder = HinSageEncoder::load_artifact_json(path).map_err(to_py_neural_error)?;
+        let config = encoder.config();
+        Ok(Self {
+            node_type_count: encoder.node_type_count(),
+            edge_type_triples: encoder.edge_type_triples().to_vec(),
+            config,
+            encoder,
+        })
+    }
+
+    #[getter]
+    fn node_type_count(&self) -> usize {
+        self.node_type_count
+    }
+
+    #[getter]
+    fn relation_count(&self) -> usize {
+        self.edge_type_triples.len()
+    }
+
+    #[getter]
+    fn input_dim(&self) -> usize {
+        self.encoder.input_dim()
+    }
+
+    #[getter]
+    fn output_dim(&self) -> usize {
+        self.encoder.output_dim()
+    }
+
+    #[getter]
+    fn edge_type_triples(&self) -> Vec<(usize, usize, usize)> {
+        self.edge_type_triples.clone()
+    }
+
+    #[getter]
+    fn neighbor_samples(&self) -> Vec<usize> {
+        self.config.neighbor_samples.clone()
     }
 
     #[getter]
@@ -1932,6 +2139,7 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<NativeNeuralEmbeddingFeatures>()?;
     m.add_class::<NativeGraphSageEncoder>()?;
     m.add_class::<NativeHeteroGraphSageEncoder>()?;
+    m.add_class::<NativeHinSageEncoder>()?;
     m.add_function(wrap_pyfunction!(graph_compute_directional_features, m)?)?;
     m.add_function(wrap_pyfunction!(graph_validate_directed_metapath, m)?)?;
     m.add_function(wrap_pyfunction!(

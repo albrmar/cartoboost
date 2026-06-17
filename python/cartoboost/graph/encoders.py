@@ -15,6 +15,9 @@ from .._native import (
     HeteroGraphSageEncoder as _NativeHeteroGraphSageEncoder,
 )
 from .._native import (
+    HinSageEncoder as _NativeHinSageEncoder,
+)
+from .._native import (
     graph_compute_directional_features as _native_compute_directional_features,
 )
 from .builder import (
@@ -99,9 +102,9 @@ def _expand_pair_node_values(values: list[float] | None) -> list[float] | None:
 
 def _directionality_from_graph_config(
     graph_cfg: Mapping[str, Any],
-    _encoder_cfg: Mapping[str, Any],
+    encoder_cfg: Mapping[str, Any],
 ) -> DirectionalityConfig:
-    raw_directionality = graph_cfg.get("directionality", {})
+    raw_directionality = graph_cfg.get("directionality", encoder_cfg.get("directionality", {}))
     directionality_payload = DirectionalityConfig.from_config(raw_directionality).as_dict()
 
     outputs = graph_cfg.get("outputs", {})
@@ -202,7 +205,11 @@ class GraphSageFeatureEncoder:
         if self.graph is None:
             raise RuntimeError("GraphSageFeatureEncoder must be fitted first")
         feature_rows = ensure_node_features_shape(node_features, len(self.graph.node_ids))
-        emb = self._encoder.encode(feature_rows)
+        emb = self._encoder.encode_graph(
+            self.graph.node_count,
+            self.graph.edges,
+            feature_rows,
+        )
         return GraphFeatureBundle(
             embeddings=emb,
             node_ids=list(self.graph.node_ids),
@@ -243,6 +250,120 @@ class HeteroGraphSageConfig:
     negative_samples: int = 4
     seed: int = 0x0D1A_2A3B_4C5D_6E7F
     l2_regularization: float = 1e-5
+
+
+@dataclass(frozen=True)
+class HinSageConfig:
+    input_dim: int
+    node_type_count: int
+    edge_type_triples: list[tuple[int, int, int]]
+    hidden_dims: list[int] = field(default_factory=lambda: [16])
+    epochs: int = 20
+    learning_rate: float = 0.05
+    negative_samples: int = 4
+    seed: int = 0xA11C_E5A6_5EED_1234
+    l2_regularization: float = 1e-5
+    neighbor_samples: list[int] = field(default_factory=list)
+
+
+class HinSageFeatureEncoder:
+    """Thin wrapper around the native Rust HinSageEncoder."""
+
+    def __init__(self, config: HinSageConfig) -> None:
+        self.config = config
+        self._encoder = _NativeHinSageEncoder(
+            input_dim=config.input_dim,
+            node_type_count=config.node_type_count,
+            edge_type_triples=list(config.edge_type_triples),
+            hidden_dims=list(config.hidden_dims),
+            epochs=config.epochs,
+            learning_rate=float(config.learning_rate),
+            negative_samples=int(config.negative_samples),
+            seed=int(config.seed),
+            l2_regularization=float(config.l2_regularization),
+            neighbor_samples=list(config.neighbor_samples),
+        )
+
+    def fit(
+        self,
+        node_features: Sequence[Sequence[float]],
+        edges: Sequence[tuple[int, int, int]],
+        node_types: Sequence[int],
+    ) -> GraphFeatureBundle:
+        feature_rows = ensure_node_features_shape(node_features, len(node_types))
+        emb = self._encoder.fit(
+            [int(node_type) for node_type in node_types],
+            [(int(source), int(target), int(relation)) for source, target, relation in edges],
+            feature_rows,
+        )
+        return GraphFeatureBundle(
+            embeddings=emb,
+            feature_names=[f"hinsage_{index:02d}" for index in range(len(emb[0]))],
+            node_ids=list(range(len(node_types))),
+            provenance={
+                "encoder": "hinsage",
+                "node_type_count": self.config.node_type_count,
+                "edge_type_triples": list(self.config.edge_type_triples),
+                "neighbor_samples": list(self.config.neighbor_samples),
+            },
+        )
+
+    def encode(self, node_features: Sequence[Sequence[float]]) -> GraphFeatureBundle:
+        emb = self._encoder.encode([list(row) for row in node_features])
+        return GraphFeatureBundle(
+            embeddings=emb,
+            feature_names=[f"hinsage_{index:02d}" for index in range(len(emb[0]))],
+            node_ids=list(range(len(emb))),
+            provenance={"encoder": "hinsage"},
+        )
+
+    def link_embeddings(
+        self,
+        embeddings: Sequence[Sequence[float]],
+        pairs: Sequence[tuple[int, int]],
+    ) -> GraphFeatureBundle:
+        values = self._encoder.link_embeddings(
+            [list(row) for row in embeddings],
+            [(int(source), int(target)) for source, target in pairs],
+        )
+        width = len(values[0]) if values else 0
+        return GraphFeatureBundle(
+            embeddings=values,
+            feature_names=[f"hinsage_link_{index:02d}" for index in range(width)],
+            node_ids=list(pairs),
+            provenance={"encoder": "hinsage_link"},
+        )
+
+    def loss_curve(self) -> list[float]:
+        return self._encoder.loss_curve()
+
+    def save_artifact_json(self, path: str) -> None:
+        self._encoder.save_artifact_json(path)
+
+    @classmethod
+    def from_config(cls, config: Mapping[str, Any]) -> HinSageFeatureEncoder:
+        input_dim = _coerce_dim(int(config["input_dim"]), "input_dim")
+        node_type_count = _coerce_dim(int(config["node_type_count"]), "node_type_count")
+        triples = config.get("edge_type_triples")
+        if not triples:
+            raise ValueError("edge_type_triples is required for HinSAGE")
+        edge_type_triples = [tuple(int(value) for value in triple) for triple in triples]
+        hidden_dims = _coerce_hidden_dims(config.get("hidden_dims", [16]))
+        neighbor_samples = [int(value) for value in config.get("neighbor_samples", [])]
+        return cls(
+            HinSageConfig(
+                input_dim=input_dim,
+                node_type_count=node_type_count,
+                edge_type_triples=edge_type_triples,  # type: ignore[arg-type]
+                hidden_dims=hidden_dims,
+                epochs=int(config.get("epochs", 20)),
+                learning_rate=float(config.get("learning_rate", 0.05)),
+                negative_samples=int(config.get("negative_samples", 4)),
+                seed=int(config.get("seed", 0xA11C_E5A6_5EED_1234)),
+                l2_regularization=float(config.get("l2_regularization", 1e-5)),
+                neighbor_samples=neighbor_samples,
+            )
+        )
 
 
 class HeteroGraphSageFeatureEncoder:
@@ -322,7 +443,11 @@ class HeteroGraphSageFeatureEncoder:
         if self.graph is None:
             raise RuntimeError("HeteroGraphSageFeatureEncoder must be fitted first")
         feature_rows = ensure_node_features_shape(node_features, len(self.graph.node_ids))
-        emb = self._encoder.encode(feature_rows)
+        emb = self._encoder.encode_graph(
+            self.graph.node_count,
+            self.graph.edges,
+            feature_rows,
+        )
         return GraphFeatureBundle(
             embeddings=emb,
             node_ids=list(self.graph.node_ids),
@@ -364,15 +489,21 @@ class GraphFeatureTransformer:
         self,
         *,
         use_hetero: bool = False,
+        use_hinsage: bool = False,
         sage_kwargs: Mapping[str, Any] | None = None,
         hetero_kwargs: Mapping[str, Any] | None = None,
+        hinsage_kwargs: Mapping[str, Any] | None = None,
         directionality: Mapping[str, Any] | None = None,
     ) -> None:
         self.use_hetero = bool(use_hetero)
+        self.use_hinsage = bool(use_hinsage)
         self.sage_kwargs = dict(sage_kwargs or {})
         self.hetero_kwargs = dict(hetero_kwargs or {})
+        self.hinsage_kwargs = dict(hinsage_kwargs or {})
         self.directionality = DirectionalityConfig.from_config(directionality)
-        self.encoder: GraphSageFeatureEncoder | HeteroGraphSageFeatureEncoder | None = None
+        self.encoder: (
+            GraphSageFeatureEncoder | HeteroGraphSageFeatureEncoder | HinSageFeatureEncoder | None
+        ) = None
         self._target_input_dim: int | None = None
 
     @classmethod
@@ -395,6 +526,17 @@ class GraphFeatureTransformer:
 
         use_hetero = bool(encoder_cfg.get("hetero", graph_cfg.get("hetero", False)))
         directionality = _directionality_from_graph_config(graph_cfg, encoder_cfg)
+        use_hinsage = family == "hinsage" and {
+            "node_type_count",
+            "edge_type_triples",
+        }.issubset(encoder_cfg)
+        if use_hinsage:
+            return cls(
+                use_hetero=True,
+                use_hinsage=True,
+                hinsage_kwargs=dict(encoder_cfg),
+                directionality=directionality,
+            )
         if use_hetero:
             return cls(
                 use_hetero=True,
@@ -418,6 +560,7 @@ class GraphFeatureTransformer:
         directed: bool = True,
         edge_weights: Sequence[float] | None = None,
         edge_timestamps: Sequence[float] | None = None,
+        node_types: Sequence[int] | None = None,
     ) -> GraphFeatureBundle:
         feature_rows = [list(row) for row in node_features]
         if not feature_rows:
@@ -425,6 +568,15 @@ class GraphFeatureTransformer:
         self._target_input_dim = len(feature_rows[0])
         self._validate_input_dim()
 
+        if self.use_hinsage:
+            return self._fit_hinsage(
+                feature_rows,
+                edges=edges,  # type: ignore[arg-type]
+                node_types=node_types,
+                directionality=self.directionality,
+                edge_weights=edge_weights,
+                edge_timestamps=edge_timestamps,
+            )
         if self.use_hetero:
             return self._fit_hetero(
                 feature_rows,
@@ -448,10 +600,18 @@ class GraphFeatureTransformer:
             edge_timestamps=edge_timestamps,
         )
 
-    def _ensure_encoder(self) -> GraphSageFeatureEncoder | HeteroGraphSageFeatureEncoder:
+    def _ensure_encoder(
+        self,
+    ) -> GraphSageFeatureEncoder | HeteroGraphSageFeatureEncoder | HinSageFeatureEncoder:
         if self._target_input_dim is None:
             raise RuntimeError("GraphFeatureTransformer.fit_transform has not been initialized")
         if self.encoder is not None:
+            return self.encoder
+
+        if self.use_hinsage:
+            cfg = dict(self.hinsage_kwargs)
+            cfg.setdefault("input_dim", self._target_input_dim)
+            self.encoder = HinSageFeatureEncoder.from_config(cfg)
             return self.encoder
 
         if self.use_hetero:
@@ -472,7 +632,9 @@ class GraphFeatureTransformer:
     def _validate_input_dim(self) -> None:
         if self._target_input_dim is None or self._target_input_dim <= 0:
             raise ValueError("node features must have at least one column")
-        if self.use_hetero:
+        if self.use_hinsage:
+            configured = self.hinsage_kwargs.get("input_dim")
+        elif self.use_hetero:
             configured = self.hetero_kwargs.get("input_dim")
         else:
             configured = self.sage_kwargs.get("input_dim")
@@ -525,6 +687,40 @@ class GraphFeatureTransformer:
             feature_prefix=directional_feature_prefix,
             edge_weights=_align_edge_values(edge_weights, len(edges), len(graph.edges)),
             edge_timestamps=_align_edge_values(edge_timestamps, len(edges), len(graph.edges)),
+        )
+        if directional_features.size == 0:
+            return bundle
+        return bundle.with_directional_features(directional_features, directional_names)
+
+    def _fit_hinsage(
+        self,
+        feature_rows: list[list[float]],
+        edges: Sequence[tuple[int, int, int]],
+        *,
+        node_types: Sequence[int] | None,
+        directionality: Mapping[str, Any] | None = None,
+        edge_weights: Sequence[float] | None = None,
+        edge_timestamps: Sequence[float] | None = None,
+    ) -> GraphFeatureBundle:
+        if node_types is None:
+            raise ValueError("node_types is required for HinSAGE")
+        encoder = self._ensure_encoder()
+        if not isinstance(encoder, HinSageFeatureEncoder):
+            raise RuntimeError("configured encoder mismatch; expected HinSAGE")
+        bundle = encoder.fit(
+            node_features=feature_rows,
+            edges=edges,
+            node_types=node_types,
+        )
+        directionality = DirectionalityConfig.from_config(directionality)
+        directional_features, directional_names = _compute_hetero_directional_features(
+            directionality=directionality,
+            node_count=len(node_types),
+            edges=[(int(source), int(target), int(relation)) for source, target, relation in edges],
+            embeddings=bundle.embeddings,
+            feature_prefix=directionality.directional_feature_prefix,
+            edge_weights=edge_weights,
+            edge_timestamps=edge_timestamps,
         )
         if directional_features.size == 0:
             return bundle

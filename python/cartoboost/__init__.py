@@ -1,7 +1,7 @@
 """Python interface for the clean-room CartoBoost-inspired regressor."""
 
 from . import graph
-from ._native import GraphSageEncoder, HeteroGraphSageEncoder
+from ._native import GraphSageEncoder, HeteroGraphSageEncoder, HinSageEncoder
 from .evaluation import (
     grouped_blocked_cv,
     out_of_time_split,
@@ -40,6 +40,7 @@ __all__ = [
     "ArtifactFallback",
     "GraphSageEncoder",
     "HeteroGraphSageEncoder",
+    "HinSageEncoder",
     "FeatureSchema",
     "graph",
     "NeuralEmbeddingFeatures",

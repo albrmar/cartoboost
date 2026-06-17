@@ -1,6 +1,7 @@
 use cartoboost_neural::{
     GraphSageConfig, GraphSageEncoder, GraphSageModelArtifact, HeteroGraph, HeteroGraphSageConfig,
-    HeteroGraphSageEncoder, HeteroTypedEdge, HomogeneousGraph,
+    HeteroGraphSageEncoder, HeteroTypedEdge, HinSageConfig, HinSageEncoder, HinSageGraph,
+    HomogeneousGraph,
 };
 use tempfile::tempdir;
 
@@ -45,6 +46,70 @@ fn fits_graphsage_homogeneous_graph_and_tracks_loss_curve() {
         .expect("second fit should complete");
 
     assert_eq!(embedding.vectors(), repeat_embedding.vectors());
+}
+
+#[test]
+fn graphsage_encode_reuses_fit_topology_for_same_graph() {
+    let graph = HomogeneousGraph::from_directed_edges(3, &[(0, 1), (0, 2), (1, 2)])
+        .expect("graph should build");
+    let features = vec![
+        vec![1.0_f32, 0.0_f32],
+        vec![0.0_f32, 1.0_f32],
+        vec![1.0_f32, 1.0_f32],
+    ];
+    let config = GraphSageConfig {
+        hidden_dims: vec![2],
+        epochs: 2,
+        learning_rate: 0.01,
+        negative_samples: 1,
+        seed: 91,
+        add_self_loop: true,
+        l2_regularization: 0.0,
+    };
+    let mut model = GraphSageEncoder::new(config, 2).expect("encoder should build");
+
+    let fitted = model.fit(&graph, &features).expect("fit should complete");
+    let encoded = model
+        .encode(&features)
+        .expect("encode should reuse fitted topology");
+    let encoded_with_graph = model
+        .encode_graph(&graph, &features)
+        .expect("graph encode should complete");
+
+    assert_eq!(encoded.vectors(), fitted.vectors());
+    assert_eq!(encoded_with_graph.vectors(), fitted.vectors());
+}
+
+#[test]
+fn graphsage_dense_source_negative_sampling_completes() {
+    let graph = HomogeneousGraph::from_directed_edges(3, &[(0, 0), (0, 1), (0, 2)])
+        .expect("graph should build");
+    let features = vec![
+        vec![1.0_f32, 0.0_f32],
+        vec![0.0_f32, 1.0_f32],
+        vec![1.0_f32, 1.0_f32],
+    ];
+    let config = GraphSageConfig {
+        hidden_dims: vec![2],
+        epochs: 2,
+        learning_rate: 0.01,
+        negative_samples: 4,
+        seed: 92,
+        add_self_loop: false,
+        l2_regularization: 0.0,
+    };
+    let mut model = GraphSageEncoder::new(config, 2).expect("encoder should build");
+
+    let embedding = model
+        .fit(&graph, &features)
+        .expect("dense-source fit should complete");
+
+    assert_eq!(embedding.node_count(), 3);
+    assert!(model
+        .loss_curve()
+        .values()
+        .iter()
+        .all(|loss| loss.is_finite()));
 }
 
 #[test]
@@ -169,6 +234,139 @@ fn fits_hinsage_heterogeneous_graph_with_relation_conditioning() {
 }
 
 #[test]
+fn hetero_graphsage_encode_reuses_fit_topology_for_same_graph() {
+    let edges = vec![
+        HeteroTypedEdge {
+            source: 0,
+            target: 1,
+            relation: 0,
+        },
+        HeteroTypedEdge {
+            source: 0,
+            target: 2,
+            relation: 1,
+        },
+        HeteroTypedEdge {
+            source: 1,
+            target: 2,
+            relation: 0,
+        },
+    ];
+    let graph = HeteroGraph::from_typed_edges(3, 2, &edges).expect("hetero graph should build");
+    let features = vec![
+        vec![1.0_f32, 0.0_f32],
+        vec![0.0_f32, 1.0_f32],
+        vec![1.0_f32, 1.0_f32],
+    ];
+    let config = HeteroGraphSageConfig {
+        hidden_dims: vec![2],
+        epochs: 2,
+        learning_rate: 0.01,
+        negative_samples: 1,
+        seed: 93,
+        l2_regularization: 0.0,
+    };
+    let mut model = HeteroGraphSageEncoder::new(config, 2, 2).expect("encoder should build");
+
+    let fitted = model.fit(&graph, &features).expect("fit should complete");
+    let encoded = model
+        .encode(&features)
+        .expect("encode should reuse fitted topology");
+    let encoded_with_graph = model
+        .encode_graph(&graph, &features)
+        .expect("graph encode should complete");
+
+    assert_eq!(encoded.vectors(), fitted.vectors());
+    assert_eq!(encoded_with_graph.vectors(), fitted.vectors());
+}
+
+#[test]
+fn native_hinsage_validates_node_types_samples_neighbors_and_builds_link_embeddings() {
+    let node_types = vec![0, 1, 2, 2, 2];
+    let edge_type_triples = vec![(0, 0, 2), (1, 1, 2), (2, 2, 0)];
+    let edges = vec![
+        HeteroTypedEdge {
+            source: 0,
+            target: 2,
+            relation: 0,
+        },
+        HeteroTypedEdge {
+            source: 0,
+            target: 3,
+            relation: 0,
+        },
+        HeteroTypedEdge {
+            source: 0,
+            target: 4,
+            relation: 0,
+        },
+        HeteroTypedEdge {
+            source: 1,
+            target: 2,
+            relation: 1,
+        },
+        HeteroTypedEdge {
+            source: 2,
+            target: 0,
+            relation: 2,
+        },
+    ];
+    let graph = HinSageGraph::from_typed_schema(node_types, 3, 3, edge_type_triples.clone(), edges)
+        .expect("typed graph should build");
+    let features = vec![
+        vec![1.0_f32, 0.0],
+        vec![0.0_f32, 1.0],
+        vec![0.5_f32, 0.2],
+        vec![0.7_f32, 0.4],
+        vec![0.9_f32, 0.6],
+    ];
+    let config = HinSageConfig {
+        hidden_dims: vec![3],
+        epochs: 3,
+        learning_rate: 0.02,
+        negative_samples: 1,
+        seed: 99,
+        l2_regularization: 0.0,
+        neighbor_samples: vec![2, 0, 0],
+    };
+
+    let mut encoder =
+        HinSageEncoder::new(config, 2, 3, edge_type_triples).expect("encoder should build");
+    let embedding = encoder.fit(&graph, &features).expect("fit should complete");
+    let link_features = encoder
+        .link_embeddings(embedding.vectors(), &[(0, 2), (1, 2)])
+        .expect("link embeddings should build");
+
+    assert_eq!(embedding.node_count(), 5);
+    assert_eq!(embedding.dim(), 3);
+    assert_eq!(link_features.len(), 2);
+    assert_eq!(link_features[0].len(), 12);
+    assert_eq!(encoder.loss_curve().values().len(), 3);
+
+    let artifact = encoder.to_artifact();
+    assert!(matches!(artifact.model, GraphSageModelArtifact::HinSage(_)));
+    let loaded = HinSageEncoder::from_artifact(artifact).expect("artifact should load");
+    assert_eq!(loaded.node_type_count(), 3);
+    assert_eq!(loaded.relation_count(), 3);
+}
+
+#[test]
+fn native_hinsage_rejects_edges_that_violate_type_schema() {
+    let bad = HinSageGraph::from_typed_schema(
+        vec![0, 1],
+        2,
+        1,
+        vec![(0, 0, 1)],
+        vec![HeteroTypedEdge {
+            source: 1,
+            target: 0,
+            relation: 0,
+        }],
+    );
+    assert!(bad.is_err());
+}
+
+#[test]
 fn validates_feature_shape_failures_on_fit_and_encode() {
     let graph =
         HomogeneousGraph::from_directed_edges(3, &[(0, 1), (1, 2)]).expect("graph should build");
@@ -238,10 +436,10 @@ fn graphsage_artifact_roundtrip_preserves_state() {
     let _fitted = model.fit(&graph, &features).unwrap();
 
     let artifact = model.to_artifact();
-    match artifact.model {
-        GraphSageModelArtifact::Homogeneous(_) => {}
-        GraphSageModelArtifact::Hetero(_) => panic!("expected homogeneous artifact"),
-    }
+    assert!(matches!(
+        artifact.model,
+        GraphSageModelArtifact::Homogeneous(_)
+    ));
 
     let reloaded = GraphSageEncoder::from_artifact(artifact.clone()).unwrap();
     assert_eq!(reloaded.to_artifact(), artifact);

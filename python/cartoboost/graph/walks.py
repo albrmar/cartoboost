@@ -174,6 +174,7 @@ class SignedEdgeSampler:
         if node_count <= 1:
             return {edge: [] for edge in edges}
         existing = {(src, dst) for src, dst in edges}
+        candidates_by_source: dict[int, list[int]] = {}
         rng = random.Random(self.seed)
 
         negatives: dict[tuple[int, int], list[tuple[int, int]]] = {}
@@ -181,11 +182,18 @@ class SignedEdgeSampler:
             if source < 0 or target < 0 or source >= node_count or target >= node_count:
                 raise ValueError("edge endpoints must be in [0, node_count)")
 
-            sampled = []
-            while len(sampled) < self.negative_samples:
-                negative_target = rng.randrange(node_count)
-                if negative_target == target or (source, negative_target) in existing:
-                    continue
-                sampled.append((source, negative_target))
+            candidates = candidates_by_source.setdefault(
+                source,
+                [
+                    candidate
+                    for candidate in range(node_count)
+                    if (source, candidate) not in existing
+                ],
+            )
+            sample_count = min(self.negative_samples, len(candidates))
+            sampled = [
+                (source, negative_target)
+                for negative_target in rng.sample(candidates, k=sample_count)
+            ]
             negatives[(source, target)] = sampled
         return negatives

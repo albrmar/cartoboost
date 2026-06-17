@@ -1,5 +1,6 @@
 use crate::error::{NeuralError, Result};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::fs;
 use std::path::Path;
 
@@ -18,6 +19,7 @@ pub struct GraphSageEncoderArtifact {
 pub enum GraphSageModelArtifact {
     Homogeneous(HomogeneousGraphSageEncoderArtifact),
     Hetero(HeteroGraphSageEncoderArtifact),
+    HinSage(HinSageEncoderArtifact),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -37,6 +39,18 @@ pub struct HeteroGraphSageEncoderArtifact {
     pub config: HeteroGraphSageConfig,
     pub layers: Vec<HeteroGraphSageLayer>,
     pub loss_curve: Vec<f32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct HinSageEncoderArtifact {
+    pub input_dim: usize,
+    pub output_dim: usize,
+    pub node_type_count: usize,
+    pub relation_count: usize,
+    pub edge_type_triples: Vec<(usize, usize, usize)>,
+    pub neighbor_samples: Vec<usize>,
+    pub config: HinSageConfig,
+    pub inner: HeteroGraphSageEncoderArtifact,
 }
 
 /// Hyper-parameters for homogeneous GraphSAGE-style layers.
@@ -85,6 +99,32 @@ impl Default for HeteroGraphSageConfig {
             negative_samples: 4,
             seed: 0x0D1A_2A3B_4C5D_6E7F,
             l2_regularization: 1e-5,
+        }
+    }
+}
+
+/// Hyper-parameters and schema controls for HinSAGE-style typed sampling.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct HinSageConfig {
+    pub hidden_dims: Vec<usize>,
+    pub epochs: usize,
+    pub learning_rate: f32,
+    pub negative_samples: usize,
+    pub seed: u64,
+    pub l2_regularization: f32,
+    pub neighbor_samples: Vec<usize>,
+}
+
+impl Default for HinSageConfig {
+    fn default() -> Self {
+        Self {
+            hidden_dims: vec![16],
+            epochs: 20,
+            learning_rate: 0.05,
+            negative_samples: 4,
+            seed: 0xA11C_E5A6_5EED_1234,
+            l2_regularization: 1e-5,
+            neighbor_samples: Vec::new(),
         }
     }
 }
@@ -180,6 +220,118 @@ pub struct HeteroGraph {
     neighbors: Vec<Vec<Vec<usize>>>,
 }
 
+/// Directed heterogeneous graph with explicit node-type and edge-type schemas.
+#[derive(Debug, Clone)]
+pub struct HinSageGraph {
+    node_count: usize,
+    node_type_count: usize,
+    relation_count: usize,
+    node_types: Vec<usize>,
+    edge_type_triples: Vec<(usize, usize, usize)>,
+    edges: Vec<HeteroTypedEdge>,
+}
+
+impl HinSageGraph {
+    pub fn from_typed_schema(
+        node_types: Vec<usize>,
+        node_type_count: usize,
+        relation_count: usize,
+        edge_type_triples: Vec<(usize, usize, usize)>,
+        edges: Vec<HeteroTypedEdge>,
+    ) -> Result<Self> {
+        if node_types.is_empty() {
+            return Err(NeuralError::InvalidArgument(
+                "node_types must be non-empty for a HinSAGE graph".to_string(),
+            ));
+        }
+        if node_type_count == 0 {
+            return Err(NeuralError::InvalidArgument(
+                "node_type_count must be positive for a HinSAGE graph".to_string(),
+            ));
+        }
+        validate_relation_count(relation_count)?;
+        if edge_type_triples.len() != relation_count {
+            return Err(NeuralError::InvalidArgument(
+                "edge_type_triples length must match relation_count".to_string(),
+            ));
+        }
+
+        for &node_type in &node_types {
+            if node_type >= node_type_count {
+                return Err(NeuralError::InvalidArgument(format!(
+                    "node type id {node_type} exceeds node_type_count {node_type_count}"
+                )));
+            }
+        }
+
+        for &(source_type, relation, target_type) in &edge_type_triples {
+            if source_type >= node_type_count || target_type >= node_type_count {
+                return Err(NeuralError::InvalidArgument(
+                    "edge_type_triples contain out-of-range node type ids".to_string(),
+                ));
+            }
+            validate_relation_index(relation, relation_count)?;
+        }
+
+        let node_count = node_types.len();
+        for edge in &edges {
+            validate_node_index(edge.source, node_count)?;
+            validate_node_index(edge.target, node_count)?;
+            validate_relation_index(edge.relation, relation_count)?;
+            let expected = edge_type_triples[edge.relation];
+            let actual = (
+                node_types[edge.source],
+                edge.relation,
+                node_types[edge.target],
+            );
+            if actual != expected {
+                return Err(NeuralError::InvalidArgument(format!(
+                    "edge {edge:?} does not match relation type triple {expected:?}"
+                )));
+            }
+        }
+
+        Ok(Self {
+            node_count,
+            node_type_count,
+            relation_count,
+            node_types,
+            edge_type_triples,
+            edges,
+        })
+    }
+
+    pub fn to_hetero_graph(&self, neighbor_samples: &[usize]) -> Result<HeteroGraph> {
+        let sampled = sample_hinsage_edges(
+            self.node_count,
+            self.relation_count,
+            &self.edges,
+            neighbor_samples,
+        )?;
+        HeteroGraph::from_typed_edges(self.node_count, self.relation_count, &sampled)
+    }
+
+    pub fn node_count(&self) -> usize {
+        self.node_count
+    }
+
+    pub fn node_type_count(&self) -> usize {
+        self.node_type_count
+    }
+
+    pub fn relation_count(&self) -> usize {
+        self.relation_count
+    }
+
+    pub fn node_types(&self) -> &[usize] {
+        &self.node_types
+    }
+
+    pub fn edge_type_triples(&self) -> &[(usize, usize, usize)] {
+        &self.edge_type_triples
+    }
+}
+
 impl HeteroGraph {
     /// Builds a relation-typed graph from typed edges.
     ///
@@ -249,6 +401,7 @@ pub struct GraphSageEncoder {
     input_dim: usize,
     output_dim: usize,
     losses: Vec<f32>,
+    fitted_neighbors: Option<Vec<Vec<usize>>>,
 }
 
 impl GraphSageEncoder {
@@ -276,6 +429,7 @@ impl GraphSageEncoder {
             input_dim,
             output_dim,
             losses: Vec::new(),
+            fitted_neighbors: None,
         })
     }
 
@@ -319,6 +473,7 @@ impl GraphSageEncoder {
             input_dim: payload.input_dim,
             output_dim: payload.output_dim,
             losses: payload.loss_curve,
+            fitted_neighbors: None,
         })
     }
 
@@ -353,6 +508,7 @@ impl GraphSageEncoder {
         } else {
             graph.neighbors().to_vec()
         };
+        self.fitted_neighbors = Some(neighbors.clone());
 
         self.losses = Vec::with_capacity(self.config.epochs);
         let mut rng = SplitMix64::from_seed(self.config.seed);
@@ -412,9 +568,37 @@ impl GraphSageEncoder {
         if node_count == 0 {
             return Ok(GraphSageEmbedding::new(Vec::new()));
         }
-        let dummy_neighbors = vec![Vec::new(); node_count];
+        let fallback_neighbors = vec![Vec::new(); node_count];
+        let neighbors = self
+            .fitted_neighbors
+            .as_deref()
+            .filter(|neighbors| neighbors.len() == node_count)
+            .unwrap_or(&fallback_neighbors);
         Ok(GraphSageEmbedding::new(
-            forward_homogeneous(node_features, &self.layers, &dummy_neighbors)?
+            forward_homogeneous(node_features, &self.layers, neighbors)?
+                .representations
+                .last()
+                .expect("cache must include final embeddings")
+                .clone(),
+        ))
+    }
+
+    pub fn encode_graph(
+        &self,
+        graph: &HomogeneousGraph,
+        node_features: &[Vec<f32>],
+    ) -> Result<GraphSageEmbedding> {
+        validate_node_features(Some(graph.node_count()), self.input_dim, node_features)?;
+        if self.layers.is_empty() {
+            return Ok(GraphSageEmbedding::new(node_features.to_vec()));
+        }
+        let neighbors = if self.config.add_self_loop {
+            add_self_neighbors(graph.neighbors())
+        } else {
+            graph.neighbors().to_vec()
+        };
+        Ok(GraphSageEmbedding::new(
+            forward_homogeneous(node_features, &self.layers, &neighbors)?
                 .representations
                 .last()
                 .expect("cache must include final embeddings")
@@ -445,6 +629,7 @@ pub struct HeteroGraphSageEncoder {
     output_dim: usize,
     relation_count: usize,
     losses: Vec<f32>,
+    fitted_neighbors: Option<Vec<Vec<Vec<usize>>>>,
 }
 
 impl HeteroGraphSageEncoder {
@@ -483,6 +668,7 @@ impl HeteroGraphSageEncoder {
             output_dim,
             relation_count,
             losses: Vec::new(),
+            fitted_neighbors: None,
         })
     }
 
@@ -528,6 +714,7 @@ impl HeteroGraphSageEncoder {
             output_dim: payload.output_dim,
             relation_count: payload.relation_count,
             losses: payload.loss_curve,
+            fitted_neighbors: None,
         })
     }
 
@@ -558,6 +745,7 @@ impl HeteroGraphSageEncoder {
 
         let node_count = graph.node_count();
         let neighbors = graph.neighbors().to_vec();
+        self.fitted_neighbors = Some(neighbors.clone());
         self.losses = Vec::with_capacity(self.config.epochs);
         let mut rng = SplitMix64::from_seed(self.config.seed);
         let effective_negative = if node_count > 1 {
@@ -617,9 +805,32 @@ impl HeteroGraphSageEncoder {
         if node_count == 0 {
             return Ok(GraphSageEmbedding::new(Vec::new()));
         }
-        let dummy_neighbors = vec![vec![Vec::new(); self.relation_count]; node_count];
+        let fallback_neighbors = vec![vec![Vec::new(); self.relation_count]; node_count];
+        let neighbors = self
+            .fitted_neighbors
+            .as_deref()
+            .filter(|neighbors| neighbors.len() == node_count)
+            .unwrap_or(&fallback_neighbors);
         Ok(GraphSageEmbedding::new(
-            forward_hetero(node_features, &self.layers, &dummy_neighbors)?
+            forward_hetero(node_features, &self.layers, neighbors)?
+                .representations
+                .last()
+                .expect("cache must include final embeddings")
+                .clone(),
+        ))
+    }
+
+    pub fn encode_graph(
+        &self,
+        graph: &HeteroGraph,
+        node_features: &[Vec<f32>],
+    ) -> Result<GraphSageEmbedding> {
+        validate_node_features(Some(graph.node_count()), self.input_dim, node_features)?;
+        if self.layers.is_empty() {
+            return Ok(GraphSageEmbedding::new(node_features.to_vec()));
+        }
+        Ok(GraphSageEmbedding::new(
+            forward_hetero(node_features, &self.layers, graph.neighbors())?
                 .representations
                 .last()
                 .expect("cache must include final embeddings")
@@ -643,6 +854,194 @@ impl HeteroGraphSageEncoder {
         GraphSageLoss {
             epoch_losses: self.losses.clone(),
         }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct HinSageEncoder {
+    config: HinSageConfig,
+    node_type_count: usize,
+    relation_count: usize,
+    edge_type_triples: Vec<(usize, usize, usize)>,
+    inner: HeteroGraphSageEncoder,
+}
+
+impl HinSageEncoder {
+    pub fn new(
+        config: HinSageConfig,
+        input_dim: usize,
+        node_type_count: usize,
+        edge_type_triples: Vec<(usize, usize, usize)>,
+    ) -> Result<Self> {
+        if node_type_count == 0 {
+            return Err(NeuralError::InvalidArgument(
+                "node_type_count must be positive for a HinSAGE encoder".to_string(),
+            ));
+        }
+        if edge_type_triples.is_empty() {
+            return Err(NeuralError::InvalidArgument(
+                "edge_type_triples must be non-empty for a HinSAGE encoder".to_string(),
+            ));
+        }
+        let relation_count = edge_type_triples.len();
+        for (relation, &(source_type, relation_id, target_type)) in
+            edge_type_triples.iter().enumerate()
+        {
+            if relation_id != relation {
+                return Err(NeuralError::InvalidArgument(
+                    "edge_type_triples relation ids must be zero-based and ordered".to_string(),
+                ));
+            }
+            if source_type >= node_type_count || target_type >= node_type_count {
+                return Err(NeuralError::InvalidArgument(
+                    "edge_type_triples contain out-of-range node type ids".to_string(),
+                ));
+            }
+        }
+        validate_dimensions(&config.hidden_dims)?;
+        validate_neighbor_samples(&config.neighbor_samples, relation_count)?;
+
+        let inner_config = HeteroGraphSageConfig {
+            hidden_dims: config.hidden_dims.clone(),
+            epochs: config.epochs,
+            learning_rate: config.learning_rate,
+            negative_samples: config.negative_samples,
+            seed: config.seed,
+            l2_regularization: config.l2_regularization,
+        };
+        let inner = HeteroGraphSageEncoder::new(inner_config, input_dim, relation_count)?;
+        Ok(Self {
+            config,
+            node_type_count,
+            relation_count,
+            edge_type_triples,
+            inner,
+        })
+    }
+
+    pub fn fit(
+        &mut self,
+        graph: &HinSageGraph,
+        node_features: &[Vec<f32>],
+    ) -> Result<GraphSageEmbedding> {
+        self.validate_graph_schema(graph)?;
+        let hetero_graph = graph.to_hetero_graph(&self.config.neighbor_samples)?;
+        self.inner.fit(&hetero_graph, node_features)
+    }
+
+    pub fn encode(&self, node_features: &[Vec<f32>]) -> Result<GraphSageEmbedding> {
+        self.inner.encode(node_features)
+    }
+
+    pub fn link_embeddings(
+        &self,
+        embeddings: &[Vec<f32>],
+        pairs: &[(usize, usize)],
+    ) -> Result<Vec<Vec<f32>>> {
+        build_link_embeddings(embeddings, pairs)
+    }
+
+    pub fn to_artifact(&self) -> GraphSageEncoderArtifact {
+        let GraphSageModelArtifact::Hetero(inner) = self.inner.to_artifact().model else {
+            unreachable!("HinSAGE inner encoder is always hetero");
+        };
+        GraphSageEncoderArtifact {
+            artifact_type: GRAPH_SAGE_ARTIFACT_TYPE.to_string(),
+            artifact_version: GRAPH_SAGE_ARTIFACT_VERSION,
+            model: GraphSageModelArtifact::HinSage(HinSageEncoderArtifact {
+                input_dim: self.input_dim(),
+                output_dim: self.output_dim(),
+                node_type_count: self.node_type_count,
+                relation_count: self.relation_count,
+                edge_type_triples: self.edge_type_triples.clone(),
+                neighbor_samples: self.config.neighbor_samples.clone(),
+                config: self.config.clone(),
+                inner,
+            }),
+        }
+    }
+
+    pub fn from_artifact(artifact: GraphSageEncoderArtifact) -> Result<Self> {
+        validate_graphsage_artifact(&artifact)?;
+        let GraphSageModelArtifact::HinSage(payload) = artifact.model else {
+            return Err(NeuralError::InvalidArgument(
+                "artifact model kind is not hinsage".to_string(),
+            ));
+        };
+        let inner = HeteroGraphSageEncoder::from_artifact(GraphSageEncoderArtifact {
+            artifact_type: GRAPH_SAGE_ARTIFACT_TYPE.to_string(),
+            artifact_version: GRAPH_SAGE_ARTIFACT_VERSION,
+            model: GraphSageModelArtifact::Hetero(payload.inner),
+        })?;
+        Ok(Self {
+            config: payload.config,
+            node_type_count: payload.node_type_count,
+            relation_count: payload.relation_count,
+            edge_type_triples: payload.edge_type_triples,
+            inner,
+        })
+    }
+
+    pub fn to_artifact_json(&self) -> Result<String> {
+        Ok(serde_json::to_string_pretty(&self.to_artifact())?)
+    }
+
+    pub fn save_artifact_json(&self, path: impl AsRef<Path>) -> Result<()> {
+        fs::write(path, self.to_artifact_json()?)?;
+        Ok(())
+    }
+
+    pub fn load_artifact_json(path: impl AsRef<Path>) -> Result<Self> {
+        let text = fs::read_to_string(path)?;
+        let artifact = serde_json::from_str(&text)?;
+        Self::from_artifact(artifact)
+    }
+
+    pub fn config(&self) -> HinSageConfig {
+        self.config.clone()
+    }
+
+    pub fn input_dim(&self) -> usize {
+        self.inner.input_dim()
+    }
+
+    pub fn output_dim(&self) -> usize {
+        self.inner.output_dim()
+    }
+
+    pub fn node_type_count(&self) -> usize {
+        self.node_type_count
+    }
+
+    pub fn relation_count(&self) -> usize {
+        self.relation_count
+    }
+
+    pub fn edge_type_triples(&self) -> &[(usize, usize, usize)] {
+        &self.edge_type_triples
+    }
+
+    pub fn loss_curve(&self) -> GraphSageLoss {
+        self.inner.loss_curve()
+    }
+
+    fn validate_graph_schema(&self, graph: &HinSageGraph) -> Result<()> {
+        if graph.node_type_count() != self.node_type_count {
+            return Err(NeuralError::InvalidArgument(
+                "HinSAGE graph node_type_count does not match encoder".to_string(),
+            ));
+        }
+        if graph.relation_count() != self.relation_count {
+            return Err(NeuralError::InvalidArgument(
+                "HinSAGE graph relation_count does not match encoder".to_string(),
+            ));
+        }
+        if graph.edge_type_triples() != self.edge_type_triples() {
+            return Err(NeuralError::InvalidArgument(
+                "HinSAGE graph edge_type_triples do not match encoder".to_string(),
+            ));
+        }
+        Ok(())
     }
 }
 
@@ -1096,6 +1495,7 @@ fn compute_link_loss(
     if edges.is_empty() || node_count == 0 {
         return 0.0;
     }
+    let negative_candidates = source_negative_candidates(node_count, edges.iter().copied());
     let mut loss = 0.0_f32;
     let scale = if edges.is_empty() {
         1.0
@@ -1122,8 +1522,9 @@ fn compute_link_loss(
             continue;
         }
 
-        for _ in 0..negative_samples {
-            let negative = sample_negative_node(rng, node_count, right);
+        let candidates = &negative_candidates[left];
+        for _ in 0..negative_samples.min(candidates.len()) {
+            let negative = sample_negative_node(rng, candidates);
             let mut neg_score = 0.0_f32;
             for (left_value, neg_value) in embeddings[left].iter().zip(embeddings[negative].iter())
             {
@@ -1156,6 +1557,10 @@ fn compute_link_loss_hetero(
         return 0.0;
     }
 
+    let negative_candidates = source_negative_candidates(
+        node_count,
+        edges.iter().map(|edge| (edge.source, edge.target)),
+    );
     let mut loss = 0.0_f32;
     let scale = if edges.is_empty() {
         1.0
@@ -1183,8 +1588,9 @@ fn compute_link_loss_hetero(
             continue;
         }
 
-        for _ in 0..negative_samples {
-            let negative = sample_negative_node(rng, node_count, right);
+        let candidates = &negative_candidates[left];
+        for _ in 0..negative_samples.min(candidates.len()) {
+            let negative = sample_negative_node(rng, candidates);
             let mut neg_score = 0.0_f32;
             for (left_value, neg_value) in embeddings[left].iter().zip(embeddings[negative].iter())
             {
@@ -1219,17 +1625,27 @@ fn sigmoid(value: f32) -> f32 {
     }
 }
 
-fn sample_negative_node(rng: &mut SplitMix64, node_count: usize, forbidden: usize) -> usize {
-    if node_count <= 1 {
-        return forbidden;
+fn source_negative_candidates<I>(node_count: usize, edges: I) -> Vec<Vec<usize>>
+where
+    I: IntoIterator<Item = (usize, usize)>,
+{
+    let mut observed = vec![HashSet::new(); node_count];
+    for (source, target) in edges {
+        observed[source].insert(target);
     }
 
-    loop {
-        let candidate = rng.next_usize(node_count);
-        if candidate != forbidden {
-            return candidate;
-        }
-    }
+    observed
+        .into_iter()
+        .map(|targets| {
+            (0..node_count)
+                .filter(|candidate| !targets.contains(candidate))
+                .collect()
+        })
+        .collect()
+}
+
+fn sample_negative_node(rng: &mut SplitMix64, candidates: &[usize]) -> usize {
+    candidates[rng.next_usize(candidates.len())]
 }
 
 fn build_directed_neighbors(
@@ -1339,6 +1755,87 @@ fn validate_relation_count(relation_count: usize) -> Result<()> {
     Ok(())
 }
 
+fn validate_neighbor_samples(neighbor_samples: &[usize], relation_count: usize) -> Result<()> {
+    if neighbor_samples.is_empty() || neighbor_samples.len() == relation_count {
+        return Ok(());
+    }
+    Err(NeuralError::InvalidArgument(
+        "neighbor_samples must be empty or have one entry per relation".to_string(),
+    ))
+}
+
+fn sample_hinsage_edges(
+    node_count: usize,
+    relation_count: usize,
+    edges: &[HeteroTypedEdge],
+    neighbor_samples: &[usize],
+) -> Result<Vec<HeteroTypedEdge>> {
+    if neighbor_samples.is_empty() {
+        return Ok(edges.to_vec());
+    }
+    validate_neighbor_samples(neighbor_samples, relation_count)?;
+    let mut grouped = vec![vec![Vec::<usize>::new(); relation_count]; node_count];
+    for edge in edges {
+        validate_node_index(edge.source, node_count)?;
+        validate_node_index(edge.target, node_count)?;
+        validate_relation_index(edge.relation, relation_count)?;
+        grouped[edge.source][edge.relation].push(edge.target);
+    }
+
+    let mut sampled = Vec::new();
+    for (source, by_relation) in grouped.iter_mut().enumerate() {
+        for (relation, targets) in by_relation.iter_mut().enumerate() {
+            targets.sort_unstable();
+            targets.dedup();
+            let limit = neighbor_samples[relation];
+            let take_count = if limit == 0 {
+                targets.len()
+            } else {
+                targets.len().min(limit)
+            };
+            for &target in targets.iter().take(take_count) {
+                sampled.push(HeteroTypedEdge {
+                    source,
+                    target,
+                    relation,
+                });
+            }
+        }
+    }
+    Ok(sampled)
+}
+
+fn build_link_embeddings(
+    embeddings: &[Vec<f32>],
+    pairs: &[(usize, usize)],
+) -> Result<Vec<Vec<f32>>> {
+    let width = embeddings.first().map_or(0, Vec::len);
+    if width == 0 {
+        return Err(NeuralError::InvalidArgument(
+            "embeddings must be non-empty with positive width".to_string(),
+        ));
+    }
+    if embeddings.iter().any(|row| row.len() != width) {
+        return Err(NeuralError::InvalidArgument(
+            "embedding rows must have consistent width".to_string(),
+        ));
+    }
+    let mut rows = Vec::with_capacity(pairs.len());
+    for &(source, target) in pairs {
+        validate_node_index(source, embeddings.len())?;
+        validate_node_index(target, embeddings.len())?;
+        let left = &embeddings[source];
+        let right = &embeddings[target];
+        let mut row = Vec::with_capacity(width * 4);
+        row.extend(left);
+        row.extend(right);
+        row.extend(left.iter().zip(right).map(|(l, r)| (l - r).abs()));
+        row.extend(left.iter().zip(right).map(|(l, r)| l * r));
+        rows.push(row);
+    }
+    Ok(rows)
+}
+
 fn validate_graphsage_artifact(artifact: &GraphSageEncoderArtifact) -> Result<()> {
     if artifact.artifact_type != GRAPH_SAGE_ARTIFACT_TYPE {
         return Err(NeuralError::InvalidArgument(format!(
@@ -1382,5 +1879,26 @@ impl SplitMix64 {
 
     fn next_usize(&mut self, max: usize) -> usize {
         (self.next_u64() as f64 % (max as f64)) as usize
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::source_negative_candidates;
+
+    #[test]
+    fn negative_candidates_exclude_all_observed_targets_for_source() {
+        let candidates = source_negative_candidates(4, [(0, 1), (0, 2), (1, 3)]);
+
+        assert_eq!(candidates[0], vec![0, 3]);
+        assert_eq!(candidates[1], vec![0, 1, 2]);
+        assert_eq!(candidates[2], vec![0, 1, 2, 3]);
+    }
+
+    #[test]
+    fn negative_candidates_can_be_empty_for_dense_source() {
+        let candidates = source_negative_candidates(3, [(0, 0), (0, 1), (0, 2)]);
+
+        assert!(candidates[0].is_empty());
     }
 }

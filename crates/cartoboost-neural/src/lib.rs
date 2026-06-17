@@ -21,6 +21,7 @@ pub use graph_features::{
 pub use graphsage::{
     GraphSageConfig, GraphSageEncoder, GraphSageEncoderArtifact, GraphSageLoss,
     GraphSageModelArtifact, HeteroGraph, HeteroGraphSageConfig, HeteroGraphSageEncoder,
-    HeteroGraphSageEncoderArtifact, HeteroTypedEdge, HomogeneousGraph,
+    HeteroGraphSageEncoderArtifact, HeteroTypedEdge, HinSageConfig, HinSageEncoder,
+    HinSageEncoderArtifact, HinSageGraph, HomogeneousGraph,
 };
 pub use trainer::fit_embedding_table;

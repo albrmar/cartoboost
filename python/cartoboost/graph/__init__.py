@@ -15,6 +15,8 @@ from .encoders import (
     GraphSageFeatureEncoder,
     HeteroGraphSageConfig,
     HeteroGraphSageFeatureEncoder,
+    HinSageConfig,
+    HinSageFeatureEncoder,
 )
 from .eval import (
     binary_auc,
@@ -50,8 +52,10 @@ __all__ = [
     "normalize_heterogeneous_graph",
     "GraphSageConfig",
     "HeteroGraphSageConfig",
+    "HinSageConfig",
     "GraphSageFeatureEncoder",
     "HeteroGraphSageFeatureEncoder",
+    "HinSageFeatureEncoder",
     "GraphFeatureTransformer",
     "GraphFeatureBundle",
     "MetaPathWalkGenerator",

@@ -93,6 +93,14 @@ booster.
   - encoder trait and dense block assembly utilities
   - deterministic feature name generation (`name_00`, `name_01`, ...)
 
+Graph neural support follows the same ownership rule: typed graph semantics and
+HinSAGE execution live in Rust, while Python provides configuration and wrapper
+ergonomics. The native HinSAGE surface validates node types, relation triples,
+edge type consistency, relation-ordered neighbor sampling caps, artifact
+serialization, and link-prediction feature construction. Python callers pass
+typed integer arrays into the Rust encoder rather than reimplementing HinSAGE
+logic in Python.
+
 ## Directional geotemporal graph features (required for OD-style signals)
 
 CartoBoost graph support should treat directionality as a first-class schema
@@ -222,6 +230,41 @@ directionality:
   materialize_reverse_edges: true
   reverse_relation_suffix: "_reverse"
 ```
+
+#### Native HinSAGE support
+
+For typed heterogeneous graphs, use the HinSAGE family with an explicit node
+type count, edge-type triples, and optional per-relation neighbor sampling caps:
+
+```yaml
+graph_embeddings:
+  encoder:
+    family: hinsage
+    input_dim: 8
+    node_type_count: 5
+    edge_type_triples:
+      - [0, 0, 1]  # source_h3 flows_to target_h3
+      - [1, 1, 0]  # target_h3 reverse_flows_to source_h3
+      - [3, 2, 0]  # entity active_from source_h3
+      - [3, 3, 1]  # entity active_to target_h3
+      - [3, 4, 2]  # entity observed_on od_pair
+    neighbor_samples: [25, 25, 10, 10, 20]
+    hidden_dims: [16]
+    epochs: 20
+
+  directionality:
+    materialize_reverse_edges: true
+    preserve_source_target_roles: true
+    create_od_pair_nodes: true
+    compute_asymmetry_features: true
+```
+
+`GraphFeatureTransformer.fit_transform(...)` requires `node_types` when this
+family is selected, and edges must be `(source, target, relation)` integer
+triples. The Rust layer rejects edges whose source/target node types do not
+match the configured relation schema. The Python `HinSageFeatureEncoder` also
+exposes `link_embeddings(embeddings, pairs)` for source-target link-prediction
+features.
 
 #### 2) Direction-aware feature generation
 

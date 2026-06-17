@@ -7,6 +7,7 @@ from cartoboost.graph import (
     GraphFeatureConfig,
     GraphFeatureTransformer,
     GraphSchema,
+    HinSageFeatureEncoder,
     MetaPathWalkGenerator,
     SignedEdgeSampler,
     TemporalWalkGenerator,
@@ -101,6 +102,15 @@ def test_signed_sampler_avoids_false_negatives() -> None:
     sampled = sampler.sample(node_count=4, edges=edges)
     sampled_edge_set = {edge for values in sampled.values() for edge in values}
     assert not sampled_edge_set.intersection(set(edges))
+
+
+def test_signed_sampler_returns_fewer_negatives_when_source_is_dense() -> None:
+    edges = [(0, 0), (0, 1), (0, 2)]
+    sampler = SignedEdgeSampler(negative_samples=2, seed=3)
+
+    sampled = sampler.sample(node_count=3, edges=edges)
+
+    assert sampled == {edge: [] for edge in edges}
 
 
 def test_graph_metrics_match_simple_reference() -> None:
@@ -589,3 +599,68 @@ def test_graph_feature_bundle_exposes_schema_and_training_metadata() -> None:
     ]
     assert bundle.feature_schema_payload()["kinds"] == ["Numeric", "Numeric"]
     assert bundle.training_config_metadata()["provenance"]["encoder"] == "graphsage"
+
+
+def test_native_hinsage_feature_encoder_requires_typed_schema_and_builds_link_features() -> None:
+    encoder = HinSageFeatureEncoder.from_config(
+        {
+            "input_dim": 2,
+            "node_type_count": 3,
+            "edge_type_triples": [(0, 0, 2), (1, 1, 2), (2, 2, 0)],
+            "hidden_dims": [3],
+            "epochs": 3,
+            "negative_samples": 1,
+            "neighbor_samples": [2, 0, 0],
+        }
+    )
+    node_types = [0, 1, 2, 2, 2]
+    edges = [
+        (0, 2, 0),
+        (0, 3, 0),
+        (0, 4, 0),
+        (1, 2, 1),
+        (2, 0, 2),
+    ]
+    features = [
+        [1.0, 0.0],
+        [0.0, 1.0],
+        [0.5, 0.2],
+        [0.7, 0.4],
+        [0.9, 0.6],
+    ]
+
+    bundle = encoder.fit(features, edges, node_types)
+    link_bundle = encoder.link_embeddings(bundle.embeddings, [(0, 2), (1, 2)])
+
+    assert bundle.embeddings.shape == (5, 3)
+    assert bundle.provenance["encoder"] == "hinsage"
+    assert bundle.provenance["neighbor_samples"] == [2, 0, 0]
+    assert link_bundle.embeddings.shape == (2, 12)
+    assert link_bundle.feature_names[0] == "hinsage_link_00"
+    assert len(encoder.loss_curve()) == 3
+
+
+def test_graph_feature_transformer_uses_true_hinsage_when_schema_is_provided() -> None:
+    transformer = GraphFeatureTransformer.from_config(
+        {
+            "graph_embeddings": {
+                "encoder": {
+                    "family": "hinsage",
+                    "input_dim": 2,
+                    "node_type_count": 2,
+                    "edge_type_triples": [(0, 0, 1), (1, 1, 0)],
+                    "hidden_dims": [2],
+                    "epochs": 2,
+                    "neighbor_samples": [1, 0],
+                }
+            }
+        }
+    )
+    bundle = transformer.fit_transform(
+        node_features=[[1.0, 0.0], [0.0, 1.0], [0.4, 0.2]],
+        edges=[(0, 1, 0), (0, 2, 0), (1, 0, 1)],
+        node_types=[0, 1, 1],
+    )
+
+    assert bundle.embeddings.shape == (3, 2)
+    assert bundle.provenance["encoder"] == "hinsage"
