@@ -75,6 +75,22 @@ the expanded matrix.
 | `score(X, y, sparse_sets=None, id_column=None, ids=None)` | `float` | Computes mean absolute error on predictions. |
 | `timings` | `dict[str, float]` | Fit timing components in milliseconds: `base_fit_ms`, `neural_fit_ms`, `final_fit_ms`. |
 
+## `cartoboost.GraphSageEncoder` and `cartoboost.HeteroGraphSageEncoder`
+
+Rust-native neighborhood-based encoders for downstream boosting workflows.
+
+`GraphSageEncoder` is for homogeneous graphs; `HeteroGraphSageEncoder` is for
+typed relations.
+
+| Method | Returns | Notes |
+| --- | --- | --- |
+| `fit(node_count, edges, node_features)` | `list[list[float]]` | Trains encoder weights on an edge list and returns node embeddings. |
+| `encode(node_features)` | `list[list[float]]` | Encodes features with learned weights for inference. |
+| `loss_curve()` | `list[float]` | Per-epoch training loss history. |
+| `save_artifact_json(path)` | `None` | Persists deterministic encoder artifact. |
+| `to_artifact_json()` | `str` | Emits JSON artifact payload. |
+| `load_artifact_json(path)` | `GraphSageEncoder` / `HeteroGraphSageEncoder` | Loads serialized encoder state. |
+
 ### Function: `cartoboost.benchmark_neural_vs_cartoboost`
 
 ```python

@@ -93,6 +93,128 @@ booster.
   - encoder trait and dense block assembly utilities
   - deterministic feature name generation (`name_00`, `name_01`, ...)
 
+## Directional geotemporal graph features (required for OD-style signals)
+
+Directional geotemporal graphs are not symmetric; moving from `A` to `B` is
+usually not the same as moving from `B` to `A`. CartoBoost graph support should
+therefore treat direction as a first-class schema design requirement.
+
+### Why this is required
+
+- `origin -> destination`
+- `upstream -> downstream`
+- `supply -> demand`
+- `source market -> sink market`
+
+and in brokerage deployments, at minimum:
+
+- `origin_h3 -> destination_h3`
+- `carrier -> lane`
+- `shipper -> lane`
+- `rep -> account`
+- `facility -> market`
+- `market_A -> market_B`
+
+### Required design patterns
+
+#### 1) Directed edge types
+
+The schema should preserve directional relation semantics explicitly rather than
+collapsing edges into single undirected facts.
+
+```yaml
+graph:
+  directed: true
+
+  node_types:
+    - source_h3
+    - destination_h3
+    - od_pair
+    - entity
+
+  edge_types:
+    - [source_h3, flows_to, destination_h3]
+    - [destination_h3, reverse_flows_to, source_h3]
+    - [carrier, serves_outbound_from, origin_h3]
+    - [carrier, serves_inbound_to, destination_h3]
+    - [shipper, tenders, od_pair]
+    - [entity, active_on, od_pair]
+```
+
+If reverse edges are missing from the source, they can be materialized:
+
+```yaml
+directionality:
+  materialize_reverse_edges: true
+  reverse_relation_suffix: "_reverse"
+  preserve_source_target_roles: true
+```
+
+The current implementation materializes reverse typed relations when enabled in
+`GraphSageFeatureEncoder`/`HeteroGraphSageFeatureEncoder`. The suffix controls
+relation naming and `preserve_source_target_roles` is a schema-level requirement:
+it signals that `source` and `target` columns are not interchangeable.
+
+#### 2) Direction-aware feature generation
+
+Directional features should be explicit output channels into the booster, not just a
+latent side effect.
+
+Recommended feature families:
+
+- `source_target_affinity`
+- `target_source_affinity`
+- `forward_flow_weight`
+- `reverse_flow_weight`
+- `flow_asymmetry`
+- `source_out_degree_weighted`
+- `target_in_degree_weighted`
+- `directed_temporal_drift`
+- `graph_od_forward_similarity`
+- `graph_od_reverse_similarity`
+- `graph_origin_outbound_strength`
+- `graph_destination_inbound_strength`
+- `graph_forward_flow_volume_30d`
+- `graph_reverse_flow_volume_30d`
+- `graph_flow_imbalance_ratio`
+- `graph_directional_market_drift`
+- `graph_directional_acceptance_rate`
+- `graph_directional_price_pressure`
+
+#### 3) Direction-aware walks and metapaths
+
+Directional metapaths should be used when building random-walk contexts:
+
+```yaml
+meta_paths:
+  - [source_h3, flows_to, destination_h3, receives_from, source_h3]
+  - [entity, active_from, source_target_pair, observed_in, time_bucket]
+  - [carrier, serves_outbound_from, origin_h3, flows_to, destination_h3, reverse_flows_to, origin_h3]
+```
+
+`GraphSageFeatureTransformer` should carry these as typed edge constraints so it
+learns from directional proximity and directional role context, rather than only
+distance symmetry.
+
+### Output contract (directional contract)
+
+```yaml
+outputs:
+  directional_features:
+    - source_target_embedding
+    - target_source_embedding
+    - forward_reverse_similarity_delta
+    - source_outbound_strength
+    - target_inbound_strength
+    - flow_imbalance_ratio
+    - directed_temporal_drift
+    - directional_walk_count
+```
+
+At minimum, this contract means forward and reverse behavior must be separately
+captured in produced features; aggregating them into one symmetric value loses
+predictive signal in geotemporal settings.
+
 ## 4) Full training flow (residual mode)
 
 ### Formal view
@@ -467,3 +589,29 @@ in cold-sparse settings by widening the feature space with structured dense embe
 - Added Python regression tests + benchmark script.
 - Added Python API docs for this feature in:
   - `docs/reference/python-api.md`
+
+## 11) GraphSAGE performance and benchmark notes
+
+GraphSAGE/HIN-SAGE encoders are now available through the Rust-native classes:
+`cartoboost.GraphSageEncoder` and `cartoboost.HeteroGraphSageEncoder`.
+
+Complexity is approximately:
+
+- `O(N * H * D)` for dense transformations per epoch.
+- `O(E * H * D)` for edge-oriented supervision work per epoch.
+
+Where:
+
+- `N` = number of nodes,
+- `E` = number of typed edges,
+- `H` = number of GraphSAGE layers,
+- `D` = embedding width.
+
+Practical benchmarking checklist before production rollout:
+
+1. Compare `fit_ms` and `predict_ms` against the neural-embedding baseline on
+   at least one random split and one blocked split.
+2. Keep `seed`, `dim`, and relation semantics fixed between runs.
+3. Check artifact load path (`load_artifact_json`) for warm-started inference speed.
+4. Confirm deterministic outputs by serializing and restoring artifacts with
+   `save_artifact_json` / `to_artifact_json` for one production snapshot.

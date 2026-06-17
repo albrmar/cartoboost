@@ -28,6 +28,8 @@ from .neural import (
     NeuralEmbeddingRegressor,
     benchmark_neural_vs_cartoboost,
 )
+from ._native import GraphSageEncoder, HeteroGraphSageEncoder
+from . import graph
 from .overlay import OverlayConfig, weighted_overlay
 from .regressor import CartoBoostRegressor
 from .schema import FeatureKind, FeatureSchema
@@ -36,7 +38,10 @@ __version__ = "0.1.14"
 
 __all__ = [
     "ArtifactFallback",
+    "GraphSageEncoder",
+    "HeteroGraphSageEncoder",
     "FeatureSchema",
+    "graph",
     "NeuralEmbeddingFeatures",
     "NeuralEmbeddingRegressor",
     "benchmark_neural_vs_cartoboost",
