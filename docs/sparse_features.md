@@ -56,9 +56,12 @@ zip3_only_sparse_sets = build_zip_sparse_sets(
     destination_zip=["10001", "94103"],
     zip3_only=True,
 )
+```
+
+## Abstract Geo IDs
 
 Arbitrary geo-id features like pickup/dropoff zones can be mapped directly into
-geographic sparse columns:
+sparse columns:
 
 ```python
 from geoboost import build_geo_sparse_sets
@@ -70,16 +73,37 @@ geo_sparse_sets = build_geo_sparse_sets(
     },
     namespace="market_a",
 )
+```
 
+State, county, region, market, and zone features use the same path:
+
+```python
+state_geo_sparse_sets = build_geo_sparse_sets(
+    {
+        "state": ["CA", "NY", "CA", "TX"],
+        "region": ["NORTH", "NORTHEAST", "WEST", "SOUTH"],
+    },
+    namespace="policy",
+)
+```
+
+Pass these through `sparse_sets=` and declare each column as a sparse-set kind:
+
+```python
 schema = {
     "dense": [{"name": "distance_m", "kind": "numeric"}],
     "sparse_sets": [
         {"name": "pickup_zone", "kind": "zone_sparse_set"},
         {"name": "delivery_zone", "kind": "region_sparse_set"},
+        {"name": "state", "kind": "geo_sparse_set"},
+        {"name": "region", "kind": "zone_sparse_set"},
     ],
 }
 ```
-```
+
+`build_geo_sparse_sets` is deterministic: the `(namespace, column_name, value)`
+triple is hashed to a stable non-negative feature ID, so repeated labels map to
+the same ID.
 
 Validation rules:
 
