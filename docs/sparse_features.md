@@ -36,10 +36,10 @@ zip_sparse_sets = build_zip_sparse_sets(
 schema = {
     "dense": [{"name": "distance_m", "kind": "numeric"}],
     "sparse_sets": [
-    {"name": "ozip_zip5", "kind": "zip_sparse_set"},
-    {"name": "ozip_zip_p3", "kind": "zip_sparse_set"},
-    {"name": "dzip_zip5", "kind": "zip_sparse_set"},
-    {"name": "dzip_zip_p3", "kind": "zip3_sparse_set"},
+        {"name": "ozip_zip5", "kind": "zip_sparse_set"},
+        {"name": "ozip_zip_p3", "kind": "zip_sparse_set"},
+        {"name": "dzip_zip5", "kind": "zip_sparse_set"},
+        {"name": "dzip_zip_p3", "kind": "zip3_sparse_set"},
     ],
 }
 
@@ -48,6 +48,13 @@ model.fit(
     y,
     sparse_sets=zip_sparse_sets,
     feature_schema=schema,
+)
+
+# Emit only ZIP3 hierarchy columns
+zip3_only_sparse_sets = build_zip_sparse_sets(
+    origin_zip=["94103", "94122"],
+    destination_zip=["10001", "94103"],
+    zip3_only=True,
 )
 ```
 

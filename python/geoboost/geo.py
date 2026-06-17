@@ -25,6 +25,7 @@ def build_zip_sparse_sets(
     destination_zip: Sequence[Any] | None = None,
     *,
     include_raw: bool = True,
+    zip3_only: bool = False,
     parent_prefixes: Sequence[int] | None = None,
     include_match_indicator: bool = True,
     strict: bool = False,
@@ -37,6 +38,11 @@ def build_zip_sparse_sets(
     if origin_zip is None and destination_zip is None:
         raise ValueError("origin_zip and destination_zip cannot both be None")
 
+    if zip3_only:
+        if include_raw:
+            raise ValueError("zip3_only cannot be used with include_raw=True")
+        parent_prefixes = (3,)
+        include_raw = False
     parent_prefixes = _normalize_prefixes(parent_prefixes or (3, 2))
     ozip_codes = _coerce_zip_sequence(origin_zip, strict=strict, name="origin_zip") if origin_zip else []
     dzip_codes = _coerce_zip_sequence(destination_zip, strict=strict, name="destination_zip") if destination_zip else []

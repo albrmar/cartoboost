@@ -23,3 +23,19 @@ def test_build_zip_sparse_sets_adds_geo_context_columns():
 def test_build_zip_sparse_sets_rejects_length_mismatch():
     with pytest.raises(ValueError, match="same number of rows"):
         build_zip_sparse_sets(origin_zip=["94103"], destination_zip=["10001", "94107"])
+
+
+def test_build_zip_sparse_sets_zip3_only():
+    features = build_zip_sparse_sets(
+        origin_zip=["94103", "10001", None],
+        destination_zip=["94103", "94107", "94107"],
+        parent_prefixes=(5, 3, 2),
+        include_raw=False,
+        include_match_indicator=False,
+        zip3_only=True,
+    )
+
+    assert "ozip_zip5" not in features
+    assert list(features.keys()) == ["ozip_zip_p3", "dzip_zip_p3"]
+    assert features["ozip_zip_p3"] == [[941], [100], []]
+    assert features["dzip_zip_p3"] == [[941], [941], [941]]
