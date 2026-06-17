@@ -95,9 +95,18 @@ booster.
 
 ## Directional geotemporal graph features (required for OD-style signals)
 
-Directional geotemporal graphs are not symmetric; moving from `A` to `B` is
-usually not the same as moving from `B` to `A`. CartoBoost graph support should
-therefore treat direction as a first-class schema design requirement.
+CartoBoost graph support should treat directionality as a first-class schema
+concept. Many geotemporal prediction problems are not symmetric: movement from
+`A` to `B` differs from `B` to `A`, outbound behavior differs from inbound
+behavior, and source-target imbalance often carries predictive signal. The graph
+layer should therefore support directed edge types, reverse-edge materialization,
+source/target role metadata, OD-pair nodes, directed random walks, and
+directional feature emission into the booster.
+
+Directional source-target semantics are required for any geotemporal graph. For
+Robinson-style freight, that means OD direction, inbound/outbound market behavior,
+directional imbalance, and reverse-lane contrast are core features, not optional
+extras.
 
 ### Why this is required
 
@@ -122,24 +131,55 @@ and in brokerage deployments, at minimum:
 The schema should preserve directional relation semantics explicitly rather than
 collapsing edges into single undirected facts.
 
+Do not collapse directional market facts into one undirected edge:
+
+```yaml
+edge: market_connected_to_market
+```
+
+Use typed source-target relations instead:
+
 ```yaml
 graph:
   directed: true
 
   node_types:
     - source_h3
-    - destination_h3
+    - target_h3
     - od_pair
     - entity
+    - time_bucket
 
   edge_types:
-    - [source_h3, flows_to, destination_h3]
-    - [destination_h3, reverse_flows_to, source_h3]
-    - [carrier, serves_outbound_from, origin_h3]
-    - [carrier, serves_inbound_to, destination_h3]
-    - [shipper, tenders, od_pair]
-    - [entity, active_on, od_pair]
+    - [source_h3, flows_to, target_h3]
+    - [target_h3, reverse_flows_to, source_h3]
+    - [entity, active_from, source_h3]
+    - [entity, active_to, target_h3]
+    - [entity, observed_on, od_pair]
+    - [od_pair, observed_in, time_bucket]
+
+  directionality:
+    materialize_reverse_edges: true
+    preserve_source_target_roles: true
+    create_od_pair_nodes: true
+    compute_asymmetry_features: true
 ```
+
+Freight-style schemas should model directional facts explicitly:
+
+```yaml
+edge_types:
+  - [origin_h3, flows_to, destination_h3]
+  - [destination_h3, reverse_flows_to, origin_h3]
+  - [carrier, serves_outbound_from, origin_h3]
+  - [carrier, serves_inbound_to, destination_h3]
+  - [shipper, tenders, od_pair]
+  - [od_pair, quoted_by, carrier]
+```
+
+This lets the model distinguish `Chicago -> Dallas` from `Dallas -> Chicago`.
+Those are separate graph facts, separate features, and often separate learned
+embeddings.
 
 If reverse edges are missing from the source, they can be materialized:
 
@@ -148,12 +188,17 @@ directionality:
   materialize_reverse_edges: true
   reverse_relation_suffix: "_reverse"
   preserve_source_target_roles: true
+  create_od_pair_nodes: true
 ```
 
 The current implementation materializes reverse typed relations when enabled in
 `GraphSageFeatureEncoder`/`HeteroGraphSageFeatureEncoder`. The suffix controls
 relation naming and `preserve_source_target_roles` is a schema-level requirement:
 it signals that `source` and `target` columns are not interchangeable.
+When `create_od_pair_nodes` is enabled through `GraphFeatureTransformer`, callers
+must pass `node_ids`; CartoBoost then appends stable tuple IDs such as
+`("od_pair", source, target)` with zero feature rows for newly materialized pair
+nodes.
 
 Directional feature extraction is opt-in and controlled through the
 `directionality.compute_asymmetry_features` flag (defaults to `false` if the
@@ -165,9 +210,15 @@ directionality:
   directional_feature_prefix: "graph"
   # optional selective subset of emitted columns
   directional_features:
+    - graph_source_target_embedding
+    - graph_target_source_embedding
+    - graph_forward_reverse_similarity_delta
+    - graph_source_outbound_strength
+    - graph_target_inbound_strength
+    - graph_flow_imbalance_ratio
+    - graph_directed_temporal_drift
     - graph_source_target_affinity
     - graph_target_source_affinity
-    - graph_flow_imbalance_ratio
   materialize_reverse_edges: true
   reverse_relation_suffix: "_reverse"
 ```
@@ -179,6 +230,13 @@ latent side effect.
 
 Recommended feature families:
 
+- `source_target_embedding`
+- `target_source_embedding`
+- `forward_reverse_similarity_delta`
+- `source_outbound_strength`
+- `target_inbound_strength`
+- `flow_imbalance_ratio`
+- `directed_temporal_drift`
 - `source_target_affinity`
 - `target_source_affinity`
 - `forward_flow_weight`
@@ -198,20 +256,38 @@ Recommended feature families:
 - `graph_directional_acceptance_rate`
 - `graph_directional_price_pressure`
 
+Generic package-level names should remain source-target oriented rather than
+freight-specific:
+
+- `source_target_affinity`
+- `target_source_affinity`
+- `forward_flow_weight`
+- `reverse_flow_weight`
+- `flow_asymmetry`
+- `source_out_degree_weighted`
+- `target_in_degree_weighted`
+- `directed_temporal_drift`
+
 #### 3) Direction-aware walks and metapaths
 
 Directional metapaths should be used when building random-walk contexts:
 
 ```yaml
 meta_paths:
-  - [source_h3, flows_to, destination_h3, receives_from, source_h3]
+  - [source_h3, flows_to, target_h3, receives_from, source_h3]
   - [entity, active_from, source_target_pair, observed_in, time_bucket]
-  - [carrier, serves_outbound_from, origin_h3, flows_to, destination_h3, reverse_flows_to, origin_h3]
+  - [source_market, sends_to, target_market, supplied_by, entity]
+  - [carrier, serves_outbound_from, origin_h3, flows_to, target_h3, reverse_flows_to, origin_h3]
+  - [carrier, serves_inbound_to, destination_h3, reverse_flows_to, origin_h3]
+  - [shipper, tenders, od_pair, quoted_by, carrier]
 ```
 
-`GraphSageFeatureTransformer` should carry these as typed edge constraints so it
-learns from directional proximity and directional role context, rather than only
-distance symmetry.
+`DirectedMetaPath` validates these node/relation/node paths against
+`GraphSchema`, and `MetaPathWalkGenerator` can consume the relation path directly
+for random-walk contexts. This makes directed source-target semantics part of the
+walk contract rather than an informal naming convention. This prevents embeddings
+from learning only that two places are near or co-observed when the useful
+relationship is true only in one direction.
 
 ### Output contract (directional contract)
 
@@ -225,7 +301,6 @@ outputs:
     - target_inbound_strength
     - flow_imbalance_ratio
     - directed_temporal_drift
-    - directional_walk_count
 ```
 
 At minimum, this contract means forward and reverse behavior must be separately

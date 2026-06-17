@@ -131,3 +131,22 @@ def mean_reciprocal_rank(
     if not ranks:
         return 0.0
     return float(np.mean(ranks))
+
+
+def link_prediction_report(
+    labels: Sequence[int],
+    scores: Sequence[float],
+    query_ids: Sequence[Any] | None = None,
+    *,
+    k: int = 10,
+) -> dict[str, float]:
+    """Return a compact link-prediction and link-ranking metric bundle."""
+    report = {
+        "auc": binary_auc(labels, scores),
+        "average_precision": binary_average_precision(labels, scores),
+    }
+    if query_ids is None:
+        return report
+    report.update(top_k_metrics(labels, scores, query_ids=query_ids, k=k))
+    report["mean_reciprocal_rank"] = mean_reciprocal_rank(labels, scores, query_ids)
+    return report

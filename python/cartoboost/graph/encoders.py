@@ -14,127 +14,54 @@ from .._native import (
 from .._native import (
     HeteroGraphSageEncoder as _NativeHeteroGraphSageEncoder,
 )
+from .._native import (
+    graph_compute_directional_features as _native_compute_directional_features,
+)
 from .builder import (
     HeterogeneousGraph,
     HomogeneousGraph,
     ensure_node_features_shape,
+    materialize_source_target_pair_nodes,
     normalize_heterogeneous_graph,
     normalize_homogeneous_graph,
 )
 from .features import GraphFeatureBundle
-
-
-def _safe_divide(numerator: np.ndarray, denominator: np.ndarray) -> np.ndarray:
-    denom = np.asarray(denominator, dtype=np.float32)
-    denom = np.where(denom == 0.0, 1.0, denom)
-    return np.divide(numerator, denom)
+from .schema import DirectionalityConfig
 
 
 def _compute_homogeneous_directional_features(
-    directionality: Mapping[str, Any],
+    directionality: Mapping[str, Any] | DirectionalityConfig,
     node_count: int,
     edges: Sequence[tuple[int, int]],
     embeddings: np.ndarray,
     feature_prefix: str = "graph",
+    edge_weights: Sequence[float] | None = None,
+    edge_timestamps: Sequence[float] | None = None,
 ) -> tuple[np.ndarray, list[str]]:
-    if not directionality:
+    directionality_cfg = DirectionalityConfig.from_config(directionality)
+    if not directionality_cfg.compute_asymmetry_features:
         return np.empty((node_count, 0), dtype=np.float32), []
-    if not directionality.get("compute_asymmetry_features", False):
-        return np.empty((node_count, 0), dtype=np.float32), []
 
-    out_degree = np.zeros(node_count, dtype=np.float32)
-    in_degree = np.zeros(node_count, dtype=np.float32)
-
-    for source, target in edges:
-        if source < node_count:
-            out_degree[source] += 1.0
-        if target < node_count:
-            in_degree[target] += 1.0
-
-    total_degree = out_degree + in_degree
-    source_affinity = _safe_divide(out_degree, total_degree)
-    target_affinity = _safe_divide(in_degree, total_degree)
-    flow_asymmetry = np.abs(out_degree - in_degree)
-    flow_asymmetry = _safe_divide(flow_asymmetry, total_degree)
-    flow_imbalance_ratio = np.zeros_like(total_degree)
-    non_zero_total = total_degree != 0.0
-    flow_imbalance_ratio[non_zero_total] = (
-        out_degree[non_zero_total] - in_degree[non_zero_total]
-    ) / total_degree[non_zero_total]
-
-    directed_similarity_delta = np.zeros(node_count, dtype=np.float32)
-    if embeddings.size:
-        for index in range(node_count):
-            outgoing = [n for s, n in edges if s == index]
-            incoming = [s for s, t in edges if t == index]
-            if not outgoing or not incoming:
-                directed_similarity_delta[index] = 0.0
-                continue
-            out_vec = embeddings[outgoing].mean(axis=0)
-            in_vec = embeddings[incoming].mean(axis=0)
-            out_norm = float(np.linalg.norm(out_vec))
-            in_norm = float(np.linalg.norm(in_vec))
-            if out_norm == 0.0 or in_norm == 0.0:
-                directed_similarity_delta[index] = 0.0
-            else:
-                directed_similarity_delta[index] = float(
-                    np.dot(out_vec, in_vec) / (out_norm * in_norm)
-                )
-
-    directional_metrics = np.column_stack(
-        [
-            source_affinity,
-            target_affinity,
-            out_degree,
-            in_degree,
-            flow_asymmetry,
-            out_degree,
-            in_degree,
-            np.zeros(node_count, dtype=np.float32),
-            flow_imbalance_ratio,
-            directed_similarity_delta,
-        ],
+    values, names = _native_compute_directional_features(
+        int(node_count),
+        [(int(source), int(target)) for source, target in edges],
+        np.asarray(embeddings, dtype=np.float32).tolist(),
+        None if edge_weights is None else [float(value) for value in edge_weights],
+        None if edge_timestamps is None else [float(value) for value in edge_timestamps],
+        str(feature_prefix),
+        list(directionality_cfg.directional_features),
     )
-
-    directional_names = [
-        f"{feature_prefix}_source_target_affinity",
-        f"{feature_prefix}_target_source_affinity",
-        f"{feature_prefix}_forward_flow_weight",
-        f"{feature_prefix}_reverse_flow_weight",
-        f"{feature_prefix}_flow_asymmetry",
-        f"{feature_prefix}_source_out_degree_weighted",
-        f"{feature_prefix}_target_in_degree_weighted",
-        f"{feature_prefix}_directed_temporal_drift",
-        f"{feature_prefix}_flow_imbalance_ratio",
-        f"{feature_prefix}_forward_reverse_similarity_delta",
-    ]
-
-    requested = directionality.get("directional_features")
-    if isinstance(requested, Sequence) and requested:
-        keep = [name for name in requested if isinstance(name, str)]
-        if not keep:
-            return directional_metrics, directional_names
-        name_to_index = {name: index for index, name in enumerate(directional_names)}
-        selected_indices = [name_to_index.get(name) for name in keep if name in name_to_index]
-        if not selected_indices:
-            raise ValueError(
-                "directional_features contains no recognized feature names",
-            )
-        selected_indices_array = np.array(selected_indices, dtype=np.int64)
-        return (
-            directional_metrics[:, selected_indices_array].astype(np.float32),
-            [directional_names[index] for index in selected_indices_array],
-        )
-
-    return directional_metrics.astype(np.float32), directional_names
+    return np.asarray(values, dtype=np.float32), list(names)
 
 
 def _compute_hetero_directional_features(
-    directionality: Mapping[str, Any],
+    directionality: Mapping[str, Any] | DirectionalityConfig,
     node_count: int,
     edges: Sequence[tuple[int, int, int]],
     embeddings: np.ndarray,
     feature_prefix: str = "graph",
+    edge_weights: Sequence[float] | None = None,
+    edge_timestamps: Sequence[float] | None = None,
 ) -> tuple[np.ndarray, list[str]]:
     return _compute_homogeneous_directional_features(
         directionality,
@@ -142,7 +69,61 @@ def _compute_hetero_directional_features(
         [(source, target) for source, target, _relation in edges],
         embeddings,
         feature_prefix=feature_prefix,
+        edge_weights=edge_weights,
+        edge_timestamps=edge_timestamps,
     )
+
+
+def _align_edge_values(
+    values: Sequence[float] | None,
+    source_edge_count: int,
+    normalized_edge_count: int,
+) -> list[float] | None:
+    if values is None:
+        return None
+    if len(values) != source_edge_count:
+        raise ValueError("edge value length must match edge count")
+    if normalized_edge_count == source_edge_count:
+        return [float(value) for value in values]
+    if source_edge_count == 0 or normalized_edge_count % source_edge_count != 0:
+        raise ValueError("edge value length cannot be aligned to normalized graph edges")
+    repeat = normalized_edge_count // source_edge_count
+    return [float(value) for value in values for _ in range(repeat)]
+
+
+def _expand_pair_node_values(values: list[float] | None) -> list[float] | None:
+    if values is None:
+        return None
+    return [float(value) for value in values for _ in range(3)]
+
+
+def _directionality_from_graph_config(
+    graph_cfg: Mapping[str, Any],
+    _encoder_cfg: Mapping[str, Any],
+) -> DirectionalityConfig:
+    raw_directionality = graph_cfg.get("directionality", {})
+    directionality_payload = DirectionalityConfig.from_config(raw_directionality).as_dict()
+
+    outputs = graph_cfg.get("outputs", {})
+    if outputs is not None:
+        if not isinstance(outputs, Mapping):
+            raise TypeError("outputs block must be a mapping")
+        output_features = outputs.get("directional_features", ())
+        if output_features:
+            prefix = str(directionality_payload.get("directional_feature_prefix", "graph"))
+            directionality_payload["directional_features"] = [
+                _normalize_directional_feature_name(str(feature), prefix)
+                for feature in output_features
+            ]
+            directionality_payload["compute_asymmetry_features"] = True
+
+    return DirectionalityConfig.from_config(directionality_payload)
+
+
+def _normalize_directional_feature_name(feature: str, prefix: str) -> str:
+    if feature.startswith(f"{prefix}_"):
+        return feature
+    return f"{prefix}_{feature}"
 
 
 @dataclass(frozen=True)
@@ -211,6 +192,7 @@ class GraphSageFeatureEncoder:
             embeddings=emb,
             node_ids=list(graph.node_ids),
             feature_names=[f"graph_sage_homo_{index:02d}" for index in range(len(emb[0]))],
+            provenance={"encoder": "graphsage", "directed": directed},
         )
 
     def encode(
@@ -225,6 +207,7 @@ class GraphSageFeatureEncoder:
             embeddings=emb,
             node_ids=list(self.graph.node_ids),
             feature_names=[f"graph_sage_homo_{index:02d}" for index in range(len(emb[0]))],
+            provenance={"encoder": "graphsage", "directed": self.graph.directed},
         )
 
     def loss_curve(self) -> list[float]:
@@ -325,6 +308,11 @@ class HeteroGraphSageFeatureEncoder:
             embeddings=emb,
             node_ids=list(graph.node_ids),
             feature_names=[f"graph_sage_hetero_{index:02d}" for index in range(len(emb[0]))],
+            provenance={
+                "encoder": "hetero_graphsage",
+                "directed": directed,
+                "relation_ids": list(graph.relation_ids),
+            },
         )
 
     def encode(
@@ -339,6 +327,11 @@ class HeteroGraphSageFeatureEncoder:
             embeddings=emb,
             node_ids=list(self.graph.node_ids),
             feature_names=[f"graph_sage_hetero_{index:02d}" for index in range(len(emb[0]))],
+            provenance={
+                "encoder": "hetero_graphsage",
+                "directed": self.graph.directed,
+                "relation_ids": list(self.graph.relation_ids),
+            },
         )
 
     def loss_curve(self) -> list[float]:
@@ -378,7 +371,7 @@ class GraphFeatureTransformer:
         self.use_hetero = bool(use_hetero)
         self.sage_kwargs = dict(sage_kwargs or {})
         self.hetero_kwargs = dict(hetero_kwargs or {})
-        self.directionality = dict(directionality or {})
+        self.directionality = DirectionalityConfig.from_config(directionality)
         self.encoder: GraphSageFeatureEncoder | HeteroGraphSageFeatureEncoder | None = None
         self._target_input_dim: int | None = None
 
@@ -401,16 +394,17 @@ class GraphFeatureTransformer:
             raise ValueError(f"unsupported graph family {family!r}")
 
         use_hetero = bool(encoder_cfg.get("hetero", graph_cfg.get("hetero", False)))
+        directionality = _directionality_from_graph_config(graph_cfg, encoder_cfg)
         if use_hetero:
             return cls(
                 use_hetero=True,
                 hetero_kwargs=dict(encoder_cfg),
-                directionality=dict(graph_cfg.get("directionality", {})),
+                directionality=directionality,
             )
         return cls(
             use_hetero=False,
             sage_kwargs=dict(encoder_cfg),
-            directionality=dict(graph_cfg.get("directionality", {})),
+            directionality=directionality,
         )
 
     def fit_transform(
@@ -422,6 +416,8 @@ class GraphFeatureTransformer:
         relation_ids: Sequence[Any] | None = None,
         node_count: int | None = None,
         directed: bool = True,
+        edge_weights: Sequence[float] | None = None,
+        edge_timestamps: Sequence[float] | None = None,
     ) -> GraphFeatureBundle:
         feature_rows = [list(row) for row in node_features]
         if not feature_rows:
@@ -438,6 +434,8 @@ class GraphFeatureTransformer:
                 node_count=node_count,
                 directed=directed,
                 directionality=self.directionality,
+                edge_weights=edge_weights,
+                edge_timestamps=edge_timestamps,
             )
         return self._fit_homo(
             feature_rows,
@@ -446,6 +444,8 @@ class GraphFeatureTransformer:
             node_count=node_count,
             directed=directed,
             directionality=self.directionality,
+            edge_weights=edge_weights,
+            edge_timestamps=edge_timestamps,
         )
 
     def _ensure_encoder(self) -> GraphSageFeatureEncoder | HeteroGraphSageFeatureEncoder:
@@ -495,12 +495,15 @@ class GraphFeatureTransformer:
         node_count: int | None = None,
         directed: bool = True,
         directionality: Mapping[str, Any] | None = None,
+        edge_weights: Sequence[float] | None = None,
+        edge_timestamps: Sequence[float] | None = None,
     ) -> GraphFeatureBundle:
         encoder = self._ensure_encoder()
         if not isinstance(encoder, GraphSageFeatureEncoder):
             raise RuntimeError("configured encoder mismatch; expected homogeneous")
-        directionality = dict(directionality or {})
-        directional_feature_prefix = str(directionality.get("directional_feature_prefix", "graph"))
+        directionality = DirectionalityConfig.from_config(directionality)
+        directionality.validate(directed=directed)
+        directional_feature_prefix = directionality.directional_feature_prefix
         graph = normalize_homogeneous_graph(
             edges=edges,
             node_ids=node_ids,
@@ -520,6 +523,8 @@ class GraphFeatureTransformer:
             edges=graph.edges,
             embeddings=bundle.embeddings,
             feature_prefix=directional_feature_prefix,
+            edge_weights=_align_edge_values(edge_weights, len(edges), len(graph.edges)),
+            edge_timestamps=_align_edge_values(edge_timestamps, len(edges), len(graph.edges)),
         )
         if directional_features.size == 0:
             return bundle
@@ -535,23 +540,44 @@ class GraphFeatureTransformer:
         node_count: int | None = None,
         directed: bool = True,
         directionality: Mapping[str, Any] | None = None,
+        edge_weights: Sequence[float] | None = None,
+        edge_timestamps: Sequence[float] | None = None,
     ) -> GraphFeatureBundle:
         encoder = self._ensure_encoder()
         if not isinstance(encoder, HeteroGraphSageFeatureEncoder):
             raise RuntimeError("configured encoder mismatch; expected hetero")
 
-        directionality = dict(directionality or {})
-        materialize_reverse_edges = bool(directionality.get("materialize_reverse_edges", False))
-        reverse_relation_suffix = str(
-            directionality.get("reverse_relation_suffix", "_reverse"),
-        )
-        reverse_relation_map = directionality.get("reverse_relation_map")
+        directionality = DirectionalityConfig.from_config(directionality)
+        directionality.validate(directed=directed)
+        materialize_reverse_edges = directionality.materialize_reverse_edges
+        reverse_relation_suffix = directionality.reverse_relation_suffix
+        reverse_relation_map = directionality.reverse_relation_map
         if reverse_relation_map is not None and not isinstance(reverse_relation_map, Mapping):
             raise TypeError("reverse_relation_map must be a mapping when provided")
 
+        resolved_edges = list(edges)
+        resolved_edge_weights = list(edge_weights) if edge_weights is not None else None
+        resolved_edge_timestamps = list(edge_timestamps) if edge_timestamps is not None else None
+        resolved_node_ids = list(node_ids) if node_ids is not None else None
+        if directionality.create_od_pair_nodes:
+            if resolved_node_ids is None:
+                raise ValueError(
+                    "create_od_pair_nodes requires node_ids so generated pair "
+                    "nodes can be aligned with feature rows",
+                )
+            pair_nodes = materialize_source_target_pair_nodes(resolved_edges)
+            resolved_edges = pair_nodes.edges
+            resolved_edge_weights = _expand_pair_node_values(resolved_edge_weights)
+            resolved_edge_timestamps = _expand_pair_node_values(resolved_edge_timestamps)
+            feature_width = len(feature_rows[0])
+            for pair_node in pair_nodes.pair_node_ids:
+                if pair_node not in resolved_node_ids:
+                    resolved_node_ids.append(pair_node)
+                    feature_rows.append([0.0] * feature_width)
+
         graph = normalize_heterogeneous_graph(
-            edges=edges,
-            node_ids=node_ids,
+            edges=resolved_edges,
+            node_ids=resolved_node_ids,
             relation_ids=relation_ids,
             node_count=node_count,
             directed=directed,
@@ -561,8 +587,8 @@ class GraphFeatureTransformer:
         )
         bundle = encoder.fit(
             node_features=feature_rows,
-            edges=edges,
-            node_ids=node_ids,
+            edges=resolved_edges,
+            node_ids=resolved_node_ids,
             relation_ids=relation_ids,
             node_count=node_count,
             directed=directed,
@@ -575,7 +601,17 @@ class GraphFeatureTransformer:
             node_count=graph.node_count,
             edges=graph.edges,
             embeddings=bundle.embeddings,
-            feature_prefix=str(directionality.get("directional_feature_prefix", "graph")),
+            feature_prefix=directionality.directional_feature_prefix,
+            edge_weights=_align_edge_values(
+                resolved_edge_weights,
+                len(resolved_edges),
+                len(graph.edges),
+            ),
+            edge_timestamps=_align_edge_values(
+                resolved_edge_timestamps,
+                len(resolved_edges),
+                len(graph.edges),
+            ),
         )
         if directional_features.size == 0:
             return bundle

@@ -3,9 +3,11 @@ use cartoboost_core::loss::{HuberLossConfig, LogL2LossConfig, LossConfig, Quanti
 use cartoboost_core::tree::{FlatAxisPredictor, FuzzyKernel, LeafPredictorKind, SplitterKind};
 use cartoboost_core::{Booster, BoosterConfig, CartoBoostError, Dataset, Model};
 use cartoboost_neural::{
-    build_embedding_table_artifact, fit_embedding_table, write_embedding_table_artifact,
-    ArtifactFallbackKind, EmbeddingTable, GraphSageConfig, GraphSageEncoder, HeteroGraph,
-    HeteroGraphSageConfig, HeteroGraphSageEncoder, HeteroTypedEdge, HomogeneousGraph,
+    build_embedding_table_artifact, compute_directional_features, fit_embedding_table,
+    materialize_source_target_pair_nodes, validate_directed_metapath,
+    write_embedding_table_artifact, ArtifactFallbackKind, EmbeddingTable, GraphSageConfig,
+    GraphSageEncoder, HeteroGraph, HeteroGraphSageConfig, HeteroGraphSageEncoder, HeteroTypedEdge,
+    HomogeneousGraph,
 };
 use numpy::{IntoPyArray, PyArray1, PyReadonlyArray1, PyReadonlyArray2, PyUntypedArrayMethods};
 use pyo3::exceptions::{PyIOError, PyRuntimeError, PyValueError};
@@ -14,6 +16,8 @@ use pyo3::types::{PyModule, PyType};
 use serde_json::{json, Value};
 use std::cmp::Ordering;
 use std::path::PathBuf;
+
+type StringTypedEdges = Vec<(String, String, String)>;
 
 #[pyclass(name = "CartoBoostRegressor")]
 #[derive(Clone, Debug)]
@@ -835,6 +839,7 @@ struct NativeGraphSageEncoder {
 impl NativeGraphSageEncoder {
     #[new]
     #[pyo3(signature = (input_dim, hidden_dims=None, epochs=20, learning_rate=0.05, negative_samples=4, seed=0x5A17_9A4E_7F33_C0DE, add_self_loop=true, l2_regularization=1e-5))]
+    #[allow(clippy::too_many_arguments)]
     fn new(
         input_dim: usize,
         hidden_dims: Option<Vec<usize>>,
@@ -971,6 +976,7 @@ struct NativeHeteroGraphSageEncoder {
 impl NativeHeteroGraphSageEncoder {
     #[new]
     #[pyo3(signature = (input_dim, relation_count, hidden_dims=None, epochs=20, learning_rate=0.05, negative_samples=4, seed=0x0D1A_2A3B_4C5D_6E7F, l2_regularization=1e-5))]
+    #[allow(clippy::too_many_arguments)]
     fn new(
         input_dim: usize,
         relation_count: usize,
@@ -1081,6 +1087,59 @@ impl NativeHeteroGraphSageEncoder {
     fn is_fitted(&self) -> bool {
         !self.encoder.loss_curve().values().is_empty()
     }
+}
+
+#[pyfunction]
+#[pyo3(signature = (node_count, edges, embeddings, edge_weights=None, edge_timestamps=None, feature_prefix="graph", requested_features=None))]
+fn graph_compute_directional_features(
+    node_count: usize,
+    edges: Vec<(usize, usize)>,
+    embeddings: Vec<Vec<f32>>,
+    edge_weights: Option<Vec<f32>>,
+    edge_timestamps: Option<Vec<f32>>,
+    feature_prefix: &str,
+    requested_features: Option<Vec<String>>,
+) -> PyResult<(Vec<Vec<f32>>, Vec<String>)> {
+    let requested_features = requested_features.unwrap_or_default();
+    let block = compute_directional_features(
+        node_count,
+        &edges,
+        &embeddings,
+        edge_weights.as_deref(),
+        edge_timestamps.as_deref(),
+        feature_prefix,
+        &requested_features,
+    )
+    .map_err(to_py_neural_error)?;
+    Ok((block.values, block.feature_names))
+}
+
+#[pyfunction]
+fn graph_validate_directed_metapath(
+    steps: Vec<String>,
+    edge_types: Vec<(String, String, String)>,
+) -> PyResult<()> {
+    validate_directed_metapath(&steps, &edge_types).map_err(to_py_neural_error)
+}
+
+#[pyfunction]
+#[pyo3(signature = (edges, source_to_pair_relation="source_to_pair", pair_to_target_relation="pair_to_target", pair_node_prefix="od_pair", include_original_edges=true))]
+fn graph_materialize_source_target_pair_nodes(
+    edges: Vec<(String, String, String)>,
+    source_to_pair_relation: &str,
+    pair_to_target_relation: &str,
+    pair_node_prefix: &str,
+    include_original_edges: bool,
+) -> PyResult<(StringTypedEdges, Vec<String>)> {
+    let expansion = materialize_source_target_pair_nodes(
+        &edges,
+        source_to_pair_relation,
+        pair_to_target_relation,
+        pair_node_prefix,
+        include_original_edges,
+    )
+    .map_err(to_py_neural_error)?;
+    Ok((expansion.edges, expansion.pair_node_ids))
 }
 
 fn artifact_fallback_name(fallback: &ArtifactFallbackKind) -> &'static str {
@@ -1873,6 +1932,12 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<NativeNeuralEmbeddingFeatures>()?;
     m.add_class::<NativeGraphSageEncoder>()?;
     m.add_class::<NativeHeteroGraphSageEncoder>()?;
+    m.add_function(wrap_pyfunction!(graph_compute_directional_features, m)?)?;
+    m.add_function(wrap_pyfunction!(graph_validate_directed_metapath, m)?)?;
+    m.add_function(wrap_pyfunction!(
+        graph_materialize_source_target_pair_nodes,
+        m
+    )?)?;
     m.add_function(wrap_pyfunction!(weighted_overlay, m)?)?;
     Ok(())
 }

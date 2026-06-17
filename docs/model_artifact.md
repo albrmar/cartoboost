@@ -22,6 +22,26 @@ The optional fields make artifacts self-describing. For temporal-spatial models,
 the important fields are the feature schema, sparse-set names, splitters, fuzzy
 settings, and leaf configuration.
 
+## Graph-Derived Features
+
+Graph support remains a precompute layer in front of the booster. A
+`GraphFeatureBundle` appends dense graph columns and optional sparse graph
+memberships before `CartoBoostRegressor.fit(...)`; the saved booster artifact
+then remains an ordinary CartoBoost model artifact.
+
+When graph-derived features are used, persist the graph feature provenance in
+`metadata` or `training_config` alongside the model. The bundle exposes
+`training_config_metadata()` with:
+
+- generated graph feature names
+- sparse graph set names
+- graph row count and embedding width
+- encoder and relation provenance
+
+This is intentionally compatible with JSON weights artifacts. ONNX export should
+still be treated as dense-axis-tree only; graph encoders and random-walk
+precomputation are not represented inside ONNX.
+
 ## Save And Load
 
 ```python

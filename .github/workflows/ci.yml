@@ -86,6 +86,7 @@ jobs:
         run: |
           uv run --group dev ruff format --check python tests scripts
           uv run --group dev ruff check python tests scripts
+          uv run --group dev ty check python tests scripts
 
       - name: Install native extension
         run: uv run --group dev maturin develop

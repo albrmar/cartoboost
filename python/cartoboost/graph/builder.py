@@ -6,6 +6,10 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
+from .._native import (
+    graph_materialize_source_target_pair_nodes as _native_materialize_source_target_pair_nodes,
+)
+
 
 def _ensure_unique(values: Iterable[Any], label: str) -> list[Any]:
     seen: set[Any] = set()
@@ -46,6 +50,14 @@ class HeterogeneousGraph:
     relation_count: int
     edges: list[tuple[int, int, int]]
     directed: bool = True
+
+
+@dataclass(frozen=True)
+class SourceTargetPairNodes:
+    """Augmented typed edges with materialized source-target pair nodes."""
+
+    edges: list[tuple[Any, Any, Any]]
+    pair_node_ids: list[Any]
 
 
 def normalize_homogeneous_graph(
@@ -197,6 +209,57 @@ def normalize_heterogeneous_graph(
         edges=normalized_edges,
         directed=directed,
     )
+
+
+def materialize_source_target_pair_nodes(
+    edges: Sequence[tuple[Any, Any, Any]],
+    *,
+    source_to_pair_relation: Any = "source_to_pair",
+    pair_to_target_relation: Any = "pair_to_target",
+    pair_node_prefix: str = "od_pair",
+    include_original_edges: bool = True,
+) -> SourceTargetPairNodes:
+    """Create explicit source-target pair nodes for directed OD-style facts."""
+    endpoint_lookup: dict[str, Any] = {}
+    native_input_edges = []
+    for source, target, relation in edges:
+        source_key = str(source)
+        target_key = str(target)
+        endpoint_lookup.setdefault(source_key, source)
+        endpoint_lookup.setdefault(target_key, target)
+        native_input_edges.append((source_key, target_key, str(relation)))
+
+    native_edges, native_pair_ids = _native_materialize_source_target_pair_nodes(
+        native_input_edges,
+        str(source_to_pair_relation),
+        str(pair_to_target_relation),
+        str(pair_node_prefix),
+        bool(include_original_edges),
+    )
+    pair_node_lookup = {
+        pair_id: _parse_pair_node_id(pair_id, pair_node_prefix) for pair_id in native_pair_ids
+    }
+    augmented: list[tuple[Any, Any, Any]] = []
+    for source, target, relation in native_edges:
+        augmented.append(
+            (
+                pair_node_lookup.get(source, endpoint_lookup.get(source, source)),
+                pair_node_lookup.get(target, endpoint_lookup.get(target, target)),
+                relation,
+            )
+        )
+    return SourceTargetPairNodes(
+        edges=augmented,
+        pair_node_ids=[pair_node_lookup[pair_id] for pair_id in native_pair_ids],
+    )
+
+
+def _parse_pair_node_id(value: str, pair_node_prefix: str) -> tuple[str, str, str]:
+    prefix = f"{pair_node_prefix}:"
+    if not value.startswith(prefix):
+        raise ValueError(f"unexpected native pair node id {value!r}")
+    source, target = value[len(prefix) :].split(":", maxsplit=1)
+    return (pair_node_prefix, source, target)
 
 
 def ensure_node_features_shape(

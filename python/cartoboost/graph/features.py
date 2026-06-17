@@ -17,6 +17,7 @@ class GraphFeatureBundle:
     sparse_sets: dict[str, list[list[int]]] = field(default_factory=dict)
     feature_names: list[str] = field(default_factory=list)
     node_ids: list[Any] | None = None
+    provenance: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         self.embeddings = np.asarray(self.embeddings, dtype=np.float32)
@@ -59,6 +60,7 @@ class GraphFeatureBundle:
             sparse_sets=self.sparse_sets,
             feature_names=combined_names,
             node_ids=self.node_ids,
+            provenance=dict(self.provenance),
         )
 
     def feature_schema_entries(self, prefix: str = "graph") -> list[str]:
@@ -69,10 +71,31 @@ class GraphFeatureBundle:
     def sparse_schema_names(self) -> list[str]:
         return list(self.sparse_sets.keys())
 
+    def dense_schema_entries(self, prefix: str = "graph") -> list[tuple[str, str]]:
+        return [(name, "numeric") for name in self.feature_schema_entries(prefix)]
+
+    def feature_schema_payload(self, prefix: str = "graph") -> dict[str, list[Any]]:
+        names = [*self.feature_schema_entries(prefix), *self.sparse_schema_names()]
+        kinds = [
+            *(["Numeric"] * self.embeddings.shape[1]),
+            *(["SparseSet"] * len(self.sparse_sets)),
+        ]
+        return {"names": names, "kinds": kinds}
+
+    def training_config_metadata(self) -> dict[str, Any]:
+        return {
+            "feature_names": self.feature_schema_entries(),
+            "sparse_sets": self.sparse_schema_names(),
+            "row_count": int(self.embeddings.shape[0]),
+            "embedding_width": int(self.embeddings.shape[1]),
+            "provenance": dict(self.provenance),
+        }
+
     def as_dict(self) -> dict[str, Any]:
         return {
             "embeddings": self.embeddings.tolist(),
             "feature_names": self.feature_names,
             "sparse_sets": self.sparse_sets,
             "node_ids": list(self.node_ids) if self.node_ids is not None else None,
+            "provenance": dict(self.provenance),
         }

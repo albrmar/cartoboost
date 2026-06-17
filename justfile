@@ -11,6 +11,7 @@ lint:
     cargo clippy --workspace --all-targets -- -D warnings
     uv run --group dev ruff format --check python tests scripts
     uv run --group dev ruff check python tests scripts
+    uv run --group dev ty check python tests scripts
 
 test:
     cargo test --workspace
@@ -21,6 +22,12 @@ build:
 
 develop:
     uv run --group dev maturin develop
+
+pre-commit-install:
+    uv run --group dev pre-commit install
+
+pre-commit:
+    uv run --group dev pre-commit run --all-files
 
 sdist:
     uv run --group dev maturin sdist --out dist
@@ -35,6 +42,7 @@ validate:
     cargo test --workspace
     uv run --group dev ruff format --check python tests scripts
     uv run --group dev ruff check python tests scripts
+    uv run --group dev ty check python tests scripts
     uv run --group dev maturin develop
     uv run --group dev pytest
     uv run --group dev python scripts/run_full_validation.py

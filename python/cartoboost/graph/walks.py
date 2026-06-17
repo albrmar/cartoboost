@@ -7,23 +7,47 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
+from .schema import DirectedMetaPath
+
 
 @dataclass(frozen=True)
 class MetaPathWalkGenerator:
     """Generate deterministic metapath-constrained random walks."""
 
-    metapath: tuple[Any, ...]
+    metapath: tuple[Any, ...] | DirectedMetaPath
     walk_length: int = 8
     walks_per_node: int = 4
     seed: int = 0
 
     def __post_init__(self) -> None:
-        if len(self.metapath) < 2:
+        metapath = self._relation_path()
+        if len(metapath) < 1:
             raise ValueError("metapath must include at least source and target relation")
         if self.walk_length <= 1:
             raise ValueError("walk_length must be > 1")
         if self.walks_per_node <= 0:
             raise ValueError("walks_per_node must be positive")
+
+    @classmethod
+    def from_typed_path(
+        cls,
+        steps: Sequence[str],
+        *,
+        walk_length: int = 8,
+        walks_per_node: int = 4,
+        seed: int = 0,
+    ) -> MetaPathWalkGenerator:
+        return cls(
+            metapath=DirectedMetaPath(tuple(steps)),
+            walk_length=walk_length,
+            walks_per_node=walks_per_node,
+            seed=seed,
+        )
+
+    def _relation_path(self) -> tuple[Any, ...]:
+        if isinstance(self.metapath, DirectedMetaPath):
+            return self.metapath.relations
+        return tuple(self.metapath)
 
     def generate(
         self,
@@ -41,7 +65,7 @@ class MetaPathWalkGenerator:
 
         rng = random.Random(self.seed)
         walks: list[list[int]] = []
-        metapath = self.metapath
+        metapath = self._relation_path()
         for start in start_nodes:
             if start not in adjacency:
                 continue
