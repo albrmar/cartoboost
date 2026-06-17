@@ -119,6 +119,96 @@ def test_graph_transformer_accepts_graph_embeddings_config_namespace() -> None:
     assert bundle.embeddings.shape == (3, 2)
 
 
+def test_graph_feature_transformer_directional_features_disabled_by_default() -> None:
+    features = [[0.1, 0.2], [0.0, 0.3], [0.2, 0.7]]
+    edges = [(0, 1), (1, 2)]
+    transformer = GraphFeatureTransformer.from_config(
+        {
+            "graph_embeddings": {
+                "encoder": {
+                    "family": "graphsage",
+                    "input_dim": 2,
+                    "hidden_dims": [2],
+                    "epochs": 2,
+                },
+            },
+        },
+    )
+    bundle = transformer.fit_transform(
+        node_features=features,
+        edges=edges,
+        node_count=3,
+    )
+    assert bundle.embeddings.shape == (3, 2)
+    assert len(bundle.feature_names) == 2
+    assert "dir_source_target_affinity" not in bundle.feature_names
+
+
+def test_graph_feature_transformer_directional_features_enabled() -> None:
+    features = [[0.1, 0.2], [0.0, 0.3], [0.2, 0.7], [0.4, 0.6]]
+    edges = [(0, 1), (1, 2), (2, 1)]
+    transformer = GraphFeatureTransformer.from_config(
+        {
+            "graph_embeddings": {
+                "encoder": {
+                    "family": "graphsage",
+                    "input_dim": 2,
+                    "hidden_dims": [2],
+                    "epochs": 2,
+                },
+                "directionality": {
+                    "compute_asymmetry_features": True,
+                    "directional_feature_prefix": "dir",
+                    "directional_features": [
+                        "dir_source_target_affinity",
+                        "dir_target_source_affinity",
+                        "dir_flow_imbalance_ratio",
+                    ],
+                },
+            },
+        },
+    )
+    bundle = transformer.fit_transform(
+        node_features=features,
+        edges=edges,
+        node_count=4,
+        directed=True,
+    )
+    assert bundle.embeddings.shape == (4, 5)
+    assert len(bundle.feature_names) == 5
+    assert bundle.feature_names == [
+        "graph_sage_homo_00",
+        "graph_sage_homo_01",
+        "dir_source_target_affinity",
+        "dir_target_source_affinity",
+        "dir_flow_imbalance_ratio",
+    ]
+
+
+def test_graph_feature_transformer_directional_features_reject_invalid_names() -> None:
+    features = [[0.1, 0.2], [0.0, 0.3], [0.2, 0.7]]
+    edges = [(0, 1), (1, 2)]
+    transformer = GraphFeatureTransformer.from_config(
+        {
+            "graph_sage": {
+                "input_dim": 2,
+                "hidden_dims": [2],
+                "epochs": 2,
+                "directionality": {
+                    "compute_asymmetry_features": True,
+                    "directional_features": ["unknown_feature"],
+                },
+            },
+        },
+    )
+    try:
+        transformer.fit_transform(node_features=features, edges=edges, node_count=3)
+    except ValueError as error:
+        assert "no recognized feature names" in str(error)
+    else:
+        raise AssertionError("expected invalid directional feature selection to raise")
+
+
 def test_normalize_heterogeneous_graph_supports_reverse_relation_materialization() -> None:
     graph = normalize_heterogeneous_graph(
         edges=[(0, 1, "origin_to_dest"), (1, 2, "origin_to_dest")],

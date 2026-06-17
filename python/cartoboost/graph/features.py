@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -36,6 +37,29 @@ class GraphFeatureBundle:
         if dense_matrix.shape[0] != self.embeddings.shape[0]:
             raise ValueError("dense and embeddings must have the same row count")
         return np.hstack([dense_matrix, self.embeddings.astype(np.float64)])
+
+    def with_directional_features(
+        self,
+        directional_features: Sequence[Sequence[float]],
+        feature_names: list[str] | None = None,
+    ) -> GraphFeatureBundle:
+        extras = np.asarray(list(directional_features), dtype=np.float32)
+        if extras.ndim != 2:
+            raise ValueError("directional_features must be 2D")
+        if extras.shape[0] != self.embeddings.shape[0]:
+            raise ValueError("directional_features row count must match embeddings")
+        if feature_names is not None and len(feature_names) != extras.shape[1]:
+            raise ValueError("directional feature_names length must match feature width")
+
+        combined_names = list(self.feature_names)
+        if feature_names:
+            combined_names.extend(feature_names)
+        return GraphFeatureBundle(
+            embeddings=np.hstack([self.embeddings, extras.astype(np.float32)]),
+            sparse_sets=self.sparse_sets,
+            feature_names=combined_names,
+            node_ids=self.node_ids,
+        )
 
     def feature_schema_entries(self, prefix: str = "graph") -> list[str]:
         if self.feature_names:

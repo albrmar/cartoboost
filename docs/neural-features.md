@@ -155,6 +155,23 @@ The current implementation materializes reverse typed relations when enabled in
 relation naming and `preserve_source_target_roles` is a schema-level requirement:
 it signals that `source` and `target` columns are not interchangeable.
 
+Directional feature extraction is opt-in and controlled through the
+`directionality.compute_asymmetry_features` flag (defaults to `false` if the
+directionality block is not enabled):
+
+```yaml
+directionality:
+  compute_asymmetry_features: true
+  directional_feature_prefix: "graph"
+  # optional selective subset of emitted columns
+  directional_features:
+    - graph_source_target_affinity
+    - graph_target_source_affinity
+    - graph_flow_imbalance_ratio
+  materialize_reverse_edges: true
+  reverse_relation_suffix: "_reverse"
+```
+
 #### 2) Direction-aware feature generation
 
 Directional features should be explicit output channels into the booster, not just a
