@@ -21,6 +21,35 @@ pred = model.predict(
 )
 ```
 
+Zip code features can be expanded into geographic sparse-columns with explicit
+origin/destination roles:
+
+```python
+from geoboost import build_zip_sparse_sets
+
+zip_sparse_sets = build_zip_sparse_sets(
+    origin_zip=["94103", "94122"],
+    destination_zip=["10001", "94103"],
+    parent_prefixes=(3, 2),
+)
+
+schema = {
+    "dense": [{"name": "distance_m", "kind": "numeric"}],
+    "sparse_sets": [
+        {"name": "ozip_zip5", "kind": "zip_sparse_set"},
+        {"name": "ozip_zip_p3", "kind": "zip_sparse_set"},
+        {"name": "dzip_zip5", "kind": "zip_sparse_set"},
+    ],
+}
+
+model.fit(
+    X_dense,
+    y,
+    sparse_sets=zip_sparse_sets,
+    feature_schema=schema,
+)
+```
+
 Validation rules:
 
 - Each sparse column must have the same row count as `X` and `y` during fit.

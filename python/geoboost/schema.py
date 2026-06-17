@@ -37,6 +37,12 @@ class FeatureSchema:
 
 def normalize_feature_kind(kind: Any, entry: dict[str, Any] | None = None) -> Any:
     if isinstance(kind, dict):
+        if "H3SparseSet" in kind:
+            return "SparseSet"
+        if "h3_sparse_set" in kind:
+            return "SparseSet"
+        if "zip_sparse_set" in kind:
+            return "SparseSet"
         if "Periodic" in kind:
             return {"Periodic": {"period": _positive_period(kind["Periodic"]["period"])}}
         if "periodic" in kind:
@@ -46,6 +52,18 @@ def normalize_feature_kind(kind: Any, entry: dict[str, Any] | None = None) -> An
     if kind in {"Numeric", "numeric"}:
         return "Numeric"
     if kind in {"SparseSet", "sparse_set", "sparse"}:
+        return "SparseSet"
+    if kind in {
+        "H3SparseSet",
+        "h3_sparse_set",
+        "h3-sparse-set",
+        "ZipSparseSet",
+        "zip_sparse_set",
+        "zip-sparse-set",
+        "GeoSparseSet",
+        "geo_sparse_set",
+        "geo-sparse-set",
+    }:
         return "SparseSet"
     if kind in {"Periodic", "periodic"}:
         period = 24 if entry is None else entry.get("period", 24)

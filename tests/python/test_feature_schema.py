@@ -92,6 +92,17 @@ def test_python_schema_rejects_length_mismatch():
         model.fit([[0.0, 1.0], [2.0, 3.0]], [1.0, 2.0], feature_schema=schema)
 
 
+def test_python_schema_accepts_geographic_sparse_set_aliases():
+    schema = FeatureSchema(
+        dense=[("distance", "numeric")],
+        sparse_sets=[("ozip_zip5", "zip_sparse_set"), ("dzip_zip5", "h3_sparse_set")],
+    )
+
+    payload = schema.to_rust_payload(dense_width=1, sparse_names=["ozip_zip5", "dzip_zip5"])
+
+    assert payload["kinds"] == ["Numeric", "SparseSet", "SparseSet"]
+
+
 def test_python_schema_rejects_sparse_length_mismatch():
     model = GeoBoostRegressor(max_depth=0, backend="python")
     schema = FeatureSchema(dense=[("x", "numeric")])

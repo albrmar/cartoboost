@@ -130,6 +130,34 @@ Schema length must equal the dense feature count plus the sparse-set column
 count. Periodic splitters use declared periods when a schema is present instead
 of relying on observed coverage heuristics.
 
+## ZIP and Geo Context Example
+
+`ozip` and `dzip` should be fed to sparse-set columns so the model can learn
+with explicit geographic context, including ZIP parents.
+
+```python
+from geoboost import GeoBoostRegressor, build_zip_sparse_sets
+
+zip_sparse_sets = build_zip_sparse_sets(
+    origin_zip=ozip,
+    destination_zip=dzip,
+    parent_prefixes=(3, 2),
+)
+schema = {
+    "dense": [
+        {"name": "distance_m", "kind": "numeric"},
+    ],
+    "sparse_sets": [
+        {"name": "ozip_zip5", "kind": "zip_sparse_set"},
+        {"name": "ozip_zip_p3", "kind": "zip_sparse_set"},
+        {"name": "dzip_zip5", "kind": "zip_sparse_set"},
+    ],
+}
+
+model = GeoBoostRegressor(backend="rust", splitters=["axis", "sparse_set"])
+model.fit(X_dense, y, sparse_sets=zip_sparse_sets, feature_schema=schema)
+```
+
 ## Save And Load
 
 ```python

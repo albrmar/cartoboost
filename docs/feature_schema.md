@@ -13,6 +13,8 @@ schema = {
     ],
     "sparse_sets": [
         {"name": "route_cells", "kind": "sparse_set"},
+        {"name": "ozip_zip_p3", "kind": "zip_sparse_set"},
+        {"name": "dzip_zip5", "kind": "h3_sparse_set"},
     ],
 }
 ```
@@ -44,6 +46,9 @@ payload:
 
 - Schema length must equal dense feature count plus sparse-set column count.
 - `kind` must be numeric, periodic, or sparse-set.
+- Geographic sparse identifiers may be declared with `zip_sparse_set`, `h3_sparse_set`,
+  or equivalent aliases (`ZipSparseSet`, `H3SparseSet`, `GeoSparseSet`) and are sent to
+  the trainer as sparse-set features.
 - Periodic entries require a positive period.
 - Sparse-set entries correspond to sparse columns supplied through
   `sparse_sets=`.
