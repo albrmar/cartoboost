@@ -126,10 +126,17 @@ def test_python_schema_accepts_geographic_sparse_set_aliases():
 
     schema_with_zone = FeatureSchema(
         dense=[("distance", "numeric")],
-        sparse_sets=[("zone_id", "zone_sparse_set"), ("region_id", "region_sparse_set")],
+        sparse_sets=[
+            ("zone_id", "zone_sparse_set"),
+            ("region_id", "region_sparse_set"),
+            ("geo_key", "GeoAbstractSparseSet"),
+        ],
     )
-    zone_payload = schema_with_zone.to_rust_payload(dense_width=1, sparse_names=["zone_id", "region_id"])
-    assert zone_payload["kinds"] == ["Numeric", "SparseSet", "SparseSet"]
+    zone_payload = schema_with_zone.to_rust_payload(
+        dense_width=1,
+        sparse_names=["zone_id", "region_id", "geo_key"],
+    )
+    assert zone_payload["kinds"] == ["Numeric", "SparseSet", "SparseSet", "SparseSet"]
 
 
 def test_python_schema_rejects_sparse_length_mismatch():

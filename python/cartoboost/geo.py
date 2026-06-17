@@ -51,7 +51,9 @@ def build_zip_sparse_sets(
     Returns sparse_set columns keyed by role/prefix so ZIP origin/destination columns
     are explicitly surfaced as geographic context.
     """
-    if origin_zip is None and destination_zip is None:
+    has_origin_zip = origin_zip is not None
+    has_destination_zip = destination_zip is not None
+    if not has_origin_zip and not has_destination_zip:
         raise ValueError("origin_zip and destination_zip cannot both be None")
 
     if zip3_only:
@@ -60,14 +62,22 @@ def build_zip_sparse_sets(
         parent_prefixes = (3,)
         include_raw = False
     parent_prefixes = _normalize_prefixes(parent_prefixes or (3, 2))
-    ozip_codes = _coerce_zip_sequence(origin_zip, strict=strict, name="origin_zip") if origin_zip else []
-    dzip_codes = _coerce_zip_sequence(destination_zip, strict=strict, name="destination_zip") if destination_zip else []
-    if origin_zip and destination_zip and len(ozip_codes) != len(dzip_codes):
+    ozip_codes: list[str | None] = (
+        _coerce_zip_sequence(origin_zip, strict=strict, name="origin_zip")
+        if has_origin_zip
+        else []
+    )
+    dzip_codes: list[str | None] = (
+        _coerce_zip_sequence(destination_zip, strict=strict, name="destination_zip")
+        if has_destination_zip
+        else []
+    )
+    if has_origin_zip and has_destination_zip and len(ozip_codes) != len(dzip_codes):
         raise ValueError("origin_zip and destination_zip must have the same number of rows")
-    row_count = len(ozip_codes) if origin_zip else len(dzip_codes)
+    row_count = len(ozip_codes) if has_origin_zip else len(dzip_codes)
     sparse_sets: dict[str, list[list[int]]] = {}
 
-    if origin_zip is not None:
+    if has_origin_zip:
         sparse_sets.update(
             _zip_sparse_columns(
                 ozip_codes,
@@ -77,7 +87,7 @@ def build_zip_sparse_sets(
                 row_count=row_count,
             )
         )
-    if destination_zip is not None:
+    if has_destination_zip:
         sparse_sets.update(
             _zip_sparse_columns(
                 dzip_codes,
@@ -88,7 +98,7 @@ def build_zip_sparse_sets(
             )
         )
 
-    if include_match_indicator and origin_zip is not None and destination_zip is not None:
+    if include_match_indicator and has_origin_zip and has_destination_zip:
         sparse_sets["zip_match"] = [
             [1] if ozip == dzip and ozip is not None else []
             for ozip, dzip in zip(ozip_codes, dzip_codes)

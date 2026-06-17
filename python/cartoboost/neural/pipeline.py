@@ -7,6 +7,7 @@ import numpy as np
 from sklearn.metrics import mean_absolute_error
 
 from ..regressor import CartoBoostRegressor
+from ..regressor import _rust_feature_schema_payload
 from .features import NeuralEmbeddingFeatures
 
 
@@ -80,12 +81,17 @@ class NeuralEmbeddingRegressor:
                 raise ValueError("sample_weight length must match y")
 
         fit_kwargs = dict(fit_kwargs)
+        feature_schema = fit_kwargs.pop("feature_schema", None)
         fit_kwargs.update({"sparse_sets": sparse_sets, "sample_weight": sample_weight})
+
+        base_fit_kwargs = dict(fit_kwargs)
+        if feature_schema is not None:
+            base_fit_kwargs["feature_schema"] = feature_schema
 
         if self.use_residual:
             base_model = self._build_base_model()
             start = time.perf_counter()
-            base_model.fit(dense, target, **fit_kwargs)
+            base_model.fit(dense, target, **base_fit_kwargs)
             self._fit_timings_ms["base_fit_ms"] = _ms_since(start)
 
             residual = target - base_model.predict(dense, sparse_sets=sparse_sets)
@@ -104,9 +110,19 @@ class NeuralEmbeddingRegressor:
 
         x_train = _append_features(dense, neural_features)
         final_model = self._build_final_model()
+        sparse_names = _sparse_set_names(sparse_sets)
+        final_feature_schema = _append_feature_schema(
+            feature_schema=feature_schema,
+            dense_width=dense.shape[1],
+            sparse_names=sparse_names,
+            neural_dim=self.dim,
+        )
 
         start = time.perf_counter()
-        final_model.fit(x_train, target, **fit_kwargs)
+        final_fit_kwargs = dict(fit_kwargs)
+        if final_feature_schema is not None:
+            final_fit_kwargs["feature_schema"] = final_feature_schema
+        final_model.fit(x_train, target, **final_fit_kwargs)
         self._fit_timings_ms["final_fit_ms"] = _ms_since(start)
         self._final_model = final_model
 
@@ -408,9 +424,43 @@ def _build_neural_feature_names(
     if len(base_names) != base_feature_count:
         return None
 
-    neural_names = [f"neural_embedding_{index:02}" for index in range(dim)]
+    neural_names = _neural_feature_names(dim)
     return np.array([*base_names, *neural_names], dtype=object)
 
 
 def _ms_since(start_time: float) -> float:
     return float((time.perf_counter() - start_time) * 1000.0)
+
+
+def _neural_feature_names(dim: int) -> list[str]:
+    return [f"neural_embedding_{index:02}" for index in range(dim)]
+
+
+def _sparse_set_names(sparse_sets: Any | None) -> list[str]:
+    if sparse_sets is None:
+        return []
+    if isinstance(sparse_sets, dict):
+        return list(sparse_sets.keys())
+    if hasattr(sparse_sets, "columns"):
+        return list(sparse_sets.columns)
+    return [f"sparse_set_{index}" for index, _ in enumerate(sparse_sets)]
+
+
+def _append_feature_schema(
+    feature_schema: Any | None,
+    dense_width: int,
+    sparse_names: list[str],
+    neural_dim: int,
+) -> dict[str, Any] | None:
+    if feature_schema is None:
+        return None
+
+    base_payload = _rust_feature_schema_payload(
+        feature_schema=feature_schema,
+        dense_width=dense_width,
+        sparse_names=sparse_names,
+    )
+    return {
+        "names": [*base_payload["names"], *_neural_feature_names(neural_dim)],
+        "kinds": [*base_payload["kinds"], *(["Numeric"] * neural_dim)],
+    }

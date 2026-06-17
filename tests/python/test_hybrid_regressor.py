@@ -107,6 +107,35 @@ def test_neural_embedding_regressor_with_id_column():
     assert mae < 0.9
 
 
+def test_neural_embedding_regressor_appends_feature_schema_for_final_fit():
+    rng = np.random.default_rng(15)
+    rows = 120
+    ids = (rng.integers(1, 60, size=rows)).astype(np.uint64)
+
+    x = np.column_stack([rng.normal(size=rows), rng.normal(size=rows)])
+    y = 1.0 * x[:, 0] + 0.4 * x[:, 1] + (ids % 10) * 0.3
+
+    regressor = NeuralEmbeddingRegressor(
+        dim=2,
+        use_residual=True,
+        final_model_kwargs={"n_estimators": 20, "learning_rate": 0.1, "max_depth": 2, "min_gain": 0.0},
+    )
+    regressor.fit(
+        x,
+        y,
+        ids=ids,
+        feature_schema={"names": ["base_0", "base_1"], "kinds": ["Numeric", "Numeric"]},
+    )
+
+    pred = regressor.predict(x, ids=ids)
+    assert pred.shape == (rows,)
+    assert regressor.model.feature_schema_["names"][-2:] == [
+        "neural_embedding_00",
+        "neural_embedding_01",
+    ]
+    assert regressor.model.feature_schema_["names"][:2] == ["base_0", "base_1"]
+
+
 def test_benchmark_neural_vs_cartoboost_smoke():
     rng = np.random.default_rng(12)
     rows = 256

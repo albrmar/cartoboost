@@ -15,8 +15,25 @@ class FeatureKind(str, Enum):
 
 
 _NUMERIC_KIND_ALIASES = frozenset({FeatureKind.NUMERIC, "numeric"})
-_SPARSE_SET_KIND_ALIASES = frozenset({FeatureKind.SPARSE_SET, "sparse_set", "sparse"})
-_H3_SPARSE_SET_KIND_ALIASES = frozenset({FeatureKind.H3_SPARSE_SET, "h3_sparse_set", "h3_sparse"})
+_SPARSE_SET_KIND_ALIASES = frozenset(
+    {
+        FeatureKind.SPARSE_SET,
+        "sparse_set",
+        "sparse",
+        "zip_sparse_set",
+        "zip3_sparse_set",
+        "zone_sparse_set",
+        "region_sparse_set",
+        "ZipSparseSet",
+        "ZoneSparseSet",
+        "RegionSparseSet",
+        "GeoSparseSet",
+        "GeoAbstractSparseSet",
+    }
+)
+_H3_SPARSE_SET_KIND_ALIASES = frozenset(
+    {FeatureKind.H3_SPARSE_SET, "h3_sparse_set", "h3_sparse", "H3SparseSet"}
+)
 _PERIODIC_KIND_ALIASES = frozenset({FeatureKind.PERIODIC, "periodic"})
 
 
