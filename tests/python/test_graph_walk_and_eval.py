@@ -209,6 +209,39 @@ def test_graph_feature_transformer_directional_features_reject_invalid_names() -
         raise AssertionError("expected invalid directional feature selection to raise")
 
 
+def test_graph_feature_transformer_hetero_directional_features_enabled() -> None:
+    features = [[0.1, 0.2], [0.0, 0.3], [0.2, 0.7]]
+    edges = [
+        (0, 1, "rep_lane"),
+        (1, 2, "lane_carrier"),
+    ]
+    transformer = GraphFeatureTransformer.from_config(
+        {
+            "graph_embeddings": {
+                "encoder": {
+                    "family": "hinsage",
+                    "hetero": True,
+                    "input_dim": 2,
+                    "hidden_dims": [2],
+                    "epochs": 2,
+                },
+                "directionality": {"compute_asymmetry_features": True},
+            },
+        },
+    )
+    bundle = transformer.fit_transform(
+        node_features=features,
+        edges=edges,
+        node_count=3,
+        directed=True,
+    )
+    assert bundle.embeddings.shape[0] == 3
+    assert bundle.embeddings.shape[1] == 12
+    assert len(bundle.feature_names) == 12
+    assert bundle.feature_names[0] == "graph_sage_hetero_00"
+    assert bundle.feature_names[-1] == "graph_forward_reverse_similarity_delta"
+
+
 def test_normalize_heterogeneous_graph_supports_reverse_relation_materialization() -> None:
     graph = normalize_heterogeneous_graph(
         edges=[(0, 1, "origin_to_dest"), (1, 2, "origin_to_dest")],
