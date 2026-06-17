@@ -5,41 +5,41 @@
 Use this guide as the first read before making changes. Start in the relevant code component, then update contracts, then run the validation commands defined in AGENTS.
 
 ## Workspace Overview
-- [Repository README](../README.md): global project intent, quick workflow examples, and component-level capabilities.
-- [Root AGENTS instructions](../AGENTS.md): workspace development rules, validation commands, and release caveats.
-- [Cargo workspace manifest](../Cargo.toml): workspace members and shared build configuration.
-- [Python project manifest](../pyproject.toml): dependency groups and Python packaging settings.
-- [Python environment lockfile](../uv.lock): pinned dependency state for reproducible Python builds.
-- [Docs home](index.md): documentation index and user-facing map.
+- [Repository README](https://github.com/TheCulliganMan/CartoBoost/blob/main/README.md): global project intent, quick workflow examples, and component-level capabilities.
+- [Root AGENTS instructions](https://github.com/TheCulliganMan/CartoBoost/blob/main/AGENTS.md): workspace development rules, validation commands, and release caveats.
+- [Cargo workspace manifest](https://github.com/TheCulliganMan/CartoBoost/blob/main/Cargo.toml): workspace members and shared build configuration.
+- [Python project manifest](https://github.com/TheCulliganMan/CartoBoost/blob/main/pyproject.toml): dependency groups and Python packaging settings.
+- [Python environment lockfile](https://github.com/TheCulliganMan/CartoBoost/blob/main/uv.lock): pinned dependency state for reproducible Python builds.
+- [Docs home](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/index.md): documentation index and user-facing map.
 
 ## Core Components
-- [cartoboost-core crate](../crates/cartoboost-core): shared modeling core, splitters, objective logic, and schema contracts.
-- [cartoboost-cli crate](../crates/cartoboost-cli): command implementation for `train`, `predict`, `eval`, and `inspect`.
-- [cartoboost-neural crate](../crates/cartoboost-neural): experimental neural feature integration path.
-- [cartoboost-py crate](../crates/cartoboost-py): PyO3 binding layer.
-- [Python package API](../python/cartoboost): user-facing Python package and ergonomic wrappers.
-- [Benchmarks crate workspace](../benches): timing, benchmark definitions, and reporting harnesses.
-- [Scripts folder](../scripts): acceptance metrics and dataset generation utilities used for validation.
+- [cartoboost-core crate](https://github.com/TheCulliganMan/CartoBoost/blob/main/crates/cartoboost-core): shared modeling core, splitters, objective logic, and schema contracts.
+- [cartoboost-cli crate](https://github.com/TheCulliganMan/CartoBoost/blob/main/crates/cartoboost-cli): command implementation for `train`, `predict`, `eval`, and `inspect`.
+- [cartoboost-neural crate](https://github.com/TheCulliganMan/CartoBoost/blob/main/crates/cartoboost-neural): experimental neural feature integration path.
+- [cartoboost-py crate](https://github.com/TheCulliganMan/CartoBoost/blob/main/crates/cartoboost-py): PyO3 binding layer.
+- [Python package API](https://github.com/TheCulliganMan/CartoBoost/blob/main/python/cartoboost): user-facing Python package and ergonomic wrappers.
+- [Benchmarks crate workspace](https://github.com/TheCulliganMan/CartoBoost/blob/main/benches): timing, benchmark definitions, and reporting harnesses.
+- [Scripts folder](https://github.com/TheCulliganMan/CartoBoost/blob/main/scripts): acceptance metrics and dataset generation utilities used for validation.
 
 ## Documentation Contracts
-- [Docs index](index.md): entrypoint and topical structure.
-- [Installation guide](installation.md): install paths and optional extras.
-- [Getting started](getting-started.md): first run flow and local checks.
-- [Python API reference](reference/python-api.md): authoritative API contracts.
-- [CLI reference](reference/cli.md): argument/flag behavior and output formats.
-- [Python estimator guide](user-guide/python-estimator.md): estimator usage and expected semantics.
-- [CLI guide](user-guide/cli.md): workflow-oriented CLI usage patterns.
-- [Feature schema](feature_schema.md): data schema and validation contract.
-- [Model artifact format](model_artifact.md): serialization and compatibility assumptions.
-- [Constraints](constraints.md): legal/algorithmic domain constraints.
-- [Spatial modeling](spatial_modeling.md): modeling assumptions for route/time/geographic features.
-- [Evaluation protocol](evaluation_protocol.md): protocol for trustworthy evaluations.
-- [Benchmarks overview](benchmarks/index.md), [NYC Taxi](benchmarks/nyc-taxi.md), [Lane-level acceptance](benchmarks/lane-level.md): expected evidence format.
+- [Docs index](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/index.md): entrypoint and topical structure.
+- [Installation guide](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/installation.md): install paths and optional extras.
+- [Getting started](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/getting-started.md): first run flow and local checks.
+- [Python API reference](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/reference/python-api.md): authoritative API contracts.
+- [CLI reference](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/reference/cli.md): argument/flag behavior and output formats.
+- [Python estimator guide](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/user-guide/python-estimator.md): estimator usage and expected semantics.
+- [CLI guide](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/user-guide/cli.md): workflow-oriented CLI usage patterns.
+- [Feature schema](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/feature_schema.md): data schema and validation contract.
+- [Model artifact format](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/model_artifact.md): serialization and compatibility assumptions.
+- [Constraints](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/constraints.md): legal/algorithmic domain constraints.
+- [Spatial modeling](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/spatial_modeling.md): modeling assumptions for route/time/geographic features.
+- [Evaluation protocol](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/evaluation_protocol.md): protocol for trustworthy evaluations.
+- [Benchmarks overview](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/benchmarks/index.md), [NYC Taxi](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/benchmarks/nyc-taxi.md), [Lane-level acceptance](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/benchmarks/lane-level.md): expected evidence format.
 
 ## Where to Edit by Change Type
-- For core algorithm changes: edit `crates/cartoboost-core` and then update [feature schema](feature_schema.md) + [tests](../tests) as needed.
-- For CLI behavior and I/O format changes: edit `crates/cartoboost-cli/src/main.rs`, update [CLI guide](user-guide/cli.md), [CLI reference](reference/cli.md), and integration tests under `../tests/integration`.
-- For Python API changes: edit `python/cartoboost`, update [Python API reference](reference/python-api.md), and add/adjust tests under `../tests/python`.
+- For core algorithm changes: edit `crates/cartoboost-core` and then update [feature schema](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/feature_schema.md) + [tests](https://github.com/TheCulliganMan/CartoBoost/blob/main/tests) as needed.
+- For CLI behavior and I/O format changes: edit `crates/cartoboost-cli/src/main.rs`, update [CLI guide](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/user-guide/cli.md), [CLI reference](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/reference/cli.md), and integration tests under `../tests/integration`.
+- For Python API changes: edit `python/cartoboost`, update [Python API reference](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/reference/python-api.md), and add/adjust tests under `../tests/python`.
 - For bindings/debugging interop: edit `crates/cartoboost-py/src/lib.rs`, then run `uv run --group dev maturin develop` after any native changes.
 - For benchmark or acceptance behavior changes: edit `scripts`, benchmark sources in `benches`, and benchmark docs under `docs/benchmarks`.
 
