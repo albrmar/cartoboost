@@ -17,6 +17,8 @@ schema = {
     ],
     "sparse_sets": [
         {"name": "route_cells", "kind": "sparse_set"},
+        {"name": "ozip_zip_p3", "kind": "zip_sparse_set"},
+        {"name": "dzip_zip5", "kind": "h3_sparse_set"},
     ],
 }
 ```
@@ -48,6 +50,12 @@ payload:
 
 - Schema length must equal dense feature count plus sparse-set column count.
 - `kind` must be numeric, periodic, or sparse-set.
+- Geographic sparse identifiers can be declared with
+  `zip_sparse_set`, `zip3_sparse_set`, `zone_sparse_set`, `region_sparse_set`,
+  `h3_sparse_set`, or equivalent aliases (`ZipSparseSet`, `ZoneSparseSet`,
+  `RegionSparseSet`, `H3SparseSet`, `GeoSparseSet`, `GeoAbstractSparseSet`).
+  This is suitable for state, zone, county, market, region, and similar ID fields.
+  All listed alias kinds resolve to the underlying sparse-set feature type.
 - Periodic entries require a positive period.
 - Sparse-set entries correspond to sparse columns supplied through
   `sparse_sets=`.

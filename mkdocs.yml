@@ -68,6 +68,7 @@ nav:
       - Evaluation Protocol: evaluation_protocol.md
       - Feature Schema: feature_schema.md
       - Sparse Features: sparse_features.md
+      - Neural Features: neural-features.md
       - SHAP Support: shap.md
       - CLI: user-guide/cli.md
       - Model Artifacts: model_artifact.md

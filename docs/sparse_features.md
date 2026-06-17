@@ -26,6 +26,90 @@ pred = model.predict(
 )
 ```
 
+Zip code features can be expanded into geographic sparse-columns with explicit
+origin/destination roles:
+
+```python
+from cartoboost import build_zip_sparse_sets
+
+zip_sparse_sets = build_zip_sparse_sets(
+    origin_zip=["94103", "94122"],
+    destination_zip=["10001", "94103"],
+    parent_prefixes=(3, 2),
+)
+
+schema = {
+    "dense": [{"name": "distance_m", "kind": "numeric"}],
+    "sparse_sets": [
+        {"name": "ozip_zip5", "kind": "zip_sparse_set"},
+        {"name": "ozip_zip_p3", "kind": "zip_sparse_set"},
+        {"name": "dzip_zip5", "kind": "zip_sparse_set"},
+        {"name": "dzip_zip_p3", "kind": "zip3_sparse_set"},
+    ],
+}
+
+model.fit(
+    X_dense,
+    y,
+    sparse_sets=zip_sparse_sets,
+    feature_schema=schema,
+)
+
+# Emit only ZIP3 hierarchy columns
+zip3_only_sparse_sets = build_zip_sparse_sets(
+    origin_zip=["94103", "94122"],
+    destination_zip=["10001", "94103"],
+    zip3_only=True,
+)
+```
+
+## Abstract Geo IDs
+
+Arbitrary geo-id features like pickup/dropoff zones can be mapped directly into
+sparse columns:
+
+```python
+from cartoboost import build_geo_sparse_sets
+
+geo_sparse_sets = build_geo_sparse_sets(
+    {
+        "pickup_zone": ["Z1", "Z2", "Z3"],
+        "delivery_zone": ["D1", "D2", "D3"],
+    },
+    namespace="market_a",
+)
+```
+
+State, county, region, market, and zone features use the same path:
+
+```python
+state_geo_sparse_sets = build_geo_sparse_sets(
+    {
+        "state": ["CA", "NY", "CA", "TX"],
+        "region": ["NORTH", "NORTHEAST", "WEST", "SOUTH"],
+    },
+    namespace="policy",
+)
+```
+
+Pass these through `sparse_sets=` and declare each column as a sparse-set kind:
+
+```python
+schema = {
+    "dense": [{"name": "distance_m", "kind": "numeric"}],
+    "sparse_sets": [
+        {"name": "pickup_zone", "kind": "zone_sparse_set"},
+        {"name": "delivery_zone", "kind": "region_sparse_set"},
+        {"name": "state", "kind": "geo_sparse_set"},
+        {"name": "region", "kind": "zone_sparse_set"},
+    ],
+}
+```
+
+`build_geo_sparse_sets` is deterministic: the `(namespace, column_name, value)`
+triple is hashed to a stable non-negative feature ID, so repeated labels map to
+the same ID.
+
 Validation rules:
 
 - Each sparse column must have the same row count as `X` and `y` during fit.
@@ -86,5 +170,6 @@ estimator for sparse route-cell training and prediction.
 ## Limitations
 
 - Candidate search currently considers one sparse ID per candidate.
-- Sparse IDs are integer route-cell-style identifiers, not arbitrary strings.
+- Sparse sets accept non-negative integer IDs in the model interface; helper utilities
+  can map abstract geo labels (for example zone IDs) to stable numeric IDs.
 - Sparse support is regression-only and native-backend-only.

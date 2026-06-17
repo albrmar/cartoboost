@@ -107,6 +107,38 @@ def test_python_schema_rejects_length_mismatch():
         model.fit([[0.0, 1.0], [2.0, 3.0]], [1.0, 2.0], feature_schema=schema)
 
 
+def test_python_schema_accepts_geographic_sparse_set_aliases():
+    schema = FeatureSchema(
+        dense=[("distance", "numeric")],
+        sparse_sets=[("ozip_zip5", "zip_sparse_set"), ("dzip_zip5", "h3_sparse_set")],
+    )
+
+    payload = schema.to_rust_payload(dense_width=1, sparse_names=["ozip_zip5", "dzip_zip5"])
+
+    assert payload["kinds"] == ["Numeric", "SparseSet", "SparseSet"]
+
+    schema_with_zip3 = FeatureSchema(
+        dense=[("distance", "numeric")],
+        sparse_sets=[("ozip_zip_p3", "zip3_sparse_set")],
+    )
+    zip3_payload = schema_with_zip3.to_rust_payload(dense_width=1, sparse_names=["ozip_zip_p3"])
+    assert zip3_payload["kinds"] == ["Numeric", "SparseSet"]
+
+    schema_with_zone = FeatureSchema(
+        dense=[("distance", "numeric")],
+        sparse_sets=[
+            ("zone_id", "zone_sparse_set"),
+            ("region_id", "region_sparse_set"),
+            ("geo_key", "GeoAbstractSparseSet"),
+        ],
+    )
+    zone_payload = schema_with_zone.to_rust_payload(
+        dense_width=1,
+        sparse_names=["zone_id", "region_id", "geo_key"],
+    )
+    assert zone_payload["kinds"] == ["Numeric", "SparseSet", "SparseSet", "SparseSet"]
+
+
 def test_python_schema_rejects_sparse_length_mismatch():
     model = CartoBoostRegressor(max_depth=0)
     schema = FeatureSchema(dense=[("x", "numeric")])

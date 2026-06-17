@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "crates/cartoboost-core",
+    "crates/cartoboost-neural",
     "crates/cartoboost-cli",
     "crates/cartoboost-py",
 ]
