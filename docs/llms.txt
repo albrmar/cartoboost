@@ -11,6 +11,7 @@ Use this guide as the first read before making changes. Start in the relevant co
 - [Python environment lockfile](https://github.com/TheCulliganMan/CartoBoost/blob/main/uv.lock): pinned dependency state for reproducible Python builds.
 - [Docs home](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/index.md): documentation index and user-facing map.
 - [Feature catalog](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/feature_catalog.md): complete public feature map across regression, forecasting, graph, neural, sparse, artifact, CLI, and benchmark surfaces.
+- [General utilities](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/general_utilities.md): toy examples for Kalman filters, ordinary kriging, intermittent-demand methods, and single-series forecast helpers.
 
 ## Core Components
 - [Python package API](https://github.com/TheCulliganMan/CartoBoost/blob/main/python/cartoboost): user-facing estimator, graph helpers, neural feature workflows, and utility functions.
@@ -34,12 +35,14 @@ Use this guide as the first read before making changes. Start in the relevant co
 - [Spatial modeling](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/spatial_modeling.md): modeling assumptions for route/time/geographic features.
 - [Graph features](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/graph-features.md): node2vec, GraphSAGE, HeteroGraphSAGE, HinSAGE, directionality, and metapath contracts.
 - [Evaluation protocol](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/evaluation_protocol.md): protocol for trustworthy evaluations.
+- [General utilities](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/general_utilities.md): reusable Rust-backed utilities independent of the regressor and forecasting frame APIs.
 - [Benchmarks overview](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/benchmarks/index.md), [NYC Taxi](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/benchmarks/nyc-taxi.md), [Taxi zone acceptance](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/benchmarks/taxi-zone.md): expected evidence format.
 
 ## Where to Edit by Change Type
 - For model behavior changes: update [feature schema](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/feature_schema.md) + [tests](https://github.com/TheCulliganMan/CartoBoost/blob/main/tests) as needed.
 - For CLI behavior and I/O format changes: update [CLI guide](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/user-guide/cli.md), [CLI reference](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/reference/cli.md), and integration tests under `../tests/integration`.
 - For Python API changes: edit `python/cartoboost`, update [Python API reference](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/reference/python-api.md), and add/adjust tests under `../tests/python`.
+- For reusable utility changes such as Kalman filters, kriging, or intermittent-demand helpers: update [General utilities](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/general_utilities.md), [Feature catalog](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/feature_catalog.md), and [Python API reference](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/reference/python-api.md).
 - For benchmark or acceptance behavior changes: edit `scripts`, benchmark sources in `benches`, and benchmark docs under `docs/benchmarks`.
 
 ## Validation and Runtime Checks
