@@ -22,12 +22,12 @@ optional sparse memberships, feature names, node IDs, and provenance metadata.
 Those columns are appended to the tabular model input; the final scorer remains
 the standard CartoBoost booster.
 
-```text
-typed graph + node features
-    -> graph encoder
-    -> GraphFeatureBundle
-    -> dense/sparse model matrix
-    -> CartoBoostRegressor
+```mermaid
+flowchart LR
+    A["Typed graph + node features"] --> B["Graph encoder"]
+    B --> C["GraphFeatureBundle"]
+    C --> D["Dense/sparse model matrix"]
+    D --> E["CartoBoostRegressor"]
 ```
 
 Graph encoders have their own JSON artifacts. Persist graph encoder artifacts or
@@ -275,18 +275,26 @@ link_bundle = encoder.link_embeddings(bundle.embeddings, pairs=[(0, 1), (1, 0)])
 Use typed directed metapaths when the relationship only makes sense in one
 direction:
 
-```text
-source_h3 -> flows_to -> target_h3 -> receives_from -> source_h3
-entity -> acts_on -> source_target_pair -> observed_in -> time_bucket
-source_market -> sends_to -> target_market -> supplied_by -> entity
+```mermaid
+flowchart LR
+    S1[source_h3] -->|flows_to| T1[target_h3]
+    T1 -->|receives_from| S1
+    E1[entity] -->|acts_on| P1[source_target_pair]
+    P1 -->|observed_in| B1[time_bucket]
+    SM[source_market] -->|sends_to| TM[target_market]
+    TM -->|supplied_by| E2[entity]
 ```
 
 Freight-style examples:
 
-```text
-carrier -> serves_outbound_from -> origin_h3 -> flows_to -> destination_h3
-carrier -> serves_inbound_to -> destination_h3 -> reverse_flows_to -> origin_h3
-shipper -> tenders -> od_pair -> quoted_by -> carrier
+```mermaid
+flowchart LR
+    C[carrier] -->|serves_outbound_from| O[origin_h3]
+    O -->|flows_to| D[destination_h3]
+    C -->|serves_inbound_to| D
+    D -->|reverse_flows_to| O
+    S[shipper] -->|tenders| OD[od_pair]
+    OD -->|quoted_by| C
 ```
 
 Directed metapaths prevent embeddings from collapsing useful asymmetric

@@ -153,9 +153,11 @@ expansion.
 
 Routing is:
 
-```text
-left  if row IDs contain any split ID
-right otherwise
+```mermaid
+flowchart TD
+    R["Sparse row IDs"] --> Q{"Contains any split ID?"}
+    Q -- yes --> L["Route left"]
+    Q -- no --> N["Route right"]
 ```
 
 Empty rows and unseen IDs route as no match. Duplicate row IDs do not change the
