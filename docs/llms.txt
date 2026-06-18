@@ -32,7 +32,7 @@ Use this guide as the first read before making changes. Start in the relevant co
 - [Spatial modeling](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/spatial_modeling.md): modeling assumptions for route/time/geographic features.
 - [Graph features](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/graph-features.md): node2vec, GraphSAGE, HeteroGraphSAGE, HinSAGE, directionality, and metapath contracts.
 - [Evaluation protocol](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/evaluation_protocol.md): protocol for trustworthy evaluations.
-- [Benchmarks overview](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/benchmarks/index.md), [NYC Taxi](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/benchmarks/nyc-taxi.md), [Lane-level acceptance](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/benchmarks/lane-level.md): expected evidence format.
+- [Benchmarks overview](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/benchmarks/index.md), [NYC Taxi](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/benchmarks/nyc-taxi.md), [Taxi zone acceptance](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/benchmarks/taxi-zone.md): expected evidence format.
 
 ## Where to Edit by Change Type
 - For model behavior changes: update [feature schema](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/feature_schema.md) + [tests](https://github.com/TheCulliganMan/CartoBoost/blob/main/tests) as needed.

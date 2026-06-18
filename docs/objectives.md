@@ -47,5 +47,5 @@ constant leaves.
 - Use pinball loss for quantile models.
 - Report the holdout type: random, temporal, spatial, grouped, or route-based.
 - Compare objectives on the same split and feature set.
-- For temporal-spatial work, include residual summaries by time bucket, zone,
-  route cell, or lane; aggregate metrics can hide localized failure modes.
+- For temporal-spatial work, include residual summaries by time bucket, zone, or
+  taxi zone; aggregate metrics can hide localized failure modes.

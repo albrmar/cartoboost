@@ -42,7 +42,7 @@ you need exact threshold search, then add the splitters that match your data:
 | `diagonal_2d`, `diagonal2d` | Oblique 2D boundaries for coordinates or projected x/y features. |
 | `gaussian_2d`, `gaussian2d`, `radial` | Radial neighborhoods around local hotspots, depots, zones, or corridors. |
 | `periodic_time`, `periodic_24`, `periodic:<period>` | Wraparound time features such as hour-of-day, weekday, or seasonal phase. |
-| `sparse_set`, `sparse` | List-valued route-cell, zone, grid, or encoded H3 memberships. |
+| `sparse_set`, `sparse` | List-valued taxi-zone, zone, grid, or encoded H3 memberships. |
 
 Unknown splitter names raise `ValueError`.
 
@@ -54,7 +54,7 @@ Common temporal-spatial combinations:
 | Exact axis baseline | `["axis"]` |
 | Dense location and time | `["axis", "diagonal_2d", "gaussian_2d", "periodic:24"]` |
 | Route or cell membership | `["axis", "periodic:24", "sparse_set"]` |
-| Location plus route cells | `["axis", "diagonal_2d", "gaussian_2d", "periodic:24", "sparse_set"]` |
+| Location plus taxi zones | `["axis", "diagonal_2d", "gaussian_2d", "periodic:24", "sparse_set"]` |
 
 ## Leaves
 
@@ -64,7 +64,7 @@ Common temporal-spatial combinations:
 | `linear_leaf_features` | `None` | Python API currently expects stringified integer feature indices, such as `["0", "2"]`. |
 | `l2_regularization` | `1.0` | Ridge penalty for linear leaves. |
 
-Use linear leaves when the tree can find a region, lane, or time bucket but the
+Use linear leaves when the tree can find a region, taxi zone, or time bucket but the
 remaining residual trend inside that region is still approximately linear.
 
 ## Fuzzy Routing

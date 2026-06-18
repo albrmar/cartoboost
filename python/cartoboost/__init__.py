@@ -15,6 +15,13 @@ from .geo import (
     coerce_geo_to_feature_id,
     coerce_zip_to_feature_id,
 )
+from .h3 import (
+    build_h3_sparse_sets,
+    encode_h3_cells,
+    h3_parent_id,
+    latlng_to_h3_id,
+    normalize_h3_id,
+)
 from .metrics import (
     calibrated_intervals,
     conformal_residual_quantile,
@@ -32,6 +39,13 @@ from .neural import (
 )
 from .overlay import OverlayConfig, weighted_overlay
 from .regressor import CartoBoostRegressor
+from .s2 import (
+    build_s2_sparse_sets,
+    encode_s2_cells,
+    latlng_to_s2_id,
+    normalize_s2_id,
+    s2_parent_id,
+)
 from .schema import FeatureKind, FeatureSchema
 from .standalone import (
     GraphSageLinkPredictor,
@@ -80,12 +94,22 @@ __all__ = [
     "make_shap_explainer",
     "mean_interval_width",
     "build_geo_sparse_sets",
+    "build_h3_sparse_sets",
+    "build_s2_sparse_sets",
     "build_zip_sparse_sets",
     "coerce_geo_to_feature_id",
     "coerce_zip_to_feature_id",
+    "encode_h3_cells",
+    "encode_s2_cells",
+    "h3_parent_id",
+    "latlng_to_h3_id",
+    "latlng_to_s2_id",
+    "normalize_h3_id",
+    "normalize_s2_id",
     "out_of_time_split",
     "pinball_loss",
     "residual_morans_i",
+    "s2_parent_id",
     "spatial_blocked_cv",
     "temporal_blocked_cv",
     "weighted_overlay",

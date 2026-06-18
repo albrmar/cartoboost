@@ -111,7 +111,7 @@ For models with sparse-set splits, pass the same sparse columns at prediction
 time after loading:
 
 ```python
-loaded.predict(X_test_dense, sparse_sets={"route_cells": route_cells_test})
+loaded.predict(X_test_dense, sparse_sets={"taxi_zones": taxi_zones_test})
 ```
 
 ## Dense And Sparse Prediction Safety

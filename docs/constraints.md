@@ -34,12 +34,12 @@ Current support:
 
 Use constraints only when the direction is real, not just visually convenient.
 Distance, elapsed time, toll amount, or known service-level features can be good
-candidates. Latitude, longitude, zone ID, and route-cell IDs usually are not:
+candidates. Latitude, longitude, zone ID, and taxi-zone IDs usually are not:
 their relationship to the target is often local, discontinuous, or directional
 only within a specific market.
 
 For temporal-spatial effects, prefer spatial splitters, periodic splitters,
-sparse route-cell features, blocked evaluation, and residual diagnostics unless
+sparse taxi-zone features, blocked evaluation, and residual diagnostics unless
 a monotonic rule is part of the problem definition.
 
 ## Validation

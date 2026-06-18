@@ -1,9 +1,9 @@
 # Temporal-Spatial Modeling
 
-CartoBoost is built for regression problems where time, place, route membership,
-or local neighborhoods drive the target. Examples include pickup demand by hour
-and zone, delivery ETA residuals by lane, fare or cost adjustments by location,
-and operational metrics grouped by route cells.
+CartoBoost is built for regression problems where time, place, taxi-zone
+membership, or local neighborhoods drive the target. Examples include pickup
+demand by hour and zone, fare or duration adjustments by location, and
+operational metrics grouped by pickup/dropoff zones.
 
 ## Why Use CartoBoost
 
@@ -15,7 +15,7 @@ the problem:
 - Spatial boundaries need many axis-aligned splits or hand-built region
   features.
 - Local hotspots need precomputed distance-to-center features.
-- Route or cell memberships can become very wide one-hot matrices.
+- Pickup/dropoff memberships can become very wide one-hot matrices.
 - Hard split boundaries can produce abrupt predictions for nearby points.
 
 CartoBoost gives those structures direct model controls through periodic,
@@ -27,7 +27,7 @@ diagonal 2D, Gaussian/radial, sparse-set, and fuzzy split behavior.
 | --- | --- | --- |
 | Hour-of-day, weekday, seasonality | Dense periodic feature with `periodic:<period>` | Preserves wraparound adjacency. |
 | Latitude/longitude or projected x/y | Dense numeric features with `diagonal_2d` or `gaussian_2d` | Learns spatial boundaries and neighborhoods without only stair-step axis cuts. |
-| Route cells, zones, encoded H3 cells | `sparse_sets={...}` with `splitters=["sparse_set"]` | Uses list-valued memberships directly. |
+| Pickup zones, dropoff zones, encoded H3 cells | `sparse_sets={...}` with `splitters=["sparse_set"]` | Uses list-valued memberships directly. |
 | Smooth transitions near a boundary | `fuzzy=True` with `fuzzy_bandwidth` and optional `fuzzy_kernel` | Routes samples fractionally instead of forcing a hard left/right decision. |
 | Local trend inside a region | `leaf_predictor="linear"` | Fits a ridge residual model inside leaves. |
 
@@ -44,7 +44,7 @@ schema = {
         {"name": "distance_m", "kind": "numeric"},
     ],
     "sparse_sets": [
-        {"name": "route_cells", "kind": "sparse_set"},
+        {"name": "taxi_zones", "kind": "sparse_set"},
     ],
 }
 
@@ -62,7 +62,7 @@ model = CartoBoostRegressor(
 model.fit(
     X_train_dense,
     y_train,
-    sparse_sets={"route_cells": route_cells_train},
+    sparse_sets={"taxi_zones": taxi_zones_train},
     feature_schema=schema,
 )
 ```
@@ -93,7 +93,7 @@ face in use:
 - Use spatial holdouts to test new zones, cells, routes, or corridors.
 - Use [out-of-time validation](evaluation_protocol.md#out-of-time-validation)
   to test later periods.
-- Report residuals by zone, route cell, hour, or lane to find localized failure
+- Report residuals by pickup zone, dropoff zone, or hour to find localized failure
   modes.
 - Compare against axis-only CartoBoost, XGBoost, or LightGBM baselines with the
   same train/test split and feature set.

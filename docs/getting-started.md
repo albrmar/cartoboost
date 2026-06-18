@@ -53,7 +53,7 @@ model = CartoBoostRegressor(
 ```
 
 Use `periodic:24` for hour-of-day, diagonal or Gaussian 2D splitters for
-coordinate pairs, and `sparse_set` when rows have route-cell or zone
+coordinate pairs, and `sparse_set` when rows have taxi-zone or zone
 memberships.
 
 ## Add Neural Features (Hybrid)
@@ -183,7 +183,7 @@ cartoboost predict --model model.json --input train.csv --predictions-out predic
 ```
 
 The CLI expects dense numeric CSV input. Use the Python estimator for sparse-set
-route-cell features.
+taxi-zone features.
 
 ## Save And Reload
 

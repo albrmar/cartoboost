@@ -23,13 +23,13 @@ context.
   predict, save, load, and explanation workflow.
 - [Parameters](user-guide/parameters.md): estimator controls and supported
   splitters.
-- [Spatial Modeling](spatial_modeling.md): coordinate features, route-cell
+- [Spatial Modeling](spatial_modeling.md): coordinate features, taxi-zone
   sparse sets, fuzzy routing, and blocked evaluation.
 - [Graph Features](graph-features.md): Node2Vec, GraphSAGE, HeteroGraphSAGE,
-  HinSAGE, directed source-target features, metapaths, and graph feature
-  bundles.
+  HinSAGE, standalone graph models, directed source-target features, metapaths,
+  and graph feature bundles.
 - [Neural Features](neural-features.md): ID embedding features and
-  neural-augmented boosted models.
+  standalone or neural-augmented boosted models.
 - [Evaluation Protocol](evaluation_protocol.md): out-of-time, spatial-blocked,
   grouped, and leakage-aware validation.
 - [Benchmarks](benchmarks/index.md): reproducible comparison reports and
@@ -48,7 +48,7 @@ context.
   export for the supported dense axis-tree subset.
 - Neural embedding features.
 - node2vec, GraphSAGE, heterogeneous GraphSAGE, and typed-schema HinSAGE graph
-  encoders.
+  encoders plus standalone graph regressors and link predictors.
 
 ## Why It Helps Temporal-Spatial Models
 
@@ -62,12 +62,12 @@ geotemporal patterns:
 - Diagonal 2D splitters model oblique spatial boundaries more directly than
   axis-only trees.
 - Gaussian/radial splitters isolate local hotspots, depots, zones, or corridors.
-- Sparse-set splitters consume route-cell and zone memberships without a wide
+- Sparse-set splitters consume taxi-zone and zone memberships without a wide
   one-hot matrix.
 - Fuzzy routing softens hard boundaries where nearby locations or times should
   behave similarly.
-- Directional graph features preserve source-target semantics such as
-  `origin -> destination`, `upstream -> downstream`, and `supply -> demand`.
+- Directional graph features preserve pickup/dropoff semantics such as
+  `pickup_zone -> dropoff_zone`, pickup-hour demand, and reverse-trip contrast.
 
 ## Install
 

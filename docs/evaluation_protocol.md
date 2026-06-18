@@ -135,21 +135,21 @@ model.fit(
 prediction = model.predict(X_df.iloc[validation_idx])
 ```
 
-For sparse route-cell features, slice the dense features and sparse lists with
+For sparse taxi-zone features, slice the dense features and sparse lists with
 the same indices:
 
 ```python
-route_cells_train = [route_cells[i] for i in train_idx]
-route_cells_validation = [route_cells[i] for i in validation_idx]
+taxi_zones_train = [taxi_zones[i] for i in train_idx]
+taxi_zones_validation = [taxi_zones[i] for i in validation_idx]
 
 model.fit(
     X_dense[train_idx],
     y[train_idx],
-    sparse_sets={"route_cells": route_cells_train},
+    sparse_sets={"taxi_zones": taxi_zones_train},
 )
 prediction = model.predict(
     X_dense[validation_idx],
-    sparse_sets={"route_cells": route_cells_validation},
+    sparse_sets={"taxi_zones": taxi_zones_validation},
 )
 ```
 
@@ -162,8 +162,7 @@ traffic, pricing, weather, or market conditions drift.
 For temporal-spatial problems, report at least:
 
 - Random holdout metrics.
-- Spatial or grouped holdout metrics for withheld zones, cells, lanes, or
-  routes.
+- Spatial or grouped holdout metrics for withheld zones, cells, or routes.
 - Out-of-time metrics for the latest period.
-- Residual summaries by hour, zone, route cell, or lane.
+- Residual summaries by hour, zone, or taxi zone.
 - The same splits for CartoBoost and any XGBoost, LightGBM, or baseline model.

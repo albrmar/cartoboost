@@ -23,6 +23,9 @@ Install optional integrations with extras:
 
 ```sh
 uv add "cartoboost[explain]"
+uv add "cartoboost[h3]"
+uv add "cartoboost[s2]"
+uv add "cartoboost[duckdb]"
 uv add "cartoboost[optuna]"
 uv add "cartoboost[polars]"
 uv add "cartoboost[onnx]"
@@ -31,6 +34,9 @@ uv add "cartoboost[onnx]"
 | Extra | Adds |
 | --- | --- |
 | `explain` | SHAP explanations. |
+| `h3` | Optional H3 latitude/longitude encoder. |
+| `s2` | Optional S2 latitude/longitude encoder. |
+| `duckdb` | DuckDB relation/query-result input support. |
 | `optuna` | Hyperparameter tuning examples and workflows. |
 | `polars` | Polars input support. |
 | `onnx` | ONNX export for the supported dense axis-tree subset. |

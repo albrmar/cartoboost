@@ -75,8 +75,8 @@ Sparse IDs are exposed to SHAP as binary features named `column=id`.
 explanation = model.explain_shap(
     X_test,
     background=X_train,
-    sparse_sets={"route_cells": route_cells_test},
-    background_sparse_sets={"route_cells": route_cells_train},
+    sparse_sets={"taxi_zones": taxi_zones_test},
+    background_sparse_sets={"taxi_zones": taxi_zones_train},
 )
 ```
 
@@ -86,7 +86,7 @@ explainer:
 ```python
 explainer = model.make_shap_explainer(
     X_train,
-    sparse_sets={"route_cells": route_cells_train},
+    sparse_sets={"taxi_zones": taxi_zones_train},
 )
 ```
 

@@ -16,9 +16,9 @@ schema = {
         {"name": "hour_of_day", "kind": "periodic", "period": 24},
     ],
     "sparse_sets": [
-        {"name": "route_cells", "kind": "sparse_set"},
-        {"name": "ozip_zip_p3", "kind": "zip_sparse_set"},
-        {"name": "dzip_zip5", "kind": "h3_sparse_set"},
+        {"name": "taxi_zones", "kind": "sparse_set"},
+        {"name": "pickup_zone_parent", "kind": "zone_sparse_set"},
+        {"name": "dropoff_zone", "kind": "zone_sparse_set"},
     ],
 }
 ```
@@ -29,7 +29,7 @@ Pass the schema during training:
 model.fit(
     X_dense,
     y,
-    sparse_sets={"route_cells": route_cells},
+    sparse_sets={"taxi_zones": taxi_zones},
     feature_schema=schema,
 )
 ```
@@ -40,7 +40,7 @@ CartoBoost stores supported schema dictionaries in a compact artifact payload:
 
 ```json
 {
-  "names": ["pickup_x", "pickup_y", "distance_m", "hour_of_day", "route_cells"],
+  "names": ["pickup_x", "pickup_y", "distance_m", "hour_of_day", "taxi_zones"],
   "kinds": ["Numeric", "Numeric", "Numeric", {"Periodic": {"period": 24}}, "SparseSet"]
 }
 ```
@@ -70,7 +70,7 @@ When a schema is present:
 
 For example, declaring `hour_of_day` with `period=24` lets `periodic:24` treat
 late-night and early-morning rows as neighboring values. Declaring
-`route_cells` as sparse-set tells CartoBoost to use list membership instead of
+`taxi_zones` as sparse-set tells CartoBoost to use list membership instead of
 expecting a scalar numeric feature.
 
 ## Limitations

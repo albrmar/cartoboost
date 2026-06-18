@@ -7,10 +7,10 @@ XGBoost, LightGBM, or a mean baseline.
 
 | Page | Question |
 | --- | --- |
-| [Model Benchmark Suite](model-suite.md) | How do CartoBoost, neural augmentation, graph augmentation, XGBoost, and LightGBM compare on deterministic synthetic workloads? |
-| [NYC Taxi Benchmarks](nyc-taxi.md) | Does CartoBoost help on real temporal-spatial taxi tasks with random and spatial holdouts? |
+| [Model Benchmark Suite](model-suite.md) | How do dense, neural, standalone graph, and graph-augmented CartoBoost variants compare with XGBoost/LightGBM on deterministic workloads? |
+| [NYC Taxi Benchmarks](nyc-taxi.md) | Does CartoBoost beat LightGBM on real temporal-spatial taxi tasks, and which structural primitive explains the win? |
 | [Neural Embedding Strategy Assessment](neural-embedding-strategy.md) | When do neural embeddings help, and how did OOF, fallback, multi-key, and shrinkage changes compare? |
-| [Lane-Level Acceptance](lane-level.md) | Does the model capture route-cell, temporal, spatial, and combined lane behavior on a controlled dataset? |
+| [Taxi Zone Acceptance](taxi-zone.md) | Does the model capture pickup/dropoff, temporal, spatial, and combined behavior on a controlled dataset? |
 | [Neural Embedding Benchmark (latest)](neural-embedding-benchmark-latest.md) | How much does neural feature augmentation improve MAE under synthetic temporal-spatial holdouts? |
 
 ## Evaluation Helpers
@@ -50,10 +50,19 @@ Run the synthetic model suite with optional XGBoost and LightGBM baselines:
 uv run --group dev --group bench python scripts/run_model_benchmark_suite.py
 ```
 
-Run the maintained NYC comparison target:
+Run the maintained repeated NYC comparison target:
 
 ```sh
 just nyc-quality-benchmark-repeated
+```
+
+Run the full single-run NYC benchmark artifact refresh:
+
+```sh
+PYTHONPATH=python uv run --group dev --group bench python \
+  scripts/run_nyc_taxi_quality_benchmarks.py \
+  --no-download \
+  --output-dir docs/assets/nyc_taxi_benchmarks
 ```
 
 ## Reporting Rules

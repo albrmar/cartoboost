@@ -57,15 +57,61 @@ ID:
 - **Input**: one or more IDs per row (e.g. cell IDs).
 - **Output**: `dim` floating columns for each logical feature.
 
-Example for `dim=16` and origin cell embedding:
+Example for `dim=16` and pickup-zone embedding:
 
-- `neural.origin_h3_r7_emb_00`
-- `neural.origin_h3_r7_emb_01`
+- `neural.pickup_zone_emb_00`
+- `neural.pickup_zone_emb_01`
 - `...`
-- `neural.origin_h3_r7_emb_15`
+- `neural.pickup_zone_emb_15`
 
 Important: these are just dense feature columns from the perspective of the
 booster.
+
+## Standalone Neural Model
+
+Use `NeuralEmbeddingStandaloneRegressor` when you want a supervised ID embedding
+model directly, without wrapping it in `CartoBoostRegressor` and without
+appending the embedding columns to a separate booster. It accepts row IDs, a
+target, and optional dense row features; then it scores through the standalone
+native model.
+
+The standalone model supports `fit`, `predict`, `score`, `save`, and `load`.
+
+```python
+import numpy as np
+from cartoboost.neural import NeuralEmbeddingStandaloneRegressor
+
+pickup_zone_ids = np.array([132, 161, 132, 236, 161, 236], dtype=np.uint64)
+dense = np.array(
+    [
+        [1.0, 6.0],   # trip distance, pickup hour
+        [2.5, 8.0],
+        [1.2, 6.0],
+        [3.1, 17.0],
+        [2.7, 8.0],
+        [3.3, 17.0],
+    ],
+    dtype=float,
+)
+log_fare = np.array([2.7, 3.1, 2.8, 3.4, 3.2, 3.5])
+
+model = NeuralEmbeddingStandaloneRegressor(
+    dim=4,
+    n_estimators=20,
+    max_depth=2,
+    min_samples_leaf=1,
+    random_state=7,
+)
+model.fit(pickup_zone_ids, log_fare, dense=dense)
+
+pred = model.predict(pickup_zone_ids, dense=dense)
+model.save("taxi-neural-standalone.json")
+reloaded = NeuralEmbeddingStandaloneRegressor.load("taxi-neural-standalone.json")
+```
+
+Use `NeuralEmbeddingRegressor` when you want learned ID vectors appended to a
+boosted tabular model. Use `NeuralEmbeddingStandaloneRegressor` when the ID
+embedding model should stand on its own.
 
 ## When Neural Embeddings Help
 
@@ -92,7 +138,7 @@ Implemented controls:
   fallback chains such as zone to same-service-zone representative to same-
   borough representative to global representative.
 - Pass 2D `ids` to `NeuralEmbeddingRegressor` for multi-key embeddings, such as
-  pickup zone, dropoff zone, origin-destination pair, zone-hour bucket, or route
+  pickup zone, dropoff zone, pickup-dropoff pair, zone-hour bucket, or trip
   cluster.
 - Pass `neighbor_ids` for graph-aware fallback on unseen spatial IDs by
   averaging known adjacent-zone or typed-neighbor embeddings.
@@ -102,33 +148,30 @@ Implemented controls:
 ## Directional Geotemporal Graph Features
 
 CartoBoost graph support should treat directionality as a first-class schema
-concept. Many geotemporal prediction problems are not symmetric: movement from
-`A` to `B` differs from `B` to `A`, outbound behavior differs from inbound
-behavior, and source-target imbalance often carries predictive signal. The graph
-layer should therefore support directed edge types, reverse-edge materialization,
-source/target role metadata, OD-pair nodes, directed random walks, and
-directional feature emission into the booster.
+concept. Taxi trip prediction is not symmetric: pickup zone `A` to dropoff zone
+`B` can differ from the reverse trip, pickup-side demand can differ from
+dropoff-side demand, and pickup-dropoff imbalance often carries predictive
+signal. The graph layer should therefore support directed edge types,
+reverse-edge materialization, pickup/dropoff role metadata, pickup-dropoff pair
+nodes, directed random walks, and directional feature emission into the booster.
 
-Directional source-target semantics are required for any geotemporal graph. For
-Robinson-style freight, that means OD direction, inbound/outbound market behavior,
-directional imbalance, and reverse-lane contrast are core features, not optional
-extras.
+Directional pickup-dropoff semantics are required for taxi graph features. Trip
+direction, pickup/dropoff behavior, directional imbalance, and reverse-trip
+contrast are core features, not optional extras.
 
 ### Why this is required
 
-- `origin -> destination`
-- `upstream -> downstream`
-- `supply -> demand`
-- `source market -> sink market`
+- `pickup_zone -> dropoff_zone`
+- `pickup_zone -> pickup_hour`
+- `dropoff_zone -> dropoff_hour`
+- `pickup_dropoff_pair -> trip_duration_bucket`
 
-and in brokerage deployments, at minimum:
+For NYC taxi-style data, model at minimum:
 
-- `origin_h3 -> destination_h3`
-- `carrier -> lane`
-- `shipper -> lane`
-- `rep -> account`
-- `facility -> market`
-- `market_A -> market_B`
+- `PULocationID -> DOLocationID`
+- `pickup_zone -> hour`
+- `dropoff_zone -> hour`
+- `pickup_dropoff_pair -> fare_bucket`
 
 ### Required design patterns
 
@@ -150,19 +193,19 @@ graph:
   directed: true
 
   node_types:
-    - source_h3
-    - target_h3
-    - od_pair
-    - entity
+    - pickup_zone
+    - dropoff_zone
+    - pickup_dropoff_pair
+    - taxi_trip
     - time_bucket
 
   edge_types:
-    - [source_h3, flows_to, target_h3]
-    - [target_h3, reverse_flows_to, source_h3]
-    - [entity, active_from, source_h3]
-    - [entity, active_to, target_h3]
-    - [entity, observed_on, od_pair]
-    - [od_pair, observed_in, time_bucket]
+    - [pickup_zone, trips_to, dropoff_zone]
+    - [dropoff_zone, reverse_trips_to, pickup_zone]
+    - [taxi_trip, picked_up_in, pickup_zone]
+    - [taxi_trip, dropped_off_in, dropoff_zone]
+    - [taxi_trip, observed_on, pickup_dropoff_pair]
+    - [pickup_dropoff_pair, observed_in, time_bucket]
 
   directionality:
     materialize_reverse_edges: true
@@ -171,20 +214,8 @@ graph:
     compute_asymmetry_features: true
 ```
 
-Freight-style schemas should model directional facts explicitly:
-
-```yaml
-edge_types:
-  - [origin_h3, flows_to, destination_h3]
-  - [destination_h3, reverse_flows_to, origin_h3]
-  - [carrier, serves_outbound_from, origin_h3]
-  - [carrier, serves_inbound_to, destination_h3]
-  - [shipper, tenders, od_pair]
-  - [od_pair, quoted_by, carrier]
-```
-
-This lets the model distinguish `Chicago -> Dallas` from `Dallas -> Chicago`.
-Those are separate graph facts, separate features, and often separate learned
+This lets the model distinguish `JFK -> Midtown` from `Midtown -> JFK`. Those
+are separate graph facts, separate features, and often separate learned
 embeddings.
 
 If reverse edges are missing from the source, they can be materialized:
@@ -203,8 +234,8 @@ relation naming and `preserve_source_target_roles` is a schema-level requirement
 it signals that `source` and `target` columns are not interchangeable.
 When `create_od_pair_nodes` is enabled through `GraphFeatureTransformer`, callers
 must pass `node_ids`; CartoBoost then appends stable tuple IDs such as
-`("od_pair", source, target)` with zero feature rows for newly materialized pair
-nodes.
+`("od_pair", pickup_zone, dropoff_zone)` with zero feature rows for newly
+materialized pickup-dropoff pair nodes.
 
 Directional feature extraction is opt-in and controlled through the
 `directionality.compute_asymmetry_features` flag (defaults to `false` if the
@@ -241,11 +272,11 @@ graph_embeddings:
     input_dim: 8
     node_type_count: 5
     edge_type_triples:
-      - [0, 0, 1]  # source_h3 flows_to target_h3
-      - [1, 1, 0]  # target_h3 reverse_flows_to source_h3
-      - [3, 2, 0]  # entity active_from source_h3
-      - [3, 3, 1]  # entity active_to target_h3
-      - [3, 4, 2]  # entity observed_on od_pair
+      - [0, 0, 1]  # pickup_zone trips_to dropoff_zone
+      - [1, 1, 0]  # dropoff_zone reverse_trips_to pickup_zone
+      - [3, 2, 0]  # taxi_trip picked_up_in pickup_zone
+      - [3, 3, 1]  # taxi_trip dropped_off_in dropoff_zone
+      - [3, 4, 2]  # taxi_trip observed_on pickup_dropoff_pair
     neighbor_samples: [25, 25, 10, 10, 20]
     hidden_dims: [16]
     epochs: 20
@@ -287,8 +318,8 @@ Recommended feature families:
 - `directed_temporal_drift`
 - `graph_od_forward_similarity`
 - `graph_od_reverse_similarity`
-- `graph_origin_outbound_strength`
-- `graph_destination_inbound_strength`
+- `graph_origin_outbound_strength` (legacy alias; use for pickup-zone outbound strength)
+- `graph_destination_inbound_strength` (legacy alias; use for dropoff-zone inbound strength)
 - `graph_forward_flow_volume_30d`
 - `graph_reverse_flow_volume_30d`
 - `graph_flow_imbalance_ratio`
@@ -296,8 +327,7 @@ Recommended feature families:
 - `graph_directional_acceptance_rate`
 - `graph_directional_price_pressure`
 
-Generic package-level names should remain source-target oriented rather than
-freight-specific:
+Generic package-level names should remain source-target oriented:
 
 - `source_target_affinity`
 - `target_source_affinity`
@@ -314,12 +344,9 @@ Directional metapaths should be used when building random-walk contexts:
 
 ```yaml
 meta_paths:
-  - [source_h3, flows_to, target_h3, receives_from, source_h3]
-  - [entity, active_from, source_target_pair, observed_in, time_bucket]
-  - [source_market, sends_to, target_market, supplied_by, entity]
-  - [carrier, serves_outbound_from, origin_h3, flows_to, target_h3, reverse_flows_to, origin_h3]
-  - [carrier, serves_inbound_to, destination_h3, reverse_flows_to, origin_h3]
-  - [shipper, tenders, od_pair, quoted_by, carrier]
+  - [pickup_zone, trips_to, dropoff_zone, reverse_trips_to, pickup_zone]
+  - [taxi_trip, observed_on, pickup_dropoff_pair, observed_in, time_bucket]
+  - [pickup_zone, pickup_hour_volume, time_bucket]
 ```
 
 `DirectedMetaPath` validates these node/relation/node paths against
@@ -547,12 +574,12 @@ Missing IDs are resolved by strategy in this order:
 
 ### Feature naming and order
 
-For prefix `name = neural.origin_cell`, `dim = 4`:
+For prefix `name = neural.pickup_zone`, `dim = 4`:
 
-- `neural.origin_cell_00`
-- `neural.origin_cell_01`
-- `neural.origin_cell_02`
-- `neural.origin_cell_03`
+- `neural.pickup_zone_00`
+- `neural.pickup_zone_01`
+- `neural.pickup_zone_02`
+- `neural.pickup_zone_03`
 
 The booster input matrix for each row is:
 
@@ -637,8 +664,8 @@ Split protocol options for the benchmark script:
 - `random`: random holdout with explicit `--random-state`.
 - `temporal_blocked`: out-of-time split from synthetic `times` field.
 - `geo_blocked`: single holdout block in coordinate space.
-- `cold_origin`: hold out one/two origin groups via grouped block split.
-- `cold_destination`: hold out one/two destination groups via grouped block split.
+- `cold_origin`: hold out one/two pickup-zone groups via grouped block split.
+- `cold_destination`: hold out one/two dropoff-zone groups via grouped block split.
 - `all`: run all six protocols in one run (default).
 
 Use the repository script:
@@ -672,7 +699,7 @@ The JSON report is now scenario-based. Example shape:
   "scenarios": {
     "cold_origin": {
       "split_size": {"train_rows": 1600, "test_rows": 400},
-      "ids": "origin",
+      "ids": "pickup_zone",
       "results": {
         "cartoboost": {"mae": 1.12, "fit_ms": 120.1, "predict_ms": 1.7},
         "neural_embedding_hybrid": {"mae": 0.89, "fit_ms": 214.9, "predict_ms": 2.4},

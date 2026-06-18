@@ -28,7 +28,7 @@ spatial, geotemporal, and graph-derived regression workflows.
 
 CartoBoost is most useful when time, place, route membership, and directed graph
 relationships are more than ordinary scalar columns. Periodic hours, spatial
-boundaries, local hotspots, route cells, source-target flows, and fuzzy boundary
+boundaries, local hotspots, taxi zones, source-target flows, and fuzzy boundary
 behavior can be modeled directly through the estimator and graph-feature
 contracts.
 

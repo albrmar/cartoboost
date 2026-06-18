@@ -10,15 +10,15 @@
 CartoBoost is a Python regression toolkit for temporal, spatial, geotemporal,
 and graph-derived prediction problems. It keeps the estimator workflow familiar
 to scikit-learn users while adding modeling primitives for place, time, sparse
-route membership, source-target directionality, and learned graph context.
+taxi-zone membership, pickup-dropoff directionality, and learned graph context.
 
 Use CartoBoost when a standard tabular booster is a strong baseline, but your
 problem still requires hand-built features to represent:
 
 - wraparound time such as hour-of-day, weekday, or seasonal cycles;
 - 2D spatial boundaries, corridors, depots, hotspots, and service regions;
-- list-valued memberships such as route cells, zones, markets, or H3 cells;
-- source-target movement such as origin-to-destination flows;
+- list-valued memberships such as pickup zones, dropoff zones, or H3 cells;
+- directed movement such as pickup-to-dropoff taxi flows;
 - high-cardinality IDs that benefit from learned embeddings.
 
 ## Core Capabilities
@@ -51,6 +51,9 @@ Optional integrations:
 
 ```sh
 uv add "cartoboost[explain]"  # SHAP support
+uv add "cartoboost[h3]"       # H3 lat/lon encoder
+uv add "cartoboost[s2]"       # S2 lat/lon encoder
+uv add "cartoboost[duckdb]"   # DuckDB relation inputs
 uv add "cartoboost[optuna]"   # Optuna tuning
 uv add "cartoboost[polars]"   # Polars inputs
 uv add "cartoboost[onnx]"     # ONNX export subset
@@ -86,7 +89,7 @@ The estimator supports sklearn-style `get_params`, `set_params`, `clone`,
 ## Temporal-Spatial Modeling
 
 Use dense columns for numeric location and time features, and sparse-set columns
-for memberships such as route cells, zones, markets, or encoded H3 cells.
+for memberships such as pickup zones, dropoff zones, or encoded H3 cells.
 
 ```python
 from cartoboost import CartoBoostRegressor
@@ -99,7 +102,7 @@ schema = {
         {"name": "trip_distance", "kind": "numeric"},
     ],
     "sparse_sets": [
-        {"name": "route_cells", "kind": "sparse_set"},
+        {"name": "taxi_zones", "kind": "sparse_set"},
     ],
 }
 
@@ -116,13 +119,13 @@ model = CartoBoostRegressor(
 model.fit(
     X_train_dense,
     y_train,
-    sparse_sets={"route_cells": route_cells_train},
+    sparse_sets={"taxi_zones": taxi_zones_train},
     feature_schema=schema,
 )
 
 predictions = model.predict(
     X_test_dense,
-    sparse_sets={"route_cells": route_cells_test},
+    sparse_sets={"taxi_zones": taxi_zones_test},
 )
 ```
 
@@ -142,6 +145,10 @@ CartoBoost can precompute graph-derived columns before booster training.
 Supported encoder families are node2vec, GraphSAGE, HeteroGraphSAGE, and
 HinSAGE. Direction is a first-class contract: `A -> B` and `B -> A` can be
 separate facts, features, and embeddings.
+
+Graph models can also run independently through `Node2VecStandaloneRegressor`,
+`GraphSageStandaloneRegressor`, `HeteroGraphSageStandaloneRegressor`,
+`HinSageStandaloneRegressor`, and the matching standalone link predictors.
 
 See [Graph Features](docs/graph-features.md) for encoder configs, directional
 features, OD-pair nodes, metapaths, artifacts, and benchmark guidance.
@@ -176,6 +183,10 @@ results = benchmark_neural_vs_cartoboost(X, y, ids, split_ratio=0.8)
 Use this helper as an initial signal check, then validate with your real
 temporal, spatial, grouped, or out-of-time split.
 
+For direct supervised ID modeling without a boosted wrapper, use
+`NeuralEmbeddingStandaloneRegressor`. See
+[Neural Features](docs/neural-features.md) for the standalone neural example.
+
 ## Save, Load, And Explain
 
 ```python
@@ -185,8 +196,8 @@ loaded = CartoBoostRegressor.load("model.cartoboost.json")
 explanation = loaded.explain_shap(
     X_test_dense,
     background=X_train_dense,
-    sparse_sets={"route_cells": route_cells_test},
-    background_sparse_sets={"route_cells": route_cells_train},
+    sparse_sets={"taxi_zones": taxi_zones_test},
+    background_sparse_sets={"taxi_zones": taxi_zones_train},
 )
 ```
 
@@ -197,7 +208,7 @@ should be persisted alongside the booster when features are precomputed offline.
 ## CLI
 
 The CLI supports dense numeric CSV train, predict, eval, and inspect workflows.
-Use the Python API for list-valued sparse route-cell features and graph-derived
+Use the Python API for list-valued sparse taxi-zone features and graph-derived
 feature pipelines.
 
 ```sh

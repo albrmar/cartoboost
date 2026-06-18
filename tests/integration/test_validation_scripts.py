@@ -119,6 +119,37 @@ def test_model_benchmark_suite_reports_best_cartoboost_vs_lightgbm():
     ]
 
 
+def test_model_benchmark_suite_link_negatives_avoid_positive_edges():
+    repo_root = Path(__file__).resolve().parents[2]
+    module_path = repo_root / "scripts" / "run_model_benchmark_suite.py"
+    spec = importlib.util.spec_from_file_location("run_model_benchmark_suite", module_path)
+    assert spec is not None
+    assert spec.loader is not None
+    benchmark_suite = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = benchmark_suite
+    spec.loader.exec_module(benchmark_suite)
+
+    positive_set = {(0, 0), (0, 1), (0, 2), (1, 0)}
+    candidate = benchmark_suite.verified_negative_pair(
+        0,
+        0,
+        node_count=3,
+        positive_set=positive_set,
+    )
+
+    assert candidate == (2, 0)
+    assert candidate not in positive_set
+    assert (
+        benchmark_suite.verified_negative_pair(
+            0,
+            0,
+            node_count=1,
+            positive_set={(0, 0)},
+        )
+        is None
+    )
+
+
 def test_model_benchmark_suite_graph_families_smoke(tmp_path):
     repo_root = Path(__file__).resolve().parents[2]
     output_dir = tmp_path / "model_benchmarks_graph"

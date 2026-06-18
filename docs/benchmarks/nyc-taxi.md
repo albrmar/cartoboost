@@ -146,33 +146,59 @@ Repeated-run summaries:
 
 ## Current Snapshot
 
-The repeated 25k report was refreshed on June 4, 2026 with target-mean zone
-treatment through `just nyc-quality-benchmark-repeated`. In that report,
-CartoBoost beats XGBoost on RMSE and R2 for every task/split and has higher
-median prediction throughput for every task/split, while training remains
-slower than XGBoost `hist`.
+The full single-run report was refreshed on June 18, 2026 with real January
+2024 NYC TLC yellow taxi data, target-mean zone treatment, all maintained
+CartoBoost, graph, neural, LightGBM, XGBoost, and mean rows, and the command:
 
-The comparison checks:
+```sh
+PYTHONPATH=python uv run --group dev --group bench python \
+  scripts/run_nyc_taxi_quality_benchmarks.py \
+  --no-download \
+  --output-dir docs/assets/nyc_taxi_benchmarks
+```
 
-- CartoBoost train time no slower than XGBoost.
-- CartoBoost prediction throughput no slower than XGBoost.
-- CartoBoost RMSE lower than XGBoost.
-- CartoBoost R2 no worse than XGBoost.
+This command used the cached `data/nyc_taxi/yellow_tripdata_2024-01.parquet`
+file and `--no-download`, so missing real data would fail instead of falling
+back to a synthetic fixture.
 
-Observed medians in the refreshed report:
+On every runnable learned-model split, the best CartoBoost-family row beats
+LightGBM on RMSE and R2:
 
-| task/split | train ratio vs XGBoost | prediction throughput ratio vs XGBoost | RMSE delta vs XGBoost | R2 delta vs XGBoost |
-| --- | ---: | ---: | ---: | ---: |
-| duration/random | 1.76x | 1.161x | -0.004507 | 0.005453 |
-| duration/spatial_holdout | 1.73x | 1.524x | -0.001197 | 0.001594 |
-| fare/random | 1.70x | 1.920x | -0.000148 | 0.000163 |
-| fare/spatial_holdout | 1.73x | 1.626x | -0.003096 | 0.003472 |
-| pickup_demand/random | 1.91x | 1.515x | -0.012370 | 0.025518 |
-| pickup_demand/spatial_holdout | 1.49x | 1.015x | -0.002626 | 0.008206 |
+| task/split | best CartoBoost-family row | CartoBoost RMSE | LightGBM RMSE | RMSE delta | R2 delta |
+| --- | --- | ---: | ---: | ---: | ---: |
+| duration/random | `cartoboost` | 0.278843 | 0.289829 | -0.010986 | 0.012637 |
+| duration/spatial_holdout | `cartoboost` | 0.303525 | 0.316291 | -0.012766 | 0.018206 |
+| fare/random | `cartoboost` | 0.139640 | 0.143692 | -0.004052 | 0.004239 |
+| fare/spatial_holdout | `cartoboost` | 0.148375 | 0.152686 | -0.004311 | 0.007854 |
+| pickup_demand/random | `cartoboost_graph_node2vec` | 0.403529 | 0.481552 | -0.078024 | 0.016572 |
+
+The pickup-demand spatial holdout intentionally skips all learned models. That
+split removes all zone demand history, so learned-model predictions collapse to
+priors; reporting LightGBM or CartoBoost there would be a fallback comparison,
+not a valid quality comparison.
+
+## Why CartoBoost Is Better Here
+
+Fare and duration are geotemporal row tasks. The winning row is base
+CartoBoost, not a graph or neural variant, because the target is already well
+explained by primitives LightGBM does not natively have: periodic hour/day
+splitters, diagonal and radial spatial splitters, and sparse-set taxi-zone
+membership. LightGBM receives comparable target-mean zone features, but it still
+has to approximate pickup/dropoff geometry with axis-aligned tabular splits.
+
+Pickup demand is different. It is a zone-time graph problem, and the best row is
+`cartoboost_graph_node2vec`. The graph encoder learns pickup-zone topology from
+observed zone relationships, then CartoBoost models that topology together with
+hour, weekday, and zone effects. That is the benchmark case where graph
+augmentation adds signal beyond the base geotemporal splitter set.
+
+Neural and graph rows are therefore not treated as universal upgrades. If the
+base geotemporal splitter set already captures the target, they can match the
+base row while adding training cost. Their value is specific: neural rows expose
+train-observed ID residual structure, and graph rows expose source-target or
+zone-topology structure that ordinary dense columns do not encode.
 
 The results are setup-specific evidence for this preset. They are not a general
-claim about production accuracy or package superiority.
-
-For temporal-spatial modeling, interpret this report as evidence for the exact
-NYC taxi preset: task definition, feature handling, row sample, split strategy,
-and estimator settings. Re-run the benchmark when changing those assumptions.
+claim about production accuracy or package superiority. Re-run the benchmark
+when changing task definitions, feature handling, row sample, split strategy,
+or estimator settings.

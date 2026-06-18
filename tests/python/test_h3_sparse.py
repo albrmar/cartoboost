@@ -1,7 +1,14 @@
+import sys
+import types
+
 import pytest
 from cartoboost import FeatureKind, FeatureSchema
 from cartoboost.h3 import (
+    build_h3_sparse_sets,
+    encode_h3_cells,
     expand_h3_sparse_set,
+    h3_parent_id,
+    latlng_to_h3_id,
     normalize_h3_id,
     scaffold_h3_parent_id,
 )
@@ -62,6 +69,52 @@ def test_expand_h3_sparse_set_adds_deterministic_scaffold_parents():
         )
         == expected
     )
+
+
+def test_h3_auto_encoding_uses_optional_h3_package(monkeypatch):
+    fake_h3 = types.SimpleNamespace(
+        latlng_to_cell=lambda lat, lng, resolution: (
+            "8928308280fffff" if lat < 40.75 else "8928308280bffff"
+        ),
+        cell_to_parent=lambda cell, resolution: (
+            "85283083fffffff" if cell.endswith("fffff") else "85283082fffffff"
+        ),
+    )
+    monkeypatch.setitem(sys.modules, "h3", fake_h3)
+
+    child = latlng_to_h3_id(40.7, -73.9, resolution=9)
+
+    assert child == int("8928308280fffff", 16)
+    assert h3_parent_id(child, parent_resolution=5) == int("85283083fffffff", 16)
+    assert encode_h3_cells([40.7], [-73.9], resolution=9) == [child]
+    assert build_h3_sparse_sets(
+        {"pickup_h3": ([40.7, 40.8], [-73.9, -74.0])},
+        resolution=9,
+        parent_resolutions=[5],
+    ) == {
+        "pickup_h3": [
+            sorted({int("8928308280fffff", 16), int("85283083fffffff", 16)}),
+            sorted({int("8928308280bffff", 16), int("85283082fffffff", 16)}),
+        ]
+    }
+
+
+def test_h3_auto_encoding_hard_fails_without_optional_dependency(monkeypatch):
+    monkeypatch.setitem(sys.modules, "h3", None)
+
+    with pytest.raises(ImportError, match="optional 'h3' package"):
+        latlng_to_h3_id(40.7, -73.9, resolution=9)
+
+
+def test_build_h3_sparse_sets_validates_coordinate_rows(monkeypatch):
+    fake_h3 = types.SimpleNamespace(
+        latlng_to_cell=lambda lat, lng, resolution: "8928308280fffff",
+        cell_to_parent=lambda cell, resolution: "85283083fffffff",
+    )
+    monkeypatch.setitem(sys.modules, "h3", fake_h3)
+
+    with pytest.raises(ValueError, match="same number of rows"):
+        build_h3_sparse_sets({"pickup_h3": ([40.7], [-73.9, -74.0])}, resolution=9)
 
 
 @pytest.mark.parametrize(
