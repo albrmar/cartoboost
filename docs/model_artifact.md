@@ -29,6 +29,16 @@ Graph support remains a precompute layer in front of the booster. A
 memberships before `CartoBoostRegressor.fit(...)`; the saved booster artifact
 then remains an ordinary CartoBoost model artifact.
 
+```mermaid
+flowchart LR
+    G["Graph encoder artifact"] --> B["GraphFeatureBundle"]
+    B --> X["Dense columns + optional sparse graph sets"]
+    X --> M["CartoBoostRegressor.fit"]
+    M --> A["CartoBoost JSON artifact"]
+    B --> P["Provenance metadata"]
+    P --> A
+```
+
 When graph-derived features are used, persist the graph feature provenance in
 `metadata` or `training_config` alongside the model. The bundle exposes
 `training_config_metadata()` with:
