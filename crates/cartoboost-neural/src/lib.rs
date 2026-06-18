@@ -2,6 +2,9 @@ pub mod artifact;
 pub mod encoder;
 mod error;
 pub mod features;
+pub mod graph_features;
+pub mod graphsage;
+pub mod node2vec;
 mod trainer;
 
 pub use artifact::{
@@ -12,4 +15,15 @@ pub use artifact::{
 pub use encoder::{EmbeddingTableEncoder, NeuralEncoder};
 pub use error::{NeuralError, Result};
 pub use features::NeuralFeatureBlock;
-pub use trainer::fit_embedding_table;
+pub use graph_features::{
+    compute_directional_features, materialize_source_target_pair_nodes, validate_directed_metapath,
+    DirectionalFeatureBlock, SourceTargetPairExpansion,
+};
+pub use graphsage::{
+    GraphSageConfig, GraphSageEncoder, GraphSageEncoderArtifact, GraphSageLoss,
+    GraphSageModelArtifact, HeteroGraph, HeteroGraphSageConfig, HeteroGraphSageEncoder,
+    HeteroGraphSageEncoderArtifact, HeteroTypedEdge, HinSageConfig, HinSageEncoder,
+    HinSageEncoderArtifact, HinSageGraph, HomogeneousGraph,
+};
+pub use node2vec::{Node2VecConfig, Node2VecEncoder, Node2VecEncoderArtifact, Node2VecLoss};
+pub use trainer::{fit_embedding_table, fit_embedding_table_with_options};

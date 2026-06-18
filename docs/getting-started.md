@@ -112,6 +112,50 @@ training and inference.
 See [Neural Features](neural-features.md) for full pipeline details, artifact
 format, and benchmarks.
 
+## Add Graph Features
+
+Use graph features when rows depend on relationships between entities, places,
+or source-target pairs. Graph encoders are implemented in Rust and exposed
+through Python wrappers.
+
+```python
+from cartoboost.graph import (
+    DirectionalFeature,
+    DirectionalityConfig,
+    GraphEmbeddingsConfig,
+    GraphEncoderConfig,
+    GraphEncoderFamily,
+    GraphFeatureTransformer,
+)
+
+config = GraphEmbeddingsConfig(
+    encoder=GraphEncoderConfig(
+        family=GraphEncoderFamily.HINSAGE,
+        input_dim=2,
+        node_type_count=2,
+        edge_type_triples=((0, 0, 1), (1, 1, 0)),
+        neighbor_samples=(10, 10),
+    ),
+    directionality=DirectionalityConfig(
+        preserve_source_target_roles=True,
+        compute_asymmetry_features=True,
+        directional_features=(DirectionalFeature.SOURCE_TARGET_EMBEDDING,),
+    ),
+)
+
+transformer = GraphFeatureTransformer.from_config(config)
+bundle = transformer.fit_transform(
+    node_features,
+    edges=typed_edges,
+    node_types=node_types,
+)
+```
+
+The resulting `GraphFeatureBundle` contains dense graph columns and provenance
+metadata that can be appended to your model input. See
+[Graph Features](graph-features.md) for node2vec, GraphSAGE,
+HeteroGraphSAGE, HinSAGE, directional features, and directed metapaths.
+
 ## Train From Dense CSV
 
 Create a small file named `train.csv`:

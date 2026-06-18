@@ -67,6 +67,8 @@ jobs:
 
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
+        with:
+          key: python-${{ matrix.os }}-${{ matrix.python-version }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -86,6 +88,7 @@ jobs:
         run: |
           uv run --group dev ruff format --check python tests scripts
           uv run --group dev ruff check python tests scripts
+          uv run --group dev ty check python tests scripts
 
       - name: Install native extension
         run: uv run --group dev maturin develop

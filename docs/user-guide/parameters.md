@@ -29,13 +29,16 @@ regression.
 
 ## Splitters
 
-The splitter list is the main CartoBoost modeling choice. Start with `axis` as a
-baseline, then add the splitters that match your data:
+The splitter list is the main CartoBoost modeling choice. By default,
+`splitters=None` uses `auto`: exact `axis` on small or constrained fits, and a
+fast histogram-axis search for larger dense L2 fits. Use `axis` explicitly when
+you need exact threshold search, then add the splitters that match your data:
 
 | Name | Purpose |
 | --- | --- |
+| `auto` | Default policy that chooses exact axis or histogram-axis training from the fit shape and objective. |
 | `axis` | Standard one-feature threshold splits. |
-| `axis_histogram`, `axis_hist`, `histogram` | Fast axis-threshold search for dense numeric features. |
+| `axis_histogram`, `axis_hist`, `histogram`, `axis_histogram:<bins>` | Fast axis-threshold search for dense numeric features. |
 | `diagonal_2d`, `diagonal2d` | Oblique 2D boundaries for coordinates or projected x/y features. |
 | `gaussian_2d`, `gaussian2d`, `radial` | Radial neighborhoods around local hotspots, depots, zones, or corridors. |
 | `periodic_time`, `periodic_24`, `periodic:<period>` | Wraparound time features such as hour-of-day, weekday, or seasonal phase. |
@@ -47,7 +50,8 @@ Common temporal-spatial combinations:
 
 | Problem shape | Suggested splitters |
 | --- | --- |
-| General tabular baseline | `["axis"]` |
+| General tabular baseline | `None` or `["auto"]` |
+| Exact axis baseline | `["axis"]` |
 | Dense location and time | `["axis", "diagonal_2d", "gaussian_2d", "periodic:24"]` |
 | Route or cell membership | `["axis", "periodic:24", "sparse_set"]` |
 | Location plus route cells | `["axis", "diagonal_2d", "gaussian_2d", "periodic:24", "sparse_set"]` |

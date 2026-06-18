@@ -27,3 +27,18 @@ Configuration: rows=2000, features=8, cells=128, neural_dim=16, train_frac=0.8, 
 - Scenarios with improvement: `5 / 6`
 - Best improvement: `0.2322`
 - Worst improvement: `-0.0157`
+
+## Interpretation
+
+The benchmark separates repeated-ID benefit from cold-ID risk. The hybrid model
+improves random, tail, temporal-blocked, and geo-blocked splits because the
+validation rows can still reuse useful ID residual structure. The cold-origin
+case is the warning case: when the tested IDs have no training history, fallback
+embeddings can underperform the structured CartoBoost baseline.
+
+Neural embedding improvements should therefore be judged by split type.
+`NeuralEmbeddingRegressor` supports out-of-fold residual embeddings through
+`oof_folds`, support-aware shrinkage through `support_prior_strength`, multi-key
+embeddings through 2D `ids`, hierarchical fallback through `fallback_ids`, and
+graph-aware fallback through `neighbor_ids`. Repeated-ID gains should not be
+described as cold-start generalization.

@@ -7,36 +7,55 @@
 [![Publish](https://github.com/TheCulliganMan/CartoBoost/actions/workflows/publish-pypi.yml/badge.svg)](https://github.com/TheCulliganMan/CartoBoost/actions/workflows/publish-pypi.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-CartoBoost is a Rust-backed Python regressor for temporal-spatial problems:
-demand by zone and time, route or lane performance, delivery ETA residuals,
-pickup/dropoff pricing effects, and other targets where place, time, and sparse
-location memberships matter.
+CartoBoost is a Rust-backed Python regression toolkit for temporal, spatial,
+geotemporal, and graph-derived prediction problems. It keeps the estimator
+workflow familiar to scikit-learn users while adding modeling primitives for
+place, time, sparse route membership, source-target directionality, and learned
+graph context.
 
-CartoBoost is useful when a plain tabular booster needs a lot of manual feature
-engineering to see the structure in the data. It can train with:
+Use CartoBoost when a standard tabular booster is a strong baseline, but your
+problem still requires hand-built features to represent:
 
-- Periodic splitters for hour-of-day, weekday, seasonality, or other wraparound
-  time features.
-- Diagonal 2D and Gaussian/radial splitters for spatial boundaries and local
-  neighborhoods.
-- Sparse-set splitters for route cells, zones, grid cells, encoded H3 cells, or
-  other list-valued location memberships.
-- Fuzzy routing for smoother behavior near split boundaries.
-- Linear leaves for local residual trends after the tree finds a region.
+- wraparound time such as hour-of-day, weekday, or seasonal cycles;
+- 2D spatial boundaries, corridors, depots, hotspots, and service regions;
+- list-valued memberships such as route cells, zones, markets, or H3 cells;
+- source-target movement such as origin-to-destination flows;
+- high-cardinality IDs that benefit from learned embeddings.
 
-The Python API follows sklearn conventions, so a data scientist can fit,
-evaluate, tune, explain, and save a model without working directly in Rust.
+The modeling core is implemented in Rust. Python provides the estimator API,
+configuration ergonomics, graph wrappers, benchmark tooling, and integration
+with common data-science workflows.
+
+## Core Capabilities
+
+CartoBoost supports:
+
+- L2 and quantile regression objectives.
+- Constant and linear residual leaves.
+- Axis, histogram-axis, diagonal 2D, Gaussian/radial 2D, periodic, sparse-set,
+  and fuzzy split behavior.
+- Dense numeric arrays plus list-valued sparse-set features.
+- Feature schemas for numeric, periodic, sparse-set, and model-contract
+  validation.
+- Native JSON model artifacts and portable weights artifacts.
+- Optional SHAP explanations, Optuna tuning, Polars input support, and ONNX
+  export for the supported dense axis-tree subset.
+- Rust-native neural embedding features for high-cardinality IDs.
+- Rust-native node2vec, GraphSAGE, heterogeneous GraphSAGE, and typed-schema
+  HinSAGE feature encoders exposed through thin Python wrappers.
 
 ## Install
 
-Install the released Python package from PyPI:
+Install the released package from PyPI:
 
 ```sh
 uv add cartoboost
 ```
 
-The PyPI release includes prebuilt Rust extension wheels for CPython 3.10-3.13
-on Linux, macOS, and Windows. For optional integrations:
+The published wheels include the Rust native extension for CPython 3.10-3.13 on
+supported Linux, macOS, and Windows targets.
+
+Optional integrations:
 
 ```sh
 uv add "cartoboost[explain]"  # SHAP support
@@ -52,19 +71,11 @@ python -c "import cartoboost; print(cartoboost.__version__)"
 cartoboost --help
 ```
 
-From a source checkout, use the development environment:
+For source development:
 
 ```sh
 uv sync --group dev
 uv run --group dev maturin develop
-```
-
-`maturin develop` builds `cartoboost._native` into the local `uv` environment.
-
-To tune CartoBoost with Optuna, install the optional dependency:
-
-```sh
-uv add "cartoboost[optuna]"
 ```
 
 ## Basic Regression
@@ -87,86 +98,10 @@ predictions = model.predict(X_test)
 The estimator supports sklearn-style `get_params`, `set_params`, `clone`,
 `Pipeline`, `GridSearchCV`, and NumPy-array predictions.
 
-## Neural Hybrid: Boosted-only vs Neural-Augmented Boosted
-
-The **neural hybrid** path is the ID-aware extension that appends learned embeddings
-to the boosted pipeline. Use it when entities (route IDs, H3 cells, users,
-locations) carry stable signal.
-
-Use **boosted-only** when you want CartoBoost by itself:
-
-```python
-from cartoboost import CartoBoostRegressor
-
-model = CartoBoostRegressor(n_estimators=100, splitters=["axis", "periodic:24"])
-model.fit(X_train, y_train)
-pred = model.predict(X_test)
-```
-
-Use **neural-augmented boosted** when you have high-cardinality IDs and want to
-append learned ID embeddings to the tree input. This is the hybrid workflow:
-
-```python
-from cartoboost import NeuralEmbeddingRegressor
-
-neural_model = NeuralEmbeddingRegressor(
-    dim=16,
-    use_residual=True,
-    base_model_kwargs={"n_estimators": 80, "splitters": ["axis"]},
-    final_model_kwargs={"n_estimators": 120, "splitters": ["axis", "periodic:24"]},
-)
-neural_model.fit(X_train, y_train, ids=ids_train)
-pred = neural_model.predict(X_test, ids=ids_test)
-```
-
-For a quick head-to-head comparison on one split, use:
-
-```python
-from cartoboost import benchmark_neural_vs_cartoboost
-
-results = benchmark_neural_vs_cartoboost(X, y, ids, split_ratio=0.8)
-```
-
-Return keys to inspect include:
-`structured_mae`, `hybrid_mae` (improvement over baseline), `cartoboost_fit_ms`,
-and `hybrid_fit_ms`. Use the helper as a quick signal check, then validate on your
-real temporal/spatial splits.
-
-Optuna works with the estimator through the standard sklearn contract:
-
-```python
-import optuna
-from sklearn.model_selection import cross_val_score
-
-from cartoboost import CartoBoostRegressor
-
-
-def objective(trial):
-  model = CartoBoostRegressor(
-    n_estimators=trial.suggest_int("n_estimators", 50, 300),
-    learning_rate=trial.suggest_float("learning_rate", 0.01, 0.2, log=True),
-    max_depth=trial.suggest_int("max_depth", 1, 6),
-    min_samples_leaf=trial.suggest_int("min_samples_leaf", 1, 32),
-  )
-  scores = cross_val_score(
-    model,
-    X_train,
-    y_train,
-    cv=3,
-    scoring="neg_mean_squared_error",
-  )
-  return float(-scores.mean())
-
-
-study = optuna.create_study(direction="minimize")
-study.optimize(objective, n_trials=30)
-best_model = CartoBoostRegressor(**study.best_params).fit(X_train, y_train)
-```
-
-## Temporal-Spatial Example
+## Temporal-Spatial Modeling
 
 Use dense columns for numeric location and time features, and sparse-set columns
-for memberships such as route cells or zones.
+for memberships such as route cells, zones, markets, or encoded H3 cells.
 
 ```python
 from cartoboost import CartoBoostRegressor
@@ -208,14 +143,53 @@ predictions = model.predict(
 
 Why this helps:
 
-- `periodic:24` can split midnight-adjacent hours as neighbors instead of
-  treating `23` and `0` as far apart.
-- `diagonal_2d` can learn oblique spatial boundaries that axis-only trees need
-  many steps to approximate.
-- `gaussian_2d` can isolate radial neighborhoods around a local hotspot.
-- `sparse_set` can split on list-valued route or cell membership without
-  building a wide one-hot matrix.
-- `fuzzy=True` can reduce hard jumps near spatial or temporal split boundaries.
+- `periodic:24` treats midnight-adjacent hours as neighbors.
+- `diagonal_2d` learns oblique spatial boundaries more directly than axis-only
+  trees.
+- `gaussian_2d` isolates radial neighborhoods around local hotspots.
+- `sparse_set` splits on list-valued route or cell membership without a wide
+  one-hot matrix.
+- `fuzzy=True` reduces hard jumps near spatial or temporal boundaries.
+
+## Graph Features
+
+CartoBoost can precompute Rust-native graph columns before booster training.
+Supported encoder families are node2vec, GraphSAGE, HeteroGraphSAGE, and
+HinSAGE. Direction is a first-class contract: `A -> B` and `B -> A` can be
+separate facts, features, and embeddings.
+
+See [Graph Features](docs/graph-features.md) for encoder configs, directional
+features, OD-pair nodes, metapaths, artifacts, and benchmark guidance.
+
+## Neural Embedding Hybrid
+
+Use `NeuralEmbeddingRegressor` when high-cardinality IDs carry stable signal and
+you want learned dense embeddings appended to the tree input.
+
+```python
+from cartoboost import NeuralEmbeddingRegressor
+
+model = NeuralEmbeddingRegressor(
+    dim=16,
+    use_residual=True,
+    base_model_kwargs={"n_estimators": 80, "splitters": ["axis"]},
+    final_model_kwargs={"n_estimators": 120, "splitters": ["axis", "periodic:24"]},
+)
+
+model.fit(X_train, y_train, ids=ids_train)
+predictions = model.predict(X_test, ids=ids_test)
+```
+
+For a quick head-to-head comparison on one split:
+
+```python
+from cartoboost import benchmark_neural_vs_cartoboost
+
+results = benchmark_neural_vs_cartoboost(X, y, ids, split_ratio=0.8)
+```
+
+Use this helper as an initial signal check, then validate with your real
+temporal, spatial, grouped, or out-of-time split.
 
 ## Save, Load, And Explain
 
@@ -231,14 +205,16 @@ explanation = loaded.explain_shap(
 )
 ```
 
-Native artifacts are versioned JSON and include optional metadata, feature
-schema, and training configuration fields. See
-[Model Artifacts](docs/model_artifact.md) and [SHAP Support](docs/shap.md).
+Native model artifacts are versioned JSON and include optional metadata, feature
+schema, and training configuration fields. Graph and neural encoders have their
+own artifacts and should be persisted alongside the booster when features are
+precomputed offline.
 
 ## CLI
 
-The CLI handles dense numeric CSV train, predict, eval, and inspect workflows.
-Use the Python API for list-valued sparse route-cell features.
+The CLI supports dense numeric CSV train, predict, eval, and inspect workflows.
+Use the Python API for list-valued sparse route-cell features and graph-derived
+feature pipelines.
 
 ```sh
 cartoboost train --data train.csv --config configs/regression.toml --model-out model.json
@@ -248,13 +224,19 @@ cartoboost eval --model model.json --data test_with_target.csv
 
 ## Documentation
 
+- [Documentation Home](docs/index.md)
+- [Installation](docs/installation.md)
 - [Getting Started](docs/getting-started.md)
 - [Python Estimator](docs/user-guide/python-estimator.md)
 - [Parameters](docs/user-guide/parameters.md)
 - [Spatial Modeling](docs/spatial_modeling.md)
+- [Graph Features](docs/graph-features.md)
+- [Neural Features](docs/neural-features.md)
 - [Evaluation Protocol](docs/evaluation_protocol.md)
 - [Feature Schema](docs/feature_schema.md)
 - [Sparse Features](docs/sparse_features.md)
 - [Model Artifacts](docs/model_artifact.md)
-- [Neural Features](docs/neural-features.md)
+- [Python API Reference](docs/reference/python-api.md)
+- [CLI Reference](docs/reference/cli.md)
+- [Benchmarks](docs/benchmarks/index.md)
 - [Limitations](docs/limitations.md)

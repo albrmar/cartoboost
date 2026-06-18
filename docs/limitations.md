@@ -39,6 +39,17 @@ splitters match the structure in your data.
 - Fuzzy kernels change only the interpolation shape inside the fuzzy band; they
   do not learn a bandwidth automatically.
 
+## Neural Embedding Scope
+
+- Neural ID embeddings are deterministic dense lookup features appended before
+  CartoBoost fitting; they are not an online neural scoring runtime.
+- Repeated-ID benchmark gains do not imply cold-ID generalization. Cold IDs use
+  fallback vectors unless the caller provides hierarchical, graph-aware, or
+  parent-ID fallback structure.
+- Neural embedding claims should state the split protocol and should be
+  validated separately for repeated-ID, temporal, spatial, and cold-group
+  holdouts.
+
 ## Artifact Scope
 
 - CartoBoost JSON model and weights artifacts are the recommended save/load path.

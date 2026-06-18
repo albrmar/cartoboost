@@ -533,13 +533,26 @@ fn cli_splitters(value: &str) -> CliResult<Vec<SplitterKind>> {
             return Err("splitter list contains an empty value".into());
         }
         let splitter = match name {
+            "auto" => SplitterKind::Auto,
             "axis" => SplitterKind::Axis,
+            "axis_histogram" | "axis_hist" | "histogram" => {
+                SplitterKind::AxisHistogram { bins: 64 }
+            }
             "diagonal_2d" | "diagonal2d" => SplitterKind::Diagonal2D,
             "gaussian_2d" | "gaussian2d" | "radial" => SplitterKind::Gaussian2D,
             "periodic_time" | "periodic_24" => SplitterKind::Periodic { period: 24.0 },
             "sparse_set" | "sparse" => SplitterKind::SparseSet,
             _ => {
-                return Err(format!("unknown splitter '{name}'").into());
+                if let Some(bins) = name
+                    .strip_prefix("axis_histogram:")
+                    .or_else(|| name.strip_prefix("axis_hist:"))
+                    .and_then(|bins| bins.parse::<usize>().ok())
+                    .filter(|bins| *bins >= 2)
+                {
+                    SplitterKind::AxisHistogram { bins }
+                } else {
+                    return Err(format!("unknown splitter '{name}'").into());
+                }
             }
         };
         splitters.push(splitter);

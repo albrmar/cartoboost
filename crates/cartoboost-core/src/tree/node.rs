@@ -268,12 +268,14 @@ impl Model {
 
     pub fn predict(&self, x: &Dataset) -> Vec<f64> {
         (0..x.n_rows())
+            .into_par_iter()
             .map(|row| self.predict_dataset_row(x, row))
             .collect()
     }
 
     pub fn try_predict(&self, x: &Dataset) -> Result<Vec<f64>> {
         (0..x.n_rows())
+            .into_par_iter()
             .map(|row| self.try_predict_dataset_row(x, row))
             .collect()
     }
@@ -286,6 +288,7 @@ impl Model {
             ));
         }
         Ok((0..x.n_rows())
+            .into_par_iter()
             .map(|row| self.predict_additive_dataset_row(x, row))
             .collect())
     }
@@ -310,7 +313,7 @@ impl Model {
                 self.feature_count
             )));
         }
-        if values.iter().any(|value| !value.is_finite()) {
+        if values.par_iter().any(|value| !value.is_finite()) {
             return Err(CartoBoostError::InvalidInput(
                 "dataset values must be finite".to_string(),
             ));
@@ -409,7 +412,7 @@ impl Model {
                 self.feature_count
             )));
         }
-        if values.iter().any(|value| !value.is_finite()) {
+        if values.par_iter().any(|value| !value.is_finite()) {
             return Err(CartoBoostError::InvalidInput(
                 "dataset values must be finite".to_string(),
             ));
@@ -463,7 +466,7 @@ impl Model {
                 self.feature_count
             )));
         }
-        if values.iter().any(|value| !value.is_finite()) {
+        if values.par_iter().any(|value| !value.is_finite()) {
             return Err(CartoBoostError::InvalidInput(
                 "dataset values must be finite".to_string(),
             ));
@@ -512,24 +515,27 @@ impl Model {
         for stump in stumps {
             let scaled_left = self.learning_rate * stump.left_value;
             let scaled_right = self.learning_rate * stump.right_value;
-            for (row, prediction) in predictions.iter_mut().enumerate() {
-                let value = values[row * cols + stump.feature];
-                let update = if value.is_finite() {
-                    if value <= stump.threshold {
+            predictions
+                .par_iter_mut()
+                .enumerate()
+                .for_each(|(row, prediction)| {
+                    let value = values[row * cols + stump.feature];
+                    let update = if value.is_finite() {
+                        if value <= stump.threshold {
+                            scaled_left
+                        } else {
+                            scaled_right
+                        }
+                    } else if stump.missing_goes_left {
                         scaled_left
                     } else {
                         scaled_right
-                    }
-                } else if stump.missing_goes_left {
-                    scaled_left
-                } else {
-                    scaled_right
-                };
-                *prediction += update;
-            }
+                    };
+                    *prediction += update;
+                });
         }
         predictions
-            .into_iter()
+            .into_par_iter()
             .map(|prediction| self.transform_prediction(prediction))
             .collect()
     }

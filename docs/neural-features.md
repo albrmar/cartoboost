@@ -1,7 +1,7 @@
-# Neural Features (Phase 1): Embedding-Table → Neural-Augmented Boosted Model
+# Neural And Graph-Derived Features
 
-This document defines the complete neural hybrid (neural-augmented boosting) pattern
-used in this repository:
+This document defines the neural and graph-derived feature pattern used in this
+repository:
 
 1. Train neural-style embeddings using the Rust-native `NeuralEmbeddingFeatures.fit`.
 2. Serialize embeddings into a versioned artifact.
@@ -12,9 +12,9 @@ used in this repository:
 This keeps all gradient-boosting behavior in the existing CartoBoost runtime while
 adding learned dense context through generated columns.
 
-## 1) Why this architecture
+## Why This Architecture
 
-Neural-augmented boosting is intentionally conservative in phase 1.
+Neural-augmented boosting is intentionally conservative.
 
 - **No neural runtime inside scoring path**: inference remains deterministic Rust
   and fast.
@@ -27,15 +27,15 @@ The pattern is:
 
 ```text
 raw row/context
-    ↓
+    |
 existing feature assembler
-    ↓
+    |
 structured dense + sparse
-    ↓
+    |
 NeuralEmbeddingFeatures lookup
-    ↓
+    |
 append generated dense embedding columns
-    ↓
+    |
 CartoBoost predict
 ```
 
@@ -49,7 +49,7 @@ flowchart LR
     E --> F[Final prediction]
 ```
 
-## 2) What is an embedding feature here?
+## Embedding Feature Contract
 
 For this phase, a **neural feature** is a deterministic vector lookup keyed by an
 ID:
@@ -67,7 +67,39 @@ Example for `dim=16` and origin cell embedding:
 Important: these are just dense feature columns from the perspective of the
 booster.
 
-## 3) Implementation surface (Phase 1)
+## When Neural Embeddings Help
+
+Neural ID embeddings are useful when the training and prediction populations
+share stable IDs and those IDs carry residual signal after the structured
+features have been modeled. Random, tail, or temporal splits can show strong
+gains because validation rows often reuse IDs observed during training.
+
+They are much weaker under cold-ID or cold-zone holdouts. In that setting, the
+model must use a fallback vector for unseen IDs, so the embedding table cannot
+recover ID-specific effects that were never observed. Report neural-embedding
+results with the split protocol; do not present repeated-ID gains as evidence of
+cold-start generalization.
+
+Implemented controls:
+
+- Set `oof_folds > 1` on `NeuralEmbeddingRegressor` to train final-model
+  embeddings with out-of-fold residuals, so the final booster sees realistic
+  embedding noise instead of fully in-sample residual lookups.
+- Tune `support_prior_strength` to control support-aware shrinkage: rare IDs
+  stay closer to prior vectors, while frequent IDs can receive stronger
+  individualized vectors.
+- Pass `fallback_ids` to `fit`, `predict`, or `transform` for hierarchical
+  fallback chains such as zone to same-service-zone representative to same-
+  borough representative to global representative.
+- Pass 2D `ids` to `NeuralEmbeddingRegressor` for multi-key embeddings, such as
+  pickup zone, dropoff zone, origin-destination pair, zone-hour bucket, or route
+  cluster.
+- Pass `neighbor_ids` for graph-aware fallback on unseen spatial IDs by
+  averaging known adjacent-zone or typed-neighbor embeddings.
+- Validate the embedding dimension, fallback mode, and residual-vs-target
+  training choice under the same holdout used for the product claim.
+
+## Implementation Surface
 
 ### Python ownership
 
@@ -92,6 +124,264 @@ booster.
   - fallback logic (`zero`, `global_mean`, parent placeholder)
   - encoder trait and dense block assembly utilities
   - deterministic feature name generation (`name_00`, `name_01`, ...)
+  - node2vec, GraphSAGE, heterogeneous GraphSAGE, and typed-schema HinSAGE encoders
+
+Graph neural support follows the same ownership rule: typed graph semantics and
+node2vec, GraphSAGE, HeteroGraphSAGE, and HinSAGE execution live in Rust, while
+Python provides configuration and wrapper ergonomics. The native HinSAGE surface
+validates node types, relation triples, edge type consistency, relation-ordered
+neighbor sampling caps, artifact serialization, and link-prediction feature
+construction. Python callers pass typed integer arrays into the Rust encoder
+rather than reimplementing graph encoder logic in Python.
+
+## Directional Geotemporal Graph Features
+
+CartoBoost graph support should treat directionality as a first-class schema
+concept. Many geotemporal prediction problems are not symmetric: movement from
+`A` to `B` differs from `B` to `A`, outbound behavior differs from inbound
+behavior, and source-target imbalance often carries predictive signal. The graph
+layer should therefore support directed edge types, reverse-edge materialization,
+source/target role metadata, OD-pair nodes, directed random walks, and
+directional feature emission into the booster.
+
+Directional source-target semantics are required for any geotemporal graph. For
+Robinson-style freight, that means OD direction, inbound/outbound market behavior,
+directional imbalance, and reverse-lane contrast are core features, not optional
+extras.
+
+### Why this is required
+
+- `origin -> destination`
+- `upstream -> downstream`
+- `supply -> demand`
+- `source market -> sink market`
+
+and in brokerage deployments, at minimum:
+
+- `origin_h3 -> destination_h3`
+- `carrier -> lane`
+- `shipper -> lane`
+- `rep -> account`
+- `facility -> market`
+- `market_A -> market_B`
+
+### Required design patterns
+
+#### 1) Directed edge types
+
+The schema should preserve directional relation semantics explicitly rather than
+collapsing edges into single undirected facts.
+
+Do not collapse directional market facts into one undirected edge:
+
+```yaml
+edge: market_connected_to_market
+```
+
+Use typed source-target relations instead:
+
+```yaml
+graph:
+  directed: true
+
+  node_types:
+    - source_h3
+    - target_h3
+    - od_pair
+    - entity
+    - time_bucket
+
+  edge_types:
+    - [source_h3, flows_to, target_h3]
+    - [target_h3, reverse_flows_to, source_h3]
+    - [entity, active_from, source_h3]
+    - [entity, active_to, target_h3]
+    - [entity, observed_on, od_pair]
+    - [od_pair, observed_in, time_bucket]
+
+  directionality:
+    materialize_reverse_edges: true
+    preserve_source_target_roles: true
+    create_od_pair_nodes: true
+    compute_asymmetry_features: true
+```
+
+Freight-style schemas should model directional facts explicitly:
+
+```yaml
+edge_types:
+  - [origin_h3, flows_to, destination_h3]
+  - [destination_h3, reverse_flows_to, origin_h3]
+  - [carrier, serves_outbound_from, origin_h3]
+  - [carrier, serves_inbound_to, destination_h3]
+  - [shipper, tenders, od_pair]
+  - [od_pair, quoted_by, carrier]
+```
+
+This lets the model distinguish `Chicago -> Dallas` from `Dallas -> Chicago`.
+Those are separate graph facts, separate features, and often separate learned
+embeddings.
+
+If reverse edges are missing from the source, they can be materialized:
+
+```yaml
+directionality:
+  materialize_reverse_edges: true
+  reverse_relation_suffix: "_reverse"
+  preserve_source_target_roles: true
+  create_od_pair_nodes: true
+```
+
+The current implementation materializes reverse typed relations when enabled in
+`GraphSageFeatureEncoder`/`HeteroGraphSageFeatureEncoder`. The suffix controls
+relation naming and `preserve_source_target_roles` is a schema-level requirement:
+it signals that `source` and `target` columns are not interchangeable.
+When `create_od_pair_nodes` is enabled through `GraphFeatureTransformer`, callers
+must pass `node_ids`; CartoBoost then appends stable tuple IDs such as
+`("od_pair", source, target)` with zero feature rows for newly materialized pair
+nodes.
+
+Directional feature extraction is opt-in and controlled through the
+`directionality.compute_asymmetry_features` flag (defaults to `false` if the
+directionality block is not enabled):
+
+```yaml
+directionality:
+  compute_asymmetry_features: true
+  directional_feature_prefix: "graph"
+  # optional selective subset of emitted columns
+  directional_features:
+    - graph_source_target_embedding
+    - graph_target_source_embedding
+    - graph_forward_reverse_similarity_delta
+    - graph_source_outbound_strength
+    - graph_target_inbound_strength
+    - graph_flow_imbalance_ratio
+    - graph_directed_temporal_drift
+    - graph_source_target_affinity
+    - graph_target_source_affinity
+  materialize_reverse_edges: true
+  reverse_relation_suffix: "_reverse"
+```
+
+#### Native HinSAGE support
+
+For typed heterogeneous graphs, use the HinSAGE family with an explicit node
+type count, edge-type triples, and optional per-relation neighbor sampling caps:
+
+```yaml
+graph_embeddings:
+  encoder:
+    family: hinsage
+    input_dim: 8
+    node_type_count: 5
+    edge_type_triples:
+      - [0, 0, 1]  # source_h3 flows_to target_h3
+      - [1, 1, 0]  # target_h3 reverse_flows_to source_h3
+      - [3, 2, 0]  # entity active_from source_h3
+      - [3, 3, 1]  # entity active_to target_h3
+      - [3, 4, 2]  # entity observed_on od_pair
+    neighbor_samples: [25, 25, 10, 10, 20]
+    hidden_dims: [16]
+    epochs: 20
+
+  directionality:
+    materialize_reverse_edges: true
+    preserve_source_target_roles: true
+    create_od_pair_nodes: true
+    compute_asymmetry_features: true
+```
+
+`GraphFeatureTransformer.fit_transform(...)` requires `node_types` when this
+family is selected, and edges must be `(source, target, relation)` integer
+triples. The Rust layer rejects edges whose source/target node types do not
+match the configured relation schema. The Python `HinSageFeatureEncoder` also
+exposes `link_embeddings(embeddings, pairs)` for source-target link-prediction
+features.
+
+#### 2) Direction-aware feature generation
+
+Directional features should be explicit output channels into the booster, not just a
+latent side effect.
+
+Recommended feature families:
+
+- `source_target_embedding`
+- `target_source_embedding`
+- `forward_reverse_similarity_delta`
+- `source_outbound_strength`
+- `target_inbound_strength`
+- `flow_imbalance_ratio`
+- `directed_temporal_drift`
+- `source_target_affinity`
+- `target_source_affinity`
+- `forward_flow_weight`
+- `reverse_flow_weight`
+- `flow_asymmetry`
+- `source_out_degree_weighted`
+- `target_in_degree_weighted`
+- `directed_temporal_drift`
+- `graph_od_forward_similarity`
+- `graph_od_reverse_similarity`
+- `graph_origin_outbound_strength`
+- `graph_destination_inbound_strength`
+- `graph_forward_flow_volume_30d`
+- `graph_reverse_flow_volume_30d`
+- `graph_flow_imbalance_ratio`
+- `graph_directional_market_drift`
+- `graph_directional_acceptance_rate`
+- `graph_directional_price_pressure`
+
+Generic package-level names should remain source-target oriented rather than
+freight-specific:
+
+- `source_target_affinity`
+- `target_source_affinity`
+- `forward_flow_weight`
+- `reverse_flow_weight`
+- `flow_asymmetry`
+- `source_out_degree_weighted`
+- `target_in_degree_weighted`
+- `directed_temporal_drift`
+
+#### 3) Direction-aware walks and metapaths
+
+Directional metapaths should be used when building random-walk contexts:
+
+```yaml
+meta_paths:
+  - [source_h3, flows_to, target_h3, receives_from, source_h3]
+  - [entity, active_from, source_target_pair, observed_in, time_bucket]
+  - [source_market, sends_to, target_market, supplied_by, entity]
+  - [carrier, serves_outbound_from, origin_h3, flows_to, target_h3, reverse_flows_to, origin_h3]
+  - [carrier, serves_inbound_to, destination_h3, reverse_flows_to, origin_h3]
+  - [shipper, tenders, od_pair, quoted_by, carrier]
+```
+
+`DirectedMetaPath` validates these node/relation/node paths against
+`GraphSchema`, and `MetaPathWalkGenerator` can consume the relation path directly
+for random-walk contexts. This makes directed source-target semantics part of the
+walk contract rather than an informal naming convention. This prevents embeddings
+from learning only that two places are near or co-observed when the useful
+relationship is true only in one direction.
+
+### Output contract (directional contract)
+
+```yaml
+outputs:
+  directional_features:
+    - source_target_embedding
+    - target_source_embedding
+    - forward_reverse_similarity_delta
+    - source_outbound_strength
+    - target_inbound_strength
+    - flow_imbalance_ratio
+    - directed_temporal_drift
+```
+
+At minimum, this contract means forward and reverse behavior must be separately
+captured in produced features; aggregating them into one symmetric value loses
+predictive signal in geotemporal settings.
 
 ## 4) Full training flow (residual mode)
 
@@ -276,7 +566,7 @@ flowchart TD
 
 ## 6) API contracts
 
-### Required artifact metadata (Phase 1)
+### Required Artifact Metadata
 
 - `artifact_type`
 - `artifact_version`
@@ -457,7 +747,7 @@ in cold-sparse settings by widening the feature space with structured dense embe
 - **Non-finite IDs**: missing/infinite IDs cannot be encoded.
 - **Dimension mismatch**: embedding `dim` in transformer and model must match.
 
-## 10) What changed in this implementation
+## 10) Implementation Summary
 
 - Added neural-augmented boosted estimator + benchmark helper:
   - `python/cartoboost/neural/pipeline.py`
@@ -467,3 +757,31 @@ in cold-sparse settings by widening the feature space with structured dense embe
 - Added Python regression tests + benchmark script.
 - Added Python API docs for this feature in:
   - `docs/reference/python-api.md`
+
+## 11) Graph Encoder Performance Notes
+
+node2vec, GraphSAGE, heterogeneous GraphSAGE, and HinSAGE encoders are
+available through Rust-native classes: `cartoboost.Node2VecEncoder`,
+`cartoboost.GraphSageEncoder`, `cartoboost.HeteroGraphSageEncoder`, and
+`cartoboost.HinSageEncoder`.
+
+Complexity is approximately:
+
+- `O(N * H * D)` for dense transformations per epoch.
+- `O(E * H * D)` for edge-oriented supervision work per epoch.
+
+Where:
+
+- `N` = number of nodes,
+- `E` = number of typed edges,
+- `H` = number of GraphSAGE layers,
+- `D` = embedding width.
+
+Practical benchmarking checklist before production rollout:
+
+1. Compare `fit_ms` and `predict_ms` against the neural-embedding baseline on
+   at least one random split and one blocked split.
+2. Keep `seed`, `dim`, and relation semantics fixed between runs.
+3. Check artifact load path (`load_artifact_json`) for warm-started inference speed.
+4. Confirm deterministic outputs by serializing and restoring artifacts with
+   `save_artifact_json` / `to_artifact_json` for one production snapshot.

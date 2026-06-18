@@ -30,7 +30,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--sample-size", type=int, default=25_000)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--tasks", default="")
-    parser.add_argument("--models", default="cartoboost,cartoboost_reference,lightgbm,xgboost,mean")
+    parser.add_argument(
+        "--models",
+        default=(
+            "cartoboost,cartoboost_reference,cartoboost_neural,"
+            "cartoboost_graph_node2vec,cartoboost_graph_graphsage,"
+            "cartoboost_graph_hetero_graphsage,cartoboost_graph_hinsage,"
+            "lightgbm,xgboost,mean"
+        ),
+    )
     parser.add_argument("--n-estimators", type=int, default=100)
     parser.add_argument("--cartoboost-n-estimators", type=int, default=100)
     parser.add_argument("--learning-rate", type=float, default=0.08)
@@ -57,6 +65,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--xgboost-colsample-bytree", type=float, default=1.0)
     parser.add_argument("--zone-treatment", default="target_mean", choices=["raw", "target_mean"])
     parser.add_argument("--zone-target-smoothing", type=float, default=20.0)
+    parser.add_argument("--model-workers", type=int, default=1)
     parser.add_argument("--n-threads", type=int, default=1)
     parser.add_argument("--no-download", action="store_true")
     parser.add_argument("--synthetic-smoke", action="store_true")
@@ -110,6 +119,8 @@ def benchmark_command(args: argparse.Namespace, output_dir: Path) -> list[str]:
         args.zone_treatment,
         "--zone-target-smoothing",
         str(args.zone_target_smoothing),
+        "--model-workers",
+        str(args.model_workers),
         "--n-threads",
         str(args.n_threads),
         "--seed",

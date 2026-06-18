@@ -75,6 +75,27 @@ def test_cli_dense_train_predict_eval_roundtrip(tmp_path: Path) -> None:
     assert '"mae":' in evaluate.stdout
 
 
+def test_cli_train_accepts_auto_and_axis_histogram_splitters(tmp_path: Path) -> None:
+    data = _write_training_csv(tmp_path)
+    for splitter in ["auto", "axis_histogram:512"]:
+        config = tmp_path / f"{splitter.replace(':', '_')}.toml"
+        config.write_text(f'target = "target"\nsplitter = "{splitter}"\n', encoding="utf-8")
+        model = tmp_path / f"{splitter.replace(':', '_')}.cartoboost"
+
+        result = _run_cli(
+            "train",
+            "--data",
+            str(data),
+            "--config",
+            str(config),
+            "--model-out",
+            str(model),
+        )
+
+        assert result.returncode == 0, result.stderr
+        assert model.exists()
+
+
 def test_cli_help_exits_zero() -> None:
     result = _run_cli("--help")
 

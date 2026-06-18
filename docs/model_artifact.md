@@ -22,6 +22,35 @@ The optional fields make artifacts self-describing. For temporal-spatial models,
 the important fields are the feature schema, sparse-set names, splitters, fuzzy
 settings, and leaf configuration.
 
+## Graph-Derived Features
+
+Graph support remains a precompute layer in front of the booster. A
+`GraphFeatureBundle` appends dense graph columns and optional sparse graph
+memberships before `CartoBoostRegressor.fit(...)`; the saved booster artifact
+then remains an ordinary CartoBoost model artifact.
+
+When graph-derived features are used, persist the graph feature provenance in
+`metadata` or `training_config` alongside the model. The bundle exposes
+`training_config_metadata()` with:
+
+- generated graph feature names
+- sparse graph set names
+- graph row count and embedding width
+- encoder and relation provenance
+
+This is intentionally compatible with JSON weights artifacts. ONNX export should
+still be treated as dense-axis-tree only; graph encoders and random-walk
+precomputation are not represented inside ONNX.
+
+Rust-native graph encoder artifacts are separate from the booster artifact.
+`Node2VecEncoder`, `GraphSageEncoder`, `HeteroGraphSageEncoder`, and
+`HinSageEncoder` can be saved as JSON through their encoder APIs. node2vec
+artifacts include walk/training hyperparameters and fitted node embeddings;
+HinSAGE artifacts include the typed node schema, relation triples,
+relation-ordered neighbor sampling settings, fitted weights, and training loss
+curve. Persist the encoder artifact path or checksum in booster metadata when
+graph features are generated offline.
+
 ## Save And Load
 
 ```python

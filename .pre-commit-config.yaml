@@ -1,0 +1,25 @@
+repos:
+  - repo: https://github.com/astral-sh/uv-pre-commit
+    rev: 0.11.21
+    hooks:
+      - id: uv-lock
+
+  - repo: local
+    hooks:
+      - id: ruff-format
+        name: ruff format
+        entry: uv run --locked --group dev ruff format --check python tests scripts
+        language: system
+        pass_filenames: false
+
+      - id: ruff-check
+        name: ruff check
+        entry: uv run --locked --group dev ruff check python tests scripts
+        language: system
+        pass_filenames: false
+
+      - id: ty-check
+        name: ty check
+        entry: uv run --locked --group dev ty check python tests scripts
+        language: system
+        pass_filenames: false

@@ -52,7 +52,7 @@ The config file is a simple TOML-like `key = value` file. Supported keys:
 | `min_gain` | Minimum gain required to split. |
 | `loss` | `l2`, `squared_error`, `l1`, `mae`, `absolute_error`, `quantile`, or `pinball`. |
 | `quantile_alpha` | Quantile alpha in `(0, 1)`. |
-| `splitter` or `splitters` | Comma-separated splitter names. |
+| `splitter` or `splitters` | Comma-separated splitter names, including `auto`, `axis`, `axis_histogram:<bins>`, spatial, periodic, and sparse splitters. |
 | `leaf_predictor` | `constant` or `linear`. |
 | `fuzzy` | Boolean fuzzy routing flag. |
 | `fuzzy_bandwidth` | Non-negative fuzzy transition bandwidth. |
@@ -69,7 +69,7 @@ learning_rate = 0.05
 max_depth = 4
 min_samples_leaf = 20
 loss = "l2"
-splitter = "axis,periodic_24"
+splitter = "auto"
 leaf_predictor = "constant"
 fuzzy_kernel = "linear"
 ```
