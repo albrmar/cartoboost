@@ -7,10 +7,16 @@ from pathlib import Path
 
 import matplotlib.image as mpimg
 import numpy as np
+import pytest
 
 from scripts.run_nyc_taxi_quality_benchmarks import (
     BenchmarkTask,
+    ZoneContext,
+    build_real_tasks,
+    clean_tlc_frame,
     graph_augmented_split_features,
+    pickup_demand_cold_zone_fraction,
+    sample_tlc_frame,
 )
 
 
@@ -99,6 +105,56 @@ def test_nyc_taxi_quality_benchmark_skips_missing_optional_models(tmp_path: Path
                 model = split["models"][model_name]
                 if model["status"] == "skipped":
                     assert "not installed" in model["reason"]
+
+
+def test_real_pickup_demand_aggregates_full_cleaned_frame_when_rows_are_sampled():
+    pandas = pytest.importorskip("pandas")
+    frame = pandas.DataFrame(
+        {
+            "tpep_pickup_datetime": pandas.to_datetime(
+                [
+                    "2024-01-01 08:00:00",
+                    "2024-01-01 08:15:00",
+                    "2024-01-01 08:30:00",
+                    "2024-01-02 09:00:00",
+                ]
+            ),
+            "tpep_dropoff_datetime": pandas.to_datetime(
+                [
+                    "2024-01-01 08:10:00",
+                    "2024-01-01 08:25:00",
+                    "2024-01-01 08:40:00",
+                    "2024-01-02 09:12:00",
+                ]
+            ),
+            "passenger_count": [1.0, 1.0, 1.0, 1.0],
+            "trip_distance": [1.0, 1.2, 1.1, 2.0],
+            "fare_amount": [8.0, 9.0, 8.5, 12.0],
+            "total_amount": [10.0, 11.0, 10.5, 14.0],
+            "PULocationID": [10, 10, 10, 20],
+            "DOLocationID": [20, 20, 20, 10],
+        }
+    )
+    cleaned = clean_tlc_frame(frame)
+    sampled_rows = sample_tlc_frame(cleaned, sample_size=2, seed=0)
+    tasks = build_real_tasks(
+        sampled_rows,
+        {
+            10: ZoneContext(borough_code=1, service_zone_code=4),
+            20: ZoneContext(borough_code=2, service_zone_code=2),
+        },
+        demand_frame=cleaned,
+    )
+
+    duration = next(task for task in tasks if task.name == "duration")
+    demand = next(task for task in tasks if task.name == "pickup_demand")
+    assert len(duration.target) == 2
+    demand_by_zone = {
+        int(features[0]): float(target)
+        for features, target in zip(demand.features, demand.target, strict=True)
+    }
+    assert demand_by_zone[10] == np.log1p(3.0)
+    assert demand_by_zone[20] == np.log1p(1.0)
 
 
 def test_nyc_taxi_quality_benchmark_runs_neural_and_graph_models(tmp_path: Path):
@@ -202,3 +258,41 @@ def test_pickup_demand_graph_uses_zone_context_topology_for_cold_holdout():
     assert train_augmented.shape[1] == test_augmented.shape[1]
     assert config["graph_feature_count"] == train_augmented.shape[1] - task.features.shape[1]
     assert float(np.std(test_augmented[:, task.features.shape[1] :])) > 0.0
+
+
+def test_pickup_demand_cold_zone_fraction_detects_spatial_holdout():
+    task = BenchmarkTask(
+        name="pickup_demand",
+        display_name="Pickup-zone demand",
+        description="fixture",
+        features=np.asarray(
+            [
+                [1.0, 8.0, 0.0],
+                [1.0, 9.0, 0.0],
+                [2.0, 8.0, 0.0],
+                [3.0, 8.0, 0.0],
+            ],
+            dtype=float,
+        ),
+        target=np.asarray([1.0, 1.2, 1.4, 1.6], dtype=float),
+        pickup_zones=np.asarray([1, 1, 2, 3], dtype=int),
+        feature_names=["PULocationID", "hour", "dayofweek"],
+        sparse_sets={"pickup_zone": [[1], [1], [2], [3]]},
+    )
+
+    assert (
+        pickup_demand_cold_zone_fraction(
+            task,
+            np.asarray([0, 1, 2], dtype=int),
+            np.asarray([3], dtype=int),
+        )
+        == 1.0
+    )
+    assert (
+        pickup_demand_cold_zone_fraction(
+            task,
+            np.asarray([0, 2, 3], dtype=int),
+            np.asarray([1], dtype=int),
+        )
+        == 0.0
+    )

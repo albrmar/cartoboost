@@ -458,7 +458,7 @@ def load_tlc_frame(paths: list[Path]) -> Any:
     return pandas.concat(frames, ignore_index=True)
 
 
-def clean_tlc_frame(frame: Any, *, sample_size: int, seed: int) -> Any:
+def clean_tlc_frame(frame: Any) -> Any:
     pandas = optional_import("pandas")
     if pandas is None:
         raise RuntimeError("pandas is required for TLC frame cleaning")
@@ -482,18 +482,24 @@ def clean_tlc_frame(frame: Any, *, sample_size: int, seed: int) -> Any:
         & data["DOLocationID"].between(1, 263)
     )
     data = data.loc[mask].copy()
-    if len(data) > sample_size:
-        data = data.sample(n=sample_size, random_state=seed)
     data["log_duration_sec"] = np.log1p(data["duration_sec"].astype(float))
     data["log_total_amount"] = np.log1p(data["total_amount"].astype(float))
     return data.reset_index(drop=True)
+
+
+def sample_tlc_frame(frame: Any, *, sample_size: int, seed: int) -> Any:
+    if sample_size > 0 and len(frame) > sample_size:
+        return frame.sample(n=sample_size, random_state=seed).reset_index(drop=True)
+    return frame.reset_index(drop=True)
 
 
 def build_real_tasks(
     frame: Any,
     zone_lookup: dict[int, ZoneContext],
     zone_adjacency: dict[int, list[int]] | None = None,
+    demand_frame: Any | None = None,
 ) -> list[BenchmarkTask]:
+    demand_source = frame if demand_frame is None else demand_frame
     return [
         row_task(
             frame,
@@ -513,7 +519,7 @@ def build_real_tasks(
             description="Predict log total amount from zone, trip, passenger, and time features.",
             target_column="log_total_amount",
         ),
-        demand_task(frame, zone_lookup=zone_lookup, zone_adjacency=zone_adjacency),
+        demand_task(demand_source, zone_lookup=zone_lookup, zone_adjacency=zone_adjacency),
     ]
 
 
@@ -758,6 +764,9 @@ def transformed_split_features(
         test_x,
         train_y,
         task.feature_names,
+        task=task,
+        train_indices=train_indices,
+        test_indices=test_indices,
         smoothing=args.zone_target_smoothing,
     )
 
@@ -768,6 +777,9 @@ def append_zone_target_mean_features(
     train_y: np.ndarray,
     feature_names: list[str],
     *,
+    task: BenchmarkTask | None = None,
+    train_indices: np.ndarray | None = None,
+    test_indices: np.ndarray | None = None,
     smoothing: float,
 ) -> tuple[np.ndarray, np.ndarray, list[str]]:
     zone_feature_indices = [
@@ -792,6 +804,21 @@ def append_zone_target_mean_features(
         train_columns.append(train_column)
         test_columns.append(test_column)
         new_names.append(f"{feature_names[feature_index]}_target_mean")
+        if task is None or train_indices is None or test_indices is None:
+            continue
+        context_columns = zone_context_target_mean_features(
+            task,
+            train_indices,
+            test_indices,
+            train_y,
+            feature_name=feature_names[feature_index],
+            smoothing=smoothing,
+            global_mean=global_mean,
+        )
+        for name, train_context_column, test_context_column in context_columns:
+            train_columns.append(train_context_column)
+            test_columns.append(test_context_column)
+            new_names.append(name)
 
     return (
         np.column_stack([train_x, *train_columns]).astype(float, copy=False),
@@ -807,11 +834,14 @@ def smoothed_target_mean_column(
     *,
     global_mean: float,
     smoothing: float,
+    skip_negative: bool = False,
 ) -> tuple[np.ndarray, np.ndarray]:
     sums: dict[int, float] = {}
     counts: dict[int, int] = {}
     for raw_id, target in zip(train_ids, train_y, strict=True):
         zone_id = int(raw_id)
+        if skip_negative and zone_id < 0:
+            continue
         sums[zone_id] = sums.get(zone_id, 0.0) + float(target)
         counts[zone_id] = counts.get(zone_id, 0) + 1
     encoded: dict[int, float] = {
@@ -819,14 +849,126 @@ def smoothed_target_mean_column(
         for zone_id in counts
     }
     train_encoded = np.asarray(
-        [encoded.get(int(zone_id), global_mean) for zone_id in train_ids],
+        [
+            encoded.get(int(zone_id), global_mean)
+            if not skip_negative or int(zone_id) >= 0
+            else global_mean
+            for zone_id in train_ids
+        ],
         dtype=float,
     )
     test_encoded = np.asarray(
-        [encoded.get(int(zone_id), global_mean) for zone_id in test_ids],
+        [
+            encoded.get(int(zone_id), global_mean)
+            if not skip_negative or int(zone_id) >= 0
+            else global_mean
+            for zone_id in test_ids
+        ],
         dtype=float,
     )
     return train_encoded, test_encoded
+
+
+def zone_context_target_mean_features(
+    task: BenchmarkTask,
+    train_indices: np.ndarray,
+    test_indices: np.ndarray,
+    train_y: np.ndarray,
+    *,
+    feature_name: str,
+    smoothing: float,
+    global_mean: float,
+) -> list[tuple[str, np.ndarray, np.ndarray]]:
+    context_names = zone_context_sparse_names(feature_name)
+    if not context_names and not task.zone_adjacency:
+        return []
+    feature_index = task.feature_names.index(feature_name)
+    train_ids = task.features[train_indices, feature_index].astype(int)
+    test_ids = task.features[test_indices, feature_index].astype(int)
+    columns: list[tuple[str, np.ndarray, np.ndarray]] = []
+
+    for label, sparse_name in context_names:
+        train_context = sparse_set_first_values(
+            task.sparse_sets.get(sparse_name, []), train_indices
+        )
+        test_context = sparse_set_first_values(task.sparse_sets.get(sparse_name, []), test_indices)
+        train_column, test_column = smoothed_target_mean_column(
+            train_context,
+            test_context,
+            train_y,
+            global_mean=global_mean,
+            smoothing=smoothing,
+            skip_negative=True,
+        )
+        columns.append((f"{feature_name}_{label}_target_mean", train_column, test_column))
+
+    if task.zone_adjacency:
+        train_column, test_column = adjacency_target_mean_column(
+            train_ids,
+            test_ids,
+            train_y,
+            task.zone_adjacency,
+            global_mean=global_mean,
+            smoothing=smoothing,
+        )
+        columns.append((f"{feature_name}_adjacent_target_mean", train_column, test_column))
+    return columns
+
+
+def zone_context_sparse_names(feature_name: str) -> list[tuple[str, str]]:
+    if feature_name == "PULocationID":
+        return [
+            ("borough", "pickup_borough"),
+            ("service_zone", "pickup_service_zone"),
+        ]
+    if feature_name == "DOLocationID":
+        return [
+            ("borough", "dropoff_borough"),
+            ("service_zone", "dropoff_service_zone"),
+        ]
+    return []
+
+
+def sparse_set_first_values(values: list[list[int]], indices: np.ndarray) -> np.ndarray:
+    encoded = []
+    for index in indices:
+        row = values[int(index)] if int(index) < len(values) else []
+        encoded.append(int(row[0]) if row else -1)
+    return np.asarray(encoded, dtype=int)
+
+
+def adjacency_target_mean_column(
+    train_ids: np.ndarray,
+    test_ids: np.ndarray,
+    train_y: np.ndarray,
+    adjacency: dict[int, list[int]],
+    *,
+    global_mean: float,
+    smoothing: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    sums: dict[int, float] = {}
+    counts: dict[int, int] = {}
+    for raw_id, target in zip(train_ids, train_y, strict=True):
+        zone_id = int(raw_id)
+        sums[zone_id] = sums.get(zone_id, 0.0) + float(target)
+        counts[zone_id] = counts.get(zone_id, 0) + 1
+    encoded = {
+        zone_id: (sums[zone_id] + smoothing * global_mean) / (counts[zone_id] + smoothing)
+        for zone_id in counts
+    }
+
+    def neighbor_mean(zone_id: int) -> float:
+        neighbor_values = [
+            encoded[neighbor] for neighbor in adjacency.get(zone_id, []) if neighbor in encoded
+        ]
+        if not neighbor_values:
+            return global_mean
+        return float(np.mean(neighbor_values))
+
+    return (
+        np.asarray([neighbor_mean(int(zone_id)) for zone_id in train_ids], dtype=float),
+        np.asarray([neighbor_mean(int(zone_id)) for zone_id in test_ids], dtype=float),
+    )
 
 
 def task_zone_column(task: BenchmarkTask, name: str) -> np.ndarray | None:
@@ -1350,6 +1492,11 @@ def fit_predict_model(
             from cartoboost import CartoBoostRegressor
         except ImportError as exc:
             return skipped(f"cartoboost import failed: {exc}")
+        if pickup_demand_cold_zone_fraction(task, train_indices, test_indices) >= 0.8:
+            return skipped(
+                "graph embeddings are skipped for pickup_demand cold-zone spatial holdout; "
+                "use contextual tabular baselines for this split"
+            )
         try:
             train_started = time.perf_counter()
             train_augmented, test_augmented, graph_config = graph_augmented_split_features(
@@ -1501,6 +1648,24 @@ def fit_predict_model(
     raise ValueError(f"unknown model {model_name!r}")
 
 
+def pickup_demand_cold_zone_fraction(
+    task: BenchmarkTask,
+    train_indices: np.ndarray,
+    test_indices: np.ndarray,
+) -> float:
+    if task.name != "pickup_demand" or task_zone_column(task, "DOLocationID") is not None:
+        return 0.0
+    pickup = task_zone_column(task, "PULocationID")
+    if pickup is None:
+        return 0.0
+    train_zones = {int(zone) for zone in pickup[train_indices]}
+    test_zones = {int(zone) for zone in pickup[test_indices]}
+    if not test_zones:
+        return 0.0
+    cold_zones = {zone for zone in test_zones if zone not in train_zones}
+    return float(len(cold_zones)) / float(len(test_zones))
+
+
 def timing_summary(
     *,
     train_seconds: float,
@@ -1643,6 +1808,8 @@ def run_benchmarks(tasks: list[BenchmarkTask], args: argparse.Namespace) -> dict
                         np.asarray(prediction, dtype=float),
                         task.pickup_zones[test_indices],
                     )
+                else:
+                    remove_prediction_plots(args.output_dir, task, split_mode, model_name)
                 split_results["models"][model_name] = result
             task_results["splits"][split_mode] = split_results
         results["tasks"][task.name] = task_results
@@ -1728,6 +1895,19 @@ def write_prediction_plots(
     fig.tight_layout()
     fig.savefig(plot_dir / f"{task.name}_{split_mode}_{model_name}_zone_residuals.png")
     plt.close(fig)
+
+
+def remove_prediction_plots(
+    output_dir: Path,
+    task: BenchmarkTask,
+    split_mode: str,
+    model_name: str,
+) -> None:
+    plot_dir = output_dir / "plots"
+    for suffix in ["predicted_actual", "zone_residuals"]:
+        path = plot_dir / f"{task.name}_{split_mode}_{model_name}_{suffix}.png"
+        if path.exists():
+            path.unlink()
 
 
 def write_metric_plot(results: dict[str, Any], output_dir: Path) -> None:
@@ -1885,8 +2065,18 @@ def main() -> None:
             cache_dir=args.cache_dir,
             no_download=args.no_download,
         )
-        frame = clean_tlc_frame(load_tlc_frame(paths), sample_size=args.sample_size, seed=args.seed)
-        tasks = build_real_tasks(frame, zone_lookup, zone_adjacency)
+        cleaned_frame = clean_tlc_frame(load_tlc_frame(paths))
+        row_frame = sample_tlc_frame(
+            cleaned_frame,
+            sample_size=args.sample_size,
+            seed=args.seed,
+        )
+        tasks = build_real_tasks(
+            row_frame,
+            zone_lookup,
+            zone_adjacency,
+            demand_frame=cleaned_frame,
+        )
     tasks = filter_tasks(tasks, args.tasks)
 
     results = run_benchmarks(tasks, args)
