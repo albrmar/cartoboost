@@ -20,8 +20,10 @@ Commands are `fit`, `predict`, `backtest`, and `compare`. The script accepts
 `--model`, `--horizon`, `--season-length`, `--output`, `--artifact-dir`, and
 `--config`.
 
-Available model names are `naive`, `seasonal_naive`, `theta`, `optimized_theta`,
-`ets`, `auto_arima`, `cartoboost_lag`, and `weighted_ensemble`.
+Accepted zero-argument CLI model names are `naive`, `seasonal_naive`, `theta`,
+`optimized_theta`, `ets`, `auto_arima`, and `cartoboost_lag`.
+`weighted_ensemble` is available from Python when explicit component models are
+provided, but it is not a zero-argument CLI model.
 
 The CLI does not run Python fallback forecasters. It validates configuration and
 input shape, then delegates to the Python wrapper for the selected Rust native
@@ -29,5 +31,5 @@ model. If the corresponding `cartoboost._native` binding is not present, the
 command exits nonzero and prints a `Rust binding ... is not available` error.
 
 `predict`, `backtest`, and `compare` also require Rust-side forecasting artifact,
-backtest, and comparison bindings. Until those bindings are exposed, these
+backtest, and comparison bindings. If a required binding is absent, these
 commands fail clearly rather than writing synthetic forecast CSVs or metrics.

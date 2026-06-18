@@ -7,7 +7,24 @@ def test_seasonal_naive_validates_season_length():
         SeasonalNaiveForecaster(season_length=0)
 
 
-def test_seasonal_naive_fit_predicts_with_rust_binding():
-    result = SeasonalNaiveForecaster(season_length=3).fit([10.0, 20.0, 30.0]).predict(4)
+def test_seasonal_naive_converts_panel_and_delegates_to_native(install_fake_native):
+    native = install_fake_native("SeasonalNaiveForecaster")
 
-    assert [row[4] for row in result.predictions()] == [10.0, 20.0, 30.0, 10.0]
+    result = (
+        SeasonalNaiveForecaster(season_length=3)
+        .fit({"pickup_1": [10.0, 20.0], "pickup_2": [30.0, 40.0]})
+        .predict(4)
+    )
+
+    assert result == {"args": (4,), "kwargs": {}}
+    assert native.calls[0] == (
+        "init",
+        {"season_length": 3, "prediction_interval_levels": ()},
+    )
+    assert native.calls[1][1].rows == [
+        ("pickup_1", "1970-01-01T00:00:00", 10.0),
+        ("pickup_1", "1970-01-02T00:00:00", 20.0),
+        ("pickup_2", "1970-01-01T00:00:00", 30.0),
+        ("pickup_2", "1970-01-02T00:00:00", 40.0),
+    ]
+    assert native.calls[2] == ("predict", (4,), {})

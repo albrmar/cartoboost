@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use std::fs::{self, File};
 use std::io::{BufReader, BufWriter};
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 pub const FORECAST_ARTIFACT_SCHEMA_VERSION: u32 = 1;
 pub const DEFAULT_MANIFEST_FILE: &str = "manifest.json";
@@ -67,7 +67,7 @@ impl ForecastArtifactManifest {
                 "artifact forecast_path must be non-empty".to_string(),
             ));
         }
-        Ok(Self {
+        let manifest = Self {
             schema_version: FORECAST_ARTIFACT_SCHEMA_VERSION,
             model_name,
             horizon,
@@ -82,21 +82,29 @@ impl ForecastArtifactManifest {
             interval_metadata: Map::new(),
             ensemble_metadata: Map::new(),
             metadata: Map::new(),
-        })
+        };
+        validate_manifest(&manifest)?;
+        Ok(manifest)
     }
 }
 
 impl ForecastArtifact {
     pub fn new(manifest: ForecastArtifactManifest, forecast: ForecastResult) -> Result<Self> {
+        validate_manifest(&manifest)?;
         validate_manifest_matches_forecast(&manifest, &forecast)?;
         Ok(Self { manifest, forecast })
     }
 
     pub fn save_json(&self, directory: impl AsRef<Path>) -> Result<()> {
         let directory = directory.as_ref();
+        validate_manifest(&self.manifest)?;
+        validate_manifest_matches_forecast(&self.manifest, &self.forecast)?;
         fs::create_dir_all(directory)?;
         let manifest_path = directory.join(DEFAULT_MANIFEST_FILE);
         let forecast_path = resolve_child_path(directory, &self.manifest.forecast_path)?;
+        if let Some(parent) = forecast_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
         let manifest_file = BufWriter::new(File::create(manifest_path)?);
         serde_json::to_writer_pretty(manifest_file, &self.manifest)?;
         let forecast_file = BufWriter::new(File::create(forecast_path)?);
@@ -115,11 +123,27 @@ impl ForecastArtifact {
                 manifest.schema_version
             )));
         }
+        validate_manifest(&manifest)?;
         let forecast_path = resolve_child_path(directory, &manifest.forecast_path)?;
         let forecast_file = BufReader::new(File::open(forecast_path)?);
         let forecast: ForecastResult = serde_json::from_reader(forecast_file)?;
         Self::new(manifest, forecast)
     }
+}
+
+fn validate_manifest(manifest: &ForecastArtifactManifest) -> Result<()> {
+    if manifest.model_name.trim().is_empty() {
+        return Err(CartoBoostError::InvalidInput(
+            "artifact model_name must be non-empty".to_string(),
+        ));
+    }
+    if manifest.horizon == 0 {
+        return Err(CartoBoostError::InvalidInput(
+            "artifact horizon must be positive".to_string(),
+        ));
+    }
+    resolve_child_path(Path::new("."), &manifest.forecast_path)?;
+    Ok(())
 }
 
 fn validate_manifest_matches_forecast(
@@ -135,12 +159,25 @@ fn validate_manifest_matches_forecast(
             "artifact forecast contains predictions beyond manifest horizon".to_string(),
         ));
     }
+    if forecast
+        .predictions()
+        .iter()
+        .any(|prediction| prediction.model != manifest.model_name)
+    {
+        return Err(CartoBoostError::InvalidInput(
+            "artifact forecast prediction models must match manifest model_name".to_string(),
+        ));
+    }
     Ok(())
 }
 
 fn resolve_child_path(directory: &Path, child: &str) -> Result<PathBuf> {
     let path = Path::new(child);
-    if path.is_absolute() || child.contains("..") {
+    if child.trim().is_empty()
+        || path
+            .components()
+            .any(|component| !matches!(component, Component::Normal(_)))
+    {
         return Err(CartoBoostError::InvalidInput(
             "artifact child paths must be relative and stay inside the artifact directory"
                 .to_string(),
@@ -186,6 +223,45 @@ mod tests {
             .expect_err("invalid path");
 
         assert!(err.to_string().contains("relative"));
+    }
+
+    #[test]
+    fn artifact_round_trip_supports_nested_forecast_path() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let forecast = ForecastResult::new(vec![ForecastPrediction {
+            series_id: "PULocationID=101".to_string(),
+            timestamp: ts(),
+            horizon: 1,
+            model: "theta".to_string(),
+            mean: 12.0,
+        }])
+        .expect("forecast");
+        let manifest =
+            ForecastArtifactManifest::new("theta", 1, "forecasts/holdout.json").expect("manifest");
+        let artifact = ForecastArtifact::new(manifest, forecast).expect("artifact");
+
+        artifact.save_json(dir.path()).expect("save");
+        let restored = ForecastArtifact::load_json(dir.path()).expect("load");
+
+        assert_eq!(restored, artifact);
+    }
+
+    #[test]
+    fn artifact_rejects_manifest_model_mismatch() {
+        let forecast = ForecastResult::new(vec![ForecastPrediction {
+            series_id: "PULocationID=100".to_string(),
+            timestamp: ts(),
+            horizon: 1,
+            model: "naive".to_string(),
+            mean: 42.0,
+        }])
+        .expect("forecast");
+        let manifest = ForecastArtifactManifest::new("seasonal_naive", 1, DEFAULT_FORECAST_FILE)
+            .expect("manifest");
+
+        let err = ForecastArtifact::new(manifest, forecast).expect_err("model mismatch");
+
+        assert!(err.to_string().contains("must match manifest model_name"));
     }
 
     fn ts() -> chrono::NaiveDateTime {

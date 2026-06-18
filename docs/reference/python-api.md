@@ -73,11 +73,11 @@ Forecasters:
 | `SeasonalNaiveForecaster(season_length)` | Repeats the last seasonal cycle. |
 | `ThetaForecaster(season_length=None, prediction_interval_levels=())` | Local theta method with optional seasonality and residual intervals. |
 | `OptimizedThetaForecaster` | Deterministically selects theta/alpha from a validation grid. |
-| `ETSForecaster` | Lazy `statsmodels` exponential smoothing adapter. |
-| `AutoARIMAForecaster` | Lazy `pmdarima` auto-ARIMA adapter with explicit fallback policy. |
+| `ETSForecaster` | Rust-native additive ETS with optional additive seasonality. |
+| `AutoARIMAForecaster` | Rust-native AutoARIMA over bounded ARIMA(p,d,q) candidates. |
 | `CartoBoostLagForecaster` | Global recursive forecaster using leakage-safe lag, rolling, calendar, static, and known-future features with `CartoBoostRegressor`. |
 | `WeightedEnsembleForecaster` | Combines aligned component forecasts with fixed weights. |
-| `BacktestWeightedEnsembleForecaster` | Learns inverse-error weights from rolling-origin splits. |
+| `BacktestWeightedEnsembleForecaster` | Reserved; raises clearly until Rust backtest-weight learning is implemented. |
 
 Evaluation and persistence:
 

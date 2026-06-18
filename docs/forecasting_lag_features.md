@@ -9,6 +9,7 @@ Python may still expose configuration objects such as `LagFeatureConfig`,
 construction, recursive prediction, model fitting, and model prediction must be
 owned by Rust.
 
-Taxi-domain lag feature contracts should continue to use columns such as
-`pickup_hour`, `pickup_trips`, `PULocationID`, known-future driver plans, and
-historical-only observed queue features.
+Taxi-domain lag feature contracts should use columns such as `pickup_hour`,
+`pickup_trips`, `PULocationID`, `DOLocationID`, pickup/dropoff lane identifiers,
+known-future calendar or dispatch plans, and historical-only observed queue or
+trip-distance features.

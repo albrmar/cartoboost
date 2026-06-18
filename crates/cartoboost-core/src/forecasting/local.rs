@@ -37,6 +37,33 @@ pub struct OptimizedThetaForecaster {
     fitted: Option<ThetaForecaster>,
 }
 
+#[derive(Debug, Clone)]
+pub struct ETSForecaster {
+    alpha: f64,
+    beta: f64,
+    gamma: Option<f64>,
+    season_length: Option<usize>,
+    fitted: Option<FittedETSState>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ArimaForecaster {
+    p: usize,
+    d: usize,
+    q: usize,
+    fitted: Option<FittedArimaState>,
+}
+
+#[derive(Debug, Clone)]
+pub struct AutoARIMAForecaster {
+    max_p: usize,
+    max_d: usize,
+    max_q: usize,
+    selected_order: Option<(usize, usize, usize)>,
+    validation_scores: Vec<ArimaValidationScore>,
+    fitted: Option<ArimaForecaster>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ThetaSeasonalityKind {
     Additive,
@@ -62,6 +89,42 @@ struct FittedThetaState {
 }
 
 #[derive(Debug, Clone)]
+struct FittedETSState {
+    frame: ForecastFrame,
+    series: BTreeMap<String, FittedETSSeries>,
+}
+
+#[derive(Debug, Clone)]
+struct FittedETSSeries {
+    last_timestamp: chrono::NaiveDateTime,
+    n_obs: usize,
+    level: f64,
+    trend: f64,
+    seasonals: Option<Vec<f64>>,
+    fitted_values: Vec<f64>,
+    residuals: Vec<f64>,
+}
+
+#[derive(Debug, Clone)]
+struct FittedArimaState {
+    frame: ForecastFrame,
+    series: BTreeMap<String, FittedArimaSeries>,
+}
+
+#[derive(Debug, Clone)]
+struct FittedArimaSeries {
+    last_timestamp: chrono::NaiveDateTime,
+    intercept: f64,
+    ar_coefficients: Vec<f64>,
+    ma_coefficients: Vec<f64>,
+    differenced_history: Vec<f64>,
+    residual_history: Vec<f64>,
+    last_differences: Vec<f64>,
+    fitted_values: Vec<f64>,
+    residuals: Vec<f64>,
+}
+
+#[derive(Debug, Clone)]
 struct FittedThetaSeries {
     last_timestamp: chrono::NaiveDateTime,
     n_obs: usize,
@@ -82,6 +145,14 @@ struct ThetaComponent {
 pub struct ThetaValidationScore {
     pub theta: f64,
     pub alpha: f64,
+    pub mse: f64,
+}
+
+#[derive(Debug, Clone)]
+pub struct ArimaValidationScore {
+    pub p: usize,
+    pub d: usize,
+    pub q: usize,
     pub mse: f64,
 }
 
@@ -214,6 +285,112 @@ impl OptimizedThetaForecaster {
     }
 
     pub fn validation_scores(&self) -> &[ThetaValidationScore] {
+        &self.validation_scores
+    }
+}
+
+impl ETSForecaster {
+    pub fn new(alpha: f64, beta: f64) -> Result<Self> {
+        Self::with_additive_seasonality(alpha, beta, None, None)
+    }
+
+    pub fn with_additive_seasonality(
+        alpha: f64,
+        beta: f64,
+        gamma: Option<f64>,
+        season_length: Option<usize>,
+    ) -> Result<Self> {
+        validate_ets_params(alpha, beta, gamma, season_length)?;
+        Ok(Self {
+            alpha,
+            beta,
+            gamma,
+            season_length,
+            fitted: None,
+        })
+    }
+
+    pub fn fitted_values(&self, series_id: &str) -> Option<&[f64]> {
+        self.fitted
+            .as_ref()
+            .and_then(|state| state.series.get(series_id))
+            .map(|series| series.fitted_values.as_slice())
+    }
+
+    pub fn residuals(&self, series_id: &str) -> Option<&[f64]> {
+        self.fitted
+            .as_ref()
+            .and_then(|state| state.series.get(series_id))
+            .map(|series| series.residuals.as_slice())
+    }
+}
+
+impl ArimaForecaster {
+    pub fn new(p: usize, d: usize, q: usize) -> Result<Self> {
+        validate_arima_order(p, d, q)?;
+        Ok(Self {
+            p,
+            d,
+            q,
+            fitted: None,
+        })
+    }
+
+    pub fn order(&self) -> (usize, usize, usize) {
+        (self.p, self.d, self.q)
+    }
+
+    pub fn fitted_values(&self, series_id: &str) -> Option<&[f64]> {
+        self.fitted
+            .as_ref()
+            .and_then(|state| state.series.get(series_id))
+            .map(|series| series.fitted_values.as_slice())
+    }
+
+    pub fn residuals(&self, series_id: &str) -> Option<&[f64]> {
+        self.fitted
+            .as_ref()
+            .and_then(|state| state.series.get(series_id))
+            .map(|series| series.residuals.as_slice())
+    }
+}
+
+impl AutoARIMAForecaster {
+    pub fn new(max_p: usize, max_d: usize) -> Result<Self> {
+        Self::with_max_order(max_p, max_d, 2)
+    }
+
+    pub fn with_max_order(max_p: usize, max_d: usize, max_q: usize) -> Result<Self> {
+        if max_p > 8 {
+            return Err(CartoBoostError::InvalidInput(
+                "max_p must be <= 8 for auto_arima".to_string(),
+            ));
+        }
+        if max_d > 2 {
+            return Err(CartoBoostError::InvalidInput(
+                "max_d must be <= 2 for auto_arima".to_string(),
+            ));
+        }
+        if max_q > 8 {
+            return Err(CartoBoostError::InvalidInput(
+                "max_q must be <= 8 for auto_arima".to_string(),
+            ));
+        }
+        Ok(Self {
+            max_p,
+            max_d,
+            max_q,
+            selected_order: None,
+            validation_scores: Vec::new(),
+            fitted: None,
+        })
+    }
+
+    pub fn selected_order(&self) -> Option<(usize, usize, usize)> {
+        self.selected_order
+    }
+
+    pub fn validation_scores(&self) -> &[ArimaValidationScore] {
         &self.validation_scores
     }
 }
@@ -409,6 +586,132 @@ impl Forecaster for OptimizedThetaForecaster {
     }
 }
 
+impl Forecaster for ETSForecaster {
+    fn fit(&mut self, frame: &ForecastFrame) -> Result<()> {
+        self.fitted = Some(FittedETSState::from_frame(
+            frame,
+            self.alpha,
+            self.beta,
+            self.gamma,
+            self.season_length,
+        )?);
+        Ok(())
+    }
+
+    fn predict(&self, horizon: usize) -> Result<ForecastResult> {
+        validate_horizon(horizon)?;
+        let fitted = self.fitted.as_ref().ok_or_else(not_fitted)?;
+        let mut predictions = Vec::new();
+        for (series_id, series) in &fitted.series {
+            for step in 1..=horizon {
+                let seasonal = series
+                    .seasonals
+                    .as_ref()
+                    .map(|seasonals| seasonals[(series.n_obs + step - 1) % seasonals.len()])
+                    .unwrap_or(0.0);
+                predictions.push(ForecastPrediction {
+                    series_id: series_id.clone(),
+                    timestamp: fitted
+                        .frame
+                        .frequency()
+                        .advance(series.last_timestamp, step)?,
+                    horizon: step,
+                    model: self.model_name().to_string(),
+                    mean: series.level + step as f64 * series.trend + seasonal,
+                });
+            }
+        }
+        ForecastResult::new(predictions)
+    }
+
+    fn model_name(&self) -> &'static str {
+        "ets"
+    }
+
+    fn metadata(&self) -> Value {
+        json!({
+            "model": self.model_name(),
+            "alpha": self.alpha,
+            "beta": self.beta,
+            "gamma": self.gamma,
+            "season_length": self.season_length,
+        })
+    }
+}
+
+impl Forecaster for ArimaForecaster {
+    fn fit(&mut self, frame: &ForecastFrame) -> Result<()> {
+        self.fitted = Some(FittedArimaState::from_frame(frame, self.p, self.d, self.q)?);
+        Ok(())
+    }
+
+    fn predict(&self, horizon: usize) -> Result<ForecastResult> {
+        self.predict_with_model_name(horizon, self.model_name())
+    }
+
+    fn model_name(&self) -> &'static str {
+        "arima"
+    }
+
+    fn metadata(&self) -> Value {
+        json!({"model": self.model_name(), "p": self.p, "d": self.d, "q": self.q})
+    }
+}
+
+impl Forecaster for AutoARIMAForecaster {
+    fn fit(&mut self, frame: &ForecastFrame) -> Result<()> {
+        let mut best: Option<(OrderedF64, usize, usize, usize)> = None;
+        let mut scores = Vec::new();
+        for d in 0..=self.max_d {
+            for p in 0..=self.max_p {
+                for q in 0..=self.max_q {
+                    let fitted = FittedArimaState::from_frame(frame, p, d, q)?;
+                    let mse = fitted.mean_squared_residual();
+                    scores.push(ArimaValidationScore { p, d, q, mse });
+                    let candidate = (OrderedF64(mse), p, d, q);
+                    if match best {
+                        Some(current) => candidate < current,
+                        None => true,
+                    } {
+                        best = Some(candidate);
+                    }
+                }
+            }
+        }
+        let (_, p, d, q) = best.ok_or_else(|| {
+            CartoBoostError::InvalidInput("auto_arima candidate grid must not be empty".to_string())
+        })?;
+        let mut fitted = ArimaForecaster::new(p, d, q)?;
+        fitted.fit(frame)?;
+        self.selected_order = Some((p, d, q));
+        self.validation_scores = scores;
+        self.fitted = Some(fitted);
+        Ok(())
+    }
+
+    fn predict(&self, horizon: usize) -> Result<ForecastResult> {
+        let fitted = self.fitted.as_ref().ok_or_else(not_fitted)?;
+        fitted.predict_with_model_name(horizon, self.model_name())
+    }
+
+    fn model_name(&self) -> &'static str {
+        "auto_arima"
+    }
+
+    fn metadata(&self) -> Value {
+        json!({
+            "model": self.model_name(),
+            "max_p": self.max_p,
+            "max_d": self.max_d,
+            "max_q": self.max_q,
+            "selected_order": self.selected_order.map(|(p, d, q)| json!({"p": p, "d": d, "q": q})),
+            "validation_scores": self.validation_scores.iter().map(|score| {
+                json!({"p": score.p, "d": score.d, "q": score.q, "mse": score.mse})
+            }).collect::<Vec<_>>(),
+        })
+    }
+}
+
 impl ThetaForecaster {
     fn predict_with_model_name(
         &self,
@@ -443,6 +746,35 @@ impl ThetaForecaster {
     }
 }
 
+impl ArimaForecaster {
+    fn predict_with_model_name(
+        &self,
+        horizon: usize,
+        model_name: &'static str,
+    ) -> Result<ForecastResult> {
+        validate_horizon(horizon)?;
+        let fitted = self.fitted.as_ref().ok_or_else(not_fitted)?;
+        let mut predictions = Vec::new();
+        for (series_id, series) in &fitted.series {
+            let means = series.forecast_values(horizon);
+            for (idx, mean) in means.into_iter().enumerate() {
+                let step = idx + 1;
+                predictions.push(ForecastPrediction {
+                    series_id: series_id.clone(),
+                    timestamp: fitted
+                        .frame
+                        .frequency()
+                        .advance(series.last_timestamp, step)?,
+                    horizon: step,
+                    model: model_name.to_string(),
+                    mean,
+                });
+            }
+        }
+        ForecastResult::new(predictions)
+    }
+}
+
 impl FittedLocalState {
     fn from_frame(frame: &ForecastFrame) -> Self {
         let mut history_by_series: BTreeMap<String, Vec<ForecastRow>> = BTreeMap::new();
@@ -456,6 +788,189 @@ impl FittedLocalState {
             frame: frame.clone(),
             history_by_series,
         }
+    }
+}
+
+impl FittedETSState {
+    fn from_frame(
+        frame: &ForecastFrame,
+        alpha: f64,
+        beta: f64,
+        gamma: Option<f64>,
+        season_length: Option<usize>,
+    ) -> Result<Self> {
+        let local = FittedLocalState::from_frame(frame);
+        let mut series = BTreeMap::new();
+        for (series_id, history) in &local.history_by_series {
+            series.insert(
+                series_id.clone(),
+                FittedETSSeries::fit(series_id, history, alpha, beta, gamma, season_length)?,
+            );
+        }
+        Ok(Self {
+            frame: frame.clone(),
+            series,
+        })
+    }
+}
+
+impl FittedArimaState {
+    fn from_frame(frame: &ForecastFrame, p: usize, d: usize, q: usize) -> Result<Self> {
+        let local = FittedLocalState::from_frame(frame);
+        let mut series = BTreeMap::new();
+        for (series_id, history) in &local.history_by_series {
+            series.insert(
+                series_id.clone(),
+                FittedArimaSeries::fit(series_id, history, p, d, q)?,
+            );
+        }
+        Ok(Self {
+            frame: frame.clone(),
+            series,
+        })
+    }
+
+    fn mean_squared_residual(&self) -> f64 {
+        let mut sum = 0.0;
+        let mut count = 0usize;
+        for series in self.series.values() {
+            for residual in &series.residuals {
+                sum += residual * residual;
+                count += 1;
+            }
+        }
+        if count == 0 {
+            0.0
+        } else {
+            sum / count as f64
+        }
+    }
+}
+
+impl FittedETSSeries {
+    fn fit(
+        series_id: &str,
+        history: &[ForecastRow],
+        alpha: f64,
+        beta: f64,
+        gamma: Option<f64>,
+        season_length: Option<usize>,
+    ) -> Result<Self> {
+        if history.len() < 2 {
+            return Err(CartoBoostError::InvalidInput(format!(
+                "series {series_id} requires at least two rows for ETS forecasting"
+            )));
+        }
+        let values = history.iter().map(|row| row.target).collect::<Vec<_>>();
+        let mut seasonals = match season_length {
+            Some(length) => {
+                if values.len() < length * 2 {
+                    return Err(CartoBoostError::InvalidInput(format!(
+                        "series {series_id} requires at least two full seasonal cycles for ETS seasonality"
+                    )));
+                }
+                let (_, pattern) = deseasonalize(
+                    series_id,
+                    &values,
+                    Some(ThetaSeasonality::additive(length)?),
+                )?;
+                pattern
+            }
+            None => None,
+        };
+
+        let mut level = values[0] - seasonals.as_ref().map(|s| s[0]).unwrap_or(0.0);
+        let mut trend = initial_trend(&values, seasonals.as_deref());
+        let mut fitted_values = Vec::with_capacity(values.len());
+        let mut residuals = Vec::with_capacity(values.len());
+        fitted_values.push(values[0]);
+        residuals.push(0.0);
+
+        for (idx, value) in values.iter().enumerate().skip(1) {
+            let seasonal_idx = seasonals.as_ref().map(|seasonals| idx % seasonals.len());
+            let seasonal = seasonal_idx
+                .and_then(|seasonal_idx| {
+                    seasonals.as_ref().map(|seasonals| seasonals[seasonal_idx])
+                })
+                .unwrap_or(0.0);
+            let fitted = level + trend + seasonal;
+            fitted_values.push(fitted);
+            residuals.push(*value - fitted);
+
+            let previous_level = level;
+            level = alpha * (*value - seasonal) + (1.0 - alpha) * (level + trend);
+            trend = beta * (level - previous_level) + (1.0 - beta) * trend;
+            if let (Some(gamma), Some(seasonal_idx), Some(seasonals)) =
+                (gamma, seasonal_idx, seasonals.as_mut())
+            {
+                seasonals[seasonal_idx] =
+                    gamma * (*value - level) + (1.0 - gamma) * seasonals[seasonal_idx];
+            }
+        }
+
+        Ok(Self {
+            last_timestamp: history.last().expect("history length checked").timestamp,
+            n_obs: history.len(),
+            level,
+            trend,
+            seasonals,
+            fitted_values,
+            residuals,
+        })
+    }
+}
+
+impl FittedArimaSeries {
+    fn fit(series_id: &str, history: &[ForecastRow], p: usize, d: usize, q: usize) -> Result<Self> {
+        validate_arima_order(p, d, q)?;
+        let values = history.iter().map(|row| row.target).collect::<Vec<_>>();
+        let differences = difference_series(&values, d)?;
+        let required_lags = p.max(q);
+        if differences.len() <= required_lags {
+            return Err(CartoBoostError::InvalidInput(format!(
+                "series {series_id} has {} differenced rows, but ARIMA({p},{d},{q}) requires more than {required_lags}",
+                differences.len(),
+            )));
+        }
+        let (intercept, ar_coefficients, ma_coefficients, fitted_diff, residuals) =
+            fit_arima_components(&differences, p, q);
+        let fitted_values = undifference_fitted_values(&values, &fitted_diff, d);
+        Ok(Self {
+            last_timestamp: history.last().expect("history length checked").timestamp,
+            intercept,
+            ar_coefficients,
+            ma_coefficients,
+            differenced_history: differences,
+            residual_history: residuals.clone(),
+            last_differences: last_differences(&values, d)?,
+            fitted_values,
+            residuals,
+        })
+    }
+
+    fn forecast_values(&self, horizon: usize) -> Vec<f64> {
+        let mut differenced = self.differenced_history.clone();
+        let mut residuals = self.residual_history.clone();
+        let mut levels = self.last_differences.clone();
+        let mut forecasts = Vec::with_capacity(horizon);
+        for _ in 0..horizon {
+            let next_diff = forecast_arima_next(
+                &differenced,
+                &residuals,
+                self.intercept,
+                &self.ar_coefficients,
+                &self.ma_coefficients,
+            );
+            differenced.push(next_diff);
+            residuals.push(0.0);
+            let mut value = next_diff;
+            for idx in (0..(levels.len() - 1)).rev() {
+                levels[idx] += value;
+                value = levels[idx];
+            }
+            forecasts.push(value);
+        }
+        forecasts
     }
 }
 
@@ -563,6 +1078,327 @@ fn validate_theta_params(theta: f64, alpha: f64) -> Result<()> {
         ));
     }
     Ok(())
+}
+
+fn validate_ets_params(
+    alpha: f64,
+    beta: f64,
+    gamma: Option<f64>,
+    season_length: Option<usize>,
+) -> Result<()> {
+    validate_unit_interval("alpha", alpha, false)?;
+    validate_unit_interval("beta", beta, true)?;
+    if let Some(gamma) = gamma {
+        validate_unit_interval("gamma", gamma, true)?;
+    }
+    match (gamma, season_length) {
+        (Some(_), Some(length)) if length > 1 => Ok(()),
+        (None, None) => Ok(()),
+        (Some(_), None) => Err(CartoBoostError::InvalidInput(
+            "ETS gamma requires season_length".to_string(),
+        )),
+        (None, Some(_)) => Err(CartoBoostError::InvalidInput(
+            "ETS season_length requires gamma".to_string(),
+        )),
+        (Some(_), Some(_)) => Err(CartoBoostError::InvalidInput(
+            "ETS season_length must be greater than 1".to_string(),
+        )),
+    }
+}
+
+fn validate_unit_interval(name: &str, value: f64, allow_zero: bool) -> Result<()> {
+    let lower_ok = if allow_zero {
+        value >= 0.0
+    } else {
+        value > 0.0
+    };
+    if !value.is_finite() || !lower_ok || value > 1.0 {
+        let range = if allow_zero { "[0, 1]" } else { "(0, 1]" };
+        return Err(CartoBoostError::InvalidInput(format!(
+            "{name} must be finite and in {range}"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_arima_order(p: usize, d: usize, q: usize) -> Result<()> {
+    if p > 8 {
+        return Err(CartoBoostError::InvalidInput(
+            "ARIMA p must be <= 8".to_string(),
+        ));
+    }
+    if d > 2 {
+        return Err(CartoBoostError::InvalidInput(
+            "ARIMA d must be <= 2".to_string(),
+        ));
+    }
+    if q > 8 {
+        return Err(CartoBoostError::InvalidInput(
+            "ARIMA q must be <= 8".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn initial_trend(values: &[f64], seasonals: Option<&[f64]>) -> f64 {
+    match seasonals {
+        Some(seasonals) if values.len() > seasonals.len() => {
+            let length = seasonals.len();
+            let mut sum = 0.0;
+            for idx in 0..length {
+                sum += (values[idx + length] - values[idx]) / length as f64;
+            }
+            sum / length as f64
+        }
+        Some(seasonals) => {
+            (values[1] - seasonals[1 % seasonals.len()]) - (values[0] - seasonals[0])
+        }
+        None => values[1] - values[0],
+    }
+}
+
+fn difference_series(values: &[f64], d: usize) -> Result<Vec<f64>> {
+    if values.len() <= d {
+        return Err(CartoBoostError::InvalidInput(
+            "ARIMA differencing order leaves no observations".to_string(),
+        ));
+    }
+    let mut current = values.to_vec();
+    for _ in 0..d {
+        current = current
+            .windows(2)
+            .map(|window| window[1] - window[0])
+            .collect();
+    }
+    Ok(current)
+}
+
+fn last_differences(values: &[f64], d: usize) -> Result<Vec<f64>> {
+    let mut levels = Vec::with_capacity(d + 1);
+    levels.push(*values.last().ok_or_else(|| {
+        CartoBoostError::InvalidInput("ARIMA requires at least one observation".to_string())
+    })?);
+    let mut current = values.to_vec();
+    for _ in 0..d {
+        current = current
+            .windows(2)
+            .map(|window| window[1] - window[0])
+            .collect();
+        levels.push(*current.last().ok_or_else(|| {
+            CartoBoostError::InvalidInput(
+                "ARIMA differencing order leaves no observations".to_string(),
+            )
+        })?);
+    }
+    Ok(levels)
+}
+
+fn fit_arima_components(
+    values: &[f64],
+    p: usize,
+    q: usize,
+) -> (f64, Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>) {
+    let mut residuals = vec![0.0; values.len()];
+    let mut intercept = values.iter().sum::<f64>() / values.len() as f64;
+    let mut ar_coefficients = vec![0.0; p];
+    let mut ma_coefficients = vec![0.0; q];
+    let iterations = if q == 0 { 1 } else { 6 };
+    for _ in 0..iterations {
+        let (next_intercept, next_ar, next_ma) =
+            fit_arima_coefficients_once(values, &residuals, p, q);
+        intercept = next_intercept;
+        ar_coefficients = next_ar;
+        ma_coefficients = next_ma;
+        let (fitted, next_residuals) = fitted_arima_values(
+            values,
+            intercept,
+            &ar_coefficients,
+            &ma_coefficients,
+            &residuals,
+        );
+        let _ = fitted;
+        residuals = next_residuals;
+    }
+    let (fitted, residuals) = fitted_arima_values(
+        values,
+        intercept,
+        &ar_coefficients,
+        &ma_coefficients,
+        &residuals,
+    );
+    (
+        intercept,
+        ar_coefficients,
+        ma_coefficients,
+        fitted,
+        residuals,
+    )
+}
+
+fn fit_arima_coefficients_once(
+    values: &[f64],
+    residuals: &[f64],
+    p: usize,
+    q: usize,
+) -> (f64, Vec<f64>, Vec<f64>) {
+    if p == 0 && q == 0 {
+        return (
+            values.iter().sum::<f64>() / values.len() as f64,
+            Vec::new(),
+            Vec::new(),
+        );
+    }
+    let cols = p + q + 1;
+    let mut xtx = vec![vec![0.0; cols]; cols];
+    let mut xty = vec![0.0; cols];
+    let start = p.max(q);
+    for idx in start..values.len() {
+        let mut features = Vec::with_capacity(cols);
+        features.push(1.0);
+        for lag in 1..=p {
+            features.push(values[idx - lag]);
+        }
+        for lag in 1..=q {
+            features.push(residuals[idx - lag]);
+        }
+        for row in 0..cols {
+            xty[row] += features[row] * values[idx];
+            for col in 0..cols {
+                xtx[row][col] += features[row] * features[col];
+            }
+        }
+    }
+    for (idx, row) in xtx.iter_mut().enumerate() {
+        row[idx] += 1.0e-8;
+    }
+    let solution = solve_linear_system(xtx, xty).unwrap_or_else(|| vec![0.0; cols]);
+    (
+        solution[0],
+        solution[1..=p].to_vec(),
+        solution[(p + 1)..].to_vec(),
+    )
+}
+
+fn fitted_arima_values(
+    values: &[f64],
+    intercept: f64,
+    ar_coefficients: &[f64],
+    ma_coefficients: &[f64],
+    residual_history: &[f64],
+) -> (Vec<f64>, Vec<f64>) {
+    let p = ar_coefficients.len();
+    let q = ma_coefficients.len();
+    let mut fitted = Vec::with_capacity(values.len());
+    let mut residuals = vec![0.0; values.len()];
+    for idx in 0..values.len() {
+        let start = p.max(q);
+        let mean = if idx < start {
+            values[idx]
+        } else {
+            intercept
+                + ar_coefficients
+                    .iter()
+                    .enumerate()
+                    .map(|(coef_idx, coef)| coef * values[idx - coef_idx - 1])
+                    .sum::<f64>()
+                + ma_coefficients
+                    .iter()
+                    .enumerate()
+                    .map(|(coef_idx, coef)| coef * residual_history[idx - coef_idx - 1])
+                    .sum::<f64>()
+        };
+        fitted.push(mean);
+        if idx >= start {
+            residuals[idx] = values[idx] - mean;
+        }
+    }
+    (fitted, residuals)
+}
+
+fn forecast_arima_next(
+    history: &[f64],
+    residuals: &[f64],
+    intercept: f64,
+    ar_coefficients: &[f64],
+    ma_coefficients: &[f64],
+) -> f64 {
+    intercept
+        + ar_coefficients
+            .iter()
+            .enumerate()
+            .map(|(idx, coef)| coef * history[history.len() - idx - 1])
+            .sum::<f64>()
+        + ma_coefficients
+            .iter()
+            .enumerate()
+            .map(|(idx, coef)| coef * residuals[residuals.len() - idx - 1])
+            .sum::<f64>()
+}
+
+fn undifference_fitted_values(values: &[f64], fitted_diff: &[f64], d: usize) -> Vec<f64> {
+    match d {
+        0 => fitted_diff.to_vec(),
+        1 => {
+            let mut fitted = vec![values[0]];
+            for idx in 1..values.len() {
+                fitted.push(values[idx - 1] + fitted_diff[idx - 1]);
+            }
+            fitted
+        }
+        2 => {
+            let first_diff = values
+                .windows(2)
+                .map(|window| window[1] - window[0])
+                .collect::<Vec<_>>();
+            let mut fitted = vec![values[0], values[1]];
+            for idx in 2..values.len() {
+                fitted.push(values[idx - 1] + first_diff[idx - 2] + fitted_diff[idx - 2]);
+            }
+            fitted
+        }
+        _ => values.to_vec(),
+    }
+}
+
+fn solve_linear_system(mut matrix: Vec<Vec<f64>>, mut rhs: Vec<f64>) -> Option<Vec<f64>> {
+    let n = rhs.len();
+    for pivot_idx in 0..n {
+        let mut pivot_row = pivot_idx;
+        for row in (pivot_idx + 1)..n {
+            if matrix[row][pivot_idx].abs() > matrix[pivot_row][pivot_idx].abs() {
+                pivot_row = row;
+            }
+        }
+        if matrix[pivot_row][pivot_idx].abs() < 1.0e-12 {
+            return None;
+        }
+        matrix.swap(pivot_idx, pivot_row);
+        rhs.swap(pivot_idx, pivot_row);
+
+        let pivot = matrix[pivot_idx][pivot_idx];
+        for cell in matrix[pivot_idx].iter_mut().take(n).skip(pivot_idx) {
+            *cell /= pivot;
+        }
+        rhs[pivot_idx] /= pivot;
+        let pivot_tail = matrix[pivot_idx][pivot_idx..n].to_vec();
+
+        for row in 0..n {
+            if row == pivot_idx {
+                continue;
+            }
+            let factor = matrix[row][pivot_idx];
+            for (cell, pivot_cell) in matrix[row]
+                .iter_mut()
+                .take(n)
+                .skip(pivot_idx)
+                .zip(pivot_tail.iter())
+            {
+                *cell -= factor * pivot_cell;
+            }
+            rhs[row] -= factor * rhs[pivot_idx];
+        }
+    }
+    Some(rhs)
 }
 
 fn deseasonalize(
@@ -832,5 +1668,214 @@ mod tests {
         assert!(matches!(model.selected_alpha(), Some(0.2 | 0.8)));
         assert_eq!(model.validation_scores().len(), 4);
         assert_eq!(forecast.predictions().len(), 2);
+    }
+
+    #[test]
+    fn ets_forecasts_panel_series_with_daily_timestamps() {
+        let frame = ForecastFrame::new(
+            vec![
+                ForecastRow::new("PULocationID=1", ts(1), 10.0),
+                ForecastRow::new("PULocationID=1", ts(2), 12.0),
+                ForecastRow::new("PULocationID=1", ts(3), 14.0),
+                ForecastRow::new("PULocationID=1", ts(4), 16.0),
+                ForecastRow::new("PULocationID=2", ts(1), 30.0),
+                ForecastRow::new("PULocationID=2", ts(2), 29.0),
+                ForecastRow::new("PULocationID=2", ts(3), 28.0),
+                ForecastRow::new("PULocationID=2", ts(4), 27.0),
+            ],
+            ForecastFrequency::Daily,
+        )
+        .expect("valid frame");
+        let mut model = ETSForecaster::new(0.6, 0.2).expect("valid ets");
+
+        model.fit(&frame).expect("fit");
+        let forecast = model.predict(2).expect("predict");
+
+        let predictions = forecast.predictions();
+        assert_eq!(predictions.len(), 4);
+        assert_eq!(predictions[0].series_id, "PULocationID=1");
+        assert_eq!(predictions[0].timestamp, ts(5));
+        assert_eq!(predictions[1].horizon, 2);
+        assert_eq!(predictions[2].series_id, "PULocationID=2");
+        assert!(predictions[0].mean > 16.0);
+        assert!(predictions[2].mean < 27.0);
+        assert_eq!(
+            model.fitted_values("PULocationID=1").expect("fitted").len(),
+            4
+        );
+    }
+
+    #[test]
+    fn ets_additive_seasonality_repeats_pattern() {
+        let frame = ForecastFrame::new(
+            (1..=8)
+                .map(|day| {
+                    let seasonal = if day % 2 == 0 { 4.0 } else { -4.0 };
+                    ForecastRow::single(ts(day), 50.0 + seasonal)
+                })
+                .collect(),
+            ForecastFrequency::Daily,
+        )
+        .expect("valid frame");
+        let mut model = ETSForecaster::with_additive_seasonality(0.5, 0.0, Some(0.5), Some(2))
+            .expect("valid seasonal ets");
+
+        model.fit(&frame).expect("fit");
+        let forecast = model.predict(2).expect("predict");
+        let means = forecast
+            .predictions()
+            .iter()
+            .map(|row| row.mean)
+            .collect::<Vec<_>>();
+
+        assert_eq!(forecast.predictions()[0].timestamp, ts(9));
+        assert!(means[1] > means[0]);
+    }
+
+    #[test]
+    fn ets_rejects_invalid_params_and_short_seasonal_history() {
+        assert!(ETSForecaster::new(0.0, 0.2).is_err());
+        assert!(ETSForecaster::with_additive_seasonality(0.5, 0.2, Some(0.5), None).is_err());
+
+        let frame = ForecastFrame::new(
+            vec![
+                ForecastRow::single(ts(1), 1.0),
+                ForecastRow::single(ts(2), 2.0),
+                ForecastRow::single(ts(3), 3.0),
+            ],
+            ForecastFrequency::Daily,
+        )
+        .expect("valid frame");
+        let mut model = ETSForecaster::with_additive_seasonality(0.5, 0.2, Some(0.5), Some(2))
+            .expect("valid seasonal ets");
+        let err = model.fit(&frame).expect_err("short seasonal history");
+        assert!(err.to_string().contains("two full seasonal cycles"));
+    }
+
+    #[test]
+    fn arima_forecasts_differenced_linear_series() {
+        let frame = ForecastFrame::new(
+            (1..=8)
+                .map(|day| ForecastRow::single(ts(day), 10.0 + f64::from(day) * 3.0))
+                .collect(),
+            ForecastFrequency::Daily,
+        )
+        .expect("valid frame");
+        let mut model = ArimaForecaster::new(0, 1, 0).expect("valid arima");
+
+        model.fit(&frame).expect("fit");
+        let forecast = model.predict(3).expect("predict");
+        let means = forecast
+            .predictions()
+            .iter()
+            .map(|row| (row.timestamp, row.horizon, row.mean))
+            .collect::<Vec<_>>();
+
+        assert_eq!(means[0].0, ts(9));
+        assert_eq!(means[2].1, 3);
+        assert!((means[0].2 - 37.0).abs() < 1.0e-6);
+        assert!((means[2].2 - 43.0).abs() < 1.0e-6);
+        assert_eq!(model.residuals("__single__").expect("residuals").len(), 7);
+    }
+
+    #[test]
+    fn arima_forecasts_each_panel_series_without_bleeding() {
+        let frame = ForecastFrame::new(
+            vec![
+                ForecastRow::new("PU1->DO2", ts(1), 10.0),
+                ForecastRow::new("PU1->DO2", ts(2), 13.0),
+                ForecastRow::new("PU1->DO2", ts(3), 16.0),
+                ForecastRow::new("PU1->DO2", ts(4), 19.0),
+                ForecastRow::new("PU9->DO8", ts(1), 40.0),
+                ForecastRow::new("PU9->DO8", ts(2), 38.0),
+                ForecastRow::new("PU9->DO8", ts(3), 36.0),
+                ForecastRow::new("PU9->DO8", ts(4), 34.0),
+            ],
+            ForecastFrequency::Daily,
+        )
+        .expect("valid frame");
+        let mut model = ArimaForecaster::new(0, 1, 0).expect("valid arima");
+
+        model.fit(&frame).expect("fit");
+        let forecast = model.predict(2).expect("predict");
+        let means = forecast
+            .predictions()
+            .iter()
+            .map(|row| (row.series_id.as_str(), row.timestamp, row.mean))
+            .collect::<Vec<_>>();
+
+        assert_eq!(means.len(), 4);
+        assert_eq!(means[0].0, "PU1->DO2");
+        assert_eq!(means[0].1, ts(5));
+        assert_eq!(means[2].0, "PU9->DO8");
+        assert!(means[0].2 > 19.0);
+        assert!(means[2].2 < 34.0);
+    }
+
+    #[test]
+    fn arima_rejects_invalid_order_and_insufficient_history() {
+        assert!(ArimaForecaster::new(9, 0, 0).is_err());
+        assert!(ArimaForecaster::new(1, 0, 9).is_err());
+
+        let frame = ForecastFrame::new(
+            vec![
+                ForecastRow::single(ts(1), 1.0),
+                ForecastRow::single(ts(2), 2.0),
+            ],
+            ForecastFrequency::Daily,
+        )
+        .expect("valid frame");
+        let mut model = ArimaForecaster::new(2, 0, 0).expect("valid arima");
+        let err = model.fit(&frame).expect_err("insufficient history");
+        assert!(err.to_string().contains("requires more than 2"));
+    }
+
+    #[test]
+    fn arima_supports_moving_average_terms() {
+        let frame = ForecastFrame::new(
+            (1..=10)
+                .map(|day| {
+                    let shock = if day % 3 == 0 { 2.0 } else { -1.0 };
+                    ForecastRow::single(ts(day), 20.0 + f64::from(day) + shock)
+                })
+                .collect(),
+            ForecastFrequency::Daily,
+        )
+        .expect("valid frame");
+        let mut model = ArimaForecaster::new(1, 0, 1).expect("valid arima");
+
+        model.fit(&frame).expect("fit");
+        let forecast = model.predict(2).expect("predict");
+
+        assert_eq!(model.order(), (1, 0, 1));
+        assert_eq!(forecast.predictions().len(), 2);
+        assert!(forecast
+            .predictions()
+            .iter()
+            .all(|row| row.mean.is_finite()));
+    }
+
+    #[test]
+    fn auto_arima_selects_candidate_and_predicts_with_model_name() {
+        let frame = ForecastFrame::new(
+            (1..=8)
+                .map(|day| ForecastRow::single(ts(day), f64::from(day * day)))
+                .collect(),
+            ForecastFrequency::Daily,
+        )
+        .expect("valid frame");
+        let mut model = AutoARIMAForecaster::with_max_order(2, 1, 1).expect("valid auto arima");
+
+        model.fit(&frame).expect("fit");
+        let forecast = model.predict(2).expect("predict");
+
+        assert!(matches!(
+            model.selected_order(),
+            Some((0..=2, 0..=1, 0..=1))
+        ));
+        assert_eq!(model.validation_scores().len(), 12);
+        assert_eq!(forecast.predictions().len(), 2);
+        assert_eq!(forecast.predictions()[0].model, "auto_arima");
+        assert_eq!(forecast.predictions()[0].timestamp, ts(9));
     }
 }

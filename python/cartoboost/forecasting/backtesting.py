@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from copy import deepcopy
 from dataclasses import dataclass, field
@@ -115,6 +116,9 @@ class RollingOriginBacktester:
     def evaluate(self, model: Any, frame: ForecastFrame) -> BacktestResult:
         if not isinstance(frame, ForecastFrame):
             raise TypeError("evaluate requires a ForecastFrame")
+        native_result = self._evaluate_native(model, frame)
+        if native_result is not None:
+            return native_result
         data = frame.to_pandas()
         splitter = RollingOriginSplitter(
             horizon=self.splitter.horizon,
@@ -175,6 +179,35 @@ class RollingOriginBacktester:
             folds.append(BacktestFoldResult(fold=fold, metrics=metrics, predictions=rows))
         return BacktestResult(folds=folds)
 
+    def _evaluate_native(self, model: Any, frame: ForecastFrame) -> BacktestResult | None:
+        native_frame = getattr(frame, "_native_frame", None)
+        new_native_model = getattr(model, "_new_native_model", None)
+        if native_frame is None or new_native_model is None:
+            return None
+        try:
+            from cartoboost import _native
+        except ImportError:
+            return None
+        native_splitter_class = getattr(_native, "RollingOriginSplitter", None)
+        native_backtester_class = getattr(_native, "RollingOriginBacktester", None)
+        if native_splitter_class is None or native_backtester_class is None:
+            return None
+        native_splitter = native_splitter_class(
+            self.splitter.horizon,
+            step=self.splitter.step,
+            min_train_size=self.splitter.min_train_size,
+            max_train_size=self.splitter.max_train_size,
+            n_splits=self.splitter.n_splits,
+            window=self.splitter.window,
+        )
+        native_backtester = native_backtester_class(native_splitter)
+        native_model = new_native_model()
+        runner_name = _native_backtest_runner_name(model)
+        runner = getattr(native_backtester, runner_name, None)
+        if runner is None:
+            return None
+        return _backtest_result_from_native(runner(native_model, native_frame))
+
     def run(self, model: Any, data: Any) -> BacktestResult:
         folds: list[BacktestFoldResult] = []
         for fold in self.splitter.split(data):
@@ -230,6 +263,59 @@ def _features(data: Any, target_col: str, feature_cols: list[str] | None) -> Any
         return data.drop(columns=[target_col])
     arr = np.asarray(data)
     return np.delete(arr, -1, axis=1)
+
+
+def _native_backtest_runner_name(model: Any) -> str:
+    name = getattr(model, "native_class_name", model.__class__.__name__)
+    mapping = {
+        "NaiveForecaster": "run_naive",
+        "SeasonalNaiveForecaster": "run_seasonal_naive",
+        "ThetaForecaster": "run_theta",
+        "OptimizedThetaForecaster": "run_optimized_theta",
+        "ETSForecaster": "run_ets",
+        "ArimaForecaster": "run_arima",
+        "AutoARIMAForecaster": "run_auto_arima",
+        "CartoBoostLagForecaster": "run_cartoboost_lag",
+    }
+    return mapping.get(name, "")
+
+
+def _backtest_result_from_native(native_result: Any) -> BacktestResult:
+    payload = json.loads(native_result.to_json())
+    folds: list[BacktestFoldResult] = []
+    for fold_result in payload.get("folds", []):
+        fold_payload = fold_result["fold"]
+        fold = ForecastFold(
+            fold_id=fold_payload["fold_id"],
+            train_indices=np.asarray(fold_payload["train_indices"], dtype=int),
+            validation_indices=np.asarray(fold_payload["validation_indices"], dtype=int),
+            train_start=fold_payload["train_start"],
+            train_end=fold_payload["train_end"],
+            validation_start=fold_payload["validation_start"],
+            validation_end=fold_payload["validation_end"],
+            horizon=int(fold_payload["horizon"]),
+            step=int(fold_payload["step"]),
+            metadata=dict(fold_payload.get("metadata", {})),
+        )
+        predictions = [
+            {
+                "fold_id": fold.fold_id,
+                "series_id": row["series_id"],
+                "timestamp": row["timestamp"],
+                "horizon": row["horizon"],
+                "model": row["model"],
+                "prediction": row["mean"],
+            }
+            for row in fold_result.get("predictions", [])
+        ]
+        folds.append(
+            BacktestFoldResult(
+                fold=fold,
+                metrics=dict(fold_result["metrics"]),
+                predictions=predictions,
+            )
+        )
+    return BacktestResult(folds=folds)
 
 
 def _take(data: Any, indices: np.ndarray) -> Any:

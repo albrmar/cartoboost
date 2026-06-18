@@ -93,7 +93,7 @@ Forecasting options:
 | `--target-col` | Target column such as `pickup_demand`, `fare`, or `duration`. |
 | `--series-id-col` | Optional panel id such as `PULocationID` or `lane_id`. |
 | `--freq` | Frequency: `D`, `H`, `W`, or `M`. |
-| `--model` | `naive`, `seasonal_naive`, `theta`, `optimized_theta`, `ets`, `auto_arima`, `cartoboost_lag`, `weighted_ensemble`, or `all` for `compare`. |
+| `--model` | `naive`, `seasonal_naive`, `theta`, `optimized_theta`, `ets`, `auto_arima`, `cartoboost_lag`, or `all` for `compare`. |
 | `--horizon` | Positive forecast horizon. |
 | `--season-length` | Seasonal cycle for seasonal naive and theta-style models. |
 | `--output` | Forecast CSV or JSON metrics path. |

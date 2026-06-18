@@ -1,12 +1,18 @@
 use cartoboost_core::data::{FeatureSchema, SparseSetColumn};
 use cartoboost_core::forecasting::{
+    ArimaForecaster as CoreArimaForecaster, AutoARIMAForecaster as CoreAutoARIMAForecaster,
+    BacktestFoldResult as CoreBacktestFoldResult, BacktestResult as CoreBacktestResult,
     CalendarFeature, CartoBoostLagForecaster as CoreCartoBoostLagForecaster,
+    ETSForecaster as CoreETSForecaster, ForecastActual, ForecastFold as CoreForecastFold,
     ForecastFrame as CoreForecastFrame, ForecastFrameMetadata, ForecastFrequency,
-    ForecastPrediction, ForecastResult as CoreForecastResult, Forecaster, LagFeatureConfig,
+    ForecastMetricSet as CoreForecastMetricSet, ForecastPrediction,
+    ForecastResult as CoreForecastResult, ForecastWindow, Forecaster, LagFeatureConfig,
     NaiveForecaster as CoreNaiveForecaster,
     OptimizedThetaForecaster as CoreOptimizedThetaForecaster,
+    RollingOriginBacktester as CoreRollingOriginBacktester,
+    RollingOriginSplitter as CoreRollingOriginSplitter,
     SeasonalNaiveForecaster as CoreSeasonalNaiveForecaster, ThetaForecaster as CoreThetaForecaster,
-    ThetaSeasonality,
+    ThetaSeasonality, WeightedEnsembleForecaster as CoreWeightedEnsembleForecaster,
 };
 use cartoboost_core::loss::{HuberLossConfig, LogL2LossConfig, LossConfig, QuantileLossConfig};
 use cartoboost_core::tree::{FlatAxisPredictor, FuzzyKernel, LeafPredictorKind, SplitterKind};
@@ -25,7 +31,7 @@ use cartoboost_neural::{
 use numpy::{IntoPyArray, PyArray1, PyReadonlyArray1, PyReadonlyArray2, PyUntypedArrayMethods};
 use pyo3::exceptions::{PyIOError, PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyModule, PyType};
+use pyo3::types::{PyAny, PyModule, PyType};
 use serde_json::{json, Value};
 use std::cmp::Ordering;
 use std::path::PathBuf;
@@ -156,6 +162,418 @@ impl NativeForecastResult {
                 )
             })
             .collect()
+    }
+}
+
+#[pyclass(name = "ForecastFold")]
+#[derive(Clone, Debug)]
+struct NativeForecastFold {
+    fold: CoreForecastFold,
+}
+
+#[pymethods]
+impl NativeForecastFold {
+    #[getter]
+    fn fold_id(&self) -> String {
+        self.fold.fold_id.clone()
+    }
+
+    #[getter]
+    fn train_indices(&self) -> Vec<usize> {
+        self.fold.train_indices.clone()
+    }
+
+    #[getter]
+    fn validation_indices(&self) -> Vec<usize> {
+        self.fold.validation_indices.clone()
+    }
+
+    #[getter]
+    fn train_start(&self) -> String {
+        format_forecast_timestamp(self.fold.train_start)
+    }
+
+    #[getter]
+    fn train_end(&self) -> String {
+        format_forecast_timestamp(self.fold.train_end)
+    }
+
+    #[getter]
+    fn validation_start(&self) -> String {
+        format_forecast_timestamp(self.fold.validation_start)
+    }
+
+    #[getter]
+    fn validation_end(&self) -> String {
+        format_forecast_timestamp(self.fold.validation_end)
+    }
+
+    #[getter]
+    fn horizon(&self) -> usize {
+        self.fold.horizon
+    }
+
+    #[getter]
+    fn step(&self) -> usize {
+        self.fold.step
+    }
+
+    fn metadata_json(&self) -> PyResult<String> {
+        serde_json::to_string(&self.fold.metadata)
+            .map_err(|err| PyRuntimeError::new_err(err.to_string()))
+    }
+
+    fn to_json(&self) -> PyResult<String> {
+        serde_json::to_string(&self.fold).map_err(|err| PyRuntimeError::new_err(err.to_string()))
+    }
+}
+
+#[pyclass(name = "RollingOriginSplitter")]
+#[derive(Clone, Debug)]
+struct NativeRollingOriginSplitter {
+    splitter: CoreRollingOriginSplitter,
+}
+
+#[pymethods]
+impl NativeRollingOriginSplitter {
+    #[new]
+    #[pyo3(signature = (horizon, step=1, min_train_size=1, max_train_size=None, n_splits=None, window="expanding"))]
+    fn new(
+        horizon: usize,
+        step: usize,
+        min_train_size: usize,
+        max_train_size: Option<usize>,
+        n_splits: Option<usize>,
+        window: &str,
+    ) -> PyResult<Self> {
+        let window = parse_forecast_window(window)?;
+        Ok(Self {
+            splitter: CoreRollingOriginSplitter::new(
+                horizon,
+                step,
+                min_train_size,
+                max_train_size,
+                n_splits,
+                window,
+            )
+            .map_err(to_py_value_error)?,
+        })
+    }
+
+    #[staticmethod]
+    fn expanding(horizon: usize, min_train_size: usize) -> PyResult<Self> {
+        Ok(Self {
+            splitter: CoreRollingOriginSplitter::expanding(horizon, min_train_size)
+                .map_err(to_py_value_error)?,
+        })
+    }
+
+    #[staticmethod]
+    fn sliding(horizon: usize, min_train_size: usize, max_train_size: usize) -> PyResult<Self> {
+        Ok(Self {
+            splitter: CoreRollingOriginSplitter::sliding(horizon, min_train_size, max_train_size)
+                .map_err(to_py_value_error)?,
+        })
+    }
+
+    #[getter]
+    fn horizon(&self) -> usize {
+        self.splitter.horizon
+    }
+
+    #[getter]
+    fn step(&self) -> usize {
+        self.splitter.step
+    }
+
+    #[getter]
+    fn min_train_size(&self) -> usize {
+        self.splitter.min_train_size
+    }
+
+    #[getter]
+    fn max_train_size(&self) -> Option<usize> {
+        self.splitter.max_train_size
+    }
+
+    #[getter]
+    fn n_splits(&self) -> Option<usize> {
+        self.splitter.n_splits
+    }
+
+    #[getter]
+    fn window(&self) -> &'static str {
+        forecast_window_name(&self.splitter.window)
+    }
+
+    fn split(&self, frame: &NativeForecastFrame) -> PyResult<Vec<NativeForecastFold>> {
+        Ok(self
+            .splitter
+            .split(&frame.frame)
+            .map_err(to_py_value_error)?
+            .into_iter()
+            .map(|fold| NativeForecastFold { fold })
+            .collect())
+    }
+
+    fn n_splits_for_frame(&self, frame: &NativeForecastFrame) -> PyResult<usize> {
+        Ok(self.split(frame)?.len())
+    }
+}
+
+#[pyclass(name = "ForecastMetricSet")]
+#[derive(Clone, Debug)]
+struct NativeForecastMetricSet {
+    metrics: CoreForecastMetricSet,
+}
+
+#[pymethods]
+impl NativeForecastMetricSet {
+    #[new]
+    #[pyo3(signature = (mae=0.0, rmse=0.0, wape=0.0, smape=0.0, bias=0.0, mase=None))]
+    fn new(mae: f64, rmse: f64, wape: f64, smape: f64, bias: f64, mase: Option<f64>) -> Self {
+        Self {
+            metrics: CoreForecastMetricSet {
+                mae,
+                rmse,
+                wape,
+                smape,
+                bias,
+                mase,
+            },
+        }
+    }
+
+    #[staticmethod]
+    #[pyo3(signature = (forecast, actuals, training_actuals=None, mase_seasonality=None))]
+    fn evaluate(
+        forecast: &NativeForecastResult,
+        actuals: Vec<(String, String, usize, f64)>,
+        training_actuals: Option<Vec<(String, String, usize, f64)>>,
+        mase_seasonality: Option<usize>,
+    ) -> PyResult<Self> {
+        let actuals = parse_forecast_actuals(actuals)?;
+        let training_actuals = parse_forecast_actuals(training_actuals.unwrap_or_default())?;
+        let metrics = cartoboost_core::forecasting::evaluate_forecast_with_training(
+            &forecast.result,
+            &actuals,
+            &training_actuals,
+            mase_seasonality,
+        )
+        .map_err(to_py_value_error)?;
+        Ok(Self { metrics })
+    }
+
+    #[getter]
+    fn mae(&self) -> f64 {
+        self.metrics.mae
+    }
+
+    #[getter]
+    fn rmse(&self) -> f64 {
+        self.metrics.rmse
+    }
+
+    #[getter]
+    fn wape(&self) -> f64 {
+        self.metrics.wape
+    }
+
+    #[getter]
+    fn smape(&self) -> f64 {
+        self.metrics.smape
+    }
+
+    #[getter]
+    fn bias(&self) -> f64 {
+        self.metrics.bias
+    }
+
+    #[getter]
+    fn mase(&self) -> Option<f64> {
+        self.metrics.mase
+    }
+
+    fn to_json(&self) -> PyResult<String> {
+        serde_json::to_string(&self.metrics).map_err(|err| PyRuntimeError::new_err(err.to_string()))
+    }
+}
+
+#[pyfunction]
+#[pyo3(signature = (forecast, actuals, training_actuals=None, mase_seasonality=None))]
+fn forecast_evaluate_metrics(
+    forecast: &NativeForecastResult,
+    actuals: Vec<(String, String, usize, f64)>,
+    training_actuals: Option<Vec<(String, String, usize, f64)>>,
+    mase_seasonality: Option<usize>,
+) -> PyResult<NativeForecastMetricSet> {
+    NativeForecastMetricSet::evaluate(forecast, actuals, training_actuals, mase_seasonality)
+}
+
+#[pyclass(name = "BacktestFoldResult")]
+#[derive(Clone, Debug)]
+struct NativeBacktestFoldResult {
+    result: CoreBacktestFoldResult,
+}
+
+#[pymethods]
+impl NativeBacktestFoldResult {
+    #[getter]
+    fn fold(&self) -> NativeForecastFold {
+        NativeForecastFold {
+            fold: self.result.fold.clone(),
+        }
+    }
+
+    #[getter]
+    fn metrics(&self) -> NativeForecastMetricSet {
+        NativeForecastMetricSet {
+            metrics: self.result.metrics.clone(),
+        }
+    }
+
+    #[getter]
+    fn predictions(&self) -> Vec<(String, String, usize, String, f64)> {
+        self.result
+            .predictions
+            .iter()
+            .map(forecast_prediction_tuple)
+            .collect()
+    }
+
+    fn to_json(&self) -> PyResult<String> {
+        serde_json::to_string(&self.result).map_err(|err| PyRuntimeError::new_err(err.to_string()))
+    }
+}
+
+#[pyclass(name = "BacktestResult")]
+#[derive(Clone, Debug)]
+struct NativeBacktestResult {
+    result: CoreBacktestResult,
+}
+
+#[pymethods]
+impl NativeBacktestResult {
+    #[getter]
+    fn folds(&self) -> Vec<NativeBacktestFoldResult> {
+        self.result
+            .folds
+            .iter()
+            .cloned()
+            .map(|result| NativeBacktestFoldResult { result })
+            .collect()
+    }
+
+    #[getter]
+    fn metrics(&self) -> Option<NativeForecastMetricSet> {
+        self.result
+            .metrics
+            .clone()
+            .map(|metrics| NativeForecastMetricSet { metrics })
+    }
+
+    fn to_json(&self) -> PyResult<String> {
+        serde_json::to_string(&self.result).map_err(|err| PyRuntimeError::new_err(err.to_string()))
+    }
+}
+
+#[pyclass(name = "RollingOriginBacktester")]
+#[derive(Clone, Debug)]
+struct NativeRollingOriginBacktester {
+    backtester: CoreRollingOriginBacktester,
+}
+
+#[pymethods]
+impl NativeRollingOriginBacktester {
+    #[new]
+    #[pyo3(signature = (splitter, mase_seasonality=None))]
+    fn new(
+        splitter: &NativeRollingOriginSplitter,
+        mase_seasonality: Option<usize>,
+    ) -> PyResult<Self> {
+        let mut backtester = CoreRollingOriginBacktester::new(splitter.splitter.clone());
+        if let Some(seasonality) = mase_seasonality {
+            backtester = backtester
+                .with_mase_seasonality(seasonality)
+                .map_err(to_py_value_error)?;
+        }
+        Ok(Self { backtester })
+    }
+
+    #[getter]
+    fn splitter(&self) -> NativeRollingOriginSplitter {
+        NativeRollingOriginSplitter {
+            splitter: self.backtester.splitter.clone(),
+        }
+    }
+
+    #[getter]
+    fn mase_seasonality(&self) -> Option<usize> {
+        self.backtester.mase_seasonality
+    }
+
+    fn run_naive(
+        &self,
+        model: &NativeNaiveForecaster,
+        frame: &NativeForecastFrame,
+    ) -> PyResult<NativeBacktestResult> {
+        backtest_to_py(self.backtester.run(model.model.clone(), &frame.frame))
+    }
+
+    fn run_seasonal_naive(
+        &self,
+        model: &NativeSeasonalNaiveForecaster,
+        frame: &NativeForecastFrame,
+    ) -> PyResult<NativeBacktestResult> {
+        backtest_to_py(self.backtester.run(model.model.clone(), &frame.frame))
+    }
+
+    fn run_theta(
+        &self,
+        model: &NativeThetaForecaster,
+        frame: &NativeForecastFrame,
+    ) -> PyResult<NativeBacktestResult> {
+        backtest_to_py(self.backtester.run(model.model.clone(), &frame.frame))
+    }
+
+    fn run_optimized_theta(
+        &self,
+        model: &NativeOptimizedThetaForecaster,
+        frame: &NativeForecastFrame,
+    ) -> PyResult<NativeBacktestResult> {
+        backtest_to_py(self.backtester.run(model.model.clone(), &frame.frame))
+    }
+
+    fn run_ets(
+        &self,
+        model: &NativeETSForecaster,
+        frame: &NativeForecastFrame,
+    ) -> PyResult<NativeBacktestResult> {
+        backtest_to_py(self.backtester.run(model.model.clone(), &frame.frame))
+    }
+
+    fn run_arima(
+        &self,
+        model: &NativeArimaForecaster,
+        frame: &NativeForecastFrame,
+    ) -> PyResult<NativeBacktestResult> {
+        backtest_to_py(self.backtester.run(model.model.clone(), &frame.frame))
+    }
+
+    fn run_auto_arima(
+        &self,
+        model: &NativeAutoARIMAForecaster,
+        frame: &NativeForecastFrame,
+    ) -> PyResult<NativeBacktestResult> {
+        backtest_to_py(self.backtester.run(model.model.clone(), &frame.frame))
+    }
+
+    fn run_cartoboost_lag(
+        &self,
+        model: &NativeCartoBoostLagForecaster,
+        frame: &NativeForecastFrame,
+    ) -> PyResult<NativeBacktestResult> {
+        backtest_to_py(self.backtester.run(model.model.clone(), &frame.frame))
     }
 }
 
@@ -291,6 +709,118 @@ impl NativeOptimizedThetaForecaster {
     }
 }
 
+#[pyclass(name = "ETSForecaster")]
+#[derive(Clone, Debug)]
+struct NativeETSForecaster {
+    model: CoreETSForecaster,
+}
+
+#[pymethods]
+impl NativeETSForecaster {
+    #[new]
+    #[pyo3(signature = (alpha=0.5, beta=0.1, gamma=None, season_length=None))]
+    fn new(
+        alpha: f64,
+        beta: f64,
+        gamma: Option<f64>,
+        season_length: Option<usize>,
+    ) -> PyResult<Self> {
+        Ok(Self {
+            model: CoreETSForecaster::with_additive_seasonality(alpha, beta, gamma, season_length)
+                .map_err(to_py_value_error)?,
+        })
+    }
+
+    fn fit(&mut self, frame: &NativeForecastFrame) -> PyResult<()> {
+        self.model.fit(&frame.frame).map_err(to_py_value_error)
+    }
+
+    fn predict(&self, horizon: usize) -> PyResult<NativeForecastResult> {
+        forecast_to_py(self.model.predict(horizon))
+    }
+
+    fn metadata_json(&self) -> PyResult<String> {
+        serde_json::to_string(&self.model.metadata())
+            .map_err(|err| PyRuntimeError::new_err(err.to_string()))
+    }
+}
+
+#[pyclass(name = "ArimaForecaster")]
+#[derive(Clone, Debug)]
+struct NativeArimaForecaster {
+    model: CoreArimaForecaster,
+}
+
+#[pymethods]
+impl NativeArimaForecaster {
+    #[new]
+    #[pyo3(signature = (p=1, d=0, q=0))]
+    fn new(p: usize, d: usize, q: usize) -> PyResult<Self> {
+        Ok(Self {
+            model: CoreArimaForecaster::new(p, d, q).map_err(to_py_value_error)?,
+        })
+    }
+
+    fn fit(&mut self, frame: &NativeForecastFrame) -> PyResult<()> {
+        self.model.fit(&frame.frame).map_err(to_py_value_error)
+    }
+
+    fn predict(&self, horizon: usize) -> PyResult<NativeForecastResult> {
+        forecast_to_py(self.model.predict(horizon))
+    }
+}
+
+#[pyclass(name = "AutoARIMAForecaster")]
+#[derive(Clone, Debug)]
+struct NativeAutoARIMAForecaster {
+    model: CoreAutoARIMAForecaster,
+}
+
+#[pymethods]
+impl NativeAutoARIMAForecaster {
+    #[new]
+    #[pyo3(signature = (seasonal=false, m=1, error_policy="raise", max_p=3, max_d=1, max_q=2))]
+    fn new(
+        seasonal: bool,
+        m: usize,
+        error_policy: &str,
+        max_p: usize,
+        max_d: usize,
+        max_q: usize,
+    ) -> PyResult<Self> {
+        if seasonal {
+            return Err(PyValueError::new_err(
+                "AutoARIMAForecaster Rust binding currently supports seasonal=false",
+            ));
+        }
+        if m == 0 {
+            return Err(PyValueError::new_err("m must be a positive integer"));
+        }
+        if error_policy != "raise" {
+            return Err(PyValueError::new_err(
+                "AutoARIMAForecaster Rust binding supports error_policy='raise' only",
+            ));
+        }
+        Ok(Self {
+            model: CoreAutoARIMAForecaster::with_max_order(max_p, max_d, max_q)
+                .map_err(to_py_value_error)?,
+        })
+    }
+
+    fn fit(&mut self, frame: &NativeForecastFrame) -> PyResult<()> {
+        self.model.fit(&frame.frame).map_err(to_py_value_error)
+    }
+
+    fn predict(&self, horizon: usize) -> PyResult<NativeForecastResult> {
+        forecast_to_py(self.model.predict(horizon))
+    }
+
+    fn metadata_json(&self) -> PyResult<String> {
+        serde_json::to_string(&self.model.metadata())
+            .map_err(|err| PyRuntimeError::new_err(err.to_string()))
+    }
+}
+
 #[pyclass(name = "CartoBoostLagForecaster")]
 #[derive(Clone, Debug)]
 struct NativeCartoBoostLagForecaster {
@@ -342,12 +872,135 @@ impl NativeCartoBoostLagForecaster {
     }
 }
 
+#[pyclass(name = "WeightedEnsembleForecaster", unsendable)]
+struct NativeWeightedEnsembleForecaster {
+    model: CoreWeightedEnsembleForecaster,
+}
+
+#[pymethods]
+impl NativeWeightedEnsembleForecaster {
+    #[new]
+    fn new(py: Python<'_>, members: Vec<(String, Py<PyAny>, f64)>) -> PyResult<Self> {
+        let members = members
+            .iter()
+            .map(|(name, model, weight)| {
+                Ok((name.clone(), boxed_forecaster_from_py(py, model)?, *weight))
+            })
+            .collect::<PyResult<Vec<_>>>()?;
+        Ok(Self {
+            model: CoreWeightedEnsembleForecaster::new(members).map_err(to_py_value_error)?,
+        })
+    }
+
+    fn fit(&mut self, frame: &NativeForecastFrame) -> PyResult<()> {
+        self.model.fit(&frame.frame).map_err(to_py_value_error)
+    }
+
+    fn predict(&self, horizon: usize) -> PyResult<NativeForecastResult> {
+        forecast_to_py(self.model.predict(horizon))
+    }
+
+    fn metadata_json(&self) -> PyResult<String> {
+        serde_json::to_string(&self.model.metadata())
+            .map_err(|err| PyRuntimeError::new_err(err.to_string()))
+    }
+}
+
+fn boxed_forecaster_from_py(py: Python<'_>, model: &Py<PyAny>) -> PyResult<Box<dyn Forecaster>> {
+    let model = model.bind(py);
+    if let Ok(model) = model.extract::<PyRef<'_, NativeNaiveForecaster>>() {
+        return Ok(Box::new(model.model.clone()));
+    }
+    if let Ok(model) = model.extract::<PyRef<'_, NativeSeasonalNaiveForecaster>>() {
+        return Ok(Box::new(model.model.clone()));
+    }
+    if let Ok(model) = model.extract::<PyRef<'_, NativeThetaForecaster>>() {
+        return Ok(Box::new(model.model.clone()));
+    }
+    if let Ok(model) = model.extract::<PyRef<'_, NativeOptimizedThetaForecaster>>() {
+        return Ok(Box::new(model.model.clone()));
+    }
+    if let Ok(model) = model.extract::<PyRef<'_, NativeETSForecaster>>() {
+        return Ok(Box::new(model.model.clone()));
+    }
+    if let Ok(model) = model.extract::<PyRef<'_, NativeArimaForecaster>>() {
+        return Ok(Box::new(model.model.clone()));
+    }
+    if let Ok(model) = model.extract::<PyRef<'_, NativeAutoARIMAForecaster>>() {
+        return Ok(Box::new(model.model.clone()));
+    }
+    if let Ok(model) = model.extract::<PyRef<'_, NativeCartoBoostLagForecaster>>() {
+        return Ok(Box::new(model.model.clone()));
+    }
+    Err(PyValueError::new_err(
+        "WeightedEnsembleForecaster members must be native forecasting models",
+    ))
+}
+
 fn forecast_to_py(
     result: cartoboost_core::Result<CoreForecastResult>,
 ) -> PyResult<NativeForecastResult> {
     Ok(NativeForecastResult {
         result: result.map_err(to_py_value_error)?,
     })
+}
+
+fn backtest_to_py(
+    result: cartoboost_core::Result<CoreBacktestResult>,
+) -> PyResult<NativeBacktestResult> {
+    Ok(NativeBacktestResult {
+        result: result.map_err(to_py_value_error)?,
+    })
+}
+
+fn parse_forecast_window(value: &str) -> PyResult<ForecastWindow> {
+    match value {
+        "expanding" => Ok(ForecastWindow::Expanding),
+        "sliding" => Ok(ForecastWindow::Sliding),
+        _ => Err(PyValueError::new_err(
+            "forecast window must be 'expanding' or 'sliding'",
+        )),
+    }
+}
+
+fn forecast_window_name(window: &ForecastWindow) -> &'static str {
+    match window {
+        ForecastWindow::Expanding => "expanding",
+        ForecastWindow::Sliding => "sliding",
+    }
+}
+
+fn parse_forecast_actuals(
+    actuals: Vec<(String, String, usize, f64)>,
+) -> PyResult<Vec<ForecastActual>> {
+    actuals
+        .into_iter()
+        .map(|(series_id, timestamp, horizon, actual)| {
+            Ok(ForecastActual {
+                series_id,
+                timestamp: cartoboost_core::forecasting::parse_forecast_timestamp(&timestamp)
+                    .map_err(to_py_value_error)?,
+                horizon,
+                actual,
+            })
+        })
+        .collect()
+}
+
+fn forecast_prediction_tuple(
+    prediction: &ForecastPrediction,
+) -> (String, String, usize, String, f64) {
+    (
+        prediction.series_id.clone(),
+        format_forecast_timestamp(prediction.timestamp),
+        prediction.horizon,
+        prediction.model.clone(),
+        prediction.mean,
+    )
+}
+
+fn format_forecast_timestamp(timestamp: impl std::fmt::Display) -> String {
+    timestamp.to_string().replace(' ', "T")
 }
 
 fn validate_interval_levels(levels: Option<&[f64]>) -> PyResult<()> {
@@ -3485,11 +4138,21 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<NativeCartoBoostRegressor>()?;
     m.add_class::<NativeForecastFrame>()?;
     m.add_class::<NativeForecastResult>()?;
+    m.add_class::<NativeForecastFold>()?;
+    m.add_class::<NativeRollingOriginSplitter>()?;
+    m.add_class::<NativeForecastMetricSet>()?;
+    m.add_class::<NativeBacktestFoldResult>()?;
+    m.add_class::<NativeBacktestResult>()?;
+    m.add_class::<NativeRollingOriginBacktester>()?;
     m.add_class::<NativeNaiveForecaster>()?;
     m.add_class::<NativeSeasonalNaiveForecaster>()?;
     m.add_class::<NativeThetaForecaster>()?;
     m.add_class::<NativeOptimizedThetaForecaster>()?;
+    m.add_class::<NativeETSForecaster>()?;
+    m.add_class::<NativeArimaForecaster>()?;
+    m.add_class::<NativeAutoARIMAForecaster>()?;
     m.add_class::<NativeCartoBoostLagForecaster>()?;
+    m.add_class::<NativeWeightedEnsembleForecaster>()?;
     m.add_class::<NativeNeuralEmbeddingFeatures>()?;
     m.add_class::<NativeGraphSageEncoder>()?;
     m.add_class::<NativeNode2VecEncoder>()?;
@@ -3512,5 +4175,6 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     )?)?;
     m.add_function(wrap_pyfunction!(weighted_overlay, m)?)?;
     m.add_function(wrap_pyfunction!(forecast_parse_frequency, m)?)?;
+    m.add_function(wrap_pyfunction!(forecast_evaluate_metrics, m)?)?;
     Ok(())
 }

@@ -7,8 +7,18 @@ def test_naive_requires_fit_before_predict():
         NaiveForecaster().predict(2)
 
 
-def test_naive_fit_predicts_with_rust_binding():
-    result = NaiveForecaster().fit([1.0, 2.0, 4.0]).predict(2)
+def test_naive_converts_series_and_delegates_to_native(install_fake_native):
+    native = install_fake_native("NaiveForecaster")
 
-    assert result.columns() == ["series_id", "timestamp", "horizon", "model", "prediction"]
-    assert [row[4] for row in result.predictions()] == [4.0, 4.0]
+    result = NaiveForecaster(prediction_interval_levels=[0.8]).fit([1.0, 2.0, 4.0]).predict(2)
+
+    assert result == {"args": (2,), "kwargs": {}}
+    assert native.calls[0] == ("init", {"prediction_interval_levels": (0.8,)})
+    assert native.calls[1][0] == "fit"
+    assert isinstance(native.calls[1][1], native.frame_class)
+    assert native.calls[1][1].rows == [
+        ("__single__", "1970-01-01T00:00:00", 1.0),
+        ("__single__", "1970-01-02T00:00:00", 2.0),
+        ("__single__", "1970-01-03T00:00:00", 4.0),
+    ]
+    assert native.calls[2] == ("predict", (2,), {})

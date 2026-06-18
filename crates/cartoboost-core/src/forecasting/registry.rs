@@ -1,6 +1,8 @@
 use crate::booster::BoosterConfig;
 use crate::forecasting::{
-    CartoBoostLagForecaster, Forecaster, LagFeatureConfig, NaiveForecaster, SeasonalNaiveForecaster,
+    ArimaForecaster, AutoARIMAForecaster, CartoBoostLagForecaster, ETSForecaster, Forecaster,
+    LagFeatureConfig, NaiveForecaster, OptimizedThetaForecaster, SeasonalNaiveForecaster,
+    ThetaForecaster,
 };
 use crate::{CartoBoostError, Result};
 use serde::{Deserialize, Serialize};
@@ -78,6 +80,48 @@ impl ForecastRegistry {
             create_seasonal_naive,
             RegisterMode::RejectDuplicate,
         )?;
+        let mut theta_params = Map::new();
+        theta_params.insert("theta".to_string(), Value::from(2.0));
+        theta_params.insert("alpha".to_string(), Value::from(0.5));
+        registry.register(
+            ForecastModelSpec::new("theta")?.with_params(theta_params),
+            create_theta,
+            RegisterMode::RejectDuplicate,
+        )?;
+        let mut optimized_theta_params = Map::new();
+        optimized_theta_params.insert("theta_grid".to_string(), serde_json::json!([1.0, 2.0]));
+        optimized_theta_params.insert("alpha_grid".to_string(), serde_json::json!([0.2, 0.5, 0.8]));
+        registry.register(
+            ForecastModelSpec::new("optimized_theta")?.with_params(optimized_theta_params),
+            create_optimized_theta,
+            RegisterMode::RejectDuplicate,
+        )?;
+        let mut ets_params = Map::new();
+        ets_params.insert("alpha".to_string(), Value::from(0.5));
+        ets_params.insert("beta".to_string(), Value::from(0.1));
+        registry.register(
+            ForecastModelSpec::new("ets")?.with_params(ets_params),
+            create_ets,
+            RegisterMode::RejectDuplicate,
+        )?;
+        let mut arima_params = Map::new();
+        arima_params.insert("p".to_string(), Value::from(1_u64));
+        arima_params.insert("d".to_string(), Value::from(0_u64));
+        arima_params.insert("q".to_string(), Value::from(0_u64));
+        registry.register(
+            ForecastModelSpec::new("arima")?.with_params(arima_params),
+            create_arima,
+            RegisterMode::RejectDuplicate,
+        )?;
+        let mut auto_arima_params = Map::new();
+        auto_arima_params.insert("max_p".to_string(), Value::from(3_u64));
+        auto_arima_params.insert("max_d".to_string(), Value::from(1_u64));
+        auto_arima_params.insert("max_q".to_string(), Value::from(2_u64));
+        registry.register(
+            ForecastModelSpec::new("auto_arima")?.with_params(auto_arima_params),
+            create_auto_arima,
+            RegisterMode::RejectDuplicate,
+        )?;
         let mut lag_params = Map::new();
         lag_params.insert(
             "lag_config".to_string(),
@@ -101,7 +145,9 @@ impl ForecastRegistry {
         factory: ForecastFactory,
         mode: RegisterMode,
     ) -> Result<()> {
+        let mut spec = spec;
         let name = normalize_name(&spec.name)?;
+        spec.name = name.clone();
         if self.models.contains_key(&name) && mode == RegisterMode::RejectDuplicate {
             return Err(CartoBoostError::InvalidInput(format!(
                 "forecast model '{name}' is already registered"
@@ -113,11 +159,14 @@ impl ForecastRegistry {
     }
 
     pub fn contains(&self, name: &str) -> bool {
-        self.models.contains_key(name)
+        normalize_name(name)
+            .map(|name| self.models.contains_key(&name))
+            .unwrap_or(false)
     }
 
     pub fn get(&self, name: &str) -> Result<&RegisteredForecastModel> {
-        self.models.get(name).ok_or_else(|| {
+        let name = normalize_name(name)?;
+        self.models.get(&name).ok_or_else(|| {
             let known = self.names().join(", ");
             CartoBoostError::InvalidInput(format!(
                 "forecast model '{name}' is not registered; known models: {known}"
@@ -127,6 +176,14 @@ impl ForecastRegistry {
 
     pub fn create(&self, name: &str) -> Result<Box<dyn Forecaster>> {
         self.get(name)?.create()
+    }
+
+    pub fn create_from_spec(&self, spec: &ForecastModelSpec) -> Result<Box<dyn Forecaster>> {
+        let name = normalize_name(&spec.name)?;
+        let registered = self.get(&name)?;
+        let mut spec = spec.clone();
+        spec.name = name;
+        (registered.factory)(&spec)
     }
 
     pub fn names(&self) -> Vec<String> {
@@ -145,19 +202,52 @@ fn create_naive(_: &ForecastModelSpec) -> Result<Box<dyn Forecaster>> {
 }
 
 fn create_seasonal_naive(spec: &ForecastModelSpec) -> Result<Box<dyn Forecaster>> {
-    let season_length = spec
-        .params
-        .get("season_length")
-        .and_then(Value::as_u64)
-        .ok_or_else(|| {
-            CartoBoostError::InvalidInput(
-                "seasonal_naive requires integer param 'season_length'".to_string(),
-            )
-        })?;
-    let season_length = usize::try_from(season_length).map_err(|_| {
-        CartoBoostError::InvalidInput("season_length is too large for this platform".to_string())
-    })?;
+    let season_length = required_usize_param(spec, "season_length")?;
     Ok(Box::new(SeasonalNaiveForecaster::new(season_length)?))
+}
+
+fn create_theta(spec: &ForecastModelSpec) -> Result<Box<dyn Forecaster>> {
+    let theta = optional_f64_param(spec, "theta")?.unwrap_or(2.0);
+    let alpha = optional_f64_param(spec, "alpha")?.unwrap_or(0.5);
+    Ok(Box::new(ThetaForecaster::new(theta, alpha)?))
+}
+
+fn create_optimized_theta(spec: &ForecastModelSpec) -> Result<Box<dyn Forecaster>> {
+    let theta_grid = optional_f64_vec_param(spec, "theta_grid")?.unwrap_or_else(|| vec![1.0, 2.0]);
+    let alpha_grid =
+        optional_f64_vec_param(spec, "alpha_grid")?.unwrap_or_else(|| vec![0.2, 0.5, 0.8]);
+    Ok(Box::new(OptimizedThetaForecaster::new(
+        theta_grid, alpha_grid,
+    )?))
+}
+
+fn create_ets(spec: &ForecastModelSpec) -> Result<Box<dyn Forecaster>> {
+    let alpha = optional_f64_param(spec, "alpha")?.unwrap_or(0.5);
+    let beta = optional_f64_param(spec, "beta")?.unwrap_or(0.1);
+    let gamma = optional_f64_param(spec, "gamma")?;
+    let season_length = optional_usize_param(spec, "season_length")?;
+    Ok(Box::new(ETSForecaster::with_additive_seasonality(
+        alpha,
+        beta,
+        gamma,
+        season_length,
+    )?))
+}
+
+fn create_arima(spec: &ForecastModelSpec) -> Result<Box<dyn Forecaster>> {
+    let p = optional_usize_param(spec, "p")?.unwrap_or(1);
+    let d = optional_usize_param(spec, "d")?.unwrap_or(0);
+    let q = optional_usize_param(spec, "q")?.unwrap_or(0);
+    Ok(Box::new(ArimaForecaster::new(p, d, q)?))
+}
+
+fn create_auto_arima(spec: &ForecastModelSpec) -> Result<Box<dyn Forecaster>> {
+    let max_p = optional_usize_param(spec, "max_p")?.unwrap_or(3);
+    let max_d = optional_usize_param(spec, "max_d")?.unwrap_or(1);
+    let max_q = optional_usize_param(spec, "max_q")?.unwrap_or(2);
+    Ok(Box::new(AutoARIMAForecaster::with_max_order(
+        max_p, max_d, max_q,
+    )?))
 }
 
 fn create_cartoboost_lag(spec: &ForecastModelSpec) -> Result<Box<dyn Forecaster>> {
@@ -173,6 +263,63 @@ fn create_cartoboost_lag(spec: &ForecastModelSpec) -> Result<Box<dyn Forecaster>
         lag_config,
         booster_config,
     )?))
+}
+
+fn required_usize_param(spec: &ForecastModelSpec, param: &str) -> Result<usize> {
+    let value = spec
+        .params
+        .get(param)
+        .and_then(Value::as_u64)
+        .ok_or_else(|| {
+            CartoBoostError::InvalidInput(format!("{} requires integer param '{param}'", spec.name))
+        })?;
+    usize::try_from(value).map_err(|_| {
+        CartoBoostError::InvalidInput(format!("{param} is too large for this platform"))
+    })
+}
+
+fn optional_f64_param(spec: &ForecastModelSpec, param: &str) -> Result<Option<f64>> {
+    match spec.params.get(param) {
+        Some(value) => value.as_f64().map(Some).ok_or_else(|| {
+            CartoBoostError::InvalidInput(format!(
+                "{} param '{param}' must be a finite number",
+                spec.name
+            ))
+        }),
+        None => Ok(None),
+    }
+}
+
+fn optional_usize_param(spec: &ForecastModelSpec, param: &str) -> Result<Option<usize>> {
+    let Some(value) = spec.params.get(param) else {
+        return Ok(None);
+    };
+    let value = value.as_u64().ok_or_else(|| {
+        CartoBoostError::InvalidInput(format!("{} param '{param}' must be an integer", spec.name))
+    })?;
+    usize::try_from(value).map(Some).map_err(|_| {
+        CartoBoostError::InvalidInput(format!("{param} is too large for this platform"))
+    })
+}
+
+fn optional_f64_vec_param(spec: &ForecastModelSpec, param: &str) -> Result<Option<Vec<f64>>> {
+    let Some(value) = spec.params.get(param) else {
+        return Ok(None);
+    };
+    let values = value.as_array().ok_or_else(|| {
+        CartoBoostError::InvalidInput(format!("{} param '{param}' must be an array", spec.name))
+    })?;
+    let mut parsed = Vec::with_capacity(values.len());
+    for value in values {
+        let number = value.as_f64().ok_or_else(|| {
+            CartoBoostError::InvalidInput(format!(
+                "{} param '{param}' must contain only finite numbers",
+                spec.name
+            ))
+        })?;
+        parsed.push(number);
+    }
+    Ok(Some(parsed))
 }
 
 fn normalize_name(name: impl AsRef<str>) -> Result<String> {
@@ -195,7 +342,16 @@ mod tests {
 
         assert_eq!(
             registry.names(),
-            vec!["cartoboost_lag", "naive", "seasonal_naive"]
+            vec![
+                "arima",
+                "auto_arima",
+                "cartoboost_lag",
+                "ets",
+                "naive",
+                "optimized_theta",
+                "seasonal_naive",
+                "theta"
+            ]
         );
     }
 
@@ -244,5 +400,32 @@ mod tests {
         let model = registry.create("cartoboost_lag").expect("lag model");
 
         assert_eq!(model.model_name(), "cartoboost_lag");
+    }
+
+    #[test]
+    fn registry_constructs_theta_from_configured_spec() {
+        let registry = ForecastRegistry::with_defaults().expect("defaults");
+        let mut params = Map::new();
+        params.insert("theta".to_string(), Value::from(1.5));
+        params.insert("alpha".to_string(), Value::from(0.3));
+        let spec = ForecastModelSpec::new(" theta ")
+            .expect("spec")
+            .with_params(params);
+
+        let model = registry.create_from_spec(&spec).expect("theta model");
+
+        assert_eq!(model.model_name(), "theta");
+    }
+
+    #[test]
+    fn registry_rejects_unknown_model_names_clearly() {
+        let registry = ForecastRegistry::with_defaults().expect("defaults");
+
+        let err = match registry.create("foundation_model") {
+            Ok(_) => panic!("unknown model should fail"),
+            Err(err) => err,
+        };
+
+        assert!(err.to_string().contains("not registered; known models"));
     }
 }

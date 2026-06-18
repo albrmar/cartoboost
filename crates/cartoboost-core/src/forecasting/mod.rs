@@ -29,8 +29,8 @@ pub use frequency::{parse_forecast_timestamp, ForecastFrequency};
 pub use global::CartoBoostLagForecaster;
 pub use lag_features::{CalendarFeature, LagFeatureBuilder, LagFeatureConfig, LagFeatureRow};
 pub use local::{
-    NaiveForecaster, OptimizedThetaForecaster, SeasonalNaiveForecaster, ThetaForecaster,
-    ThetaSeasonality,
+    ArimaForecaster, ArimaValidationScore, AutoARIMAForecaster, ETSForecaster, NaiveForecaster,
+    OptimizedThetaForecaster, SeasonalNaiveForecaster, ThetaForecaster, ThetaSeasonality,
 };
 pub use metrics::{
     evaluate_forecast, evaluate_forecast_with_training, ForecastActual, ForecastMetricSet,

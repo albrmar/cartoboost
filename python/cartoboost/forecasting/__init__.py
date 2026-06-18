@@ -4,7 +4,7 @@ from .artifacts import ForecastArtifact, ForecastArtifactManifest
 from .backtesting import BacktestFoldResult, BacktestResult, RollingOriginBacktester
 from .base import BaseForecaster, PanelForecasterMixin, SingleSeriesForecasterMixin
 from .config import ForecastingConfig
-from .ensemble import BacktestWeightedEnsembleForecaster, WeightedEnsembleForecaster
+from .ensemble import WeightedEnsembleForecaster
 from .global_models import CartoBoostLagForecaster
 from .lag_features import (
     CalendarFeatureConfig,
@@ -34,7 +34,6 @@ __all__ = [
     "AutoARIMAForecaster",
     "BacktestFoldResult",
     "BacktestResult",
-    "BacktestWeightedEnsembleForecaster",
     "BaseForecaster",
     "CalendarFeatureConfig",
     "CartoBoostLagForecaster",

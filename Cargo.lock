@@ -104,6 +104,7 @@ version = "0.1.21"
 dependencies = [
  "cartoboost-core",
  "cartoboost-neural",
+ "chrono",
  "numpy",
  "pyo3",
  "serde_json",

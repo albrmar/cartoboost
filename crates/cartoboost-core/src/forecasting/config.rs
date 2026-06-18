@@ -1,4 +1,4 @@
-use crate::forecasting::{ForecastModelSpec, ForecastRegistry};
+use crate::forecasting::{ForecastModelSpec, ForecastRegistry, Forecaster};
 use crate::{CartoBoostError, Result};
 use serde::Deserialize;
 use serde_json::{Map, Value};
@@ -70,7 +70,21 @@ impl ForecastingConfig {
     pub fn model_specs(&self) -> Result<Vec<ForecastModelSpec>> {
         self.models
             .iter()
-            .map(|model| Ok(ForecastModelSpec::new(&model.name)?.with_params(model.params.clone())))
+            .map(|model| {
+                let mut spec =
+                    ForecastModelSpec::new(&model.name)?.with_params(model.params.clone());
+                spec.metadata = model.metadata.clone();
+                Ok(spec)
+            })
+            .collect()
+    }
+
+    pub fn create_models(&self) -> Result<Vec<Box<dyn Forecaster>>> {
+        self.validate()?;
+        let registry = ForecastRegistry::with_defaults()?;
+        self.model_specs()?
+            .iter()
+            .map(|spec| registry.create_from_spec(spec))
             .collect()
     }
 }
@@ -123,11 +137,41 @@ mod tests {
             horizon = 2
 
             [[models]]
-            name = "auto_arima"
+            name = "foundation_model"
             "#,
         )
         .expect_err("unimplemented model");
 
         assert!(err.to_string().contains("unimplemented Rust model"));
+    }
+
+    #[test]
+    fn constructs_models_from_config_params() {
+        let config = ForecastingConfig::from_toml_str(
+            r#"
+            horizon = 2
+
+            [[models]]
+            name = "theta"
+
+            [models.params]
+            theta = 1.5
+            alpha = 0.3
+
+            [[models]]
+            name = "optimized_theta"
+
+            [models.params]
+            theta_grid = [1.0, 2.0]
+            alpha_grid = [0.2, 0.8]
+            "#,
+        )
+        .expect("config");
+
+        let models = config.create_models().expect("models");
+
+        assert_eq!(models.len(), 2);
+        assert_eq!(models[0].model_name(), "theta");
+        assert_eq!(models[1].model_name(), "optimized_theta");
     }
 }

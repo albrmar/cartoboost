@@ -52,6 +52,14 @@ impl WeightedEnsembleForecaster {
                     "weighted ensemble member names must be non-empty".to_string(),
                 ));
             }
+            if cleaned
+                .iter()
+                .any(|member: &WeightedMember| member.name == name)
+            {
+                return Err(CartoBoostError::InvalidInput(format!(
+                    "duplicate weighted ensemble member name '{name}'"
+                )));
+            }
             if !weight.is_finite() || weight < 0.0 {
                 return Err(CartoBoostError::InvalidInput(
                     "weighted ensemble weights must be finite and non-negative".to_string(),
@@ -154,6 +162,30 @@ mod tests {
         ForecastFrequency, ForecastRow, NaiveForecaster, SeasonalNaiveForecaster,
     };
     use chrono::NaiveDate;
+    use serde_json::Value;
+
+    struct FixedForecaster {
+        predictions: Vec<ForecastPrediction>,
+        name: &'static str,
+    }
+
+    impl Forecaster for FixedForecaster {
+        fn fit(&mut self, _frame: &ForecastFrame) -> Result<()> {
+            Ok(())
+        }
+
+        fn predict(&self, _horizon: usize) -> Result<ForecastResult> {
+            ForecastResult::new(self.predictions.clone())
+        }
+
+        fn model_name(&self) -> &'static str {
+            self.name
+        }
+
+        fn metadata(&self) -> Value {
+            json!({"model": self.name})
+        }
+    }
 
     #[test]
     fn weighted_ensemble_averages_forecast_means() {
@@ -195,6 +227,101 @@ mod tests {
         .expect("invalid weights");
 
         assert!(err.to_string().contains("at least one positive weight"));
+    }
+
+    #[test]
+    fn weighted_ensemble_rejects_duplicate_member_names() {
+        let err = WeightedEnsembleForecaster::new(vec![
+            ("last".to_string(), Box::new(NaiveForecaster::new()), 1.0),
+            ("last".to_string(), Box::new(NaiveForecaster::new()), 1.0),
+        ])
+        .err()
+        .expect("duplicate name");
+
+        assert!(err
+            .to_string()
+            .contains("duplicate weighted ensemble member name"));
+    }
+
+    #[test]
+    fn weighted_ensemble_aligns_panel_forecasts() {
+        let rows = vec![
+            ForecastRow::new("PU1->DO2", ts(1), 10.0),
+            ForecastRow::new("PU1->DO2", ts(2), 12.0),
+            ForecastRow::new("PU1->DO2", ts(3), 14.0),
+            ForecastRow::new("PU9->DO8", ts(1), 30.0),
+            ForecastRow::new("PU9->DO8", ts(2), 28.0),
+            ForecastRow::new("PU9->DO8", ts(3), 26.0),
+        ];
+        let frame = ForecastFrame::new(rows, ForecastFrequency::Daily).expect("frame");
+        let mut ensemble = WeightedEnsembleForecaster::new(vec![
+            ("last".to_string(), Box::new(NaiveForecaster::new()), 0.5),
+            (
+                "seasonal".to_string(),
+                Box::new(SeasonalNaiveForecaster::new(2).expect("seasonal")),
+                0.5,
+            ),
+        ])
+        .expect("ensemble");
+
+        ensemble.fit(&frame).expect("fit");
+        let result = ensemble.predict(1).expect("predict");
+        let predictions = result.predictions();
+
+        assert_eq!(predictions.len(), 2);
+        assert_eq!(predictions[0].series_id, "PU1->DO2");
+        assert_eq!(predictions[0].mean, 13.0);
+        assert_eq!(predictions[1].series_id, "PU9->DO8");
+        assert_eq!(predictions[1].mean, 27.0);
+    }
+
+    #[test]
+    fn weighted_ensemble_rejects_mismatched_forecast_index() {
+        let first = FixedForecaster {
+            name: "first",
+            predictions: vec![prediction("PU1->DO2", 4, 1, 10.0)],
+        };
+        let second = FixedForecaster {
+            name: "second",
+            predictions: vec![prediction("PU9->DO8", 4, 1, 20.0)],
+        };
+        let ensemble = WeightedEnsembleForecaster::new(vec![
+            ("first".to_string(), Box::new(first), 1.0),
+            ("second".to_string(), Box::new(second), 1.0),
+        ])
+        .expect("ensemble");
+
+        let err = ensemble.predict(1).expect_err("mismatched index");
+
+        assert!(err.to_string().contains("mismatched forecast index"));
+    }
+
+    #[test]
+    fn weighted_ensemble_metadata_exposes_normalized_weights() {
+        let ensemble = WeightedEnsembleForecaster::new(vec![
+            ("last".to_string(), Box::new(NaiveForecaster::new()), 1.0),
+            (
+                "seasonal".to_string(),
+                Box::new(SeasonalNaiveForecaster::new(2).expect("seasonal")),
+                3.0,
+            ),
+        ])
+        .expect("ensemble");
+        let metadata = ensemble.metadata();
+
+        assert_eq!(metadata["model"], "weighted_ensemble");
+        assert_eq!(metadata["weights"]["last"], 0.25);
+        assert_eq!(metadata["weights"]["seasonal"], 0.75);
+    }
+
+    fn prediction(series_id: &str, day: u32, horizon: usize, mean: f64) -> ForecastPrediction {
+        ForecastPrediction {
+            series_id: series_id.to_string(),
+            timestamp: ts(day),
+            horizon,
+            model: "fixed".to_string(),
+            mean,
+        }
     }
 
     fn ts(day: u32) -> chrono::NaiveDateTime {

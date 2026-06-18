@@ -40,10 +40,11 @@ CartoBoost supports:
 - Standalone node2vec, GraphSAGE, heterogeneous GraphSAGE, and typed-schema
   HinSAGE graph regressors and link predictors, plus optional graph feature
   encoders.
-- Forecasting APIs for geographic and temporal single-series or panel demand,
-  including rolling-origin backtests, local baselines, theta models,
-  supervised CartoBoost lag forecasting, weighted ensembles, CLI runs, and
-  portable forecast artifacts.
+- Rust-native forecasting APIs for geographic and temporal single-series or
+  panel taxi demand, including rolling-origin backtests, naive/seasonal
+  naive/theta/optimized-theta/ETS/AutoARIMA models, supervised CartoBoost lag
+  forecasting, Rust-core weighted ensembles, CLI runs, and portable forecast
+  artifacts.
 
 ## Forecasting
 
@@ -58,16 +59,17 @@ frame = ForecastFrame.from_pandas(
     freq="D",
 )
 
-model = ThetaForecaster(season_length=7, prediction_interval_levels=[0.8, 0.95])
+model = ThetaForecaster(season_length=7)
 model.fit(frame)
 forecast = model.predict(horizon=14)
 ```
 
 Forecast outputs use deterministic columns:
-`series_id`, `timestamp`, `horizon`, `model`, `mean`, and interval columns such
-as `lower_80` and `upper_80`. Use the forecasting docs for geographic-temporal
-CLI usage, lag-feature forecasting, backtesting, artifacts, and examples built
-around pickup/dropoff lanes and taxi-zone demand.
+`series_id`, `timestamp`, `horizon`, `model`, and `mean`. The Python
+forecasting surface is a wrapper over `cartoboost._native`; it does not compute
+fallback forecasts when a native binding is missing. Use the forecasting docs
+for geographic-temporal CLI usage, lag-feature forecasting, backtesting,
+artifacts, and examples built around pickup/dropoff lanes and taxi-zone demand.
 
 ## Install
 

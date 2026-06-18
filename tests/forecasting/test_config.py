@@ -2,7 +2,10 @@ import pytest
 from cartoboost.forecasting.config import ForecastingConfig
 
 
-def test_forecasting_config_parses_models_and_constructs_default_backed_models():
+def test_forecasting_config_parses_models_and_constructs_default_backed_models(
+    install_fake_native,
+):
+    native = install_fake_native("SeasonalNaiveForecaster")
     config = ForecastingConfig.from_toml(
         """
         horizon = 3
@@ -28,7 +31,12 @@ def test_forecasting_config_parses_models_and_constructs_default_backed_models()
 
     assert config.horizon == 3
     assert config.feature_config == {"lags": [1, 24]}
-    assert model.fit([10, 11, 12, 13]).predict(1).predictions()[0][4] == 12.0
+    assert model.fit([10, 11, 12, 13]).predict(1) == {"args": (1,), "kwargs": {}}
+    assert native.calls[0] == (
+        "init",
+        {"season_length": 2, "prediction_interval_levels": ()},
+    )
+    assert native.calls[1][1].rows[-1] == ("__single__", "1970-01-04T00:00:00", 13.0)
 
 
 def test_forecasting_config_rejects_unknown_root_fields_by_default():

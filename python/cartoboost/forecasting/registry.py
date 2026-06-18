@@ -104,7 +104,6 @@ class ForecastRegistry:
 
 
 def default_model_specs() -> tuple[ForecastModelSpec, ...]:
-    from .ensemble import WeightedEnsembleForecaster
     from .global_models import CartoBoostLagForecaster
     from .local import (
         AutoARIMAForecaster,
@@ -123,9 +122,4 @@ def default_model_specs() -> tuple[ForecastModelSpec, ...]:
         ForecastModelSpec("ets", factory=ETSForecaster),
         ForecastModelSpec("auto_arima", factory=AutoARIMAForecaster),
         ForecastModelSpec("cartoboost_lag", factory=CartoBoostLagForecaster),
-        ForecastModelSpec(
-            "weighted_ensemble",
-            factory=WeightedEnsembleForecaster,
-            metadata={"kind": "ensemble"},
-        ),
     )

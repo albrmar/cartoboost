@@ -42,8 +42,10 @@ per-horizon and per-series metric dictionaries. Quantile forecasts can be scored
 with pinball loss, and interval forecasts report empirical coverage and mean
 interval width.
 
-`RollingOriginBacktester` is a Python contract around rolling-origin validation
-objects. Model fitting and prediction inside each fold must be supplied by Rust
-forecasting bindings; Python fallback forecasters are intentionally unavailable.
-Use `result.to_json()` for stable structured output or `result.to_pandas()` when
-pandas is installed and a row-level prediction table is needed.
+Rolling-origin validation rules and metric definitions are Rust-core behavior.
+The Python `RollingOriginBacktester` exposes the contract and dataframe
+ergonomics, while ForecastFrame evaluation delegates fold construction, model
+fitting, prediction, and scoring to Rust forecasting bindings. Python fallback
+forecasters are intentionally unavailable. Use `result.to_json()` for stable structured output or
+`result.to_pandas()` when pandas is installed and a row-level prediction table is
+needed.

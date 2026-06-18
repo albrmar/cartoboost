@@ -22,7 +22,6 @@ MODEL_NAMES = (
     "ets",
     "auto_arima",
     "cartoboost_lag",
-    "weighted_ensemble",
 )
 
 
@@ -352,10 +351,6 @@ def _parse_float(value: str | None, row_number: int, column: str) -> float:
 def _new_model(config: ForecastConfig) -> Any:
     if config.model == "seasonal_naive":
         return ForecastRegistry.defaults().create(config.model, season_length=config.season_length)
-    if config.model == "weighted_ensemble":
-        raise NotImplementedError(
-            "Rust binding for WeightedEnsembleForecaster is not available through the CLI."
-        )
     return ForecastRegistry.defaults().create(config.model)
 
 

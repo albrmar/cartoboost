@@ -73,8 +73,8 @@ result = ForecastResult.from_predictions(
 ```
 
 Panel outputs are sorted by series id and timestamp. Columns are stable:
-`series_id`, `timestamp`, `prediction`, then interval lower/upper pairs sorted
-by interval level, such as `prediction_lower_90` and `prediction_upper_90`.
+`series_id`, `timestamp`, `horizon`, `model`, `mean`, then interval lower/upper
+pairs sorted by interval level, such as `lower_90` and `upper_90`.
 
 Use `to_json()` and `ForecastResult.from_json(...)` for deterministic roundtrips
 through API boundaries.

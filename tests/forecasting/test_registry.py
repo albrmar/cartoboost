@@ -15,7 +15,6 @@ def test_default_registry_contains_forecasting_v1_models():
         "ets",
         "auto_arima",
         "cartoboost_lag",
-        "weighted_ensemble",
     )
 
 
@@ -48,16 +47,11 @@ def test_model_spec_reports_missing_optional_dependencies(monkeypatch):
         spec.create()
 
 
-def test_default_naive_forecaster_is_native_wrapper():
+def test_default_registry_models_are_native_wrappers(install_fake_native):
+    native = install_fake_native("NaiveForecaster")
     registry = ForecastRegistry.defaults()
 
     naive = registry.create("naive")
-    seasonal = registry.create("seasonal_naive", season_length=2)
 
-    assert [row[4] for row in naive.fit([1.0, 2.0, 3.0]).predict(1).predictions()] == [3.0]
-    assert [
-        row[4]
-        for row in seasonal.fit({"pickup_1": [10, 11, 12], "pickup_2": [20, 21, 22]})
-        .predict(1)
-        .predictions()
-    ] == [11.0, 21.0]
+    assert naive.fit([1.0, 2.0, 3.0]).predict(1) == {"args": (1,), "kwargs": {}}
+    assert native.calls[1][1].rows[-1] == ("__single__", "1970-01-03T00:00:00", 3.0)

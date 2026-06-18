@@ -15,26 +15,29 @@ XGBoost, LightGBM, or a mean baseline.
 
 ## Forecasting Benchmark
 
-Forecasting V1 includes a deterministic synthetic benchmark harness:
+Forecasting V1 includes a deterministic benchmark harness for implemented
+Rust-native forecasting behavior:
 
 ```sh
 python scripts/forecasting_benchmark.py --output artifacts/forecasting_benchmark.json
 ```
 
-The harness compares naive, seasonal naive, theta, optimized theta,
-CartoBoost lag forecasting, and weighted ensembles across trend-only, weekly
+The harness compares the implemented Rust-core local forecasters, CartoBoost
+lag forecasting, and Rust-core weighted ensembles across trend-only, weekly
 seasonal, intermittent sparse, panel lane, known-future covariate, and noisy
-geotemporal fixtures. The output JSON records dataset names, model names, MAE,
-RMSE, MASE, WAPE, sMAPE, bias, and interval coverage placeholders. These runs
-are intended to prove repeatability, row alignment, and leakage-safe evaluation;
-they are not presented as universal model superiority evidence.
+geographic-temporal taxi fixtures. The output JSON records dataset names, model
+names, MAE, RMSE, MASE, WAPE, sMAPE, bias, and interval coverage placeholders.
+These runs are intended to prove repeatability, row alignment, and leakage-safe
+evaluation; they are not presented as universal model superiority evidence.
 
 ## Forecasting Library Comparison
 
-`scripts/forecasting_library_benchmark.py` compares CartoBoost global lag
-forecasting with named forecasting-library baselines on a deterministic
-geographic-temporal pickup/dropoff lane demand fixture. The benchmark compares
-against these forecasting libraries and model names:
+`scripts/forecasting_library_benchmark.py` compares Rust-native CartoBoost
+global lag forecasting with named forecasting-library baselines on a
+deterministic geographic-temporal pickup/dropoff lane demand fixture. The
+fixture is taxi-focused: related lane series represent pickup/dropoff movement,
+zone effects, weekly/hourly seasonality, and known future calendar structure.
+The benchmark compares against these forecasting libraries and model names:
 
 | library | model names |
 | --- | --- |
