@@ -34,7 +34,7 @@ from .overlay import OverlayConfig, weighted_overlay
 from .regressor import CartoBoostRegressor
 from .schema import FeatureKind, FeatureSchema
 
-__version__ = "0.1.15"
+__version__ = "0.1.16"
 
 __all__ = [
     "ArtifactFallback",
