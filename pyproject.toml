@@ -58,6 +58,7 @@ polars = [
 bench = [
     "functime>=0.9",
     "lightgbm>=4.0",
+    "prophet>=1.1",
     "pyarrow>=14.0",
     "statsforecast>=1.7",
     "xgboost>=2.0",

@@ -83,7 +83,7 @@ meaning of the result.
 - Forecasting benchmarks measure daily pickup/dropoff lane demand with lagged
   demand, rolling summaries, calendar fields, zone IDs, airport-lane flags, and
   borough context. External forecasting comparisons name the exact libraries:
-  StatsForecast and functime.
+  Prophet, StatsForecast, and functime.
 - Synthetic model-suite benchmarks isolate dense numeric signal, repeated-ID
   residual signal, and source-target graph signal against LightGBM and XGBoost.
 - Taxi-zone acceptance benchmarks check whether lane membership, route

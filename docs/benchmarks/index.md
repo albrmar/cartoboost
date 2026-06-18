@@ -40,6 +40,7 @@ the comparable covariate structure supported by the benchmark script.
 | `cartoboost` | `cartoboost_lag` |
 | `functime` | `functime_snaive`, `functime_ridge`, `functime_lightgbm` |
 | `statsforecast` | `statsforecast_seasonal_naive`, `statsforecast_autoets` |
+| `prophet` | `prophet_additive` |
 
 **Command.**
 
@@ -62,6 +63,7 @@ claim.
 | model | library | RMSE | MAE | WAPE |
 | --- | --- | ---: | ---: | ---: |
 | `cartoboost_lag` | `cartoboost` | 0.379765 | 0.224178 | 0.010722 |
+| `prophet_additive` | `prophet` | 0.498842 | 0.377197 | 0.018041 |
 | `statsforecast_autoets` | `statsforecast` | 0.550793 | 0.397769 | 0.019025 |
 | `functime_snaive` | `functime` | 0.841069 | 0.656984 | 0.031423 |
 | `statsforecast_seasonal_naive` | `statsforecast` | 0.841069 | 0.656984 | 0.031423 |
@@ -69,20 +71,21 @@ claim.
 | `functime_lightgbm` | `functime` | 2.965697 | 2.807547 | 0.134281 |
 
 The best external forecasting-library baseline in this run is
-`statsforecast_autoets` from StatsForecast. CartoBoost lag forecasting reduces
-RMSE by 31.05% relative to that baseline on this fixture. Polars and DuckDB
-runs produced identical quality metrics; only loading and timing differed.
+`prophet_additive` from Prophet. CartoBoost lag forecasting reduces RMSE by
+23.87% relative to that baseline on this fixture. Polars and DuckDB runs
+produced identical quality metrics; only loading and timing differed.
 
 **Timing context from the Polars run.**
 
 | model | library | model seconds |
 | --- | --- | ---: |
-| `cartoboost_lag` | `cartoboost` | 2.474875 |
-| `statsforecast_autoets` | `statsforecast` | 0.500582 |
-| `functime_snaive` | `functime` | 0.054331 |
-| `statsforecast_seasonal_naive` | `statsforecast` | 0.005745 |
-| `functime_ridge` | `functime` | 0.179506 |
-| `functime_lightgbm` | `functime` | 77.810239 |
+| `cartoboost_lag` | `cartoboost` | 0.520974 |
+| `prophet_additive` | `prophet` | 5.465664 |
+| `statsforecast_autoets` | `statsforecast` | 0.571412 |
+| `functime_snaive` | `functime` | 0.007606 |
+| `statsforecast_seasonal_naive` | `statsforecast` | 0.005957 |
+| `functime_ridge` | `functime` | 0.125287 |
+| `functime_lightgbm` | `functime` | 0.215851 |
 
 **Interpretation.** The target is a panel of related geographic lanes, not a
 single long univariate series. The result supports the claim that supervised

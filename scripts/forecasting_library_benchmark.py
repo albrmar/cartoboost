@@ -3,8 +3,8 @@
 
 The fixture is synthetic but domain-shaped: daily pickup/dropoff lane demand with
 zone IDs, route distance, airport-lane structure, borough codes, weekly effects,
-and deterministic event spikes. The library baselines are functime and
-StatsForecast models.
+and deterministic event spikes. The library baselines are functime,
+StatsForecast, and Prophet models.
 """
 
 from __future__ import annotations
@@ -47,21 +47,26 @@ STATIC_COVARIATES = [
 ]
 FUNCTIME_MODELS = ["functime_snaive", "functime_ridge", "functime_lightgbm"]
 STATSFORECAST_MODELS = ["statsforecast_seasonal_naive", "statsforecast_autoets"]
+PROPHET_MODELS = ["prophet_additive"]
 FORECASTING_LIBRARY_MODELS = {
     "functime": FUNCTIME_MODELS,
     "statsforecast": STATSFORECAST_MODELS,
+    "prophet": PROPHET_MODELS,
 }
 MODEL_LIBRARIES = {
     "cartoboost_lag": "cartoboost",
     **{model: "functime" for model in FUNCTIME_MODELS},
     **{model: "statsforecast" for model in STATSFORECAST_MODELS},
+    **{model: "prophet" for model in PROPHET_MODELS},
 }
-FORECASTING_LIBRARY_BASELINES = [*FUNCTIME_MODELS, *STATSFORECAST_MODELS]
+FORECASTING_LIBRARY_BASELINES = [*FUNCTIME_MODELS, *STATSFORECAST_MODELS, *PROPHET_MODELS]
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Compare CartoBoost global lag forecasts against functime and StatsForecast."
+        description=(
+            "Compare CartoBoost global lag forecasts against functime, StatsForecast, and Prophet."
+        )
     )
     parser.add_argument("--source", choices=["polars", "duckdb"], default="polars")
     parser.add_argument("--output", default="artifacts/forecasting_library_benchmark_polars.json")
@@ -194,14 +199,23 @@ def score_models(
     cartoboost_predictions, cartoboost_timing = cartoboost_forecast(train, horizon)
     functime_predictions, functime_timing = functime_forecasts(train, horizon)
     statsforecast_predictions, statsforecast_timing = statsforecast_forecasts(train, horizon)
-    predictions = cartoboost_predictions.join(
-        functime_predictions,
-        on=["series_id", "timestamp", "horizon"],
-        how="inner",
-    ).join(
-        statsforecast_predictions,
-        on=["series_id", "timestamp", "horizon"],
-        how="inner",
+    prophet_predictions, prophet_timing = prophet_forecasts(train, horizon)
+    predictions = (
+        cartoboost_predictions.join(
+            functime_predictions,
+            on=["series_id", "timestamp", "horizon"],
+            how="inner",
+        )
+        .join(
+            statsforecast_predictions,
+            on=["series_id", "timestamp", "horizon"],
+            how="inner",
+        )
+        .join(
+            prophet_predictions,
+            on=["series_id", "timestamp", "horizon"],
+            how="inner",
+        )
     )
     scored = actual.join(predictions, on=["series_id", "timestamp", "horizon"], how="inner")
     if scored.height != actual.height:
@@ -217,6 +231,7 @@ def score_models(
             "cartoboost_lag": cartoboost_timing,
             **functime_timing,
             **statsforecast_timing,
+            **prophet_timing,
         }
     }
     return metrics, quality, timing
@@ -226,6 +241,7 @@ def quality_summary(metrics: dict[str, dict[str, float]]) -> dict[str, Any]:
     best_library_model = min(FORECASTING_LIBRARY_BASELINES, key=lambda name: metrics[name]["rmse"])
     best_functime = min(FUNCTIME_MODELS, key=lambda name: metrics[name]["rmse"])
     best_statsforecast = min(STATSFORECAST_MODELS, key=lambda name: metrics[name]["rmse"])
+    best_prophet = min(PROPHET_MODELS, key=lambda name: metrics[name]["rmse"])
     cartoboost_rmse = metrics["cartoboost_lag"]["rmse"]
     library_rmse = metrics[best_library_model]["rmse"]
     rmse_ranking = sorted(metrics, key=lambda name: metrics[name]["rmse"])
@@ -245,6 +261,8 @@ def quality_summary(metrics: dict[str, dict[str, float]]) -> dict[str, Any]:
         "best_functime_rmse": metrics[best_functime]["rmse"],
         "best_statsforecast_method": best_statsforecast,
         "best_statsforecast_rmse": metrics[best_statsforecast]["rmse"],
+        "best_prophet_method": best_prophet,
+        "best_prophet_rmse": metrics[best_prophet]["rmse"],
         "rmse_ranking": rmse_ranking,
         "mae_ranking": mae_ranking,
         "wape_ranking": wape_ranking,
@@ -487,6 +505,71 @@ def statsforecast_forecasts(train: Any, horizon: int) -> tuple[Any, dict[str, di
     return combined, timings
 
 
+def prophet_forecasts(train: Any, horizon: int) -> tuple[Any, dict[str, dict[str, float]]]:
+    pl = require_polars()
+    pd = require_pandas_for_benchmark()
+    try:
+        from prophet import Prophet
+    except ImportError as exc:
+        raise ImportError(
+            "forecasting library benchmark requires prophet for the Prophet baseline; run "
+            "`uv sync --group dev --group bench`."
+        ) from exc
+
+    forecasts = []
+    fit_seconds = 0.0
+    predict_seconds = 0.0
+    for lane_id in train.select("lane_id").unique().sort("lane_id").to_series().to_list():
+        lane = (
+            train.filter(pl.col("lane_id") == lane_id)
+            .sort("date")
+            .select(pl.col("date").alias("ds"), pl.col("loads").alias("y"))
+            .to_pandas()
+        )
+        model = Prophet(
+            weekly_seasonality=True,
+            yearly_seasonality=False,
+            daily_seasonality=False,
+            seasonality_mode="additive",
+            uncertainty_samples=0,
+        )
+        fit_start = perf_counter()
+        model.fit(lane)
+        fit_seconds += perf_counter() - fit_start
+
+        future = pd.DataFrame(
+            {
+                "ds": pd.date_range(
+                    start=lane["ds"].max() + pd.Timedelta(days=1),
+                    periods=horizon,
+                    freq="D",
+                )
+            }
+        )
+        predict_start = perf_counter()
+        forecast = model.predict(future)
+        predict_seconds += perf_counter() - predict_start
+        forecasts.append(
+            pl.from_pandas(
+                forecast[["ds", "yhat"]]
+                .rename(columns={"ds": "timestamp", "yhat": "prophet_additive"})
+                .assign(series_id=lane_id)
+            )
+            .with_columns(pl.col("timestamp").cast(pl.Datetime("us")))
+            .sort("timestamp")
+            .with_columns((pl.int_range(pl.len()) + 1).alias("horizon"))
+            .select("series_id", "timestamp", "horizon", "prophet_additive")
+        )
+
+    return pl.concat(forecasts, how="vertical"), {
+        "prophet_additive": {
+            "fit_seconds": fit_seconds,
+            "predict_seconds": predict_seconds,
+            "fit_predict_seconds": fit_seconds + predict_seconds,
+        }
+    }
+
+
 def evaluate_metrics(scored: Any, prediction_col: str, train: Any) -> dict[str, float]:
     pl = require_polars()
     error_frame = scored.select(
@@ -547,7 +630,7 @@ def require_pandas_for_benchmark() -> Any:
         import pandas as pd
     except ImportError as exc:
         raise ImportError(
-            "forecasting library benchmark requires pandas through StatsForecast; run "
+            "forecasting library benchmark requires pandas through StatsForecast and Prophet; run "
             "`uv sync --group dev --group bench`."
         ) from exc
     return pd
