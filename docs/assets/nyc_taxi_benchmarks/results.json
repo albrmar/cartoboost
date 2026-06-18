@@ -163,11 +163,11 @@
                 "r2": 0.7337123451191612
               },
               "timing": {
-                "train_seconds": 0.7609080420006649,
-                "predict_seconds": 0.0017817909974837676,
-                "fit_predict_seconds": 0.7626898329981486,
+                "train_seconds": 0.6778682080039289,
+                "predict_seconds": 0.0015416659953189082,
+                "fit_predict_seconds": 0.6794098739992478,
                 "prediction_rows": 2000.0,
-                "predict_rows_per_second": 1122466.104511913
+                "predict_rows_per_second": 1297297.8622300618
               },
               "backend": "rust",
               "config": {
@@ -200,11 +200,11 @@
                 "r2": 0.7337123451191612
               },
               "timing": {
-                "train_seconds": 0.7296661250002217,
-                "predict_seconds": 0.001486499997554347,
-                "fit_predict_seconds": 0.731152624997776,
+                "train_seconds": 1.3554253339971183,
+                "predict_seconds": 0.0016677919993526302,
+                "fit_predict_seconds": 1.357093125996471,
                 "prediction_rows": 2000.0,
-                "predict_rows_per_second": 1345442.3163743594
+                "predict_rows_per_second": 1199190.3071703904
               },
               "backend": "rust",
               "config": {
@@ -237,11 +237,11 @@
                 "r2": 0.7118293882855569
               },
               "timing": {
-                "train_seconds": 0.402475750001031,
-                "predict_seconds": 0.7476134169992292,
-                "fit_predict_seconds": 1.1500891670002602,
+                "train_seconds": 0.8857233750022715,
+                "predict_seconds": 0.046915958999306895,
+                "fit_predict_seconds": 0.9326393340015784,
                 "prediction_rows": 2000.0,
-                "predict_rows_per_second": 2675.1793835209646
+                "predict_rows_per_second": 42629.41742338778
               },
               "config": {
                 "n_estimators": 20,
@@ -253,9 +253,9 @@
                 "zone_treatment": "target_mean",
                 "feature_count": 26,
                 "fit_stages_ms": {
-                  "base_fit_ms": 75.5407920005382,
-                  "neural_fit_ms": 142.3760840043542,
-                  "final_fit_ms": 130.49504099762999
+                  "base_fit_ms": 46.61291599768447,
+                  "neural_fit_ms": 140.5440840026131,
+                  "final_fit_ms": 135.97870800003875
                 }
               }
             },
@@ -267,11 +267,11 @@
                 "r2": 0.7335077198665709
               },
               "timing": {
-                "train_seconds": 2.4245759160039597,
-                "predict_seconds": 0.0016666250012349337,
-                "fit_predict_seconds": 2.4262425410051947,
+                "train_seconds": 1.670991833001608,
+                "predict_seconds": 0.0020598749979399145,
+                "fit_predict_seconds": 1.673051707999548,
                 "prediction_rows": 2000.0,
-                "predict_rows_per_second": 1200029.999860822
+                "predict_rows_per_second": 970932.7031981088
               },
               "backend": "rust",
               "config": {
@@ -308,11 +308,11 @@
                 "r2": 0.7335956502576398
               },
               "timing": {
-                "train_seconds": 1.7312997920016642,
-                "predict_seconds": 0.0016667079980834387,
-                "fit_predict_seconds": 1.7329664999997476,
+                "train_seconds": 1.7078810000020894,
+                "predict_seconds": 0.0016591250023338944,
+                "fit_predict_seconds": 1.7095401250044233,
                 "prediction_rows": 2000.0,
-                "predict_rows_per_second": 1199970.2421178853
+                "predict_rows_per_second": 1205454.6807423166
               },
               "backend": "rust",
               "config": {
@@ -349,11 +349,11 @@
                 "r2": 0.7336041025227871
               },
               "timing": {
-                "train_seconds": 0.9139828330007731,
-                "predict_seconds": 0.0017733749991748482,
-                "fit_predict_seconds": 0.915756207999948,
+                "train_seconds": 0.956169040997338,
+                "predict_seconds": 0.0015690000000176951,
+                "fit_predict_seconds": 0.9577380409973557,
                 "prediction_rows": 2000.0,
-                "predict_rows_per_second": 1127793.0505000919
+                "predict_rows_per_second": 1274697.2593865164
               },
               "backend": "rust",
               "config": {
@@ -390,11 +390,11 @@
                 "r2": 0.7335956502576398
               },
               "timing": {
-                "train_seconds": 1.703167375002522,
-                "predict_seconds": 0.0015404590012622066,
-                "fit_predict_seconds": 1.7047078340037842,
+                "train_seconds": 3.9187617920033517,
+                "predict_seconds": 0.003922999996575527,
+                "fit_predict_seconds": 3.9226847919999273,
                 "prediction_rows": 2000.0,
-                "predict_rows_per_second": 1298314.3325211895
+                "predict_rows_per_second": 509813.918364987
               },
               "backend": "rust",
               "config": {
@@ -431,11 +431,11 @@
                 "r2": 0.7268188907797446
               },
               "timing": {
-                "train_seconds": 0.03775241699622711,
-                "predict_seconds": 0.0005553750015678816,
-                "fit_predict_seconds": 0.03830779199779499,
+                "train_seconds": 0.07075525000254856,
+                "predict_seconds": 0.003935999993700534,
+                "fit_predict_seconds": 0.0746912499962491,
                 "prediction_rows": 2000.0,
-                "predict_rows_per_second": 3601170.3702071416
+                "predict_rows_per_second": 508130.08211406204
               },
               "config": {
                 "n_estimators": 20,
@@ -454,11 +454,11 @@
                 "r2": 0.7274115257474401
               },
               "timing": {
-                "train_seconds": 0.028891916997963563,
-                "predict_seconds": 0.00032783299684524536,
-                "fit_predict_seconds": 0.029219749994808808,
+                "train_seconds": 0.0506524590018671,
+                "predict_seconds": 0.0019757920017582364,
+                "fit_predict_seconds": 0.05262825100362534,
                 "prediction_rows": 2000.0,
-                "predict_rows_per_second": 6100667.166655303
+                "predict_rows_per_second": 1012252.3009609418
               },
               "config": {
                 "n_estimators": 20,
@@ -480,11 +480,11 @@
                 "r2": -5.757835634945252e-07
               },
               "timing": {
-                "train_seconds": 5.5829950724728405e-06,
-                "predict_seconds": 1.1084004654549062e-05,
-                "fit_predict_seconds": 1.6666999727021903e-05,
+                "train_seconds": 0.00011487500160001218,
+                "predict_seconds": 1.5833000361453742e-05,
+                "fit_predict_seconds": 0.00013070800196146592,
                 "prediction_rows": 2000.0,
-                "predict_rows_per_second": 180440198.49623272
+                "predict_rows_per_second": 126318445.92570738
               }
             }
           }
@@ -533,11 +533,11 @@
                 "r2": 0.6918708877003055
               },
               "timing": {
-                "train_seconds": 19.059232041996438,
-                "predict_seconds": 0.0027970000010100193,
-                "fit_predict_seconds": 19.062029041997448,
+                "train_seconds": 17.438573332998203,
+                "predict_seconds": 0.005995750005240552,
+                "fit_predict_seconds": 17.444569083003444,
                 "prediction_rows": 2608.0,
-                "predict_rows_per_second": 932427.6006643655
+                "predict_rows_per_second": 434974.7734179197
               },
               "backend": "rust",
               "config": {
@@ -570,11 +570,11 @@
                 "r2": 0.6918708877003055
               },
               "timing": {
-                "train_seconds": 32.53620804199454,
-                "predict_seconds": 0.020959499997843523,
-                "fit_predict_seconds": 32.557167541992385,
+                "train_seconds": 20.968136499999673,
+                "predict_seconds": 0.4618347089999588,
+                "fit_predict_seconds": 21.429971208999632,
                 "prediction_rows": 2608.0,
-                "predict_rows_per_second": 124430.44921244931
+                "predict_rows_per_second": 5647.042002640456
               },
               "backend": "rust",
               "config": {
@@ -607,11 +607,11 @@
                 "r2": 0.58621801371408
               },
               "timing": {
-                "train_seconds": 1.0424675419999403,
-                "predict_seconds": 0.17393391599762253,
-                "fit_predict_seconds": 1.2164014579975628,
+                "train_seconds": 0.7666706659947522,
+                "predict_seconds": 0.008576958003686741,
+                "fit_predict_seconds": 0.7752476239984389,
                 "prediction_rows": 2608.0,
-                "predict_rows_per_second": 14994.20044125062
+                "predict_rows_per_second": 304070.51064945996
               },
               "config": {
                 "n_estimators": 20,
@@ -623,9 +623,9 @@
                 "zone_treatment": "target_mean",
                 "feature_count": 26,
                 "fit_stages_ms": {
-                  "base_fit_ms": 466.09416600404074,
-                  "neural_fit_ms": 246.75795799703337,
-                  "final_fit_ms": 262.8886250022333
+                  "base_fit_ms": 82.32841599965468,
+                  "neural_fit_ms": 256.60979200620204,
+                  "final_fit_ms": 338.660917004745
                 }
               }
             },
@@ -637,11 +637,11 @@
                 "r2": 0.6918444440735115
               },
               "timing": {
-                "train_seconds": 3.0026150829944527,
-                "predict_seconds": 0.007671207997191232,
-                "fit_predict_seconds": 3.010286290991644,
+                "train_seconds": 23.794581875001313,
+                "predict_seconds": 0.007364584002061747,
+                "fit_predict_seconds": 23.801946459003375,
                 "prediction_rows": 2608.0,
-                "predict_rows_per_second": 339972.53117825824
+                "predict_rows_per_second": 354127.2662882084
               },
               "backend": "rust",
               "config": {
@@ -678,11 +678,11 @@
                 "r2": 0.6918444440735115
               },
               "timing": {
-                "train_seconds": 3.6953225420002127,
-                "predict_seconds": 0.006951708004635293,
-                "fit_predict_seconds": 3.702274250004848,
+                "train_seconds": 3.6767925000021933,
+                "predict_seconds": 0.007339249998040032,
+                "fit_predict_seconds": 3.6841317500002333,
                 "prediction_rows": 2608.0,
-                "predict_rows_per_second": 375159.6008147962
+                "predict_rows_per_second": 355349.6611638075
               },
               "backend": "rust",
               "config": {
@@ -719,11 +719,11 @@
                 "r2": 0.6918444440735115
               },
               "timing": {
-                "train_seconds": 5.248996624999563,
-                "predict_seconds": 0.005723624999518506,
-                "fit_predict_seconds": 5.254720249999082,
+                "train_seconds": 4.531680125001003,
+                "predict_seconds": 0.02877512499981094,
+                "fit_predict_seconds": 4.560455250000814,
                 "prediction_rows": 2608.0,
-                "predict_rows_per_second": 455655.2884263723
+                "predict_rows_per_second": 90633.8373861846
               },
               "backend": "rust",
               "config": {
@@ -760,11 +760,11 @@
                 "r2": 0.6918444440735115
               },
               "timing": {
-                "train_seconds": 2.068994041001133,
-                "predict_seconds": 0.006063832996005658,
-                "fit_predict_seconds": 2.075057873997139,
+                "train_seconds": 2.6719342920041527,
+                "predict_seconds": 0.0024209580005845055,
+                "fit_predict_seconds": 2.674355250004737,
                 "prediction_rows": 2608.0,
-                "predict_rows_per_second": 430091.00048070756
+                "predict_rows_per_second": 1077259.4978394238
               },
               "backend": "rust",
               "config": {
@@ -801,11 +801,11 @@
                 "r2": 0.6824926375263004
               },
               "timing": {
-                "train_seconds": 1.6028674170011072,
-                "predict_seconds": 0.0011193339960300364,
-                "fit_predict_seconds": 1.6039867509971373,
+                "train_seconds": 1.4857920409995131,
+                "predict_seconds": 0.0006065000052331015,
+                "fit_predict_seconds": 1.4863985410047462,
                 "prediction_rows": 2608.0,
-                "predict_rows_per_second": 2329956.9290755433
+                "predict_rows_per_second": 4300082.403128165
               },
               "config": {
                 "n_estimators": 20,
@@ -824,11 +824,11 @@
                 "r2": 0.6815960320513916
               },
               "timing": {
-                "train_seconds": 1.5987681249971502,
-                "predict_seconds": 0.00048187500215135515,
-                "fit_predict_seconds": 1.5992499999993015,
+                "train_seconds": 0.02508720799960429,
+                "predict_seconds": 0.00026616700051818043,
+                "fit_predict_seconds": 0.02535337500012247,
                 "prediction_rows": 2608.0,
-                "predict_rows_per_second": 5412191.934332457
+                "predict_rows_per_second": 9798359.65736805
               },
               "config": {
                 "n_estimators": 20,
@@ -850,11 +850,11 @@
                 "r2": -0.024419668997073707
               },
               "timing": {
-                "train_seconds": 0.0003770420007640496,
-                "predict_seconds": 2.570800279499963e-05,
-                "fit_predict_seconds": 0.0004027500035590492,
+                "train_seconds": 9.749994205776602e-06,
+                "predict_seconds": 6.750000466126949e-06,
+                "fit_predict_seconds": 1.649999467190355e-05,
                 "prediction_rows": 2608.0,
-                "predict_rows_per_second": 101447009.35333928
+                "predict_rows_per_second": 386370343.6892401
               }
             }
           }
@@ -982,11 +982,11 @@
                 "r2": 0.8508286777491838
               },
               "timing": {
-                "train_seconds": 1.5151596669966239,
-                "predict_seconds": 0.004761916999996174,
-                "fit_predict_seconds": 1.51992158399662,
+                "train_seconds": 0.7026062500008265,
+                "predict_seconds": 0.0018217909964732826,
+                "fit_predict_seconds": 0.7044280409972998,
                 "prediction_rows": 2000.0,
-                "predict_rows_per_second": 419998.9206031115
+                "predict_rows_per_second": 1097820.7730039854
               },
               "backend": "rust",
               "config": {
@@ -1019,11 +1019,11 @@
                 "r2": 0.8508286777491838
               },
               "timing": {
-                "train_seconds": 1.4107912920007948,
-                "predict_seconds": 0.005760375002864748,
-                "fit_predict_seconds": 1.4165516670036595,
+                "train_seconds": 0.6839013750068261,
+                "predict_seconds": 0.001649999998335261,
+                "fit_predict_seconds": 0.6855513750051614,
                 "prediction_rows": 2000.0,
-                "predict_rows_per_second": 347199.6179077509
+                "predict_rows_per_second": 1212121.213344161
               },
               "backend": "rust",
               "config": {
@@ -1056,11 +1056,11 @@
                 "r2": 0.8391029857955397
               },
               "timing": {
-                "train_seconds": 2.0027802500044345,
-                "predict_seconds": 0.023007042000244837,
-                "fit_predict_seconds": 2.0257872920046793,
+                "train_seconds": 0.919598541004234,
+                "predict_seconds": 0.0320550420001382,
+                "fit_predict_seconds": 0.9516535830043722,
                 "prediction_rows": 2000.0,
-                "predict_rows_per_second": 86929.9060687035
+                "predict_rows_per_second": 62392.68068940222
               },
               "config": {
                 "n_estimators": 20,
@@ -1072,9 +1072,9 @@
                 "zone_treatment": "target_mean",
                 "feature_count": 26,
                 "fit_stages_ms": {
-                  "base_fit_ms": 120.29258300026413,
-                  "neural_fit_ms": 285.90704099769937,
-                  "final_fit_ms": 1307.2239579996676
+                  "base_fit_ms": 585.200707995682,
+                  "neural_fit_ms": 142.31858299899613,
+                  "final_fit_ms": 147.9534579993924
                 }
               }
             },
@@ -1086,11 +1086,11 @@
                 "r2": 0.851192757579613
               },
               "timing": {
-                "train_seconds": 3.6624007920036092,
-                "predict_seconds": 0.006384166998032015,
-                "fit_predict_seconds": 3.6687849590016413,
+                "train_seconds": 1.775922000000719,
+                "predict_seconds": 0.008489332998578902,
+                "fit_predict_seconds": 1.7844113329992979,
                 "prediction_rows": 2000.0,
-                "predict_rows_per_second": 313275.0131092311
+                "predict_rows_per_second": 235589.7689883052
               },
               "backend": "rust",
               "config": {
@@ -1127,11 +1127,11 @@
                 "r2": 0.8510830222365159
               },
               "timing": {
-                "train_seconds": 3.4742895000017597,
-                "predict_seconds": 0.00417587499396177,
-                "fit_predict_seconds": 3.4784653749957215,
+                "train_seconds": 2.155698750000738,
+                "predict_seconds": 0.0072785840020515025,
+                "fit_predict_seconds": 2.1629773340027896,
                 "prediction_rows": 2000.0,
-                "predict_rows_per_second": 478941.53989091126
+                "predict_rows_per_second": 274778.7206187757
               },
               "backend": "rust",
               "config": {
@@ -1168,11 +1168,11 @@
                 "r2": 0.8514325789485606
               },
               "timing": {
-                "train_seconds": 5.06289950000064,
-                "predict_seconds": 0.00421962500695372,
-                "fit_predict_seconds": 5.0671191250075935,
+                "train_seconds": 4.030600457997934,
+                "predict_seconds": 0.0060895420028828084,
+                "fit_predict_seconds": 4.036690000000817,
                 "prediction_rows": 2000.0,
-                "predict_rows_per_second": 473975.76720777445
+                "predict_rows_per_second": 328431.9246099614
               },
               "backend": "rust",
               "config": {
@@ -1209,11 +1209,11 @@
                 "r2": 0.851683423713665
               },
               "timing": {
-                "train_seconds": 2.19408883300639,
-                "predict_seconds": 0.004163166995567735,
-                "fit_predict_seconds": 2.1982520000019576,
+                "train_seconds": 5.549434250002378,
+                "predict_seconds": 0.006072707998100668,
+                "fit_predict_seconds": 5.555506958000478,
                 "prediction_rows": 2000.0,
-                "predict_rows_per_second": 480403.5010196025
+                "predict_rows_per_second": 329342.36268655275
               },
               "backend": "rust",
               "config": {
@@ -1250,11 +1250,11 @@
                 "r2": 0.8492998063014899
               },
               "timing": {
-                "train_seconds": 1.693159750000632,
-                "predict_seconds": 0.0008412500028498471,
-                "fit_predict_seconds": 1.6940010000034817,
+                "train_seconds": 6.009284749998187,
+                "predict_seconds": 0.0031779589990037493,
+                "fit_predict_seconds": 6.012462708997191,
                 "prediction_rows": 2000.0,
-                "predict_rows_per_second": 2377414.55361038
+                "predict_rows_per_second": 629334.7398839869
               },
               "config": {
                 "n_estimators": 20,
@@ -1273,11 +1273,11 @@
                 "r2": 0.8486302803808544
               },
               "timing": {
-                "train_seconds": 1.6890799999964656,
-                "predict_seconds": 0.0005482909982674755,
-                "fit_predict_seconds": 1.689628290994733,
+                "train_seconds": 0.04726587500044843,
+                "predict_seconds": 0.0003984580034739338,
+                "fit_predict_seconds": 0.047664333003922366,
                 "prediction_rows": 2000.0,
-                "predict_rows_per_second": 3647698.0404925966
+                "predict_rows_per_second": 5019349.548918862
               },
               "config": {
                 "n_estimators": 20,
@@ -1299,11 +1299,11 @@
                 "r2": -0.0002625503970468124
               },
               "timing": {
-                "train_seconds": 0.00012891700316686183,
-                "predict_seconds": 1.2249998690094799e-05,
-                "fit_predict_seconds": 0.00014116700185695663,
+                "train_seconds": 5.795800097985193e-05,
+                "predict_seconds": 2.0916995708830655e-05,
+                "fit_predict_seconds": 7.887499668868259e-05,
                 "prediction_rows": 2000.0,
-                "predict_rows_per_second": 163265323.5805793
+                "predict_rows_per_second": 95616025.73526599
               }
             }
           }
@@ -1352,11 +1352,11 @@
                 "r2": 0.810902611637387
               },
               "timing": {
-                "train_seconds": 58.3010574170039,
-                "predict_seconds": 0.004560500005027279,
-                "fit_predict_seconds": 58.30561791700893,
+                "train_seconds": 43.45588549999957,
+                "predict_seconds": 0.0021682499937014654,
+                "fit_predict_seconds": 43.45805374999327,
                 "prediction_rows": 2608.0,
-                "predict_rows_per_second": 571867.1192029524
+                "predict_rows_per_second": 1202813.3322153632
               },
               "backend": "rust",
               "config": {
@@ -1389,11 +1389,11 @@
                 "r2": 0.810902611637387
               },
               "timing": {
-                "train_seconds": 51.61217370799568,
-                "predict_seconds": 0.011324457998853177,
-                "fit_predict_seconds": 51.62349816599453,
+                "train_seconds": 43.2656474999967,
+                "predict_seconds": 0.007936499998322688,
+                "fit_predict_seconds": 43.273583999995026,
                 "prediction_rows": 2608.0,
-                "predict_rows_per_second": 230297.99750805832
+                "predict_rows_per_second": 328608.3286777772
               },
               "backend": "rust",
               "config": {
@@ -1426,11 +1426,11 @@
                 "r2": 0.7929262291753258
               },
               "timing": {
-                "train_seconds": 1.2650204590026988,
-                "predict_seconds": 0.008173540998541284,
-                "fit_predict_seconds": 1.27319400000124,
+                "train_seconds": 44.180185791999975,
+                "predict_seconds": 0.1859643749994575,
+                "fit_predict_seconds": 44.36615016699943,
                 "prediction_rows": 2608.0,
-                "predict_rows_per_second": 319078.3530009141
+                "predict_rows_per_second": 14024.191461443128
               },
               "config": {
                 "n_estimators": 20,
@@ -1442,9 +1442,9 @@
                 "zone_treatment": "target_mean",
                 "feature_count": 26,
                 "fit_stages_ms": {
-                  "base_fit_ms": 76.76970800093841,
-                  "neural_fit_ms": 247.70183399959933,
-                  "final_fit_ms": 238.6102500022389
+                  "base_fit_ms": 36.94945899769664,
+                  "neural_fit_ms": 43372.1279579986,
+                  "final_fit_ms": 666.8128330056788
                 }
               }
             },
@@ -1456,11 +1456,11 @@
                 "r2": 0.8086971987728185
               },
               "timing": {
-                "train_seconds": 61.036009208000905,
-                "predict_seconds": 0.005442625006253365,
-                "fit_predict_seconds": 61.04145183300716,
+                "train_seconds": 3.9801070829998935,
+                "predict_seconds": 0.010953375000099186,
+                "fit_predict_seconds": 3.9910604579999927,
                 "prediction_rows": 2608.0,
-                "predict_rows_per_second": 479180.5419266455
+                "predict_rows_per_second": 238100.12895353112
               },
               "backend": "rust",
               "config": {
@@ -1497,11 +1497,11 @@
                 "r2": 0.8047593227946563
               },
               "timing": {
-                "train_seconds": 3.3480163749991334,
-                "predict_seconds": 0.0050262910008314066,
-                "fit_predict_seconds": 3.353042665999965,
+                "train_seconds": 7.066972874999919,
+                "predict_seconds": 0.008085333000053652,
+                "fit_predict_seconds": 7.075058207999973,
                 "prediction_rows": 2608.0,
-                "predict_rows_per_second": 518871.6689042888
+                "predict_rows_per_second": 322559.38005060446
               },
               "backend": "rust",
               "config": {
@@ -1538,11 +1538,11 @@
                 "r2": 0.8139825624471377
               },
               "timing": {
-                "train_seconds": 3.283561958000064,
-                "predict_seconds": 0.002166915997804608,
-                "fit_predict_seconds": 3.2857288739978685,
+                "train_seconds": 8.917916124999465,
+                "predict_seconds": 0.0020440410007722676,
+                "fit_predict_seconds": 8.919960166000237,
                 "prediction_rows": 2608.0,
-                "predict_rows_per_second": 1203553.8076428769
+                "predict_rows_per_second": 1275903.9564346608
               },
               "backend": "rust",
               "config": {
@@ -1579,11 +1579,11 @@
                 "r2": 0.809453005374825
               },
               "timing": {
-                "train_seconds": 2.2696610420025536,
-                "predict_seconds": 0.002323708999028895,
-                "fit_predict_seconds": 2.2719847510015825,
+                "train_seconds": 6.439278166995791,
+                "predict_seconds": 0.002044291999482084,
+                "fit_predict_seconds": 6.441322458995273,
                 "prediction_rows": 2608.0,
-                "predict_rows_per_second": 1122343.6329978984
+                "predict_rows_per_second": 1275747.300611033
               },
               "backend": "rust",
               "config": {
@@ -1620,11 +1620,11 @@
                 "r2": 0.8098035768068609
               },
               "timing": {
-                "train_seconds": 2.323889917002816,
-                "predict_seconds": 0.0005003330006729811,
-                "fit_predict_seconds": 2.324390250003489,
+                "train_seconds": 0.10614987499866402,
+                "predict_seconds": 0.0005067909951321781,
+                "fit_predict_seconds": 0.1066566659937962,
                 "prediction_rows": 2608.0,
-                "predict_rows_per_second": 5212528.449037075
+                "predict_rows_per_second": 5146105.6432539765
               },
               "config": {
                 "n_estimators": 20,
@@ -1643,11 +1643,11 @@
                 "r2": 0.8095423750181722
               },
               "timing": {
-                "train_seconds": 0.8616273749939865,
-                "predict_seconds": 0.0002638340010889806,
-                "fit_predict_seconds": 0.8618912089950754,
+                "train_seconds": 0.02687583299848484,
+                "predict_seconds": 0.00023787499958416447,
+                "fit_predict_seconds": 0.027113707998069003,
                 "prediction_rows": 2608.0,
-                "predict_rows_per_second": 9885003.408337906
+                "predict_rows_per_second": 10963741.480017291
               },
               "config": {
                 "n_estimators": 20,
@@ -1669,11 +1669,11 @@
                 "r2": -0.09049953484901763
               },
               "timing": {
-                "train_seconds": 4.583998816087842e-06,
-                "predict_seconds": 5.125002644490451e-06,
-                "fit_predict_seconds": 9.709001460578293e-06,
+                "train_seconds": 1.612499909242615e-05,
+                "predict_seconds": 7.500006176996976e-06,
+                "fit_predict_seconds": 2.3625005269423127e-05,
                 "prediction_rows": 2608.0,
-                "predict_rows_per_second": 508877786.20049834
+                "predict_rows_per_second": 347733046.9405361
               }
             }
           }
@@ -1944,11 +1944,11 @@
                 "r2": 0.873057684868927
               },
               "timing": {
-                "train_seconds": 25.42064358400239,
-                "predict_seconds": 0.00424616700183833,
-                "fit_predict_seconds": 25.42488975100423,
+                "train_seconds": 54.9410741669999,
+                "predict_seconds": 0.009906416002195328,
+                "fit_predict_seconds": 54.95098058300209,
                 "prediction_rows": 4930.0,
-                "predict_rows_per_second": 1161047.1274129378
+                "predict_rows_per_second": 497657.2757400334
               },
               "backend": "rust",
               "config": {
@@ -1981,11 +1981,11 @@
                 "r2": 0.873057684868927
               },
               "timing": {
-                "train_seconds": 34.47166333399946,
-                "predict_seconds": 0.017103040998335928,
-                "fit_predict_seconds": 34.488766374997795,
+                "train_seconds": 28.115108375001,
+                "predict_seconds": 0.010812874999828637,
+                "fit_predict_seconds": 28.12592125000083,
                 "prediction_rows": 4930.0,
-                "predict_rows_per_second": 288252.8317905379
+                "predict_rows_per_second": 455937.94435597665
               },
               "backend": "rust",
               "config": {
@@ -2018,11 +2018,11 @@
                 "r2": 0.8733339708564211
               },
               "timing": {
-                "train_seconds": 8.453740166994976,
-                "predict_seconds": 0.014446584005781915,
-                "fit_predict_seconds": 8.468186751000758,
+                "train_seconds": 32.81008437499986,
+                "predict_seconds": 0.017002833003061824,
+                "fit_predict_seconds": 32.82708720800292,
                 "prediction_rows": 4930.0,
-                "predict_rows_per_second": 341257.1441128837
+                "predict_rows_per_second": 289951.6803530458
               },
               "config": {
                 "n_estimators": 20,
@@ -2034,9 +2034,9 @@
                 "zone_treatment": "target_mean",
                 "feature_count": 19,
                 "fit_stages_ms": {
-                  "base_fit_ms": 372.3515000019688,
-                  "neural_fit_ms": 57.2770409999066,
-                  "final_fit_ms": 415.2869579993421
+                  "base_fit_ms": 122.38775000150781,
+                  "neural_fit_ms": 34.28945800260408,
+                  "final_fit_ms": 814.2835839971667
                 }
               }
             },
@@ -2048,11 +2048,11 @@
                 "r2": 0.8757855901899535
               },
               "timing": {
-                "train_seconds": 10.050735666998662,
-                "predict_seconds": 0.004097000004549045,
-                "fit_predict_seconds": 10.054832667003211,
+                "train_seconds": 7.74832095799502,
+                "predict_seconds": 0.01158058299915865,
+                "fit_predict_seconds": 7.7599015409941785,
                 "prediction_rows": 4930.0,
-                "predict_rows_per_second": 1203319.5007386003
+                "predict_rows_per_second": 425712.5915299923
               },
               "backend": "rust",
               "config": {
@@ -2089,11 +2089,11 @@
                 "r2": 0.8757855901899535
               },
               "timing": {
-                "train_seconds": 5.079839999998512,
-                "predict_seconds": 0.021572082994680386,
-                "fit_predict_seconds": 5.101412082993193,
+                "train_seconds": 6.673883374998695,
+                "predict_seconds": 0.009983166004531085,
+                "fit_predict_seconds": 6.683866541003226,
                 "prediction_rows": 4930.0,
-                "predict_rows_per_second": 228536.11314288582
+                "predict_rows_per_second": 493831.3154126064
               },
               "backend": "rust",
               "config": {
@@ -2130,11 +2130,11 @@
                 "r2": 0.8757855901899535
               },
               "timing": {
-                "train_seconds": 5.138255541001854,
-                "predict_seconds": 0.018408125004498288,
-                "fit_predict_seconds": 5.156663666006352,
+                "train_seconds": 9.85229637500015,
+                "predict_seconds": 0.01469912500033388,
+                "fit_predict_seconds": 9.866995500000485,
                 "prediction_rows": 4930.0,
-                "predict_rows_per_second": 267816.5211717806
+                "predict_rows_per_second": 335394.11358757876
               },
               "backend": "rust",
               "config": {
@@ -2171,11 +2171,11 @@
                 "r2": 0.8757855901899535
               },
               "timing": {
-                "train_seconds": 5.2588178329970106,
-                "predict_seconds": 0.012574041997140739,
-                "fit_predict_seconds": 5.271391874994151,
+                "train_seconds": 9.33232408400363,
+                "predict_seconds": 0.01036125000246102,
+                "fit_predict_seconds": 9.342685334006092,
                 "prediction_rows": 4930.0,
-                "predict_rows_per_second": 392077.583415186
+                "predict_rows_per_second": 475811.31608918024
               },
               "backend": "rust",
               "config": {
@@ -2212,11 +2212,11 @@
                 "r2": 0.8684020510083328
               },
               "timing": {
-                "train_seconds": 5.319373833001009,
-                "predict_seconds": 0.002963375001854729,
-                "fit_predict_seconds": 5.322337208002864,
+                "train_seconds": 6.381165458005853,
+                "predict_seconds": 0.0019263750000391155,
+                "fit_predict_seconds": 6.383091833005892,
                 "prediction_rows": 4930.0,
-                "predict_rows_per_second": 1663643.648513736
+                "predict_rows_per_second": 2559210.9531632704
               },
               "config": {
                 "n_estimators": 20,
@@ -2235,11 +2235,11 @@
                 "r2": 0.8682608312037167
               },
               "timing": {
-                "train_seconds": 4.532285833003698,
-                "predict_seconds": 0.0010161250029341318,
-                "fit_predict_seconds": 4.533301958006632,
+                "train_seconds": 0.2311489999992773,
+                "predict_seconds": 0.0004628329988918267,
+                "fit_predict_seconds": 0.23161183299816912,
                 "prediction_rows": 4930.0,
-                "predict_rows_per_second": 4851765.270773065
+                "predict_rows_per_second": 10651790.196040535
               },
               "config": {
                 "n_estimators": 20,
@@ -2261,11 +2261,11 @@
                 "r2": -0.0005603832964402589
               },
               "timing": {
-                "train_seconds": 0.00014970800111768767,
-                "predict_seconds": 1.445900124963373e-05,
-                "fit_predict_seconds": 0.0001641670023673214,
+                "train_seconds": 7.02499964972958e-05,
+                "predict_seconds": 2.2499996703118086e-05,
+                "fit_predict_seconds": 9.274999320041388e-05,
                 "prediction_rows": 4930.0,
-                "predict_rows_per_second": 340964075.9333142
+                "predict_rows_per_second": 219111143.21704733
               }
             }
           }
@@ -2328,173 +2328,40 @@
           ],
           "models": {
             "cartoboost": {
-              "status": "ok",
-              "metrics": {
-                "rmse": 2.0821317120965865,
-                "mae": 1.8437982152096373,
-                "r2": 0.003251625888975318
-              },
-              "timing": {
-                "train_seconds": 22.158904542004166,
-                "predict_seconds": 0.0039187079964904115,
-                "fit_predict_seconds": 22.162823250000656,
-                "prediction_rows": 5139.0,
-                "predict_rows_per_second": 1311401.6161965833
-              },
-              "backend": "rust",
-              "config": {
-                "n_estimators": 20,
-                "learning_rate": 0.08,
-                "max_depth": 3,
-                "min_samples_leaf": 1,
-                "constant_l2_regularization": 0.0,
-                "leaf_predictor": "constant",
-                "init": "constant",
-                "calibration": "none",
-                "splitters": [
-                  "axis_histogram:128",
-                  "periodic:24",
-                  "periodic:7",
-                  "sparse_set"
-                ],
-                "sparse_sets": false,
-                "zone_treatment": "target_mean",
-                "feature_count": 7,
-                "preset": "candidate",
-                "predict_path": "model.predict"
-              }
+              "status": "skipped",
+              "reason": "learned models are skipped for pickup_demand cold-zone spatial holdout; the split removes all zone demand history, so predictions collapse to priors"
             },
             "cartoboost_reference": {
-              "status": "ok",
-              "metrics": {
-                "rmse": 2.0821317120965865,
-                "mae": 1.8437982152096373,
-                "r2": 0.003251625888975318
-              },
-              "timing": {
-                "train_seconds": 16.943972332999692,
-                "predict_seconds": 0.011480833003588486,
-                "fit_predict_seconds": 16.95545316600328,
-                "prediction_rows": 5139.0,
-                "predict_rows_per_second": 447615.60405884637
-              },
-              "backend": "rust",
-              "config": {
-                "n_estimators": 20,
-                "learning_rate": 0.08,
-                "max_depth": 3,
-                "min_samples_leaf": 1,
-                "constant_l2_regularization": 0.0,
-                "leaf_predictor": "constant",
-                "init": "constant",
-                "calibration": "none",
-                "splitters": [
-                  "axis_histogram:128",
-                  "periodic:24",
-                  "periodic:7",
-                  "sparse_set"
-                ],
-                "sparse_sets": false,
-                "zone_treatment": "target_mean",
-                "feature_count": 7,
-                "preset": "reference",
-                "predict_path": "model.predict"
-              }
+              "status": "skipped",
+              "reason": "learned models are skipped for pickup_demand cold-zone spatial holdout; the split removes all zone demand history, so predictions collapse to priors"
             },
             "cartoboost_neural": {
-              "status": "ok",
-              "metrics": {
-                "rmse": 2.216041573035126,
-                "mae": 1.7102163891288036,
-                "r2": -0.1290806001050535
-              },
-              "timing": {
-                "train_seconds": 0.7612995419985964,
-                "predict_seconds": 0.3679472090007039,
-                "fit_predict_seconds": 1.1292467509993003,
-                "prediction_rows": 5139.0,
-                "predict_rows_per_second": 13966.677486036235
-              },
-              "config": {
-                "n_estimators": 20,
-                "learning_rate": 0.08,
-                "max_depth": 3,
-                "min_samples_leaf": 1,
-                "neural_dim": 12,
-                "id_source": "PULocationID",
-                "zone_treatment": "target_mean",
-                "feature_count": 19,
-                "fit_stages_ms": {
-                  "base_fit_ms": 99.46620899427217,
-                  "neural_fit_ms": 28.64241700444836,
-                  "final_fit_ms": 382.8197500042734
-                }
-              }
+              "status": "skipped",
+              "reason": "learned models are skipped for pickup_demand cold-zone spatial holdout; the split removes all zone demand history, so predictions collapse to priors"
             },
             "cartoboost_graph_node2vec": {
               "status": "skipped",
-              "reason": "graph embeddings are skipped for pickup_demand cold-zone spatial holdout; use contextual tabular baselines for this split"
+              "reason": "learned models are skipped for pickup_demand cold-zone spatial holdout; the split removes all zone demand history, so predictions collapse to priors"
             },
             "cartoboost_graph_graphsage": {
               "status": "skipped",
-              "reason": "graph embeddings are skipped for pickup_demand cold-zone spatial holdout; use contextual tabular baselines for this split"
+              "reason": "learned models are skipped for pickup_demand cold-zone spatial holdout; the split removes all zone demand history, so predictions collapse to priors"
             },
             "cartoboost_graph_hetero_graphsage": {
               "status": "skipped",
-              "reason": "graph embeddings are skipped for pickup_demand cold-zone spatial holdout; use contextual tabular baselines for this split"
+              "reason": "learned models are skipped for pickup_demand cold-zone spatial holdout; the split removes all zone demand history, so predictions collapse to priors"
             },
             "cartoboost_graph_hinsage": {
               "status": "skipped",
-              "reason": "graph embeddings are skipped for pickup_demand cold-zone spatial holdout; use contextual tabular baselines for this split"
+              "reason": "learned models are skipped for pickup_demand cold-zone spatial holdout; the split removes all zone demand history, so predictions collapse to priors"
             },
             "lightgbm": {
-              "status": "ok",
-              "metrics": {
-                "rmse": 2.0839124213503384,
-                "mae": 1.8130774403754926,
-                "r2": 0.0015459911988741082
-              },
-              "timing": {
-                "train_seconds": 0.20509008299995912,
-                "predict_seconds": 0.0015000839994172566,
-                "fit_predict_seconds": 0.20659016699937638,
-                "prediction_rows": 5139.0,
-                "predict_rows_per_second": 3425808.1560741714
-              },
-              "config": {
-                "n_estimators": 20,
-                "learning_rate": 0.08,
-                "max_depth": 3,
-                "num_leaves": 8,
-                "zone_treatment": "target_mean",
-                "feature_count": 7
-              }
+              "status": "skipped",
+              "reason": "learned models are skipped for pickup_demand cold-zone spatial holdout; the split removes all zone demand history, so predictions collapse to priors"
             },
             "xgboost": {
-              "status": "ok",
-              "metrics": {
-                "rmse": 2.0839001257336047,
-                "mae": 1.8130711278151381,
-                "r2": 0.0015577734325943338
-              },
-              "timing": {
-                "train_seconds": 0.029236583999590948,
-                "predict_seconds": 0.000662417005514726,
-                "fit_predict_seconds": 0.029899001005105674,
-                "prediction_rows": 5139.0,
-                "predict_rows_per_second": 7757953.007270367
-              },
-              "config": {
-                "n_estimators": 20,
-                "learning_rate": 0.08,
-                "max_depth": 3,
-                "tree_method": "hist",
-                "max_bin": 256,
-                "subsample": 1.0,
-                "colsample_bytree": 1.0,
-                "zone_treatment": "target_mean",
-                "feature_count": 7
-              }
+              "status": "skipped",
+              "reason": "learned models are skipped for pickup_demand cold-zone spatial holdout; the split removes all zone demand history, so predictions collapse to priors"
             },
             "mean": {
               "status": "ok",
@@ -2504,11 +2371,11 @@
                 "r2": -0.002957527133875537
               },
               "timing": {
-                "train_seconds": 3.0707997211720794e-05,
-                "predict_seconds": 1.1790994904004037e-05,
-                "fit_predict_seconds": 4.249899211572483e-05,
+                "train_seconds": 1.654199877521023e-05,
+                "predict_seconds": 7.124996045604348e-06,
+                "fit_predict_seconds": 2.366699482081458e-05,
                 "prediction_rows": 5139.0,
-                "predict_rows_per_second": 435841083.9661101
+                "predict_rows_per_second": 721263558.1981022
               }
             }
           }

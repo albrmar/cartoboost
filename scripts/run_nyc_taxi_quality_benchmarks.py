@@ -1300,6 +1300,12 @@ def fit_predict_model(
             "predictions": prediction,
         }
 
+    if pickup_demand_cold_zone_fraction(task, train_indices, test_indices) >= 0.8:
+        return skipped(
+            "learned models are skipped for pickup_demand cold-zone spatial holdout; "
+            "the split removes all zone demand history, so predictions collapse to priors"
+        )
+
     if model_name in {"cartoboost", "cartoboost_reference"}:
         try:
             from cartoboost import CartoBoostRegressor
@@ -1492,11 +1498,6 @@ def fit_predict_model(
             from cartoboost import CartoBoostRegressor
         except ImportError as exc:
             return skipped(f"cartoboost import failed: {exc}")
-        if pickup_demand_cold_zone_fraction(task, train_indices, test_indices) >= 0.8:
-            return skipped(
-                "graph embeddings are skipped for pickup_demand cold-zone spatial holdout; "
-                "use contextual tabular baselines for this split"
-            )
         try:
             train_started = time.perf_counter()
             train_augmented, test_augmented, graph_config = graph_augmented_split_features(

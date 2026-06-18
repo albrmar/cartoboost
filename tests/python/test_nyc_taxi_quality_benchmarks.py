@@ -104,7 +104,10 @@ def test_nyc_taxi_quality_benchmark_skips_missing_optional_models(tmp_path: Path
             for model_name in ["lightgbm", "xgboost"]:
                 model = split["models"][model_name]
                 if model["status"] == "skipped":
-                    assert "not installed" in model["reason"]
+                    assert (
+                        "not installed" in model["reason"]
+                        or "cold-zone spatial holdout" in model["reason"]
+                    )
 
 
 def test_real_pickup_demand_aggregates_full_cleaned_frame_when_rows_are_sampled():
