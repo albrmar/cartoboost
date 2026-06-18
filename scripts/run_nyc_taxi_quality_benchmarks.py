@@ -37,6 +37,7 @@ TAXI_ZONE_LOOKUP_URL = "https://d37ci6vzurychx.cloudfront.net/misc/taxi_zone_loo
 TAXI_ZONES_ZIP_URL = "https://d37ci6vzurychx.cloudfront.net/misc/taxi_zones.zip"
 PLOT_SCATTER_MAX_POINTS = 50_000
 GRAPH_AUGMENTATION_RELATIVE_VALIDATION_MARGIN = 0.01
+NEURAL_AUGMENTATION_RELATIVE_VALIDATION_MARGIN = 0.01
 
 ROW_FEATURES = [
     "trip_distance",
@@ -1613,6 +1614,179 @@ def fit_graph_guarded_cartoboost(
     )
 
 
+def fit_neural_guarded_model(
+    *,
+    task: BenchmarkTask,
+    train_x: np.ndarray,
+    test_x: np.ndarray,
+    train_y: np.ndarray,
+    train_indices: np.ndarray,
+    test_indices: np.ndarray,
+    effective_feature_names: list[str],
+    args: argparse.Namespace,
+) -> tuple[Any, dict[str, Any], dict[str, Any]]:
+    from cartoboost import CartoBoostRegressor, NeuralEmbeddingRegressor
+
+    ids = task_embedding_ids(task)
+    schema = cartoboost_schema(
+        task,
+        feature_names=effective_feature_names,
+        include_sparse_sets=False,
+    )
+    splitters = parse_splitters(args.cartoboost_splitters)
+
+    def build_base_model() -> CartoBoostRegressor:
+        return CartoBoostRegressor(
+            n_estimators=args.cartoboost_n_estimators,
+            learning_rate=args.learning_rate,
+            max_depth=args.cartoboost_max_depth,
+            min_samples_leaf=args.cartoboost_min_samples_leaf,
+            min_gain=0.0,
+            splitters=splitters,
+            n_threads=args.n_threads or None,
+        )
+
+    def build_neural_model() -> NeuralEmbeddingRegressor:
+        return NeuralEmbeddingRegressor(
+            dim=args.neural_dim,
+            drop_id_column=False,
+            id_column=None,
+            random_state=args.seed,
+            oof_folds=5,
+            support_prior_strength=2.0,
+            base_model_kwargs={
+                "n_estimators": max(10, args.cartoboost_n_estimators // 2),
+                "learning_rate": args.learning_rate,
+                "max_depth": args.cartoboost_max_depth,
+                "min_samples_leaf": args.cartoboost_min_samples_leaf,
+                "min_gain": 0.0,
+                "splitters": splitters,
+                "n_threads": args.n_threads or None,
+            },
+            final_model_kwargs={
+                "n_estimators": args.cartoboost_n_estimators,
+                "learning_rate": args.learning_rate,
+                "max_depth": args.cartoboost_max_depth,
+                "min_samples_leaf": args.cartoboost_min_samples_leaf,
+                "min_gain": 0.0,
+                "splitters": splitters,
+                "n_threads": args.n_threads or None,
+            },
+        )
+
+    train_id_values = ids[train_indices].reshape(len(train_indices), -1)
+    test_id_values = ids[test_indices].reshape(len(test_indices), -1)
+    train_id_sets = [
+        set(int(value) for value in train_id_values[:, col])
+        for col in range(train_id_values.shape[1])
+    ]
+    cold_id_fraction = float(
+        np.mean(
+            [
+                any(int(value) not in train_id_sets[col] for col, value in enumerate(row))
+                for row in test_id_values
+            ]
+        )
+    )
+
+    inner_train, inner_validation = deterministic_inner_validation_split(
+        len(train_y),
+        seed=args.seed,
+    )
+    base_probe = build_base_model()
+    base_probe.fit(train_x[inner_train], train_y[inner_train], feature_schema=schema)
+    base_validation_prediction = base_probe.predict(train_x[inner_validation])
+    base_validation_rmse = float(
+        np.sqrt(np.mean((train_y[inner_validation] - base_validation_prediction) ** 2))
+    )
+
+    inner_rows = train_indices[inner_train]
+    validation_rows = train_indices[inner_validation]
+    inner_fallback_ids, inner_neighbor_ids = task_embedding_fallback_context(
+        task,
+        train_indices=inner_rows,
+        row_indices=inner_rows,
+    )
+    validation_fallback_ids, validation_neighbor_ids = task_embedding_fallback_context(
+        task,
+        train_indices=inner_rows,
+        row_indices=validation_rows,
+    )
+    neural_probe = build_neural_model()
+    neural_probe.fit(
+        train_x[inner_train],
+        train_y[inner_train],
+        ids=ids[inner_rows],
+        fallback_ids=inner_fallback_ids,
+        neighbor_ids=inner_neighbor_ids,
+        feature_schema=schema,
+    )
+    neural_validation_prediction = neural_probe.predict(
+        train_x[inner_validation],
+        ids=ids[validation_rows],
+        fallback_ids=validation_fallback_ids,
+        neighbor_ids=validation_neighbor_ids,
+    )
+    neural_validation_rmse = float(
+        np.sqrt(np.mean((train_y[inner_validation] - neural_validation_prediction) ** 2))
+    )
+
+    required_neural_rmse = base_validation_rmse * (
+        1.0 - NEURAL_AUGMENTATION_RELATIVE_VALIDATION_MARGIN
+    )
+    use_neural = cold_id_fraction < 0.5 and neural_validation_rmse <= required_neural_rmse
+    if use_neural:
+        train_fallback_ids, train_neighbor_ids = task_embedding_fallback_context(
+            task,
+            train_indices=train_indices,
+            row_indices=train_indices,
+        )
+        test_fallback_ids, test_neighbor_ids = task_embedding_fallback_context(
+            task,
+            train_indices=train_indices,
+            row_indices=test_indices,
+        )
+        model = build_neural_model()
+        model.fit(
+            train_x,
+            train_y,
+            ids=ids[train_indices],
+            fallback_ids=train_fallback_ids,
+            neighbor_ids=train_neighbor_ids,
+            feature_schema=schema,
+        )
+        predict_input = {
+            "X": test_x,
+            "ids": ids[test_indices],
+            "fallback_ids": test_fallback_ids,
+            "neighbor_ids": test_neighbor_ids,
+        }
+        selected = "neural_augmented"
+        feature_count = int(train_x.shape[1] + model.neural_feature_count_)
+        fit_stages_ms = model.timings
+    else:
+        model = build_base_model()
+        model.fit(train_x, train_y, feature_schema=schema)
+        predict_input = {"X": test_x}
+        selected = "base"
+        feature_count = int(train_x.shape[1])
+        fit_stages_ms = {}
+
+    return (
+        model,
+        predict_input,
+        {
+            "selected": selected,
+            "base_validation_rmse": base_validation_rmse,
+            "neural_validation_rmse": neural_validation_rmse,
+            "cold_id_fraction": cold_id_fraction,
+            "relative_validation_margin": NEURAL_AUGMENTATION_RELATIVE_VALIDATION_MARGIN,
+            "feature_count": feature_count,
+            "fit_stages_ms": fit_stages_ms,
+        },
+    )
+
+
 def fit_predict_model(
     *,
     model_name: str,
@@ -1769,80 +1943,21 @@ def fit_predict_model(
 
     if model_name == "cartoboost_neural":
         try:
-            from cartoboost import NeuralEmbeddingRegressor
-        except ImportError as exc:
-            return skipped(f"cartoboost neural import failed: {exc}")
-        ids = task_embedding_ids(task)
-        train_fallback_ids, train_neighbor_ids = task_embedding_fallback_context(
-            task,
-            train_indices=train_indices,
-            row_indices=train_indices,
-        )
-        test_fallback_ids, test_neighbor_ids = task_embedding_fallback_context(
-            task,
-            train_indices=train_indices,
-            row_indices=test_indices,
-        )
-        model = NeuralEmbeddingRegressor(
-            dim=args.neural_dim,
-            drop_id_column=False,
-            id_column=None,
-            random_state=args.seed,
-            oof_folds=5,
-            support_prior_strength=2.0,
-            base_model_kwargs={
-                "n_estimators": max(10, args.cartoboost_n_estimators // 2),
-                "learning_rate": args.learning_rate,
-                "max_depth": args.cartoboost_max_depth,
-                "min_samples_leaf": args.cartoboost_min_samples_leaf,
-                "min_gain": 0.0,
-                "splitters": parse_splitters(args.cartoboost_splitters),
-                "n_threads": args.n_threads or None,
-            },
-            final_model_kwargs={
-                "n_estimators": args.cartoboost_n_estimators,
-                "learning_rate": args.learning_rate,
-                "max_depth": args.cartoboost_max_depth,
-                "min_samples_leaf": args.cartoboost_min_samples_leaf,
-                "min_gain": 0.0,
-                "splitters": parse_splitters(args.cartoboost_splitters),
-                "n_threads": args.n_threads or None,
-            },
-        )
-        try:
             train_started = time.perf_counter()
-            model.fit(
-                train_x,
-                train_y,
-                ids=ids[train_indices],
-                fallback_ids=train_fallback_ids,
-                neighbor_ids=train_neighbor_ids,
-                feature_schema=cartoboost_schema(
-                    task,
-                    feature_names=effective_feature_names,
-                    include_sparse_sets=False,
-                ),
+            model, predict_input, neural_guard = fit_neural_guarded_model(
+                task=task,
+                train_x=train_x,
+                test_x=test_x,
+                train_y=train_y,
+                train_indices=train_indices,
+                test_indices=test_indices,
+                effective_feature_names=effective_feature_names,
+                args=args,
             )
             train_seconds = time.perf_counter() - train_started
-            smoke_indices = test_indices[: min(len(test_indices), 16)]
-            smoke_fallback_ids, smoke_neighbor_ids = task_embedding_fallback_context(
-                task,
-                train_indices=train_indices,
-                row_indices=smoke_indices,
-            )
-            _ = model.predict(
-                test_x[: len(smoke_indices)],
-                ids=ids[smoke_indices],
-                fallback_ids=smoke_fallback_ids,
-                neighbor_ids=smoke_neighbor_ids,
-            )
             predict_started = time.perf_counter()
-            prediction = model.predict(
-                test_x,
-                ids=ids[test_indices],
-                fallback_ids=test_fallback_ids,
-                neighbor_ids=test_neighbor_ids,
-            )
+            _ = model.predict(**{key: value[:16] for key, value in predict_input.items()})
+            prediction = model.predict(**predict_input)
             predict_seconds = time.perf_counter() - predict_started
         except Exception as exc:  # noqa: BLE001
             return skipped(f"cartoboost neural run failed: {exc}")
@@ -1860,14 +1975,18 @@ def fit_predict_model(
                 "max_depth": int(args.cartoboost_max_depth),
                 "min_samples_leaf": int(args.cartoboost_min_samples_leaf),
                 "neural_dim": int(args.neural_dim),
-                "neural_key_count": int(ids.shape[1] if ids.ndim == 2 else 1),
                 "id_source": "multi_key_zone_context",
                 "oof_folds": 5,
                 "support_prior_strength": 2.0,
                 "fallback": "same_service_zone_same_borough_adjacent_zone_global",
                 "zone_treatment": args.zone_treatment,
-                "feature_count": int(train_x.shape[1] + model.neural_feature_count_),
-                "fit_stages_ms": model.timings,
+                "feature_count": int(neural_guard["feature_count"]),
+                "fit_stages_ms": neural_guard["fit_stages_ms"],
+                "neural_guard": {
+                    key: value
+                    for key, value in neural_guard.items()
+                    if key not in {"feature_count", "fit_stages_ms"}
+                },
             },
             "predictions": np.asarray(prediction, dtype=float),
         }
