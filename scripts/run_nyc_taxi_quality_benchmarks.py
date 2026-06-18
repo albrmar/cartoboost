@@ -39,6 +39,7 @@ PLOT_SCATTER_MAX_POINTS = 50_000
 
 ROW_FEATURES = [
     "trip_distance",
+    "log_trip_distance",
     "passenger_count",
     "hour",
     "dayofweek",
@@ -83,6 +84,7 @@ class BenchmarkTask:
     feature_names: list[str]
     sparse_sets: dict[str, list[list[int]]]
     zone_adjacency: dict[int, list[int]] | None = None
+    zone_centroids: dict[int, tuple[float, float]] | None = None
 
 
 @dataclass(frozen=True)
@@ -144,7 +146,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--cartoboost-splitters",
-        default="axis_histogram:512,periodic:24,periodic:7,sparse_set",
+        default="axis_histogram:512,diagonal_2d,gaussian_2d,periodic:24,periodic:7,sparse_set",
         help=(
             "Comma-separated CartoBoost splitters for candidate and reference, "
             "for example axis_histogram:512 or axis."
@@ -153,7 +155,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--cartoboost-min-samples-leaf",
         type=int,
-        default=1,
+        default=20,
         help="Minimum leaf row count for CartoBoost candidate and reference models.",
     )
     parser.add_argument(
@@ -342,6 +344,21 @@ def ensure_zone_adjacency(*, cache_dir: Path, no_download: bool) -> dict[int, li
         return {}
 
 
+def ensure_zone_centroids(*, cache_dir: Path, no_download: bool) -> dict[int, tuple[float, float]]:
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    path = cache_dir / "taxi_zones.zip"
+    if not path.exists():
+        if no_download:
+            raise FileNotFoundError(
+                f"taxi zone geometry archive is required for real geo benchmarks: {path}"
+            )
+        urllib.request.urlretrieve(TAXI_ZONES_ZIP_URL, path)
+    centroids = taxi_zone_centroids_from_zip(path)
+    if not centroids:
+        raise ValueError(f"taxi zone geometry archive did not contain usable centroids: {path}")
+    return centroids
+
+
 def taxi_zone_adjacency_from_zip(path: Path) -> dict[int, list[int]]:
     with zipfile.ZipFile(path) as archive:
         shp_name = next(name for name in archive.namelist() if name.endswith(".shp"))
@@ -365,6 +382,39 @@ def taxi_zone_adjacency_from_zip(path: Path) -> dict[int, list[int]]:
         for zone in zones:
             adjacency[zone].update(other for other in zones if other != zone)
     return {zone: sorted(neighbors) for zone, neighbors in adjacency.items() if neighbors}
+
+
+def taxi_zone_centroids_from_zip(path: Path) -> dict[int, tuple[float, float]]:
+    with zipfile.ZipFile(path) as archive:
+        shp_name = next(name for name in archive.namelist() if name.endswith(".shp"))
+        dbf_name = next(name for name in archive.namelist() if name.endswith(".dbf"))
+        polygons = parse_shp_polygons(archive.read(shp_name))
+        location_ids = parse_dbf_location_ids(archive.read(dbf_name))
+    if len(polygons) != len(location_ids):
+        raise ValueError("taxi zone shapefile record count does not match DBF row count")
+
+    raw_centroids: dict[int, tuple[float, float]] = {}
+    for location_id, parts in zip(location_ids, polygons, strict=True):
+        points = [point for part in parts for point in part]
+        if not points:
+            continue
+        x_values = [point[0] for point in points]
+        y_values = [point[1] for point in points]
+        raw_centroids[location_id] = (
+            float(sum(x_values) / len(x_values)),
+            float(sum(y_values) / len(y_values)),
+        )
+    if not raw_centroids:
+        return {}
+    xs = [point[0] for point in raw_centroids.values()]
+    ys = [point[1] for point in raw_centroids.values()]
+    min_x = min(xs)
+    min_y = min(ys)
+    span_x = max(max(xs) - min_x, 1.0)
+    span_y = max(max(ys) - min_y, 1.0)
+    return {
+        zone: ((x - min_x) / span_x, (y - min_y) / span_y) for zone, (x, y) in raw_centroids.items()
+    }
 
 
 def parse_shp_polygons(data: bytes) -> list[list[list[tuple[float, float]]]]:
@@ -485,6 +535,7 @@ def clean_tlc_frame(frame: Any) -> Any:
         & data["DOLocationID"].between(1, 263)
     )
     data = data.loc[mask].copy()
+    data["log_trip_distance"] = np.log1p(data["trip_distance"].astype(float))
     data["log_duration_sec"] = np.log1p(data["duration_sec"].astype(float))
     data["log_total_amount"] = np.log1p(data["total_amount"].astype(float))
     return data.reset_index(drop=True)
@@ -500,6 +551,7 @@ def build_real_tasks(
     frame: Any,
     zone_lookup: dict[int, ZoneContext],
     zone_adjacency: dict[int, list[int]] | None = None,
+    zone_centroids: dict[int, tuple[float, float]] | None = None,
     demand_frame: Any | None = None,
 ) -> list[BenchmarkTask]:
     demand_source = frame if demand_frame is None else demand_frame
@@ -508,6 +560,7 @@ def build_real_tasks(
             frame,
             zone_lookup=zone_lookup,
             zone_adjacency=zone_adjacency,
+            zone_centroids=zone_centroids,
             name="duration",
             display_name="Trip duration",
             description="Predict log trip duration from zone, trip, passenger, and time features.",
@@ -517,12 +570,18 @@ def build_real_tasks(
             frame,
             zone_lookup=zone_lookup,
             zone_adjacency=zone_adjacency,
+            zone_centroids=zone_centroids,
             name="fare",
             display_name="Fare amount",
             description="Predict log total amount from zone, trip, passenger, and time features.",
             target_column="log_total_amount",
         ),
-        demand_task(demand_source, zone_lookup=zone_lookup, zone_adjacency=zone_adjacency),
+        demand_task(
+            demand_source,
+            zone_lookup=zone_lookup,
+            zone_adjacency=zone_adjacency,
+            zone_centroids=zone_centroids,
+        ),
     ]
 
 
@@ -531,6 +590,7 @@ def row_task(
     *,
     zone_lookup: dict[int, ZoneContext],
     zone_adjacency: dict[int, list[int]] | None,
+    zone_centroids: dict[int, tuple[float, float]] | None,
     name: str,
     display_name: str,
     description: str,
@@ -565,6 +625,7 @@ def row_task(
         feature_names=list(ROW_FEATURES),
         sparse_sets=sparse_sets,
         zone_adjacency=zone_adjacency,
+        zone_centroids=zone_centroids,
     )
 
 
@@ -573,6 +634,7 @@ def demand_task(
     *,
     zone_lookup: dict[int, ZoneContext],
     zone_adjacency: dict[int, list[int]] | None,
+    zone_centroids: dict[int, tuple[float, float]] | None = None,
 ) -> BenchmarkTask:
     grouped = (
         frame.groupby(["PULocationID", "hour", "dayofweek"], as_index=False)
@@ -597,6 +659,7 @@ def demand_task(
         feature_names=list(DEMAND_FEATURES),
         sparse_sets=sparse_sets,
         zone_adjacency=zone_adjacency,
+        zone_centroids=zone_centroids,
     )
 
 
@@ -609,17 +672,20 @@ def synthetic_tasks() -> list[BenchmarkTask]:
         for dropoff in range(1, 13):
             for hour in range(24):
                 distance = 0.8 + abs(dropoff - pickup) * 0.55 + rng.normal(0.0, 0.02)
+                log_distance = math.log1p(distance)
                 passenger_count = 1.0 + float((pickup + dropoff) % 3)
                 weekday = float((pickup + hour) % 7)
-                rows.append([distance, passenger_count, float(hour), weekday, pickup, dropoff])
+                rows.append(
+                    [distance, log_distance, passenger_count, float(hour), weekday, pickup, dropoff]
+                )
                 night = 1.0 if hour >= 22 or hour <= 2 else 0.0
                 zone_effect = 0.08 * pickup + 0.05 * dropoff
                 targets_duration.append(math.log1p(300.0 + 120.0 * distance + 80.0 * night))
                 targets_fare.append(math.log1p(5.0 + 3.2 * distance + zone_effect + 1.5 * night))
 
     features = np.asarray(rows, dtype=float)
-    pickup_zones = features[:, 4].astype(int)
-    dropoff_zones = features[:, 5].astype(int)
+    pickup_zones = features[:, 5].astype(int)
+    dropoff_zones = features[:, 6].astype(int)
     sparse_sets = {
         "pickup_zone": [[int(value)] for value in pickup_zones],
         "dropoff_zone": [[int(value)] for value in dropoff_zones],
@@ -737,8 +803,8 @@ def cartoboost_schema(
             dense.append({"name": name, "kind": "periodic", "period": 24})
         elif name == "dayofweek":
             dense.append({"name": name, "kind": "periodic", "period": 7})
-        elif dense_id_sets and name in {"PULocationID", "DOLocationID"}:
-            dense.append({"name": name, "kind": "sparse_set"})
+        elif name.endswith("_centroid_x") or name.endswith("_centroid_y"):
+            dense.append({"name": name, "kind": "spatial"})
         else:
             dense.append({"name": name, "kind": "numeric"})
     sparse_sets = (
@@ -758,11 +824,18 @@ def transformed_split_features(
     train_x = task.features[train_indices]
     test_x = task.features[test_indices]
     if args.zone_treatment == "raw":
-        return train_x, test_x, list(task.feature_names)
+        return append_zone_geometry_features(
+            train_x,
+            test_x,
+            task.feature_names,
+            task=task,
+            train_indices=train_indices,
+            test_indices=test_indices,
+        )
     if args.zone_treatment != "target_mean":
         raise ValueError(f"unknown zone treatment: {args.zone_treatment}")
     train_y = task.target[train_indices]
-    return append_zone_target_mean_features(
+    train_x, test_x, feature_names = append_zone_target_mean_features(
         train_x,
         test_x,
         train_y,
@@ -772,6 +845,91 @@ def transformed_split_features(
         test_indices=test_indices,
         smoothing=args.zone_target_smoothing,
     )
+    return append_zone_geometry_features(
+        train_x,
+        test_x,
+        feature_names,
+        task=task,
+        train_indices=train_indices,
+        test_indices=test_indices,
+    )
+
+
+def append_zone_geometry_features(
+    train_x: np.ndarray,
+    test_x: np.ndarray,
+    feature_names: list[str],
+    *,
+    task: BenchmarkTask,
+    train_indices: np.ndarray,
+    test_indices: np.ndarray,
+) -> tuple[np.ndarray, np.ndarray, list[str]]:
+    if not task.zone_centroids:
+        return train_x, test_x, list(feature_names)
+    zone_feature_indices = [
+        index for index, name in enumerate(task.feature_names) if name in ZONE_FEATURES
+    ]
+    if not zone_feature_indices:
+        return train_x, test_x, list(feature_names)
+
+    def centroid_columns(row_indices: np.ndarray) -> list[np.ndarray]:
+        columns: list[np.ndarray] = []
+        for source_feature_index in zone_feature_indices:
+            zone_ids = task.features[row_indices, source_feature_index].astype(int)
+            xs = []
+            ys = []
+            for zone_id in zone_ids:
+                x, y = required_zone_centroid(task, int(zone_id))
+                xs.append(x)
+                ys.append(y)
+            columns.extend([np.asarray(xs, dtype=float), np.asarray(ys, dtype=float)])
+        if len(zone_feature_indices) >= 2:
+            pickup = task.features[row_indices, zone_feature_indices[0]].astype(int)
+            dropoff = task.features[row_indices, zone_feature_indices[1]].astype(int)
+            deltas_x = []
+            deltas_y = []
+            distances = []
+            for source, target in zip(pickup, dropoff, strict=True):
+                source_x, source_y = required_zone_centroid(task, int(source))
+                target_x, target_y = required_zone_centroid(task, int(target))
+                delta_x = target_x - source_x
+                delta_y = target_y - source_y
+                deltas_x.append(delta_x)
+                deltas_y.append(delta_y)
+                distances.append(math.hypot(delta_x, delta_y))
+            columns.extend(
+                [
+                    np.asarray(deltas_x, dtype=float),
+                    np.asarray(deltas_y, dtype=float),
+                    np.asarray(distances, dtype=float),
+                ]
+            )
+        return columns
+
+    geometry_names: list[str] = []
+    for feature_index in zone_feature_indices:
+        name = task.feature_names[feature_index]
+        geometry_names.extend([f"{name}_centroid_x", f"{name}_centroid_y"])
+    if len(zone_feature_indices) >= 2:
+        geometry_names.extend(
+            ["od_centroid_delta_x", "od_centroid_delta_y", "od_centroid_distance"]
+        )
+    train_columns = centroid_columns(train_indices)
+    test_columns = centroid_columns(test_indices)
+    return (
+        np.column_stack([train_x, *train_columns]).astype(float, copy=False),
+        np.column_stack([test_x, *test_columns]).astype(float, copy=False),
+        [*feature_names, *geometry_names],
+    )
+
+
+def required_zone_centroid(task: BenchmarkTask, zone_id: int) -> tuple[float, float]:
+    if not task.zone_centroids:
+        raise ValueError(f"task {task.name} is missing required taxi zone centroids")
+    try:
+        return task.zone_centroids[zone_id]
+    except KeyError as exc:
+        raise KeyError(f"task {task.name} is missing centroid for taxi zone {zone_id}") from exc
 
 
 def append_zone_target_mean_features(
@@ -1421,14 +1579,11 @@ def fit_predict_model(
         )
         train_sparse = sparse_subset(task.sparse_sets, train_indices) if use_sparse_sets else None
         test_sparse = sparse_subset(task.sparse_sets, test_indices) if use_sparse_sets else None
-        feature_schema = (
-            cartoboost_schema(
-                task,
-                feature_names=effective_feature_names,
-                include_sparse_sets=True,
-            )
-            if use_sparse_sets
-            else None
+        feature_schema = cartoboost_schema(
+            task,
+            feature_names=effective_feature_names,
+            dense_id_sets=use_dense_id_sets,
+            include_sparse_sets=use_sparse_sets,
         )
         try:
             train_started = time.perf_counter()
@@ -2177,6 +2332,10 @@ def main() -> None:
             cache_dir=args.cache_dir,
             no_download=args.no_download,
         )
+        zone_centroids = ensure_zone_centroids(
+            cache_dir=args.cache_dir,
+            no_download=args.no_download,
+        )
         cleaned_frame = clean_tlc_frame(load_tlc_frame(paths))
         row_frame = sample_tlc_frame(
             cleaned_frame,
@@ -2187,6 +2346,7 @@ def main() -> None:
             row_frame,
             zone_lookup,
             zone_adjacency,
+            zone_centroids=zone_centroids,
             demand_frame=cleaned_frame,
         )
     tasks = filter_tasks(tasks, args.tasks)

@@ -50,3 +50,13 @@ fn schema_validation_rejects_zero_period() {
 
     assert!(schema.validate().is_err());
 }
+
+#[test]
+fn schema_validation_accepts_spatial_features() {
+    let schema = FeatureSchema {
+        names: vec!["pickup_x".to_string(), "pickup_y".to_string()],
+        kinds: vec![FeatureKind::Spatial, FeatureKind::Spatial],
+    };
+
+    assert!(schema.validate().is_ok());
+}

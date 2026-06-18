@@ -17,6 +17,7 @@ from scripts.run_nyc_taxi_quality_benchmarks import (  # noqa: E402
     BenchmarkTask,
     ZoneContext,
     build_real_tasks,
+    cartoboost_schema,
     clean_tlc_frame,
     graph_augmented_split_features,
     pickup_demand_cold_zone_fraction,
@@ -162,6 +163,43 @@ def test_real_pickup_demand_aggregates_full_cleaned_frame_when_rows_are_sampled(
     }
     assert demand_by_zone[10] == np.log1p(3.0)
     assert demand_by_zone[20] == np.log1p(1.0)
+
+
+def test_cartoboost_schema_marks_zone_geometry_spatial_without_dense_sparse_schema():
+    task = BenchmarkTask(
+        name="fare",
+        display_name="Fare",
+        description="fixture",
+        features=np.asarray([[1.0, 2.0]], dtype=float),
+        target=np.asarray([1.0], dtype=float),
+        pickup_zones=np.asarray([1], dtype=int),
+        feature_names=["PULocationID", "hour"],
+        sparse_sets={"pickup_zone": [[1]]},
+    )
+
+    schema = cartoboost_schema(
+        task,
+        feature_names=[
+            "PULocationID",
+            "hour",
+            "PULocationID_centroid_x",
+            "PULocationID_centroid_y",
+            "od_centroid_distance",
+        ],
+        dense_id_sets=True,
+        include_sparse_sets=False,
+    )
+
+    assert schema == {
+        "dense": [
+            {"name": "PULocationID", "kind": "numeric"},
+            {"name": "hour", "kind": "periodic", "period": 24},
+            {"name": "PULocationID_centroid_x", "kind": "spatial"},
+            {"name": "PULocationID_centroid_y", "kind": "spatial"},
+            {"name": "od_centroid_distance", "kind": "numeric"},
+        ],
+        "sparse_sets": [],
+    }
 
 
 def test_nyc_taxi_quality_benchmark_runs_neural_and_graph_models(tmp_path: Path):

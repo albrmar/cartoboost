@@ -127,6 +127,7 @@ struct HistogramFeature {
 }
 
 const MISSING_BIN: u16 = u16::MAX;
+const SPATIAL_SPLIT_RELATIVE_GAIN_MARGIN: f64 = 0.10;
 
 impl FitContext {
     fn new(x: &Dataset, splitters: &[SplitterKind]) -> Self {
@@ -2866,12 +2867,18 @@ fn dense_feature_allows_axis(x: &Dataset, feature: usize) -> bool {
 fn dense_feature_allows_spatial(x: &Dataset, feature: usize) -> bool {
     matches!(
         dense_feature_kind(x, feature),
-        None | Some(FeatureKind::Numeric)
+        None | Some(FeatureKind::Numeric) | Some(FeatureKind::Spatial)
     )
 }
 
 fn spatial_feature_indices(x: &Dataset) -> Vec<usize> {
-    if x.feature_schema().is_some() {
+    if let Some(schema) = x.feature_schema() {
+        let spatial = (0..x.n_cols())
+            .filter(|&feature| matches!(schema.kinds.get(feature), Some(FeatureKind::Spatial)))
+            .collect::<Vec<_>>();
+        if !spatial.is_empty() {
+            return spatial;
+        }
         return (0..x.n_cols())
             .filter(|&feature| dense_feature_allows_spatial(x, feature))
             .collect();
@@ -2886,7 +2893,13 @@ fn spatial_feature_indices(x: &Dataset) -> Vec<usize> {
 
 fn dense_feature_allows_sparse_set(x: &Dataset, feature: usize) -> bool {
     match x.feature_schema() {
-        Some(_) => matches!(dense_feature_kind(x, feature), Some(FeatureKind::SparseSet)),
+        Some(_) if x.n_sparse_sets() > 0 => {
+            matches!(dense_feature_kind(x, feature), Some(FeatureKind::SparseSet))
+        }
+        Some(_) => matches!(
+            dense_feature_kind(x, feature),
+            None | Some(FeatureKind::Numeric)
+        ),
         None => true,
     }
 }
@@ -3483,6 +3496,11 @@ fn is_better_split(gain: f64, split: &Split, old: &BestSplit) -> bool {
 }
 
 fn is_better_split_candidate(gain: f64, split: &Split, old_gain: f64, old_split: &Split) -> bool {
+    if is_spatial_split(split) && !is_spatial_split(old_split) {
+        let required_gain =
+            old_gain + old_gain.abs().max(1e-12) * SPATIAL_SPLIT_RELATIVE_GAIN_MARGIN;
+        return gain > required_gain;
+    }
     if gain > old_gain + 1e-12 {
         return true;
     }
@@ -3493,6 +3511,10 @@ fn is_better_split_candidate(gain: f64, split: &Split, old_gain: f64, old_split:
         (Some(width), Some(old_width)) => width < old_width - 1e-12,
         _ => false,
     }
+}
+
+fn is_spatial_split(split: &Split) -> bool {
+    matches!(split, Split::Diagonal2D { .. } | Split::Gaussian2D { .. })
 }
 
 fn weighted_sse_from_sums(weight_sum: f64, weighted_sum: f64, weighted_square_sum: f64) -> f64 {

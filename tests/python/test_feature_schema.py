@@ -17,16 +17,17 @@ def test_feature_schema_helper_builds_rust_payload():
     schema = FeatureSchema(
         dense=[
             ("distance_m", "numeric"),
+            ("pickup_centroid_x", "spatial"),
             ("hour_of_day", {"periodic": 24}),
         ],
         sparse_sets=[("route_cells", "sparse_set")],
     )
 
-    payload = schema.to_rust_payload(dense_width=2, sparse_names=["route_cells"])
+    payload = schema.to_rust_payload(dense_width=3, sparse_names=["route_cells"])
 
     assert payload == {
-        "names": ["distance_m", "hour_of_day", "route_cells"],
-        "kinds": ["Numeric", {"Periodic": {"period": 24}}, "SparseSet"],
+        "names": ["distance_m", "pickup_centroid_x", "hour_of_day", "route_cells"],
+        "kinds": ["Numeric", "Spatial", {"Periodic": {"period": 24}}, "SparseSet"],
     }
 
 

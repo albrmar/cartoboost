@@ -4,6 +4,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum FeatureKind {
     Numeric,
+    Spatial,
     Periodic { period: u32 },
     SparseSet,
 }

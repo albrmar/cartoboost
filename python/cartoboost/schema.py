@@ -9,12 +9,25 @@ from typing import Any
 
 class FeatureKind(str, Enum):
     NUMERIC = "Numeric"
+    SPATIAL = "Spatial"
     SPARSE_SET = "SparseSet"
     H3_SPARSE_SET = "H3SparseSet"
     PERIODIC = "Periodic"
 
 
 _NUMERIC_KIND_ALIASES = frozenset({FeatureKind.NUMERIC, "numeric"})
+_SPATIAL_KIND_ALIASES = frozenset(
+    {
+        FeatureKind.SPATIAL,
+        "spatial",
+        "geo",
+        "geometry",
+        "coordinate",
+        "coordinates",
+        "centroid",
+        "Spatial",
+    }
+)
 _SPARSE_SET_KIND_ALIASES = frozenset(
     {
         FeatureKind.SPARSE_SET,
@@ -72,6 +85,8 @@ def normalize_feature_kind(kind: Any, entry: dict[str, Any] | None = None) -> An
             return _normalize_mapping_feature_kind(kind)
         case _ if kind in _NUMERIC_KIND_ALIASES:
             return FeatureKind.NUMERIC
+        case _ if kind in _SPATIAL_KIND_ALIASES:
+            return FeatureKind.SPATIAL
         case _ if kind in _SPARSE_SET_KIND_ALIASES:
             return FeatureKind.SPARSE_SET
         case _ if kind in _H3_SPARSE_SET_KIND_ALIASES:
