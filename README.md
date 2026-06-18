@@ -42,9 +42,9 @@ CartoBoost supports:
   encoders.
 - Rust-native forecasting APIs for geographic and temporal single-series or
   panel taxi demand, including rolling-origin backtests, naive/seasonal
-  naive/theta/optimized-theta/ETS/AutoARIMA models, supervised CartoBoost lag
-  forecasting, Rust-core weighted ensembles, CLI runs, and portable forecast
-  artifacts.
+  naive/theta/optimized-theta/ETS/AutoARIMA/Kalman/kriging models, supervised
+  CartoBoost lag forecasting, Rust-core weighted ensembles, CLI runs, and
+  portable forecast artifacts.
 
 ## Forecasting
 

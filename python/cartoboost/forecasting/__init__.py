@@ -15,6 +15,8 @@ from .lag_features import (
 from .local import (
     AutoARIMAForecaster,
     ETSForecaster,
+    KalmanForecaster,
+    KrigingForecaster,
     NaiveForecaster,
     OptimizedThetaForecaster,
     SeasonalNaiveForecaster,
@@ -48,6 +50,8 @@ __all__ = [
     "ForecastRegistry",
     "ForecastResult",
     "ForecastingConfig",
+    "KalmanForecaster",
+    "KrigingForecaster",
     "LagFeatureBuilder",
     "LagFeatureConfig",
     "NaiveForecaster",

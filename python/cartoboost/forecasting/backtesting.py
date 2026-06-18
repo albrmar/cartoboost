@@ -275,6 +275,8 @@ def _native_backtest_runner_name(model: Any) -> str:
         "ETSForecaster": "run_ets",
         "ArimaForecaster": "run_arima",
         "AutoARIMAForecaster": "run_auto_arima",
+        "KalmanForecaster": "run_kalman",
+        "KrigingForecaster": "run_kriging",
         "CartoBoostLagForecaster": "run_cartoboost_lag",
     }
     return mapping.get(name, "")

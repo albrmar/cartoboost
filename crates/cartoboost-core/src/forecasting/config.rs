@@ -174,4 +174,39 @@ mod tests {
         assert_eq!(models[0].model_name(), "theta");
         assert_eq!(models[1].model_name(), "optimized_theta");
     }
+
+    #[test]
+    fn constructs_kalman_and_kriging_from_config_params() {
+        let config = ForecastingConfig::from_toml_str(
+            r#"
+            horizon = 2
+
+            [[models]]
+            name = "kalman"
+
+            [models.params]
+            level_process_variance = 0.2
+            trend_process_variance = 0.02
+            observation_variance = 0.8
+
+            [[models]]
+            name = "kriging"
+
+            [models.params]
+            range = 2.5
+            nugget = 0.01
+
+            [models.params.coordinates]
+            PULocationID_142 = [0.0, 0.0]
+            PULocationID_236 = [1.0, 0.0]
+            "#,
+        )
+        .expect("config");
+
+        let models = config.create_models().expect("models");
+
+        assert_eq!(models.len(), 2);
+        assert_eq!(models[0].model_name(), "kalman");
+        assert_eq!(models[1].model_name(), "kriging");
+    }
 }

@@ -6,8 +6,9 @@ use cartoboost_core::forecasting::{
     ETSForecaster as CoreETSForecaster, ForecastActual, ForecastFold as CoreForecastFold,
     ForecastFrame as CoreForecastFrame, ForecastFrameMetadata, ForecastFrequency,
     ForecastMetricSet as CoreForecastMetricSet, ForecastPrediction,
-    ForecastResult as CoreForecastResult, ForecastWindow, Forecaster, LagFeatureConfig,
-    NaiveForecaster as CoreNaiveForecaster,
+    ForecastResult as CoreForecastResult, ForecastWindow, Forecaster,
+    KalmanForecaster as CoreKalmanForecaster, KrigingForecaster as CoreKrigingForecaster,
+    LagFeatureConfig, NaiveForecaster as CoreNaiveForecaster,
     OptimizedThetaForecaster as CoreOptimizedThetaForecaster,
     RollingOriginBacktester as CoreRollingOriginBacktester,
     RollingOriginSplitter as CoreRollingOriginSplitter,
@@ -34,6 +35,7 @@ use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyModule, PyType};
 use serde_json::{json, Value};
 use std::cmp::Ordering;
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 type StringTypedEdges = Vec<(String, String, String)>;
@@ -568,6 +570,22 @@ impl NativeRollingOriginBacktester {
         backtest_to_py(self.backtester.run(model.model.clone(), &frame.frame))
     }
 
+    fn run_kalman(
+        &self,
+        model: &NativeKalmanForecaster,
+        frame: &NativeForecastFrame,
+    ) -> PyResult<NativeBacktestResult> {
+        backtest_to_py(self.backtester.run(model.model.clone(), &frame.frame))
+    }
+
+    fn run_kriging(
+        &self,
+        model: &NativeKrigingForecaster,
+        frame: &NativeForecastFrame,
+    ) -> PyResult<NativeBacktestResult> {
+        backtest_to_py(self.backtester.run(model.model.clone(), &frame.frame))
+    }
+
     fn run_cartoboost_lag(
         &self,
         model: &NativeCartoBoostLagForecaster,
@@ -821,6 +839,80 @@ impl NativeAutoARIMAForecaster {
     }
 }
 
+#[pyclass(name = "KalmanForecaster")]
+#[derive(Clone, Debug)]
+struct NativeKalmanForecaster {
+    model: CoreKalmanForecaster,
+}
+
+#[pymethods]
+impl NativeKalmanForecaster {
+    #[new]
+    #[pyo3(signature = (level_process_variance=0.05, trend_process_variance=0.005, observation_variance=1.0))]
+    fn new(
+        level_process_variance: f64,
+        trend_process_variance: f64,
+        observation_variance: f64,
+    ) -> PyResult<Self> {
+        Ok(Self {
+            model: CoreKalmanForecaster::new(
+                level_process_variance,
+                trend_process_variance,
+                observation_variance,
+            )
+            .map_err(to_py_value_error)?,
+        })
+    }
+
+    fn fit(&mut self, frame: &NativeForecastFrame) -> PyResult<()> {
+        self.model.fit(&frame.frame).map_err(to_py_value_error)
+    }
+
+    fn predict(&self, horizon: usize) -> PyResult<NativeForecastResult> {
+        forecast_to_py(self.model.predict(horizon))
+    }
+
+    fn metadata_json(&self) -> PyResult<String> {
+        serde_json::to_string(&self.model.metadata())
+            .map_err(|err| PyRuntimeError::new_err(err.to_string()))
+    }
+}
+
+#[pyclass(name = "KrigingForecaster")]
+#[derive(Clone, Debug)]
+struct NativeKrigingForecaster {
+    model: CoreKrigingForecaster,
+}
+
+#[pymethods]
+impl NativeKrigingForecaster {
+    #[new]
+    #[pyo3(signature = (coordinates, range=1.0, nugget=1.0e-6))]
+    fn new(coordinates: Vec<(String, f64, f64)>, range: f64, nugget: f64) -> PyResult<Self> {
+        let coordinates = coordinates
+            .into_iter()
+            .map(|(series_id, x, y)| (series_id, (x, y)))
+            .collect::<BTreeMap<_, _>>();
+        Ok(Self {
+            model: CoreKrigingForecaster::new(coordinates, range, nugget)
+                .map_err(to_py_value_error)?,
+        })
+    }
+
+    fn fit(&mut self, frame: &NativeForecastFrame) -> PyResult<()> {
+        self.model.fit(&frame.frame).map_err(to_py_value_error)
+    }
+
+    fn predict(&self, horizon: usize) -> PyResult<NativeForecastResult> {
+        forecast_to_py(self.model.predict(horizon))
+    }
+
+    fn metadata_json(&self) -> PyResult<String> {
+        serde_json::to_string(&self.model.metadata())
+            .map_err(|err| PyRuntimeError::new_err(err.to_string()))
+    }
+}
+
 #[pyclass(name = "CartoBoostLagForecaster")]
 #[derive(Clone, Debug)]
 struct NativeCartoBoostLagForecaster {
@@ -927,6 +1019,12 @@ fn boxed_forecaster_from_py(py: Python<'_>, model: &Py<PyAny>) -> PyResult<Box<d
         return Ok(Box::new(model.model.clone()));
     }
     if let Ok(model) = model.extract::<PyRef<'_, NativeAutoARIMAForecaster>>() {
+        return Ok(Box::new(model.model.clone()));
+    }
+    if let Ok(model) = model.extract::<PyRef<'_, NativeKalmanForecaster>>() {
+        return Ok(Box::new(model.model.clone()));
+    }
+    if let Ok(model) = model.extract::<PyRef<'_, NativeKrigingForecaster>>() {
         return Ok(Box::new(model.model.clone()));
     }
     if let Ok(model) = model.extract::<PyRef<'_, NativeCartoBoostLagForecaster>>() {
@@ -4151,6 +4249,8 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<NativeETSForecaster>()?;
     m.add_class::<NativeArimaForecaster>()?;
     m.add_class::<NativeAutoARIMAForecaster>()?;
+    m.add_class::<NativeKalmanForecaster>()?;
+    m.add_class::<NativeKrigingForecaster>()?;
     m.add_class::<NativeCartoBoostLagForecaster>()?;
     m.add_class::<NativeWeightedEnsembleForecaster>()?;
     m.add_class::<NativeNeuralEmbeddingFeatures>()?;

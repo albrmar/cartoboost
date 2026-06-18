@@ -14,6 +14,8 @@ def test_default_registry_contains_forecasting_v1_models():
         "optimized_theta",
         "ets",
         "auto_arima",
+        "kalman",
+        "kriging",
         "cartoboost_lag",
     )
 

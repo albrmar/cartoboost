@@ -1,8 +1,8 @@
 use crate::booster::BoosterConfig;
 use crate::forecasting::{
     ArimaForecaster, AutoARIMAForecaster, CartoBoostLagForecaster, ETSForecaster, Forecaster,
-    LagFeatureConfig, NaiveForecaster, OptimizedThetaForecaster, SeasonalNaiveForecaster,
-    ThetaForecaster,
+    KalmanForecaster, KrigingForecaster, LagFeatureConfig, NaiveForecaster,
+    OptimizedThetaForecaster, SeasonalNaiveForecaster, ThetaForecaster,
 };
 use crate::{CartoBoostError, Result};
 use serde::{Deserialize, Serialize};
@@ -120,6 +120,24 @@ impl ForecastRegistry {
         registry.register(
             ForecastModelSpec::new("auto_arima")?.with_params(auto_arima_params),
             create_auto_arima,
+            RegisterMode::RejectDuplicate,
+        )?;
+        let mut kalman_params = Map::new();
+        kalman_params.insert("level_process_variance".to_string(), Value::from(0.05));
+        kalman_params.insert("trend_process_variance".to_string(), Value::from(0.005));
+        kalman_params.insert("observation_variance".to_string(), Value::from(1.0));
+        registry.register(
+            ForecastModelSpec::new("kalman")?.with_params(kalman_params),
+            create_kalman,
+            RegisterMode::RejectDuplicate,
+        )?;
+        let mut kriging_params = Map::new();
+        kriging_params.insert("coordinates".to_string(), serde_json::json!({}));
+        kriging_params.insert("range".to_string(), Value::from(1.0));
+        kriging_params.insert("nugget".to_string(), Value::from(1.0e-6));
+        registry.register(
+            ForecastModelSpec::new("kriging")?.with_params(kriging_params),
+            create_kriging,
             RegisterMode::RejectDuplicate,
         )?;
         let mut lag_params = Map::new();
@@ -250,6 +268,33 @@ fn create_auto_arima(spec: &ForecastModelSpec) -> Result<Box<dyn Forecaster>> {
     )?))
 }
 
+fn create_kalman(spec: &ForecastModelSpec) -> Result<Box<dyn Forecaster>> {
+    let level_process_variance =
+        optional_f64_param(spec, "level_process_variance")?.unwrap_or(0.05);
+    let trend_process_variance =
+        optional_f64_param(spec, "trend_process_variance")?.unwrap_or(0.005);
+    let observation_variance = optional_f64_param(spec, "observation_variance")?.unwrap_or(1.0);
+    Ok(Box::new(KalmanForecaster::new(
+        level_process_variance,
+        trend_process_variance,
+        observation_variance,
+    )?))
+}
+
+fn create_kriging(spec: &ForecastModelSpec) -> Result<Box<dyn Forecaster>> {
+    let coordinates_value = spec.params.get("coordinates").ok_or_else(|| {
+        CartoBoostError::InvalidInput("forecast model 'kriging' requires coordinates".to_string())
+    })?;
+    let coordinates = parse_coordinates(coordinates_value)?;
+    let range = optional_f64_param(spec, "range")?.unwrap_or(1.0);
+    let nugget = optional_f64_param(spec, "nugget")?.unwrap_or(1.0e-6);
+    Ok(Box::new(KrigingForecaster::new(
+        coordinates,
+        range,
+        nugget,
+    )?))
+}
+
 fn create_cartoboost_lag(spec: &ForecastModelSpec) -> Result<Box<dyn Forecaster>> {
     let lag_config = match spec.params.get("lag_config") {
         Some(value) => serde_json::from_value::<LagFeatureConfig>(value.clone())?,
@@ -322,6 +367,39 @@ fn optional_f64_vec_param(spec: &ForecastModelSpec, param: &str) -> Result<Optio
     Ok(Some(parsed))
 }
 
+fn parse_coordinates(value: &Value) -> Result<BTreeMap<String, (f64, f64)>> {
+    let object = value.as_object().ok_or_else(|| {
+        CartoBoostError::InvalidInput(
+            "kriging coordinates must be an object mapping series_id to [x, y]".to_string(),
+        )
+    })?;
+    let mut coordinates = BTreeMap::new();
+    for (series_id, raw_coord) in object {
+        let pair = raw_coord.as_array().ok_or_else(|| {
+            CartoBoostError::InvalidInput(format!(
+                "kriging coordinate for series {series_id} must be [x, y]"
+            ))
+        })?;
+        if pair.len() != 2 {
+            return Err(CartoBoostError::InvalidInput(format!(
+                "kriging coordinate for series {series_id} must contain exactly two values"
+            )));
+        }
+        let x = pair[0].as_f64().ok_or_else(|| {
+            CartoBoostError::InvalidInput(format!(
+                "kriging x coordinate for series {series_id} must be numeric"
+            ))
+        })?;
+        let y = pair[1].as_f64().ok_or_else(|| {
+            CartoBoostError::InvalidInput(format!(
+                "kriging y coordinate for series {series_id} must be numeric"
+            ))
+        })?;
+        coordinates.insert(series_id.clone(), (x, y));
+    }
+    Ok(coordinates)
+}
+
 fn normalize_name(name: impl AsRef<str>) -> Result<String> {
     let name = name.as_ref().trim();
     if name.is_empty() {
@@ -347,6 +425,8 @@ mod tests {
                 "auto_arima",
                 "cartoboost_lag",
                 "ets",
+                "kalman",
+                "kriging",
                 "naive",
                 "optimized_theta",
                 "seasonal_naive",
@@ -400,6 +480,64 @@ mod tests {
         let model = registry.create("cartoboost_lag").expect("lag model");
 
         assert_eq!(model.model_name(), "cartoboost_lag");
+    }
+
+    #[test]
+    fn registry_constructs_kalman_from_configured_spec() {
+        let registry = ForecastRegistry::with_defaults().expect("defaults");
+        let mut params = Map::new();
+        params.insert("level_process_variance".to_string(), Value::from(0.1));
+        params.insert("trend_process_variance".to_string(), Value::from(0.01));
+        params.insert("observation_variance".to_string(), Value::from(0.5));
+        let spec = ForecastModelSpec::new("kalman")
+            .expect("spec")
+            .with_params(params);
+
+        let model = registry.create_from_spec(&spec).expect("kalman model");
+
+        assert_eq!(model.model_name(), "kalman");
+    }
+
+    #[test]
+    fn registry_constructs_kriging_from_coordinate_params() {
+        let registry = ForecastRegistry::with_defaults().expect("defaults");
+        let mut params = Map::new();
+        params.insert(
+            "coordinates".to_string(),
+            serde_json::json!({
+                "PULocationID_142": [0.0, 0.0],
+                "PULocationID_236": [1.0, 0.0],
+            }),
+        );
+        params.insert("range".to_string(), Value::from(2.0));
+        params.insert("nugget".to_string(), Value::from(0.01));
+        let spec = ForecastModelSpec::new("kriging")
+            .expect("spec")
+            .with_params(params);
+
+        let model = registry.create_from_spec(&spec).expect("kriging model");
+
+        assert_eq!(model.model_name(), "kriging");
+    }
+
+    #[test]
+    fn registry_rejects_kriging_coordinates_with_bad_shape() {
+        let registry = ForecastRegistry::with_defaults().expect("defaults");
+        let mut params = Map::new();
+        params.insert(
+            "coordinates".to_string(),
+            serde_json::json!({"PULocationID_142": [0.0, 0.0, 1.0]}),
+        );
+        let spec = ForecastModelSpec::new("kriging")
+            .expect("spec")
+            .with_params(params);
+
+        let err = match registry.create_from_spec(&spec) {
+            Ok(_) => panic!("bad coordinates should fail"),
+            Err(err) => err,
+        };
+
+        assert!(err.to_string().contains("exactly two values"));
     }
 
     #[test]
