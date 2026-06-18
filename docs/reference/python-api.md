@@ -1,7 +1,7 @@
 # Python API Reference
 
 This page lists the public Python entry points used to fit, evaluate, explain,
-and save CartoBoost regression models.
+and save CartoBoost regression, standalone graph, and standalone neural models.
 
 ## `cartoboost.CartoBoostRegressor`
 
@@ -69,8 +69,8 @@ regressor = NeuralEmbeddingRegressor(
 )
 ```
 
-Neural-augmented boosted estimator that appends ID embedding features to dense
-features and trains `CartoBoostRegressor` on the expanded matrix.
+Optional neural-augmented estimator that appends ID embedding features to dense
+features and trains a tabular model on the expanded matrix.
 
 | Method | Returns | Notes |
 | --- | --- | --- |
@@ -83,9 +83,10 @@ features and trains `CartoBoostRegressor` on the expanded matrix.
 Set `oof_folds > 1` to train final-model embedding columns out of fold. Use
 `support_prior_strength` to shrink rare IDs more strongly toward their prior.
 
-## Graph Encoders
+## Direct Graph Encoders
 
-Neighborhood-based encoders for downstream boosting workflows.
+Neighborhood-based encoders for direct graph embeddings and optional downstream
+feature workflows.
 
 `Node2VecEncoder` is for transductive directed/weighted random-walk embeddings;
 `GraphSageEncoder` is for homogeneous graphs; `HeteroGraphSageEncoder` is for
@@ -104,10 +105,12 @@ relation-aware sampling and link feature construction.
 | `to_artifact_json()` | `str` | Emits JSON artifact payload. |
 | `load_artifact_json(path)` | `Node2VecEncoder` / `GraphSageEncoder` / `HeteroGraphSageEncoder` / `HinSageEncoder` | Loads serialized encoder state. |
 
-## `cartoboost.graph` feature helpers
+## `cartoboost.graph` Feature Helpers
 
-The `cartoboost.graph` package contains the Python graph-feature layer used to
-precompute dense and sparse graph inputs before fitting `CartoBoostRegressor`.
+The `cartoboost.graph` package contains standalone graph models, link
+predictors, and graph-feature helpers. Use standalone classes for direct
+modeling; use `GraphFeatureTransformer` only when you want dense and sparse
+graph inputs for another estimator.
 
 | Entry point | Purpose |
 | --- | --- |
@@ -133,7 +136,7 @@ Directional source-target features are opt-in through
 ## Standalone Graph And Neural Models
 
 Use these models when graph or neural embeddings should score directly instead
-of becoming features for `CartoBoostRegressor`.
+of becoming generated feature columns.
 
 Standalone regressors:
 

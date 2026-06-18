@@ -1,79 +1,28 @@
-# Neural And Graph-Derived Features
+# Neural Embedding Models And Features
 
-This document defines the neural and graph-derived feature pattern used in this
-repository:
+CartoBoost neural support has two independent entry points:
 
-1. Train neural-style embeddings using `NeuralEmbeddingFeatures.fit`.
-2. Serialize embeddings into a versioned artifact.
-3. Load and validate embeddings at inference.
-4. Append generated dense vectors to the input matrix.
-5. Keep `CartoBoostRegressor` as the final scorer.
+- `NeuralEmbeddingStandaloneRegressor` for direct supervised ID embedding
+  regression without `CartoBoostRegressor`;
+- `NeuralEmbeddingFeatures` and `NeuralEmbeddingRegressor` for optional feature
+  generation or neural-augmented tabular workflows.
 
-This keeps gradient-boosting behavior in the standard CartoBoost prediction path
-while adding learned dense context through generated columns.
-
-## Why This Architecture
-
-Neural-augmented boosting is intentionally conservative.
-
-- **No neural runtime inside scoring path**: inference remains deterministic and
-  fast.
-- **No API split in the final model**: the booster still sees only numeric dense
-  + sparse inputs.
-- **Stable ordering and contracts**: generated feature names and counts are fixed
-  by the artifact.
-
-The pattern is:
-
-```text
-raw row/context
-    |
-existing feature assembler
-    |
-structured dense + sparse
-    |
-NeuralEmbeddingFeatures lookup
-    |
-append generated dense embedding columns
-    |
-CartoBoost predict
-```
+Start with the standalone regressor when the ID embedding model is the artifact
+you want to train, evaluate, save, and serve.
 
 ```mermaid
 flowchart LR
-    R[Raw row/context] --> A[Structured assembly]
-    A --> B[Dense + sparse feature blocks]
-    B --> C[NeuralEmbeddingFeatures lookup by ID]
-    C --> D[Expanded dense matrix X_plus]
-    D --> E[CartoBoost predict]
-    E --> F[Final prediction]
+    A["Row IDs + optional dense row features"] --> B["NeuralEmbeddingStandaloneRegressor"]
+    B --> C["fit / predict / score"]
+    C --> D["Standalone neural artifact"]
 ```
-
-## Embedding Feature Contract
-
-For this phase, a **neural feature** is a deterministic vector lookup keyed by an
-ID:
-
-- **Input**: one or more IDs per row (e.g. cell IDs).
-- **Output**: `dim` floating columns for each logical feature.
-
-Example for `dim=16` and pickup-zone embedding:
-
-- `neural.pickup_zone_emb_00`
-- `neural.pickup_zone_emb_01`
-- `...`
-- `neural.pickup_zone_emb_15`
-
-Important: these are just dense feature columns from the perspective of the
-booster.
 
 ## Standalone Neural Model
 
 Use `NeuralEmbeddingStandaloneRegressor` when you want a supervised ID embedding
-model directly, without wrapping it in `CartoBoostRegressor` and without
-appending the embedding columns to a separate booster. It accepts row IDs, a
-target, and optional dense row features; then it scores through the standalone
-native model.
+model directly, without wrapping it in another estimator and without appending
+the embedding columns to a separate model. It accepts row IDs, a target, and
+optional dense row features; then it scores through the standalone native model.
 
 The standalone model supports `fit`, `predict`, `score`, `save`, and `load`.
 
@@ -105,13 +54,72 @@ model = NeuralEmbeddingStandaloneRegressor(
 model.fit(pickup_zone_ids, log_fare, dense=dense)
 
 pred = model.predict(pickup_zone_ids, dense=dense)
+mae = model.score(pickup_zone_ids, log_fare, dense=dense)
 model.save("taxi-neural-standalone.json")
 reloaded = NeuralEmbeddingStandaloneRegressor.load("taxi-neural-standalone.json")
 ```
 
+The direct inference contract is:
+
+- `fit(ids, y, dense=None)` trains one supervised embedding model for the row
+  IDs and optional dense row features.
+- `predict(ids, dense=None)` returns one prediction per row.
+- `score(ids, y, dense=None)` reports mean absolute error.
+- `save(path)` and `load(path)` persist the complete standalone model artifact.
+
+`ids` is a one-dimensional unsigned integer array. When `dense` is provided, it
+must have the same row count as `ids`.
+
+## Optional Embedding Feature Contract
+
+For this phase, a **neural feature** is a deterministic vector lookup keyed by an
+ID:
+
+- **Input**: one or more IDs per row (e.g. cell IDs).
+- **Output**: `dim` floating columns for each logical feature.
+
+Example for `dim=16` and pickup-zone embedding:
+
+- `neural.pickup_zone_emb_00`
+- `neural.pickup_zone_emb_01`
+- `...`
+- `neural.pickup_zone_emb_15`
+
+Important: these are just dense feature columns from the perspective of a
+downstream model. Use this contract only when you want embedding vectors as
+feature columns instead of a standalone neural artifact.
+
+## Optional Neural-Augmented Workflow
+
 Use `NeuralEmbeddingRegressor` when you want learned ID vectors appended to a
-boosted tabular model. Use `NeuralEmbeddingStandaloneRegressor` when the ID
-embedding model should stand on its own.
+tabular model. Use `NeuralEmbeddingStandaloneRegressor` when the ID embedding
+model should stand on its own.
+
+The feature-generation pattern is:
+
+```text
+raw row/context
+    |
+existing feature assembler
+    |
+structured dense + sparse
+    |
+NeuralEmbeddingFeatures lookup
+    |
+append generated dense embedding columns
+    |
+downstream model predict
+```
+
+```mermaid
+flowchart LR
+    R[Raw row/context] --> A[Structured assembly]
+    A --> B[Dense + sparse feature blocks]
+    B --> C[NeuralEmbeddingFeatures lookup by ID]
+    C --> D[Expanded dense matrix X_plus]
+    D --> E[Downstream model predict]
+    E --> F[Final prediction]
+```
 
 ## When Neural Embeddings Help
 
@@ -129,7 +137,7 @@ cold-start generalization.
 Implemented controls:
 
 - Set `oof_folds > 1` on `NeuralEmbeddingRegressor` to train final-model
-  embeddings with out-of-fold residuals, so the final booster sees realistic
+  embeddings with out-of-fold residuals, so the final model sees realistic
   embedding noise instead of fully in-sample residual lookups.
 - Tune `support_prior_strength` to control support-aware shrinkage: rare IDs
   stay closer to prior vectors, while frequent IDs can receive stronger
@@ -153,7 +161,8 @@ concept. Taxi trip prediction is not symmetric: pickup zone `A` to dropoff zone
 dropoff-side demand, and pickup-dropoff imbalance often carries predictive
 signal. The graph layer should therefore support directed edge types,
 reverse-edge materialization, pickup/dropoff role metadata, pickup-dropoff pair
-nodes, directed random walks, and directional feature emission into the booster.
+nodes, directed random walks, and directional feature emission for optional
+feature-generation workflows.
 
 Directional pickup-dropoff semantics are required for taxi graph features. Trip
 direction, pickup/dropoff behavior, directional imbalance, and reverse-trip
@@ -296,8 +305,8 @@ the configured relation schema. `HinSageFeatureEncoder` also exposes
 
 #### 2) Direction-aware feature generation
 
-Directional features should be explicit output channels into the booster, not just a
-latent side effect.
+Directional features should be explicit output channels in feature-generation
+workflows, not just a latent side effect.
 
 Recommended feature families:
 
@@ -374,7 +383,7 @@ At minimum, this contract means forward and reverse behavior must be separately
 captured in produced features; aggregating them into one symmetric value loses
 predictive signal in geotemporal settings.
 
-## 4) Full training flow (residual mode)
+## Optional Hybrid Training Flow
 
 ### Formal view
 
@@ -384,7 +393,7 @@ Treat each sample as:
 - `id_i`: sparse ID key (e.g., H3 cell)
 - `r(x_i)`: raw target residual after baseline model
 - `Φ`: learned embedding transform mapping IDs to dense vectors
-- `g`: final trained `CartoBoostRegressor`
+- `g`: final trained downstream tabular model
 
 The phase-1 model is:
 
@@ -399,7 +408,7 @@ If residual training is enabled:
 Key property:
 
 - Baseline signal and generated dense signal remain additive in feature space;
-  the booster controls whether and how they matter.
+  the downstream model controls whether and how they matter.
 
 Training flow for `Φ` and final model:
 
@@ -415,19 +424,19 @@ Training flow for `Φ` and final model:
 flowchart TD
     D0["Input: X, y, ids"]
     D1["Prepare structured features X_s"]
-    D2["Fit baseline CartoBoost on structured features"]
+    D2["Fit baseline model on structured features"]
     D3["Compute residuals r = y - baseline(X_s)"]
     D4["Fit embedding table on ids and residuals"]
     D5["Export embedding artifact + checksum"]
     D6["Transform ids to embedding Z = Φ(ids)"]
     D7["Concatenate X_plus = (X_s plus Z)"]
-    D8["Fit final CartoBoost model g(X_plus)"]
+    D8["Fit final downstream model g(X_plus)"]
     D0 --> D1 --> D2 --> D3 --> D4 --> D5 --> D6 --> D7 --> D8
 ```
 
 By default, `NeuralEmbeddingRegressor` uses residual training:
 
-1. Fit a baseline CartoBoost model with only structured inputs.
+1. Fit a baseline model with only structured inputs.
 2. Compute residuals:
 
 ```python
@@ -439,20 +448,20 @@ residual = y - baseline.predict(X_structured)
    `Z_train = embedding_transformer.transform(ids_train)`.
 5. Concatenate:
    `X_aug = [X_structured, Z_train]`.
-6. Fit final `CartoBoostRegressor` on `X_aug` and `y`.
+6. Fit the final downstream model on `X_aug` and `y`.
 
 ### Why residual mode first
 
 The residual model focuses on what the structured model misses. Instead of directly
 adding neural residuals into the final output, we expose learned representation to
-CartoBoost and let trees decide when that signal is useful.
+the final model and let trees decide when that signal is useful.
 
 ### Optional non-residual mode
 
 `use_residual=False` trains embeddings on raw target `y` directly. This is
 available but less common in this phase.
 
-## 4.5) Transformer setup (`NeuralEmbeddingFeatures`)
+## Transformer Setup (`NeuralEmbeddingFeatures`)
 
 ### What this transformer is
 
@@ -522,11 +531,11 @@ flowchart TD
 
 ### Why this is called a “transformer” despite being a table
 
-Because it transforms raw row context into new dense columns before the booster
-consumes them. It is a feature-generation primitive and is intentionally
-deterministic in phase 1 to de-risk serving.
+Because it transforms raw row context into new dense columns before the
+downstream model consumes them. It is a feature-generation primitive and is
+intentionally deterministic in phase 1 to de-risk serving.
 
-## 5) Inference flow
+## Optional Hybrid Inference Flow
 
 Given input rows and IDs:
 
@@ -536,7 +545,7 @@ Given input rows and IDs:
    - `id_column` reference.
 3. Convert IDs to embedding matrix via loaded embedding table.
 4. Append embedding columns to dense matrix.
-5. Call final CartoBoost model `predict`.
+5. Call final downstream model `predict`.
 
 Row count is preserved through the process.
 
@@ -550,7 +559,7 @@ flowchart TD
     I0 --> I1 --> I2 --> I3 --> I4
 ```
 
-## 6) API contracts
+## API Contracts
 
 ### Required Artifact Metadata
 
@@ -581,13 +590,13 @@ For prefix `name = neural.pickup_zone`, `dim = 4`:
 - `neural.pickup_zone_02`
 - `neural.pickup_zone_03`
 
-The booster input matrix for each row is:
+The generated model input matrix for each row is:
 
 ```text
 [original_dense_features..., neural feature block]
 ```
 
-## 7) End-to-end code example
+## Optional Hybrid Code Example
 
 ```python
 import numpy as np
@@ -631,7 +640,7 @@ results = benchmark_neural_vs_cartoboost(
 print(results)
 ```
 
-## 8) Benchmarking and acceptance
+## Benchmarking And Acceptance
 
 ### Reproducibility contract
 
@@ -724,18 +733,18 @@ Example local comparison (seed=42):
 This supports the intended claim of this PR: the transformer increases signal-to-noise
 in cold-sparse settings by widening the feature space with structured dense embeddings.
 
-## 9) Failure modes and guardrails
+## Failure Modes And Guardrails
 
 - **ID drift**: ID column encoding must stay stable between training/inference.
 - **Row ordering**: IDs and rows must align (same order) before transform.
 - **Sparse splits**: ensure sparse-set feature configuration is identical across
-  baseline and neural-augmented boosted training.
+  baseline and neural-augmented training.
 - **Non-finite IDs**: missing/infinite IDs cannot be encoded.
 - **Dimension mismatch**: embedding `dim` in transformer and model must match.
 
-## 10) Implementation Summary
+## Implementation Summary
 
-- Added neural-augmented boosted estimator + benchmark helper:
+- Added standalone and neural-augmented estimator docs plus benchmark helper:
   - `python/cartoboost/neural/pipeline.py`
 - Exported at package root:
   - `cartoboost.NeuralEmbeddingRegressor`
@@ -744,7 +753,7 @@ in cold-sparse settings by widening the feature space with structured dense embe
 - Added Python API docs for this feature in:
   - `docs/reference/python-api.md`
 
-## 11) Graph Encoder Performance Notes
+## Graph Encoder Performance Notes
 
 node2vec, GraphSAGE, heterogeneous GraphSAGE, and HinSAGE encoders are
 available through `cartoboost.Node2VecEncoder`, `cartoboost.GraphSageEncoder`,

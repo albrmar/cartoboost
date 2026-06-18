@@ -25,11 +25,12 @@ context.
   splitters.
 - [Spatial Modeling](spatial_modeling.md): coordinate features, taxi-zone
   sparse sets, fuzzy routing, and blocked evaluation.
-- [Graph Features](graph-features.md): Node2Vec, GraphSAGE, HeteroGraphSAGE,
-  HinSAGE, standalone graph models, directed source-target features, metapaths,
-  and graph feature bundles.
-- [Neural Features](neural-features.md): ID embedding features and
-  standalone or neural-augmented boosted models.
+- [Graph Models And Features](graph-features.md): standalone graph regressors,
+  standalone link predictors, Node2Vec, GraphSAGE, HeteroGraphSAGE, HinSAGE,
+  directed source-target features, metapaths, and graph feature bundles.
+- [Neural Embedding Models And Features](neural-features.md): standalone ID
+  embedding regression, neural artifacts, fallback behavior, and optional
+  feature-generation workflows.
 - [Evaluation Protocol](evaluation_protocol.md): out-of-time, spatial-blocked,
   grouped, and leakage-aware validation.
 - [Benchmarks](benchmarks/index.md): reproducible comparison reports and

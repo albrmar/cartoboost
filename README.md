@@ -139,24 +139,37 @@ Why this helps:
   one-hot matrix.
 - `fuzzy=True` reduces hard jumps near spatial or temporal boundaries.
 
-## Graph Features
+## Graph Models
 
-CartoBoost can precompute graph-derived columns before booster training.
-Supported encoder families are node2vec, GraphSAGE, HeteroGraphSAGE, and
-HinSAGE. Direction is a first-class contract: `A -> B` and `B -> A` can be
-separate facts, features, and embeddings.
-
-Graph models can also run independently through `Node2VecStandaloneRegressor`,
+Graph models run independently through `Node2VecStandaloneRegressor`,
 `GraphSageStandaloneRegressor`, `HeteroGraphSageStandaloneRegressor`,
 `HinSageStandaloneRegressor`, and the matching standalone link predictors.
+Supported graph families are node2vec, GraphSAGE, HeteroGraphSAGE, and HinSAGE.
+Direction is a first-class contract: `A -> B` and `B -> A` can be separate
+facts, features, and embeddings.
 
-See [Graph Features](docs/graph-features.md) for encoder configs, directional
-features, OD-pair nodes, metapaths, artifacts, and benchmark guidance.
+Graph encoders can also emit graph-derived columns for another estimator when
+you explicitly want a feature-generation workflow.
 
-## Neural Embedding Hybrid
+See [Graph Models And Features](docs/graph-features.md) for standalone graph
+regressors, standalone link predictors, encoder configs, directional features,
+OD-pair nodes, metapaths, artifacts, and benchmark guidance.
+
+## Neural Embedding Models
+
+Use `NeuralEmbeddingStandaloneRegressor` for direct supervised ID modeling
+without a boosted wrapper.
+
+```python
+from cartoboost import NeuralEmbeddingStandaloneRegressor
+
+model = NeuralEmbeddingStandaloneRegressor(dim=16, random_state=7)
+model.fit(pickup_zone_ids_train, y_train, dense=X_train)
+predictions = model.predict(pickup_zone_ids_test, dense=X_test)
+```
 
 Use `NeuralEmbeddingRegressor` when high-cardinality IDs carry stable signal and
-you want learned dense embeddings appended to the tree input.
+you explicitly want learned dense embeddings appended to a tabular model input.
 
 ```python
 from cartoboost import NeuralEmbeddingRegressor
@@ -183,9 +196,9 @@ results = benchmark_neural_vs_cartoboost(X, y, ids, split_ratio=0.8)
 Use this helper as an initial signal check, then validate with your real
 temporal, spatial, grouped, or out-of-time split.
 
-For direct supervised ID modeling without a boosted wrapper, use
-`NeuralEmbeddingStandaloneRegressor`. See
-[Neural Features](docs/neural-features.md) for the standalone neural example.
+See [Neural Embedding Models And Features](docs/neural-features.md) for the
+standalone neural API, artifacts, fallback behavior, and optional feature
+generation workflow.
 
 ## Save, Load, And Explain
 
@@ -202,8 +215,9 @@ explanation = loaded.explain_shap(
 ```
 
 Model artifacts are versioned JSON and include optional metadata, feature
-schema, and training configuration fields. Graph and neural feature artifacts
-should be persisted alongside the booster when features are precomputed offline.
+schema, and training configuration fields. Graph and neural standalone artifacts
+are complete model artifacts. Feature-generation artifacts should be persisted
+with whichever downstream model consumes their generated columns.
 
 ## CLI
 
