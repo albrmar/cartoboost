@@ -15,6 +15,8 @@ for these model names:
 - `ets`
 - `arima`
 - `auto_arima`
+- `kalman`
+- `kriging`
 - `cartoboost_lag`
 - `weighted_ensemble`
 
@@ -23,6 +25,9 @@ Implemented scope:
 - `ets` is Rust additive ETS with optional additive seasonality.
 - `arima` is Rust ARIMA(p,d,q) over bounded non-seasonal orders.
 - `auto_arima` is Rust AutoARIMA over bounded ARIMA(p,d,q) candidates.
+- `kalman` is a Rust local-linear-trend state-space model.
+- `kriging` is a Rust ordinary-kriging panel forecaster over explicit series
+  coordinates.
 - `weighted_ensemble` is a native PyO3 class that requires explicit native
   component models; it is not a zero-argument CLI/default-registry model.
 
@@ -38,6 +43,9 @@ General utilities now exposed outside `cartoboost.forecasting`:
   `cartoboost.local_linear_trend_kalman_forecast`.
 - `croston`, `sba`, `tsb`: use `cartoboost.croston_forecast`,
   `cartoboost.sba_forecast`, or `cartoboost.tsb_forecast`.
+- `ordinary_kriging`: use `cartoboost.ordinary_kriging_predict`.
+
+For toy usage examples, see [General Utilities](general_utilities.md).
 
 Native forecasting-class surface still required before frame-based Python
 wrappers can be exposed:
@@ -47,16 +55,18 @@ wrappers can be exposed:
 - `dynamic_regression`: no Rust/PyO3 forecasting class is exposed.
 - `mstl_ets`, `stl_arima`: no Rust/PyO3 decomposition-hybrid forecasting
   classes are exposed.
-- `kriging`: core Rust has `KrigingForecaster`, but PyO3 does not currently
-  expose a `KrigingForecaster` class for wrapper delegation.
-
 Example:
 
 ```python
-from cartoboost.forecasting.local import SeasonalNaiveForecaster
+from cartoboost.forecasting.local import KalmanForecaster, SeasonalNaiveForecaster
 
 model = SeasonalNaiveForecaster(season_length=24)
 model.fit([42.0, 37.0, 51.0])
+
+kalman = KalmanForecaster()
+kalman.fit([40.0, 42.0, 45.0, 47.0])
+forecast = kalman.predict(2)
 ```
 
-That `fit` call delegates to `cartoboost._native.SeasonalNaiveForecaster`.
+Those `fit` calls delegate to the corresponding `cartoboost._native`
+forecasting classes.

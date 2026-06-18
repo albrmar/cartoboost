@@ -126,6 +126,8 @@ Set `oof_folds > 1` to train final-model embedding columns out of fold. Use
 
 Rust-backed utilities independent of the regressor and forecasting model APIs:
 
+See [General Utilities](../general_utilities.md) for complete toy examples.
+
 | Entry point | Purpose |
 | --- | --- |
 | `cartoboost.naive_forecast(values, horizon)` and related `seasonal_naive_forecast`, `theta_forecast`, `optimized_theta_forecast`, `ets_forecast`, `arima_forecast`, `auto_arima_forecast` | Rust-backed single-series forecasts for plain numeric sequences. |

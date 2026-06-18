@@ -94,6 +94,10 @@ and `cartoboost.forecasting`.
 
 See [Evaluation Protocol](evaluation_protocol.md).
 
+See [General Utilities](general_utilities.md) for toy examples covering
+Kalman filters, ordinary kriging, intermittent-demand methods, and single-series
+forecast helpers.
+
 ## Forecasting
 
 Forecasting is Rust-native. Python classes validate data and delegate model
