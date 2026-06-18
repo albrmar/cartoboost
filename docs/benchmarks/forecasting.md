@@ -54,23 +54,28 @@ uv run --group dev --group bench python scripts/forecasting_library_benchmark.py
 | `statsforecast` | `statsforecast_seasonal_naive`, `statsforecast_autoets` |
 | `prophet` | `prophet_additive` |
 
-CartoBoost uses supervised lag and rolling-window features plus pickup zone,
-dropoff zone, route distance, airport-lane flag, and pickup borough code. The
-library baselines use their native panel forecasting inputs.
+CartoBoost uses a guarded seasonal-residual strategy. It starts from the 7-day
+seasonal baseline, trains a CartoBoost residual model from lag and rolling
+features plus pickup zone, dropoff zone, route distance, airport-lane flag, and
+pickup borough code, then estimates residual shrinkage from rolling origins
+inside the training window. The residual correction is applied only when that
+inner validation shows at least a 1% RMSE gain. Library baselines use their
+native panel forecasting inputs.
 
 ## Result
 
 RMSE is the primary quality metric. MAE and WAPE are secondary quality metrics.
-On this short real holdout, seasonal naive methods win. CartoBoost lag
-forecasting is faster than Prophet but does not beat the best external
-forecasting-library baseline.
+On this short real holdout, CartoBoost ties the best seasonal-naive external
+baselines. The train-only residual calibration used 6 inner rolling origins and
+found only a 0.07% raw RMSE gain for the residual correction, below the fixed 1%
+materiality threshold, so the residual weight was set to `0.0`.
 
 | model | library | RMSE | MAE | WAPE |
 | --- | --- | ---: | ---: | ---: |
+| `cartoboost_lag` | `cartoboost` | 39.034 | 29.173 | 0.094 |
 | `functime_snaive` | `functime` | 39.034 | 29.173 | 0.094 |
 | `statsforecast_seasonal_naive` | `statsforecast` | 39.034 | 29.173 | 0.094 |
 | `statsforecast_autoets` | `statsforecast` | 44.598 | 36.242 | 0.116 |
-| `cartoboost_lag` | `cartoboost` | 59.880 | 43.040 | 0.138 |
 | `prophet_additive` | `prophet` | 79.876 | 60.655 | 0.195 |
 | `functime_ridge` | `functime` | 90.961 | 63.403 | 0.204 |
 | `functime_lightgbm` | `functime` | 99.754 | 66.426 | 0.213 |
@@ -86,11 +91,11 @@ forecasting-library baseline.
 ## Interpretation
 
 This is a short panel with strong weekly demand structure and only 24 training
-days before the 7-day holdout. The result is useful precisely because it shows a
-case where a simple seasonal baseline is hard to beat. The committed plots make
-the failure mode visible: CartoBoost captures broad lane levels, but it
-overstates parts of the final week relative to the seasonal naive and AutoETS
-baselines.
+days before the 7-day holdout. The result is useful precisely because it shows
+that the honest best model for this slice is mostly seasonal persistence. The
+CartoBoost residual path is still part of the model, but the train-only
+calibration rejects it when the residual signal is not strong enough. That
+prevents the benchmark from claiming a holdout-tuned residual gain.
 
 The synthetic fixture remains useful for deterministic library wiring checks,
 but real-data claims should use the NYC TLC artifact above.

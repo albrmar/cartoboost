@@ -61,6 +61,8 @@ FEATURE_COLUMNS = [
 ]
 LAGS = [1, 7, 14]
 ROLLING_WINDOWS = [7, 14]
+SEASONAL_PERIOD = 7
+MIN_RELATIVE_INNER_RMSE_GAIN = 0.01
 STATIC_COVARIATES = [
     "pickup_zone",
     "dropoff_zone",
@@ -394,11 +396,23 @@ def quality_summary(metrics: dict[str, dict[str, float]]) -> dict[str, Any]:
     best_prophet = min(PROPHET_MODELS, key=lambda name: metrics[name]["rmse"])
     cartoboost_rmse = metrics["cartoboost_lag"]["rmse"]
     library_rmse = metrics[best_library_model]["rmse"]
+    best_rmse = min(model_metrics["rmse"] for model_metrics in metrics.values())
+    tied_best_models = [
+        name
+        for name, model_metrics in metrics.items()
+        if np.isclose(model_metrics["rmse"], best_rmse, rtol=1e-12, atol=1e-9)
+    ]
     rmse_ranking = sorted(metrics, key=lambda name: metrics[name]["rmse"])
     mae_ranking = sorted(metrics, key=lambda name: metrics[name]["mae"])
     wape_ranking = sorted(metrics, key=lambda name: metrics[name]["wape"])
     return {
-        "winner": "cartoboost_lag" if cartoboost_rmse < library_rmse else best_library_model,
+        "winner": (
+            "tie"
+            if "cartoboost_lag" in tied_best_models and len(tied_best_models) > 1
+            else ("cartoboost_lag" if cartoboost_rmse < library_rmse else best_library_model)
+        ),
+        "best_rmse": best_rmse,
+        "tied_best_models": tied_best_models,
         "comparison_libraries": list(FORECASTING_LIBRARY_MODELS),
         "forecasting_library_models": FORECASTING_LIBRARY_MODELS,
         "model_libraries": MODEL_LIBRARIES,
@@ -434,15 +448,21 @@ def quality_summary(metrics: dict[str, dict[str, float]]) -> dict[str, Any]:
 def cartoboost_forecast(train: Any, horizon: int) -> tuple[Any, dict[str, float]]:
     pl = require_polars()
     feature_start = perf_counter()
-    feature_frame = build_history_features(train).drop_nulls(FEATURE_COLUMNS)
+    feature_frame = build_history_features(train).drop_nulls([*FEATURE_COLUMNS, "seasonal_base"])
     if feature_frame.is_empty():
         raise ValueError(
             "CartoBoost lag benchmark has no train rows after lag feature generation; "
             "use more history or a shorter horizon."
         )
-    x = feature_frame.select(FEATURE_COLUMNS).to_numpy()
-    y = feature_frame.select("loads").to_numpy().ravel()
     feature_seconds = perf_counter() - feature_start
+    calibration_start = perf_counter()
+    residual_alpha, calibration = calibrate_residual_shrinkage(train, horizon)
+    calibration_seconds = perf_counter() - calibration_start
+    x = feature_frame.select(FEATURE_COLUMNS).to_numpy()
+    y = (
+        feature_frame.select("loads").to_numpy().ravel()
+        - feature_frame.select("seasonal_base").to_numpy().ravel()
+    )
     model = CartoBoostRegressor(
         n_estimators=80,
         learning_rate=0.08,
@@ -451,7 +471,8 @@ def cartoboost_forecast(train: Any, horizon: int) -> tuple[Any, dict[str, float]
         splitters=["axis_histogram:128", "periodic:7"],
     )
     fit_start = perf_counter()
-    model.fit(x, y)
+    if residual_alpha > 0.0:
+        model.fit(x, y)
     fit_seconds = perf_counter() - fit_start
 
     predict_start = perf_counter()
@@ -459,8 +480,16 @@ def cartoboost_forecast(train: Any, horizon: int) -> tuple[Any, dict[str, float]
     forecast_frames = []
     for step in range(1, horizon + 1):
         future = next_future_rows(history, step)
-        future_features = build_future_features(history, future).drop_nulls(FEATURE_COLUMNS)
-        predictions = model.predict(future_features.select(FEATURE_COLUMNS).to_numpy())
+        future_features = build_future_features(history, future).drop_nulls(
+            [*FEATURE_COLUMNS, "seasonal_base"]
+        )
+        seasonal_base = future_features.select("seasonal_base").to_numpy().ravel()
+        residual_predictions = (
+            model.predict(future_features.select(FEATURE_COLUMNS).to_numpy())
+            if residual_alpha > 0.0
+            else np.zeros(len(seasonal_base), dtype=float)
+        )
+        predictions = seasonal_base + residual_alpha * residual_predictions
         step_forecast = future_features.select(
             pl.col("lane_id").alias("series_id"),
             pl.col("date").alias("timestamp"),
@@ -483,12 +512,126 @@ def cartoboost_forecast(train: Any, horizon: int) -> tuple[Any, dict[str, float]
     predict_seconds = perf_counter() - predict_start
     timing = {
         "feature_seconds": feature_seconds,
+        "calibration_seconds": calibration_seconds,
         "fit_seconds": fit_seconds,
         "predict_seconds": predict_seconds,
         "fit_predict_seconds": fit_seconds + predict_seconds,
-        "total_seconds": feature_seconds + fit_seconds + predict_seconds,
+        "total_seconds": feature_seconds + calibration_seconds + fit_seconds + predict_seconds,
+        "residual_alpha": residual_alpha,
+        **calibration,
     }
     return pl.concat(forecast_frames, how="vertical"), timing
+
+
+def calibrate_residual_shrinkage(train: Any, horizon: int) -> tuple[float, dict[str, float]]:
+    pl = require_polars()
+    dates = train.select(pl.col("date").unique().sort()).to_series().to_list()
+    start_idx = max(max(LAGS), max(ROLLING_WINDOWS), SEASONAL_PERIOD) + 1
+    residual_targets = []
+    residual_predictions = []
+    for origin_idx in range(start_idx, len(dates) - 1):
+        origin = dates[origin_idx]
+        validation_dates = dates[origin_idx + 1 : min(len(dates), origin_idx + 1 + horizon)]
+        if len(validation_dates) < 3:
+            continue
+        inner_train = train.filter(pl.col("date") <= origin)
+        inner_validation = train.filter(pl.col("date").is_in(validation_dates))
+        feature_frame = build_history_features(inner_train).drop_nulls(
+            [*FEATURE_COLUMNS, "seasonal_base"]
+        )
+        if feature_frame.is_empty():
+            continue
+        model = CartoBoostRegressor(
+            n_estimators=80,
+            learning_rate=0.08,
+            max_depth=5,
+            min_samples_leaf=2,
+            splitters=["axis_histogram:128", "periodic:7"],
+        )
+        model.fit(
+            feature_frame.select(FEATURE_COLUMNS).to_numpy(),
+            feature_frame.select("loads").to_numpy().ravel()
+            - feature_frame.select("seasonal_base").to_numpy().ravel(),
+        )
+        forecast = recursive_residual_forecast(inner_train, model, len(validation_dates))
+        actual = (
+            inner_validation.sort(["lane_id", "date"])
+            .with_columns((pl.int_range(pl.len()).over("lane_id") + 1).alias("horizon"))
+            .select(
+                pl.col("lane_id").alias("series_id"),
+                pl.col("date").alias("timestamp"),
+                "horizon",
+                pl.col("loads").alias("actual"),
+            )
+        )
+        scored = actual.join(forecast, on=["series_id", "timestamp", "horizon"], how="inner")
+        if scored.is_empty():
+            continue
+        residual_targets.append(scored["actual"].to_numpy() - scored["seasonal_base"].to_numpy())
+        residual_predictions.append(scored["residual_hat"].to_numpy())
+    if not residual_targets:
+        return 0.0, {
+            "inner_origin_count": 0.0,
+            "inner_base_rmse": np.nan,
+            "inner_calibrated_rmse": np.nan,
+            "inner_raw_relative_rmse_gain": 0.0,
+            "inner_applied_relative_rmse_gain": 0.0,
+        }
+    y = np.concatenate(residual_targets)
+    residual_hat = np.concatenate(residual_predictions)
+    denominator = float(np.dot(residual_hat, residual_hat))
+    raw_alpha = 0.0 if denominator <= 0.0 else float(np.dot(y, residual_hat) / denominator)
+    alpha = max(0.0, min(1.0, raw_alpha))
+    base_rmse = float(np.sqrt(np.mean(y * y)))
+    calibrated_rmse = float(np.sqrt(np.mean((y - alpha * residual_hat) ** 2)))
+    raw_relative_gain = 0.0 if base_rmse <= 0.0 else 1.0 - calibrated_rmse / base_rmse
+    if raw_relative_gain < MIN_RELATIVE_INNER_RMSE_GAIN:
+        alpha = 0.0
+        calibrated_rmse = base_rmse
+    applied_relative_gain = 0.0 if base_rmse <= 0.0 else 1.0 - calibrated_rmse / base_rmse
+    return alpha, {
+        "inner_origin_count": float(len(residual_targets)),
+        "inner_base_rmse": base_rmse,
+        "inner_calibrated_rmse": calibrated_rmse,
+        "inner_raw_relative_rmse_gain": max(0.0, raw_relative_gain),
+        "inner_applied_relative_rmse_gain": max(0.0, applied_relative_gain),
+    }
+
+
+def recursive_residual_forecast(train: Any, model: CartoBoostRegressor, horizon: int) -> Any:
+    pl = require_polars()
+    history = train.clone()
+    forecast_frames = []
+    for step in range(1, horizon + 1):
+        future = next_future_rows(history, step)
+        future_features = build_future_features(history, future).drop_nulls(
+            [*FEATURE_COLUMNS, "seasonal_base"]
+        )
+        residual_hat = model.predict(future_features.select(FEATURE_COLUMNS).to_numpy())
+        seasonal_base = future_features.select("seasonal_base").to_numpy().ravel()
+        forecast_frames.append(
+            future_features.select(
+                pl.col("lane_id").alias("series_id"),
+                pl.col("date").alias("timestamp"),
+                pl.lit(step).alias("horizon"),
+            ).with_columns(
+                pl.Series("seasonal_base", seasonal_base),
+                pl.Series("residual_hat", residual_hat),
+            )
+        )
+        history = pl.concat(
+            [
+                history,
+                future_features.with_columns(pl.Series("seasonal_base", seasonal_base)).select(
+                    "lane_id",
+                    "date",
+                    pl.col("seasonal_base").alias("loads"),
+                    *STATIC_COVARIATES,
+                ),
+            ],
+            how="vertical",
+        )
+    return pl.concat(forecast_frames, how="vertical")
 
 
 def build_history_features(frame: Any) -> Any:
@@ -503,6 +646,7 @@ def build_history_features(frame: Any) -> Any:
             .alias(f"loads_roll_{window}")
             for window in ROLLING_WINDOWS
         ],
+        seasonal_base=pl.col("loads").shift(SEASONAL_PERIOD).over("lane_id"),
         date_dayofweek=pl.col("date").dt.weekday().cast(pl.Float64),
         date_day=pl.col("date").dt.day().cast(pl.Float64),
         date_month=pl.col("date").dt.month().cast(pl.Float64),
@@ -534,6 +678,9 @@ def build_future_features(history: Any, future: Any) -> Any:
             values[f"loads_roll_{window}"] = (
                 float(np.mean(loads[-window:])) if len(loads) >= window else None
             )
+        values["seasonal_base"] = (
+            float(loads[-SEASONAL_PERIOD]) if len(loads) >= SEASONAL_PERIOD else None
+        )
         timestamp = values["date"]
         values["date_dayofweek"] = float(timestamp.weekday() + 1)
         values["date_day"] = float(timestamp.day)
