@@ -1,19 +1,19 @@
 {
   "backend": "duckdb",
-  "benchmark": "geotemporal_lane_demand_functime",
+  "benchmark": "geotemporal_lane_demand_statsforecast",
   "cartoboost_version": "0.1.21",
   "comparison": {
-    "best_known_mae": 0.6569841269841273,
-    "best_known_method": "functime_snaive",
-    "best_known_rmse": 0.8410688588913666,
-    "cartoboost_mae": 0.2241779676321493,
-    "cartoboost_rmse": 0.3797647824327878,
-    "mae_delta_vs_best_known": -0.432806159351978,
-    "rmse_delta_vs_best_known": -0.46130407645857885,
-    "rmse_ratio_vs_best_known": 0.451526386238298,
+    "best_known_mae": 0.4094745639040102,
+    "best_known_method": "AutoETS",
+    "best_known_rmse": 0.5859755135528043,
+    "cartoboost_mae": 0.2212526073191289,
+    "cartoboost_rmse": 0.3796376979370792,
+    "mae_delta_vs_best_known": -0.1882219565848813,
+    "rmse_delta_vs_best_known": -0.20633781561572512,
+    "rmse_ratio_vs_best_known": 0.6478729727720418,
     "winner": "cartoboost_lag"
   },
-  "created_at": "2026-06-18T17:50:16.832255+00:00",
+  "created_at": "2026-06-18T17:39:09.437893+00:00",
   "dataset": {
     "days": 90,
     "domain": "daily NYC taxi-style pickup/dropoff lane demand",
@@ -28,45 +28,45 @@
       "pickup_borough_code"
     ]
   },
-  "known_forecasting_library": "functime",
+  "known_forecasting_library": "statsforecast",
   "metrics": {
-    "cartoboost_lag": {
-      "bias": -0.023016753147985288,
-      "mae": 0.2241779676321493,
-      "mase": 0.30671422128613685,
-      "rmse": 0.3797647824327878,
-      "smape": 0.010754010120988014,
-      "wape": 0.010722082617082582
+    "AutoETS": {
+      "bias": -0.10270867180683746,
+      "mae": 0.4094745639040102,
+      "mase": 0.4012941684939032,
+      "rmse": 0.5859755135528043,
+      "smape": 0.019599550464726775,
+      "wape": 0.01958452987216318
     },
-    "functime_lightgbm": {
-      "bias": -1.1955480645714363,
-      "mae": 2.807547337262032,
-      "mase": 3.8412101972718524,
-      "rmse": 2.965697377959389,
-      "smape": 0.14287665915313533,
-      "wape": 0.13428061115661882
+    "AutoTheta": {
+      "bias": -0.06876047243031055,
+      "mae": 0.4491591979163047,
+      "mase": 0.4401859913610296,
+      "rmse": 0.6060513921377586,
+      "smape": 0.021860663063052253,
+      "wape": 0.021482584034232786
     },
-    "functime_ridge": {
-      "bias": -0.0630821264734285,
-      "mae": 2.3095498328527473,
-      "mase": 3.1598635048173684,
-      "rmse": 2.673149966798347,
-      "smape": 0.11340955855232841,
-      "wape": 0.11046216707946076
-    },
-    "functime_snaive": {
+    "SeasonalNaive": {
       "bias": -0.452222222222222,
-      "mae": 0.6569841269841273,
-      "mase": 0.8988678817712284,
+      "mae": 0.6569841269841272,
+      "mase": 0.6438590383689673,
       "rmse": 0.8410688588913666,
       "smape": 0.03263267654650405,
-      "wape": 0.031422526317102156
+      "wape": 0.03142252631710215
+    },
+    "cartoboost_lag": {
+      "bias": -0.011279476500690944,
+      "mae": 0.2212526073191289,
+      "mase": 0.21683246997010447,
+      "rmse": 0.3796376979370792,
+      "smape": 0.010578706079492456,
+      "wape": 0.0105821671950086
     }
   },
   "models": [
     "cartoboost_lag",
-    "functime_snaive",
-    "functime_ridge",
-    "functime_lightgbm"
+    "SeasonalNaive",
+    "AutoTheta",
+    "AutoETS"
   ]
 }
