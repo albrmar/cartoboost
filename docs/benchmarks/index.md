@@ -50,12 +50,24 @@ uv run --group dev --group bench python scripts/forecasting_library_benchmark.py
   --output artifacts/forecasting_library_benchmark_duckdb.json
 ```
 
-Current run, June 18, 2026:
+Current quality run, June 18, 2026:
 
 | backend | known library | best known method | CartoBoost RMSE | best known RMSE | RMSE ratio |
 | --- | --- | --- | ---: | ---: | ---: |
 | Polars | functime | seasonal naive | 0.379765 | 0.841069 | 0.451526 |
 | DuckDB | functime | seasonal naive | 0.379765 | 0.841069 | 0.451526 |
+
+Current speed context from the same artifact refresh:
+
+| backend | CartoBoost model seconds | best known model seconds | slowest known model seconds | total seconds |
+| --- | ---: | ---: | ---: | ---: |
+| Polars | 0.729928 | 0.008925 | 70.734062 | 72.096723 |
+| DuckDB | 0.714604 | 0.008967 | 71.111770 | 72.590633 |
+
+The best known `functime` method by RMSE is seasonal naive, which is much faster
+than CartoBoost but less accurate on this fixture. `functime_lightgbm` is the
+slowest known-method row in this run and is also less accurate than seasonal
+naive on the deterministic lane-demand fixture.
 
 This is targeted evidence for global geotemporal lag forecasting on many
 related short lane series. It should not be generalized to every forecasting
