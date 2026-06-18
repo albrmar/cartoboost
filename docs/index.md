@@ -33,6 +33,10 @@ context.
   feature-generation workflows.
 - [Evaluation Protocol](evaluation_protocol.md): out-of-time, spatial-blocked,
   grouped, and leakage-aware validation.
+- [Forecasting](forecasting.md): single-series and panel forecasting with
+  `ForecastFrame`, theta/local baselines, CartoBoost lag forecasting,
+  rolling-origin backtests, ensembles, CLI runs, and portable forecast
+  artifacts.
 - [Benchmarks](benchmarks/index.md): reproducible comparison reports and
   acceptance metrics.
 
@@ -45,6 +49,9 @@ context.
 - Dense numeric arrays plus list-valued sparse-set columns in Python.
 - Feature schemas for numeric, periodic, sparse-set, and contract validation.
 - Versioned JSON model and weights artifacts.
+- Forecasting workflows for lane/customer demand, including deterministic
+  forecast tables, leakage-safe rolling-origin evaluation, and synthetic
+  benchmark fixtures.
 - Optional SHAP explanations, Optuna tuning, Polars input support, and ONNX
   export for the supported dense axis-tree subset.
 - Neural embedding features.

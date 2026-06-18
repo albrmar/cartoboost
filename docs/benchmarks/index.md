@@ -13,6 +13,22 @@ XGBoost, LightGBM, or a mean baseline.
 | [Taxi Zone Acceptance](taxi-zone.md) | Does the model capture pickup/dropoff, temporal, spatial, and combined behavior on a controlled dataset? |
 | [Neural Embedding Benchmark (latest)](neural-embedding-benchmark-latest.md) | How much does neural feature augmentation improve MAE under synthetic temporal-spatial holdouts? |
 
+## Forecasting Benchmark
+
+Forecasting V1 includes a deterministic synthetic benchmark harness:
+
+```sh
+python scripts/forecasting_benchmark.py --output artifacts/forecasting_benchmark.json
+```
+
+The harness compares naive, seasonal naive, theta, optimized theta,
+CartoBoost lag forecasting, and weighted ensembles across trend-only, weekly
+seasonal, intermittent sparse, panel lane, known-future covariate, and noisy
+geotemporal fixtures. The output JSON records dataset names, model names, MAE,
+RMSE, MASE, WAPE, sMAPE, bias, and interval coverage placeholders. These runs
+are intended to prove repeatability, row alignment, and leakage-safe evaluation;
+they are not presented as universal model superiority evidence.
+
 ## Evaluation Helpers
 
 Objective, calibration, spatial-diagnostic, and blocked-validation helpers are

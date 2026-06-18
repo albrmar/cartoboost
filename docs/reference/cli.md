@@ -56,3 +56,51 @@ Summarizes model, config, and data inputs without training.
 | `inspect` | `--model`, `--config`, `--data`, `--output`, `--help` |
 
 Unknown options fail fast.
+
+## Forecasting Script
+
+Forecasting V1 is exposed through `scripts/forecast.py`:
+
+```sh
+python scripts/forecast.py fit \
+  --input examples/forecasting/forecast_cli_input.csv \
+  --timestamp-col timestamp \
+  --target-col pickup_demand \
+  --series-id-col PULocationID \
+  --freq D \
+  --model theta \
+  --horizon 7 \
+  --season-length 7 \
+  --artifact-dir target/forecasting/theta \
+  --output target/forecasting/theta_forecast.csv
+```
+
+Commands:
+
+| Command | Purpose |
+| --- | --- |
+| `fit` | Reads CSV history, writes `model.json`, `resolved_config.json`, and optional forecast CSV. |
+| `predict` | Reads a saved forecast artifact directory and writes a forecast CSV. |
+| `backtest` | Runs a deterministic final-window backtest and writes JSON metrics. |
+| `compare` | Scores one or more forecasting models on the same holdout. |
+
+Forecasting options:
+
+| Option | Notes |
+| --- | --- |
+| `--input` | CSV history. Required for `fit`, `backtest`, and `compare`. |
+| `--timestamp-col` | Timestamp column such as `timestamp` or `pickup_hour`. |
+| `--target-col` | Target column such as `pickup_demand`, `fare`, or `duration`. |
+| `--series-id-col` | Optional panel id such as `PULocationID` or `lane_id`. |
+| `--freq` | Frequency: `D`, `H`, `W`, or `M`. |
+| `--model` | `naive`, `seasonal_naive`, `theta`, `optimized_theta`, `ets`, `auto_arima`, `cartoboost_lag`, `weighted_ensemble`, or `all` for `compare`. |
+| `--horizon` | Positive forecast horizon. |
+| `--season-length` | Seasonal cycle for seasonal naive and theta-style models. |
+| `--output` | Forecast CSV or JSON metrics path. |
+| `--artifact-dir` | Directory for model/config/metrics artifacts. |
+| `--config` | JSON or simple TOML-style config file; CLI flags override file values. |
+
+Forecast CSVs include `series_id`, `timestamp`, `model`, `horizon`,
+`forecast`, `lower_80`, and `upper_80`. Invalid configs, missing columns,
+unknown model names, and missing artifact directories exit nonzero with a
+message on stderr.

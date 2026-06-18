@@ -40,6 +40,33 @@ CartoBoost supports:
 - Standalone node2vec, GraphSAGE, heterogeneous GraphSAGE, and typed-schema
   HinSAGE graph regressors and link predictors, plus optional graph feature
   encoders.
+- Forecasting APIs for single-series and panel demand forecasting, including
+  rolling-origin backtests, local baselines, theta models, supervised
+  CartoBoost lag forecasting, weighted ensembles, CLI runs, and portable
+  forecast artifacts.
+
+## Forecasting
+
+```python
+from cartoboost.forecasting import ForecastFrame, ThetaForecaster
+
+frame = ForecastFrame.from_pandas(
+    trips_by_lane,
+    timestamp_col="date",
+    target_col="loads",
+    series_id_col="lane_id",
+    freq="D",
+)
+
+model = ThetaForecaster(season_length=7, prediction_interval_levels=[0.8, 0.95])
+model.fit(frame)
+forecast = model.predict(horizon=14)
+```
+
+Forecast outputs use deterministic columns:
+`series_id`, `timestamp`, `horizon`, `model`, `mean`, and interval columns such
+as `lower_80` and `upper_80`. See the forecasting docs for CLI usage,
+lag-feature forecasting, backtesting, artifacts, and examples.
 
 ## Install
 
