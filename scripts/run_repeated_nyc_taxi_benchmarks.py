@@ -34,7 +34,9 @@ def parse_args() -> argparse.Namespace:
         "--models",
         default=(
             "cartoboost,cartoboost_reference,cartoboost_neural,"
-            "cartoboost_graph,lightgbm,xgboost,mean"
+            "cartoboost_graph_node2vec,cartoboost_graph_graphsage,"
+            "cartoboost_graph_hetero_graphsage,cartoboost_graph_hinsage,"
+            "lightgbm,xgboost,mean"
         ),
     )
     parser.add_argument("--n-estimators", type=int, default=100)

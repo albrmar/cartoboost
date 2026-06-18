@@ -57,6 +57,12 @@ SERVICE_ZONE_CODES = {
     "N/A": 5,
     "Unknown": 6,
 }
+GRAPH_MODEL_FAMILIES = {
+    "cartoboost_graph_node2vec": "node2vec",
+    "cartoboost_graph_graphsage": "graphsage",
+    "cartoboost_graph_hetero_graphsage": "hetero_graphsage",
+    "cartoboost_graph_hinsage": "hinsage",
+}
 
 
 @dataclass(frozen=True)
@@ -96,11 +102,15 @@ def parse_args() -> argparse.Namespace:
         "--models",
         default=(
             "cartoboost,cartoboost_reference,cartoboost_neural,"
-            "cartoboost_graph,lightgbm,xgboost,mean"
+            "cartoboost_graph_node2vec,cartoboost_graph_graphsage,"
+            "cartoboost_graph_hetero_graphsage,cartoboost_graph_hinsage,"
+            "lightgbm,xgboost,mean"
         ),
         help=(
             "Comma-separated models from: cartoboost, cartoboost_reference, "
-            "cartoboost_neural, cartoboost_graph, lightgbm, xgboost, mean"
+            "cartoboost_neural, cartoboost_graph, cartoboost_graph_node2vec, "
+            "cartoboost_graph_graphsage, cartoboost_graph_hetero_graphsage, "
+            "cartoboost_graph_hinsage, lightgbm, xgboost, mean"
         ),
     )
     parser.add_argument("--n-estimators", type=int, default=100)
@@ -709,6 +719,8 @@ def graph_augmented_split_features(
     train_x: np.ndarray,
     test_x: np.ndarray,
     args: argparse.Namespace,
+    *,
+    graph_family: str,
 ) -> tuple[np.ndarray, np.ndarray, dict[str, Any]]:
     pickup = task_zone_column(task, "PULocationID")
     if pickup is None:
@@ -747,7 +759,7 @@ def graph_augmented_split_features(
         GraphFeatureTransformer,
     )
 
-    if args.graph_family == "node2vec":
+    if graph_family == "node2vec":
         encoder = GraphEncoderConfig(
             family=GraphEncoderFamily.NODE2VEC,
             dim=int(args.graph_dim),
@@ -760,7 +772,7 @@ def graph_augmented_split_features(
         )
         fit_edges: list[tuple[int, int]] | list[tuple[int, int, int]] = edges
         fit_kwargs: dict[str, Any] = {}
-    elif args.graph_family == "hetero_graphsage":
+    elif graph_family == "hetero_graphsage":
         encoder = GraphEncoderConfig(
             family=GraphEncoderFamily.HINSAGE,
             hetero=True,
@@ -771,7 +783,7 @@ def graph_augmented_split_features(
         )
         fit_edges = [(source, target, 0) for source, target in edges]
         fit_kwargs = {"relation_ids": [0]}
-    elif args.graph_family == "hinsage":
+    elif graph_family == "hinsage":
         encoder = GraphEncoderConfig(
             family=GraphEncoderFamily.HINSAGE,
             input_dim=int(node_features.shape[1]),
@@ -829,7 +841,7 @@ def graph_augmented_split_features(
         {
             "graph_dim": int(args.graph_dim),
             "graph_epochs": int(args.graph_epochs),
-            "graph_family": str(args.graph_family),
+            "graph_family": str(graph_family),
             "graph_edges": int(len(edges)),
             "graph_node_count": int(node_count),
             "graph_feature_count": int(graph_features.shape[1]),
@@ -1055,7 +1067,8 @@ def fit_predict_model(
             "predictions": np.asarray(prediction, dtype=float),
         }
 
-    if model_name == "cartoboost_graph":
+    if model_name == "cartoboost_graph" or model_name in GRAPH_MODEL_FAMILIES:
+        graph_family = GRAPH_MODEL_FAMILIES.get(model_name, args.graph_family)
         try:
             from cartoboost import CartoBoostRegressor
         except ImportError as exc:
@@ -1069,6 +1082,7 @@ def fit_predict_model(
                 train_x,
                 test_x,
                 args,
+                graph_family=graph_family,
             )
             model = CartoBoostRegressor(
                 n_estimators=args.cartoboost_n_estimators,
@@ -1237,6 +1251,7 @@ def run_benchmarks(tasks: list[BenchmarkTask], args: argparse.Namespace) -> dict
         "cartoboost_reference",
         "cartoboost_neural",
         "cartoboost_graph",
+        *GRAPH_MODEL_FAMILIES,
         "lightgbm",
         "xgboost",
         "mean",

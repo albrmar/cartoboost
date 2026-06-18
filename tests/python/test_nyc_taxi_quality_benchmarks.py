@@ -109,7 +109,10 @@ def test_nyc_taxi_quality_benchmark_runs_neural_and_graph_models(tmp_path: Path)
             "--tasks",
             "duration",
             "--models",
-            "cartoboost_neural,cartoboost_graph",
+            (
+                "cartoboost_neural,cartoboost_graph_node2vec,cartoboost_graph_graphsage,"
+                "cartoboost_graph_hetero_graphsage,cartoboost_graph_hinsage"
+            ),
             "--output-dir",
             str(output_dir),
         ],
@@ -121,6 +124,13 @@ def test_nyc_taxi_quality_benchmark_runs_neural_and_graph_models(tmp_path: Path)
     task = results["tasks"]["duration"]
     for split in task["splits"].values():
         assert split["models"]["cartoboost_neural"]["status"] == "ok"
-        assert split["models"]["cartoboost_graph"]["status"] == "ok"
         assert split["models"]["cartoboost_neural"]["config"]["neural_dim"] > 0
-        assert split["models"]["cartoboost_graph"]["config"]["graph_edges"] > 0
+        for model_name, family in {
+            "cartoboost_graph_node2vec": "node2vec",
+            "cartoboost_graph_graphsage": "graphsage",
+            "cartoboost_graph_hetero_graphsage": "hetero_graphsage",
+            "cartoboost_graph_hinsage": "hinsage",
+        }.items():
+            assert split["models"][model_name]["status"] == "ok"
+            assert split["models"][model_name]["config"]["graph_family"] == family
+            assert split["models"][model_name]["config"]["graph_edges"] > 0
