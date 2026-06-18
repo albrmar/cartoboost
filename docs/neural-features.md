@@ -67,6 +67,34 @@ Example for `dim=16` and origin cell embedding:
 Important: these are just dense feature columns from the perspective of the
 booster.
 
+## When Neural Embeddings Help
+
+Neural ID embeddings are useful when the training and prediction populations
+share stable IDs and those IDs carry residual signal after the structured
+features have been modeled. Random, tail, or temporal splits can show strong
+gains because validation rows often reuse IDs observed during training.
+
+They are much weaker under cold-ID or cold-zone holdouts. In that setting, the
+model must use a fallback vector for unseen IDs, so the embedding table cannot
+recover ID-specific effects that were never observed. Report neural-embedding
+results with the split protocol; do not present repeated-ID gains as evidence of
+cold-start generalization.
+
+Practical improvement paths:
+
+- Train final-model embeddings with out-of-fold residuals so the final booster
+  sees realistic embedding noise instead of fully in-sample residual lookups.
+- Use support-aware shrinkage: rare IDs should stay close to parent or global
+  priors, while frequent IDs can receive stronger individualized vectors.
+- Prefer hierarchical fallback over a single global vector: zone to borough,
+  service zone, adjacent-zone aggregate, and then global.
+- Add richer keys when the task supports them, such as pickup zone, dropoff
+  zone, origin-destination pair, zone-hour bucket, or route cluster.
+- Use graph-aware fallback for spatial IDs by borrowing signal from adjacent
+  zones or typed graph neighbors.
+- Validate the embedding dimension, fallback mode, and residual-vs-target
+  training choice under the same holdout used for the product claim.
+
 ## Implementation Surface
 
 ### Python ownership
