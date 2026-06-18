@@ -6,6 +6,8 @@
 - Use `uv run --group dev maturin develop` after native binding changes so `cartoboost._native` is available to Python tests.
 - Keep shared model behavior in `crates/cartoboost-core`; keep CLI-only behavior in `crates/cartoboost-cli`, PyO3 bindings in `crates/cartoboost-py`, and Python API ergonomics in `python/cartoboost`.
 - Implement ALL algorithms and ALL behavior in Rust under `crates/`; Python classes should be thin configuration and ergonomics wrappers over native bindings.
+- All modeling logic must be Rust-core first. Regression, forecasting, neural/graph modeling, metrics, validation, serialization, artifacts, and benchmark-critical scoring behavior belong in `crates/`; Python must not become the source of truth for model behavior.
+- Forecasting core specifically must live in Rust. Python forecasting APIs may convert user data, expose ergonomic wrappers, or run benchmark orchestration, but fitting, prediction, backtesting, feature generation, metrics, intervals, artifacts, and leakage checks must be implemented in Rust and called through native bindings.
 - Do not edit build output, virtualenvs, caches, downloaded data, or benchmark output under `target/`, `.venv/`, `.pytest_cache/`, `data/`, or generated plot folders unless the task explicitly asks for generated artifacts.
 - Keep examples, docs, and public benchmark narratives aligned with the NYC taxi domain: pickup/dropoff zones, `PULocationID`, `DOLocationID`, taxi trips, fare, duration, trip distance, and hour/day features. Avoid non-taxi-domain examples unless explicitly requested.
 - Optional integrations must stay optional. Add dependencies under extras such as `polars`, `duckdb`, `h3`, or `s2`; do not make them core dependencies. Helpers that require an optional package should hard-fail with a clear install hint rather than silently degrading.
@@ -15,6 +17,7 @@
 
 ## Testing instructions
 - Run `just validate` for full local validation.
+- Always run lint/format checks before pushing. For any pushed change, run the relevant Rust and/or Python lint commands below and report them in the handoff.
 - For targeted Rust checks, run `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings`, and `cargo test --workspace`.
 - For targeted Python checks, run `uv run --group dev ruff format --check python tests scripts`, `uv run --group dev ruff check python tests scripts`, and `uv run --group dev pytest`.
 - For Python support matrix changes, do not commit claims for versions you have not validated end-to-end through CI/build logs.

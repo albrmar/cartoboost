@@ -1,6 +1,7 @@
 pub mod booster;
 pub mod data;
 pub mod explain;
+pub mod forecasting;
 pub mod loss;
 pub mod metrics;
 pub mod predictors;

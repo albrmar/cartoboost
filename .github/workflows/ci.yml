@@ -86,10 +86,7 @@ jobs:
 
       - name: Lint Python
         if: matrix.os == 'ubuntu-latest'
-        run: |
-          uv run --group dev ruff format --check python tests scripts
-          uv run --group dev ruff check python tests scripts
-          uv run --group dev ty check python tests scripts
+        run: uv run --group dev pre-commit run --all-files
 
       - name: Install native extension
         run: uv run --group dev maturin develop

@@ -40,6 +40,55 @@ CartoBoost supports:
 - Standalone node2vec, GraphSAGE, heterogeneous GraphSAGE, and typed-schema
   HinSAGE graph regressors and link predictors, plus optional graph feature
   encoders.
+- Rust-native forecasting APIs for geographic and temporal single-series or
+  panel taxi demand, including rolling-origin backtests, naive/seasonal
+  naive/theta/optimized-theta/ETS/AutoARIMA models, supervised CartoBoost lag
+  forecasting, Rust-core weighted ensembles, CLI runs, and portable forecast
+  artifacts.
+
+## Forecasting
+
+```python
+from cartoboost.forecasting import ForecastFrame, ThetaForecaster
+
+frame = ForecastFrame.from_pandas(
+    taxi_lane_demand,
+    timestamp_col="pickup_date",
+    target_col="pickup_trips",
+    series_id_col="pickup_dropoff_lane",
+    freq="D",
+)
+
+model = ThetaForecaster(season_length=7)
+model.fit(frame)
+forecast = model.predict(horizon=14)
+```
+
+Forecast outputs use deterministic columns:
+`series_id`, `timestamp`, `horizon`, `model`, and `mean`. The Python
+forecasting surface is a wrapper over `cartoboost._native`; it does not compute
+fallback forecasts when a native binding is missing. Use the forecasting docs
+for geographic-temporal CLI usage, lag-feature forecasting, backtesting,
+artifacts, and examples built around pickup/dropoff lanes and taxi-zone demand.
+
+## Benchmarks
+
+The benchmark reports focus on the data-science question behind each run:
+dataset, target, feature set, split design, comparison models, metrics, and the
+meaning of the result.
+
+- NYC taxi benchmarks measure transformed trip duration, fare amount, and
+  pickup-zone demand from pickup/dropoff zones, trip attributes, and hour/day
+  features.
+- Forecasting benchmarks measure daily pickup/dropoff lane demand with lagged
+  demand, rolling summaries, calendar fields, zone IDs, airport-lane flags, and
+  borough context. External forecasting comparisons name the exact libraries:
+  StatsForecast and functime.
+- Synthetic model-suite benchmarks isolate dense numeric signal, repeated-ID
+  residual signal, and source-target graph signal against LightGBM and XGBoost.
+- Taxi-zone acceptance benchmarks check whether lane membership, route
+  geometry, and periodic hour behavior are recoverable before making broader
+  quality claims.
 
 ## Install
 

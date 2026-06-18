@@ -1,6 +1,41 @@
 # Model Benchmark Suite
 
-This generated report compares CartoBoost against optional XGBoost and LightGBM baselines on deterministic synthetic workloads.
+## Research Question
+
+On controlled regression workloads, which feature families explain quality
+gains: dense nonlinear features, repeated-ID residual structure, or
+source-target graph structure?
+
+## Dataset
+
+The suite uses deterministic synthetic datasets. Each workload has `2400` rows,
+a fixed random seed, and an 80/20 train/test protocol. The point of these
+fixtures is not to mimic one production dataset; it is to isolate one modeling
+condition at a time so the result can be attributed to the feature family under
+test.
+
+## Targets
+
+Each workload predicts a continuous regression target:
+
+- Normal dense: nonlinear numeric signal with no ID or graph information.
+- Neural ID: dense signal plus repeated cell-ID residual effects.
+- Graph source-target: directed source-target signal with topology and node
+  features.
+
+## Feature Sets
+
+- Dense numeric columns are available to all tabular models.
+- ID residual features are available only in the neural-ID workload.
+- Source-target graph features are available only in the graph workload.
+- Link-prediction rows report ranking quality for candidate edges rather than
+  target regression error.
+
+## Comparison Method
+
+CartoBoost-family models are compared with XGBoost and LightGBM when those
+optional benchmark libraries are installed. The comparison uses the same data
+split, target, and global benchmark settings for each workload.
 
 ## Command
 
@@ -27,7 +62,7 @@ For each benchmark split, this table compares LightGBM with the best CartoBoost-
 | graph | random | graphsage_regressor | 0.4495 | 0.4987 | -0.0493 | 0.0196 | cartoboost |
 | graph | group_holdout | cartoboost | 0.5210 | 0.5343 | -0.0132 | 0.0057 | cartoboost |
 
-### Why CartoBoost Wins Here
+### Interpretation
 
 - The normal dense workload is a baseline sanity check: CartoBoost is competitive without relying on graph or neural inputs.
 - The neural workload shows the difference between repeated-ID and cold-ID claims. `cartoboost_neural` wins the random split because held-out rows reuse train-observed IDs; the group holdout falls back to the base CartoBoost structure instead of pretending unseen IDs can be recovered from an embedding table.
@@ -179,7 +214,7 @@ Train rows: `1906`; test rows: `494`.
 
 ![Prediction throughput by workload and split](prediction_throughput_by_model.png)
 
-## Interpretation Notes
+## Notes
 
 - The normal workload checks dense numeric behavior without ID or graph augmentation.
 - The neural workload includes repeated IDs and a group holdout split, so `cartoboost_neural` should be read as an embedding augmentation check rather than a replacement for external neural networks.

@@ -1,35 +1,45 @@
-# Neural Embedding Strategy Assessment
+# Neural Embedding Strategy Benchmark
 
-This note summarizes the current neural embedding strategy after adding
-out-of-fold training, support-aware shrinkage, multi-key IDs, hierarchical
-fallback, and graph-aware neighbor fallback.
+## Research Question
 
-## What Changed
+Can residual embeddings improve repeated-ID prediction while reducing leakage
+and avoiding false cold-start claims?
 
-The neural path is no longer a single in-sample residual lookup table. The
-current implementation supports:
+## Motivation
 
-- `oof_folds`: builds final-model embedding columns out of fold so the final
-  booster sees realistic embedding noise.
-- `support_prior_strength`: shrinks rare IDs toward prior vectors while letting
-  frequent IDs carry stronger residual signal.
-- 2D `ids`: appends one embedding block per key, such as pickup zone, dropoff
-  zone, and pickup-dropoff pair.
-- `fallback_ids`: tries row-level hierarchical fallback IDs before the global
-  fallback vector.
-- `neighbor_ids`: averages known neighbor embeddings for graph-aware fallback on
-  unseen spatial IDs.
+Earlier neural embedding experiments behaved like an in-sample residual lookup
+table. That inflated repeated-ID validation and did not translate cleanly to
+spatial holdouts. The revised strategy adds out-of-fold training, shrinkage,
+multi-key IDs, hierarchical fallback, and graph-aware neighbor fallback.
 
-The NYC benchmark neural row now uses multi-key zone context, five OOF folds,
-support-aware shrinkage, same service-zone and same-borough fallback
-representatives, and adjacent-zone fallback. The synthetic model suite neural
-row uses OOF embeddings and support-aware shrinkage.
+## Dataset Context
 
-## Before And After
+The strategy is evaluated on two families of benchmarks:
 
-The old neural path was optimistic on repeated-ID synthetic splits and weak on
-NYC spatial holdouts. The new path is less inflated on repeated IDs and much
-stronger on real spatial tasks.
+- NYC taxi tasks: duration, fare, and pickup demand with pickup/dropoff zone
+  context and spatial holdouts.
+- Synthetic neural-ID tasks: controlled repeated-ID and group-holdout splits.
+
+## Target
+
+The target depends on the benchmark:
+
+- NYC duration and fare use transformed continuous trip targets.
+- NYC pickup demand uses transformed zone-time demand.
+- Synthetic neural-ID uses a continuous target with ID-specific residual
+  signal.
+
+## Feature Strategy
+
+The current neural path supports:
+
+- Out-of-fold residual embeddings.
+- Support-aware shrinkage for rare IDs.
+- Multi-key embeddings such as pickup zone, dropoff zone, and lane.
+- Hierarchical fallback IDs.
+- Neighbor-based fallback for graph or spatial adjacency.
+
+## Results: Before vs After
 
 | Benchmark | Split | Old neural R2 | New neural R2 | Change |
 | --- | --- | ---: | ---: | ---: |
@@ -40,10 +50,6 @@ stronger on real spatial tasks.
 | NYC pickup demand | random | `0.8733` | `0.8814` | `+0.0081` |
 | Synthetic neural ID | random | `0.9353` | `0.9217` | `-0.0136` |
 | Synthetic neural ID | group holdout | `0.7790` | `0.7834` | `+0.0044` |
-
-The synthetic random decline is expected. Out-of-fold embeddings remove some
-in-sample residual leakage, so the random repeated-ID score is less optimistic
-than before. That is a better benchmark signal.
 
 ## Current Standing
 
@@ -57,39 +63,20 @@ than before. That is a better benchmark signal.
 | Synthetic neural ID | random | Neural `0.9217` | `0.9217` | Neural still wins where IDs repeat. |
 | Synthetic neural ID | group holdout | LightGBM `0.8875` | `0.7834` | Neural still loses on true cold IDs. |
 
-Pickup-demand spatial holdout remains intentionally skipped for learned models:
-the split removes all zone demand history, so learned models collapse to priors
-and predicted-vs-actual plots are misleading.
-
 ## Interpretation
 
-The new strategy fixes the main neural failure mode in the NYC benchmark. It is
-now a real repeated-ID and spatial-context augmentation rather than mostly an
-in-sample residual memorizer.
+The revised strategy reduces leakage risk. The synthetic random score falls
+slightly because out-of-fold embeddings remove some in-sample residual
+memorization. That is a better quality signal, not a regression in the
+benchmark design.
 
-Use neural embeddings when:
-
-- IDs repeat between training and inference.
-- ID residuals remain after structured features and target-mean context.
-- There are meaningful parent or neighbor fallback IDs.
-- The task benefits from multiple keys, such as pickup zone plus dropoff zone or
-  pickup zone plus hour bucket.
-
-Do not use neural embeddings as the default when:
-
-- The deployment target is a true cold-ID or cold-zone problem.
-- There is no hierarchy, graph, or parent context for fallback.
-- Plain CartoBoost already captures the signal through structured features.
-- The model claim depends on spatial generalization but only random validation
-  improved.
+Use neural embeddings when IDs repeat, residual structure remains after base
+features, and there is a meaningful fallback hierarchy or graph. Do not use
+them as the default when the production problem is true cold-ID prediction.
 
 ## Decision
 
-Plain CartoBoost remains the safest default. Neural embeddings are now a strong
-optional strategy for repeated-ID residual signal and zone-demand style tasks.
-Graph augmentation remains the best current option for the strongest NYC fare
-spatial result. LightGBM and XGBoost remain required external baselines for
-claims outside CartoBoost-specific structure.
-
-Report neural results with the split protocol. Repeated-ID gains are not
+Plain CartoBoost remains the safest default. Neural embeddings are an optional
+strategy for repeated-ID residual signal and zone-demand style tasks. Report
+neural results with the split protocol because repeated-ID gains are not
 cold-start generalization.

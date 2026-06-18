@@ -71,6 +71,15 @@ nav:
       - Constraints: constraints.md
       - Spatial Modeling: spatial_modeling.md
       - Evaluation Protocol: evaluation_protocol.md
+      - Forecasting:
+          - Overview: forecasting.md
+          - API: forecasting_api.md
+          - Models: forecasting_models.md
+          - Backtesting: forecasting_backtesting.md
+          - Lag Features: forecasting_lag_features.md
+          - Artifacts And Config: forecasting_artifacts.md
+          - CLI: forecasting_cli.md
+          - Examples: forecasting_examples.md
       - Feature Schema: feature_schema.md
       - Sparse Features: sparse_features.md
       - Graph Features: graph-features.md
@@ -87,3 +96,5 @@ nav:
       - Model Benchmark Suite: benchmarks/model-suite.md
       - NYC Taxi Benchmarks: benchmarks/nyc-taxi.md
       - Taxi Zone Acceptance: benchmarks/taxi-zone.md
+      - Neural Embedding Strategy: benchmarks/neural-embedding-strategy.md
+      - Neural Embedding Benchmark: benchmarks/neural-embedding-benchmark-latest.md

@@ -1,0 +1,207 @@
+{
+  "benchmark": "geotemporal_lane_demand_forecasting_libraries",
+  "cartoboost_version": "0.1.21",
+  "comparison_libraries": [
+    "functime",
+    "statsforecast"
+  ],
+  "created_at": "2026-06-18T18:51:58.010092+00:00",
+  "dataset": {
+    "days": 90,
+    "domain": "daily NYC taxi-style pickup/dropoff lane demand",
+    "horizon": 14,
+    "seed": 42,
+    "series": 36,
+    "static_covariates": [
+      "pickup_zone",
+      "dropoff_zone",
+      "distance_miles",
+      "airport_lane",
+      "pickup_borough_code"
+    ]
+  },
+  "fixture_source": "duckdb",
+  "forecasting_library_models": {
+    "functime": [
+      "functime_snaive",
+      "functime_ridge",
+      "functime_lightgbm"
+    ],
+    "statsforecast": [
+      "statsforecast_seasonal_naive",
+      "statsforecast_autoets"
+    ]
+  },
+  "metrics": {
+    "cartoboost_lag": {
+      "bias": -0.023016753147985288,
+      "mae": 0.2241779676321493,
+      "mase": 0.30671422128613685,
+      "rmse": 0.3797647824327878,
+      "smape": 0.010754010120988014,
+      "wape": 0.010722082617082582
+    },
+    "functime_lightgbm": {
+      "bias": -1.1955480645714363,
+      "mae": 2.807547337262032,
+      "mase": 3.8412101972718524,
+      "rmse": 2.965697377959389,
+      "smape": 0.14287665915313533,
+      "wape": 0.13428061115661882
+    },
+    "functime_ridge": {
+      "bias": -0.06308211322795187,
+      "mae": 2.309549846098224,
+      "mase": 3.159863522939471,
+      "rmse": 2.6731499974875694,
+      "smape": 0.1134095591984913,
+      "wape": 0.11046216771297125
+    },
+    "functime_snaive": {
+      "bias": -0.452222222222222,
+      "mae": 0.6569841269841273,
+      "mase": 0.8988678817712284,
+      "rmse": 0.8410688588913666,
+      "smape": 0.03263267654650405,
+      "wape": 0.031422526317102156
+    },
+    "statsforecast_autoets": {
+      "bias": -0.022907045042930615,
+      "mae": 0.39776875899197844,
+      "mase": 0.5442164386393586,
+      "rmse": 0.5507932003685023,
+      "smape": 0.019062145685165552,
+      "wape": 0.01902465947681637
+    },
+    "statsforecast_seasonal_naive": {
+      "bias": -0.452222222222222,
+      "mae": 0.6569841269841273,
+      "mase": 0.8988678817712284,
+      "rmse": 0.8410688588913666,
+      "smape": 0.03263267654650405,
+      "wape": 0.031422526317102156
+    }
+  },
+  "model_libraries": {
+    "cartoboost_lag": "cartoboost",
+    "functime_lightgbm": "functime",
+    "functime_ridge": "functime",
+    "functime_snaive": "functime",
+    "statsforecast_autoets": "statsforecast",
+    "statsforecast_seasonal_naive": "statsforecast"
+  },
+  "models": [
+    "cartoboost_lag",
+    "functime_snaive",
+    "functime_ridge",
+    "functime_lightgbm",
+    "statsforecast_seasonal_naive",
+    "statsforecast_autoets"
+  ],
+  "quality": {
+    "best_forecasting_library": "statsforecast",
+    "best_forecasting_library_mae": 0.39776875899197844,
+    "best_forecasting_library_model": "statsforecast_autoets",
+    "best_forecasting_library_rmse": 0.5507932003685023,
+    "best_forecasting_library_wape": 0.01902465947681637,
+    "best_functime_method": "functime_snaive",
+    "best_functime_rmse": 0.8410688588913666,
+    "best_statsforecast_method": "statsforecast_autoets",
+    "best_statsforecast_rmse": 0.5507932003685023,
+    "cartoboost_mae": 0.2241779676321493,
+    "cartoboost_rmse": 0.3797647824327878,
+    "cartoboost_wape": 0.010722082617082582,
+    "comparison_libraries": [
+      "functime",
+      "statsforecast"
+    ],
+    "forecasting_library_models": {
+      "functime": [
+        "functime_snaive",
+        "functime_ridge",
+        "functime_lightgbm"
+      ],
+      "statsforecast": [
+        "statsforecast_seasonal_naive",
+        "statsforecast_autoets"
+      ]
+    },
+    "mae_delta_vs_best_forecasting_library": -0.17359079135982913,
+    "mae_ranking": [
+      "cartoboost_lag",
+      "statsforecast_autoets",
+      "functime_snaive",
+      "statsforecast_seasonal_naive",
+      "functime_ridge",
+      "functime_lightgbm"
+    ],
+    "mae_reduction_vs_best_forecasting_library": 0.4364113255142037,
+    "model_libraries": {
+      "cartoboost_lag": "cartoboost",
+      "functime_lightgbm": "functime",
+      "functime_ridge": "functime",
+      "functime_snaive": "functime",
+      "statsforecast_autoets": "statsforecast",
+      "statsforecast_seasonal_naive": "statsforecast"
+    },
+    "rmse_delta_vs_best_forecasting_library": -0.17102841793571455,
+    "rmse_ranking": [
+      "cartoboost_lag",
+      "statsforecast_autoets",
+      "functime_snaive",
+      "statsforecast_seasonal_naive",
+      "functime_ridge",
+      "functime_lightgbm"
+    ],
+    "rmse_ratio_vs_best_forecasting_library": 0.6894870564464307,
+    "rmse_reduction_vs_best_forecasting_library": 0.3105129435535693,
+    "wape_ranking": [
+      "cartoboost_lag",
+      "statsforecast_autoets",
+      "functime_snaive",
+      "statsforecast_seasonal_naive",
+      "functime_ridge",
+      "functime_lightgbm"
+    ],
+    "wape_reduction_vs_best_forecasting_library": 0.4364113255142037,
+    "winner": "cartoboost_lag"
+  },
+  "timing": {
+    "load_seconds": 0.3584334980114363,
+    "models": {
+      "cartoboost_lag": {
+        "feature_seconds": 0.004796153982169926,
+        "fit_predict_seconds": 2.367175471968949,
+        "fit_seconds": 1.9617930429521948,
+        "predict_seconds": 0.40538242901675403,
+        "total_seconds": 2.3719716259511188
+      },
+      "functime_lightgbm": {
+        "fit_predict_seconds": 77.60881206695922,
+        "fit_seconds": 77.19980732398108,
+        "predict_seconds": 0.4090047429781407
+      },
+      "functime_ridge": {
+        "fit_predict_seconds": 0.17975707195000723,
+        "fit_seconds": 0.0539469649665989,
+        "predict_seconds": 0.12581010698340833
+      },
+      "functime_snaive": {
+        "fit_predict_seconds": 0.05415874201571569,
+        "fit_seconds": 0.03945067303720862,
+        "predict_seconds": 0.014708068978507072
+      },
+      "statsforecast_autoets": {
+        "fit_predict_seconds": 0.5014470110181719,
+        "fit_seconds": 0.5014470110181719,
+        "predict_seconds": 0.0
+      },
+      "statsforecast_seasonal_naive": {
+        "fit_predict_seconds": 0.0061109589878469706,
+        "fit_seconds": 0.0061109589878469706,
+        "predict_seconds": 0.0
+      }
+    },
+    "total_seconds": 82.55713310302235
+  }
+}

@@ -56,6 +56,44 @@ Use `periodic:24` for hour-of-day, diagonal or Gaussian 2D splitters for
 coordinate pairs, and `sparse_set` when rows have taxi-zone or zone
 memberships.
 
+## Forecast A Time Series
+
+Use `ForecastFrame` when the target is future demand, fare, duration, or another
+time-indexed quantity. Single-series data omits `series_id_col`; panel data uses
+one row per series and timestamp.
+
+```python
+import pandas as pd
+
+from cartoboost.forecasting import ForecastFrame, ThetaForecaster
+
+daily_lanes = pd.DataFrame(
+    {
+        "lane_id": ["JFK->LGA"] * 10 + ["LGA->EWR"] * 10,
+        "date": list(pd.date_range("2026-01-01", periods=10, freq="D")) * 2,
+        "loads": [20, 21, 24, 23, 25, 28, 29, 27, 30, 31,
+                  35, 36, 38, 37, 40, 42, 43, 41, 45, 46],
+    }
+)
+
+frame = ForecastFrame.from_pandas(
+    daily_lanes,
+    timestamp_col="date",
+    target_col="loads",
+    series_id_col="lane_id",
+    freq="D",
+)
+
+model = ThetaForecaster(season_length=7, prediction_interval_levels=[0.8, 0.95])
+model.fit(frame)
+forecast = model.predict(horizon=3).to_pandas()
+```
+
+Forecast tables are deterministic: `series_id`, `timestamp`, `horizon`,
+`model`, `mean`, and interval columns such as `lower_80` and `upper_80`.
+Use [Forecasting](forecasting.md) for model selection, rolling-origin
+backtesting, CartoBoost lag features, artifact persistence, and CLI workflows.
+
 ## Add Neural Features (Hybrid)
 
 Use `NeuralEmbeddingRegressor` for neural features: learn a small ID-based

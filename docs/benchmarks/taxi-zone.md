@@ -1,53 +1,80 @@
-# Taxi Zone Acceptance
+# Taxi Zone Acceptance Benchmark
 
-Taxi-zone checks exercise combined dense, temporal, spatial, and sparse pickup
-and dropoff behavior on deterministic synthetic data shaped like the NYC taxi
-benchmark inputs.
+## Research Question
+
+Can the model recover the four taxi-lane signals it is designed to represent:
+lane membership, route geometry, hour-of-day periodicity, and combined
+geographic-temporal structure?
+
+This is an acceptance test, not a production accuracy benchmark.
+
+## Dataset
+
+The fixture is deterministic and shaped like a small taxi-lane dataset:
+
+- 4 pickup regions x 4 dropoff regions.
+- 16 pickup/dropoff lanes.
+- 24 hourly observations per lane.
+- Observable features only: pickup coordinates, dropoff coordinates, lane ID,
+  hour, route midpoint, and trip distance.
+- No hidden simulator metadata is passed into training.
+
+## Targets
+
+The target is synthetic lane demand or route intensity. Each phase isolates a
+different source of signal so the result can be attributed to a feature family.
+
+## Features Tested
+
+| Phase | Feature family | Question |
+| --- | --- | --- |
+| Sparse lane membership | Pickup/dropoff lane ID as sparse membership. | Can the model identify a hot lane without treating lane ID as an ordinal number? |
+| Route midpoint cartometry | Route midpoint and distance geometry. | Can radial/route geometry distinguish central and outer lanes? |
+| Wraparound lane hour | Hour-of-day periodicity. | Can 23:00 and 01:00 be treated as close in time? |
+| Regional lane boosting | Combined lane, spatial, temporal features. | Does the combined feature set improve holdout RMSE? |
 
 ## Command
-
-Install from PyPI for normal use:
-
-```sh
-uv add cartoboost
-```
-
-From a source checkout, regenerate the committed acceptance artifacts with:
 
 ```sh
 uv run --group dev python scripts/run_lane_level_acceptance_metrics.py
 ```
 
-## Dataset Shape
+Generated evidence:
 
-- 4 pickup regions x 4 dropoff regions = 16 pickup-dropoff pairs.
-- 24 hourly observations per pickup-dropoff pair.
-- Observable columns: pickup x/y, dropoff x/y, pickup-dropoff ID, hour,
-  midpoint x/y, and trip distance.
-- No hidden simulator metadata is passed into training.
+- `docs/assets/lane_level_tests/acceptance_metrics.json`
+- `docs/assets/lane_level_tests/acceptance_metrics.md`
+- `docs/assets/lane_level_tests/hour_profile.png`
+- `docs/assets/lane_level_tests/lane_heatmap.png`
+- `docs/assets/lane_level_tests/route_midpoint_geometry.png`
 
-## Outputs
+## Metrics
 
-Generated outputs live under `docs/assets/lane_level_tests/`:
+Each phase reports an RMSE or inspection margin specific to the signal being
+tested. Acceptance gates are binary checks that the targeted feature family
+behaves as expected.
 
-- `acceptance_metrics.json`
-- `acceptance_metrics.md`
-- `route_midpoint_cartometry.png`
-- `hour_profile.png`
-- `lane_heatmap.png`
+## Results
 
-Use these files to inspect trip cartometry, hour effects, taxi-zone residuals,
-and combined split behavior.
+The generated acceptance report shows:
 
-## What The Check Proves
+- Sparse lane membership reaches exact train RMSE where axis lane ID does not.
+- Route midpoint cartometry reaches exact train RMSE where axis midpoint splits
+  do not.
+- Periodic hour handling treats wraparound hours correctly, while axis hour
+  splits create an artificial edge gap.
+- The combined lane/spatial/temporal model reduces holdout RMSE from 12.68 to
+  4.86 on the deterministic regional lane fixture.
 
-The taxi-zone dataset is intended to show whether CartoBoost captures:
+## Interpretation
 
-- Pickup/dropoff sparse-set encoding.
-- Temporal profile behavior.
-- Spatial trip cartometry behavior.
-- Combined split behavior when several feature families are present.
+The check proves that the model can express the specific feature contracts
+needed by taxi-lane data. It does not prove real-world forecast accuracy. Use
+the NYC taxi benchmark for real-data evidence and this acceptance fixture for
+debugging whether the feature families work at all.
 
-It is not a production quality benchmark. Any broader benchmark claim needs a
-documented dataset, feature handling, baseline configuration, and repeated-run
-summary.
+## Limitations
+
+- The fixture is synthetic and intentionally small.
+- Targets are constructed to isolate feature behavior.
+- Broader claims require a documented real dataset, baseline configuration,
+  repeated split protocol, and quality metrics.

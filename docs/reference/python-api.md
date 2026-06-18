@@ -51,6 +51,45 @@ CartoBoostRegressor(
 dataframe-style objects. Install `cartoboost[duckdb]` to pass DuckDB relations
 directly, or `cartoboost[polars]` for Polars inputs.
 
+## `cartoboost.forecasting`
+
+Forecasting APIs validate timestamped inputs, produce deterministic forecast
+tables, and provide leakage-safe evaluation for single-series and panel data.
+
+Core schema:
+
+| Entry point | Purpose |
+| --- | --- |
+| `ForecastFrame.from_pandas(df, timestamp_col, target_col, series_id_col=None, freq=None, ...)` | Validates and sorts single-series or panel history. |
+| `ForecastResult.to_pandas()` | Returns stable forecast columns. |
+| `ForecastResult.save_json(path)` / `ForecastResult.load_json(path)` | Round-trip forecast tables through JSON. |
+| `PredictionInterval(level, lower, upper)` | Validates lower/upper interval bounds. |
+
+Forecasters:
+
+| Entry point | Notes |
+| --- | --- |
+| `NaiveForecaster` | Repeats the last observed value. |
+| `SeasonalNaiveForecaster(season_length)` | Repeats the last seasonal cycle. |
+| `ThetaForecaster(season_length=None, prediction_interval_levels=())` | Local theta method with optional seasonality and residual intervals. |
+| `OptimizedThetaForecaster` | Deterministically selects theta/alpha from a validation grid. |
+| `ETSForecaster` | Rust-native additive ETS with optional additive seasonality. |
+| `AutoARIMAForecaster` | Rust-native AutoARIMA over bounded ARIMA(p,d,q) candidates. |
+| `CartoBoostLagForecaster` | Global recursive forecaster using leakage-safe lag, rolling, calendar, static, and known-future features with `CartoBoostRegressor`. |
+| `WeightedEnsembleForecaster` | Combines aligned component forecasts with fixed weights. |
+| `BacktestWeightedEnsembleForecaster` | Reserved; raises clearly until Rust backtest-weight learning is implemented. |
+
+Evaluation and persistence:
+
+| Entry point | Notes |
+| --- | --- |
+| `RollingOriginSplitter`, `ExpandingWindowSplitter`, `SlidingWindowSplitter` | Deterministic timestamp folds with `max(train) < min(validation)`. |
+| `RollingOriginBacktester(horizon, min_train_size, step_size)` | Fits a fresh model per fold and aligns rows by `series_id`, `timestamp`, and `horizon`. |
+| `ForecastMetricSet` | MAE, RMSE, MAPE, sMAPE, MASE, WAPE, bias, pinball loss, and interval metrics. |
+| `ForecastRegistry` / `ForecastModelSpec` | Named model construction and optional dependency validation. |
+| `ForecastArtifact` / `ForecastArtifactManifest` | JSON manifest plus CSV or Parquet forecast persistence. |
+| `ForecastingConfig` | Strict TOML config parsing for forecast runs. |
+
 ## `cartoboost.NeuralEmbeddingRegressor`
 
 ```python
