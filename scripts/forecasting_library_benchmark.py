@@ -4,31 +4,52 @@
 The fixture is synthetic but domain-shaped: daily pickup/dropoff lane demand with
 zone IDs, route distance, airport-lane structure, borough codes, weekly effects,
 and deterministic event spikes. The library baselines are functime,
-StatsForecast, and Prophet models.
+StatsForecast, and Prophet models. The same benchmark can also aggregate cached
+NYC TLC taxi trip parquet files into real pickup/dropoff lane demand.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from time import perf_counter
 from typing import Any
 
+import matplotlib  # noqa: I001
 import numpy as np
+
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt  # noqa: I001
+
 from cartoboost import __version__
 from cartoboost.regressor import CartoBoostRegressor
+
+ROOT = Path(__file__).resolve().parents[1]
+PYTHON_SOURCE = ROOT / "python"
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+if str(PYTHON_SOURCE) not in sys.path:
+    sys.path.insert(0, str(PYTHON_SOURCE))
+
+from scripts.run_nyc_taxi_quality_benchmarks import (  # noqa: E402
+    DEFAULT_CACHE_DIR,
+    TLC_TRIP_RECORD_PAGE,
+    ZoneContext,
+    clean_tlc_frame,
+    ensure_parquet_files,
+    ensure_zone_lookup,
+    parse_months,
+)
 
 FEATURE_COLUMNS = [
     "loads_lag_1",
     "loads_lag_7",
     "loads_lag_14",
-    "loads_lag_21",
-    "loads_lag_28",
     "loads_roll_7",
     "loads_roll_14",
-    "loads_roll_28",
     "date_dayofweek",
     "date_day",
     "date_month",
@@ -38,6 +59,8 @@ FEATURE_COLUMNS = [
     "airport_lane",
     "pickup_borough_code",
 ]
+LAGS = [1, 7, 14]
+ROLLING_WINDOWS = [7, 14]
 STATIC_COVARIATES = [
     "pickup_zone",
     "dropoff_zone",
@@ -68,20 +91,33 @@ def main() -> int:
             "Compare CartoBoost global lag forecasts against functime, StatsForecast, and Prophet."
         )
     )
-    parser.add_argument("--source", choices=["polars", "duckdb"], default="polars")
+    parser.add_argument("--source", choices=["polars", "duckdb", "nyc-taxi"], default="polars")
     parser.add_argument("--output", default="artifacts/forecasting_library_benchmark_polars.json")
+    parser.add_argument(
+        "--plot-dir",
+        type=Path,
+        default=None,
+        help="Directory for forecast-vs-actual plots. Defaults to OUTPUT.parent / plots.",
+    )
     parser.add_argument("--lanes", type=int, default=36)
     parser.add_argument("--days", type=int, default=90)
     parser.add_argument("--horizon", type=int, default=14)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--year", type=int, default=2024)
+    parser.add_argument("--months", default="1", help="Comma-separated TLC month numbers.")
+    parser.add_argument("--taxi-type", default="yellow", choices=["yellow"])
+    parser.add_argument("--cache-dir", type=Path, default=DEFAULT_CACHE_DIR)
+    parser.add_argument("--no-download", action="store_true")
     args = parser.parse_args()
 
     benchmark_start = perf_counter()
     load_start = perf_counter()
     source = args.source
-    table = load_fixture(source, lanes=args.lanes, days=args.days, seed=args.seed)
+    table, dataset = load_benchmark_table(args)
     load_seconds = perf_counter() - load_start
-    metrics, quality, timing = score_models(table, horizon=args.horizon)
+    metrics, quality, timing, plot_data = score_models(table, horizon=args.horizon)
+    plot_dir = args.plot_dir or Path(args.output).parent / "plots"
+    plot_paths = write_forecast_plots(plot_data, metrics, plot_dir, source)
     total_seconds = perf_counter() - benchmark_start
     timing = {
         "total_seconds": total_seconds,
@@ -96,18 +132,12 @@ def main() -> int:
         "comparison_libraries": list(FORECASTING_LIBRARY_MODELS),
         "forecasting_library_models": FORECASTING_LIBRARY_MODELS,
         "model_libraries": MODEL_LIBRARIES,
-        "dataset": {
-            "series": args.lanes,
-            "days": args.days,
-            "horizon": args.horizon,
-            "seed": args.seed,
-            "domain": "daily NYC taxi-style pickup/dropoff lane demand",
-            "static_covariates": STATIC_COVARIATES,
-        },
+        "dataset": dataset,
         "models": ["cartoboost_lag", *FORECASTING_LIBRARY_BASELINES],
         "metrics": metrics,
         "quality": quality,
         "timing": timing,
+        "plots": plot_paths,
     }
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -116,8 +146,23 @@ def main() -> int:
     return 0
 
 
-def load_fixture(source: str, *, lanes: int, days: int, seed: int) -> Any:
-    table = make_fixture(lanes=lanes, days=days, seed=seed)
+def load_benchmark_table(args: argparse.Namespace) -> tuple[Any, dict[str, Any]]:
+    if args.source == "nyc-taxi":
+        return load_real_taxi_lane_demand(args)
+    table = make_fixture(lanes=args.lanes, days=args.days, seed=args.seed)
+    dataset = {
+        "source": "synthetic_fixture",
+        "series": args.lanes,
+        "days": args.days,
+        "horizon": args.horizon,
+        "seed": args.seed,
+        "domain": "daily NYC taxi-style pickup/dropoff lane demand",
+        "static_covariates": STATIC_COVARIATES,
+    }
+    return load_fixture_source(args.source, table), dataset
+
+
+def load_fixture_source(source: str, table: Any) -> Any:
     if source == "polars":
         return table
     if source == "duckdb":
@@ -135,6 +180,111 @@ def load_fixture(source: str, *, lanes: int, days: int, seed: int) -> Any:
         finally:
             con.close()
     raise ValueError(f"unsupported fixture source {source!r}")
+
+
+def load_real_taxi_lane_demand(args: argparse.Namespace) -> tuple[Any, dict[str, Any]]:
+    pandas = require_pandas_for_benchmark()
+    pl = require_polars()
+    months = parse_months(args.months)
+    paths = ensure_parquet_files(
+        taxi_type=args.taxi_type,
+        year=args.year,
+        months=months,
+        cache_dir=args.cache_dir,
+        no_download=args.no_download,
+    )
+    zone_lookup = ensure_zone_lookup(cache_dir=args.cache_dir, no_download=args.no_download)
+    frames = [
+        pandas.read_parquet(
+            path,
+            columns=[
+                "tpep_pickup_datetime",
+                "tpep_dropoff_datetime",
+                "passenger_count",
+                "trip_distance",
+                "fare_amount",
+                "total_amount",
+                "PULocationID",
+                "DOLocationID",
+            ],
+        )
+        for path in paths
+    ]
+    cleaned = clean_tlc_frame(pandas.concat(frames, ignore_index=True))
+    cleaned["pickup_date"] = pandas.to_datetime(cleaned["tpep_pickup_datetime"]).dt.normalize()
+    cleaned["lane_id"] = (
+        "PU"
+        + cleaned["PULocationID"].astype(int).astype(str)
+        + "->DO"
+        + cleaned["DOLocationID"].astype(int).astype(str)
+    )
+    top_lanes = (
+        cleaned.groupby("lane_id")
+        .size()
+        .sort_values(ascending=False)
+        .head(args.lanes)
+        .index.tolist()
+    )
+    if not top_lanes:
+        raise ValueError("real taxi aggregation produced no lanes")
+    lane_frame = cleaned[cleaned["lane_id"].isin(top_lanes)].copy()
+    grouped = (
+        lane_frame.groupby(
+            ["lane_id", "pickup_date", "PULocationID", "DOLocationID"], as_index=False
+        )
+        .agg(loads=("lane_id", "size"), distance_miles=("trip_distance", "mean"))
+        .rename(columns={"pickup_date": "date"})
+    )
+    calendar = pandas.date_range(grouped["date"].min(), grouped["date"].max(), freq="D")
+    completed = []
+    for lane_id, lane in grouped.groupby("lane_id", sort=True):
+        pickup_zone = int(lane["PULocationID"].iloc[0])
+        dropoff_zone = int(lane["DOLocationID"].iloc[0])
+        zone = zone_lookup.get(pickup_zone, ZoneContext(borough_code=7, service_zone_code=6))
+        distance = float(lane["distance_miles"].mean())
+        filled = pandas.DataFrame({"date": calendar})
+        filled["lane_id"] = lane_id
+        filled = filled.merge(lane[["date", "loads"]], on="date", how="left")
+        filled["loads"] = filled["loads"].fillna(0.0).astype(float)
+        filled["pickup_zone"] = pickup_zone
+        filled["dropoff_zone"] = dropoff_zone
+        filled["distance_miles"] = distance
+        filled["airport_lane"] = float(zone.service_zone_code == 1)
+        filled["pickup_borough_code"] = float(zone.borough_code)
+        completed.append(filled)
+    table = (
+        pl.from_pandas(pandas.concat(completed, ignore_index=True))
+        .with_columns(pl.col("date").cast(pl.Datetime("us")))
+        .select(
+            "lane_id",
+            "date",
+            "loads",
+            *STATIC_COVARIATES,
+        )
+    )
+    days = int(table.select(pl.col("date").n_unique()).item())
+    min_train_days = max(LAGS) + 2
+    if days - args.horizon < min_train_days:
+        raise ValueError(
+            f"real taxi benchmark needs at least {min_train_days + args.horizon} daily "
+            f"periods for horizon={args.horizon}; got {days}. Reduce --horizon or add months."
+        )
+    dataset = {
+        "source": "nyc_tlc_trip_records",
+        "source_url": TLC_TRIP_RECORD_PAGE,
+        "taxi_type": args.taxi_type,
+        "year": args.year,
+        "months": months,
+        "series": len(top_lanes),
+        "days": days,
+        "horizon": args.horizon,
+        "raw_rows": int(sum(len(frame) for frame in frames)),
+        "clean_rows": int(len(cleaned)),
+        "aggregated_rows": int(table.height),
+        "domain": "real daily NYC TLC yellow taxi pickup/dropoff lane demand",
+        "static_covariates": STATIC_COVARIATES,
+    }
+    return table, dataset
 
 
 def make_fixture(*, lanes: int, days: int, seed: int) -> Any:
@@ -178,7 +328,7 @@ def make_fixture(*, lanes: int, days: int, seed: int) -> Any:
 
 def score_models(
     table: Any, *, horizon: int
-) -> tuple[dict[str, dict[str, float]], dict[str, Any], dict[str, Any]]:
+) -> tuple[dict[str, dict[str, float]], dict[str, Any], dict[str, Any], Any]:
     pl = require_polars()
     cutoff = table.select(pl.col("date").unique().sort()).to_series()[-horizon]
     train = table.filter(pl.col("date") < cutoff)
@@ -234,7 +384,7 @@ def score_models(
             **prophet_timing,
         }
     }
-    return metrics, quality, timing
+    return metrics, quality, timing, scored
 
 
 def quality_summary(metrics: dict[str, dict[str, float]]) -> dict[str, Any]:
@@ -285,6 +435,11 @@ def cartoboost_forecast(train: Any, horizon: int) -> tuple[Any, dict[str, float]
     pl = require_polars()
     feature_start = perf_counter()
     feature_frame = build_history_features(train).drop_nulls(FEATURE_COLUMNS)
+    if feature_frame.is_empty():
+        raise ValueError(
+            "CartoBoost lag benchmark has no train rows after lag feature generation; "
+            "use more history or a shorter horizon."
+        )
     x = feature_frame.select(FEATURE_COLUMNS).to_numpy()
     y = feature_frame.select("loads").to_numpy().ravel()
     feature_seconds = perf_counter() - feature_start
@@ -339,17 +494,14 @@ def cartoboost_forecast(train: Any, horizon: int) -> tuple[Any, dict[str, float]
 def build_history_features(frame: Any) -> Any:
     pl = require_polars()
     return frame.sort(["lane_id", "date"]).with_columns(
-        *[
-            pl.col("loads").shift(lag).over("lane_id").alias(f"loads_lag_{lag}")
-            for lag in [1, 7, 14, 21, 28]
-        ],
+        *[pl.col("loads").shift(lag).over("lane_id").alias(f"loads_lag_{lag}") for lag in LAGS],
         *[
             pl.col("loads")
             .shift(1)
             .rolling_mean(window)
             .over("lane_id")
             .alias(f"loads_roll_{window}")
-            for window in [7, 14, 28]
+            for window in ROLLING_WINDOWS
         ],
         date_dayofweek=pl.col("date").dt.weekday().cast(pl.Float64),
         date_day=pl.col("date").dt.day().cast(pl.Float64),
@@ -376,9 +528,9 @@ def build_future_features(history: Any, future: Any) -> Any:
         lane_history = history.filter(pl.col("lane_id") == row["lane_id"]).sort("date")
         values = dict(row)
         loads = lane_history["loads"].to_list()
-        for lag in [1, 7, 14, 21, 28]:
+        for lag in LAGS:
             values[f"loads_lag_{lag}"] = float(loads[-lag]) if len(loads) >= lag else None
-        for window in [7, 14, 28]:
+        for window in ROLLING_WINDOWS:
             values[f"loads_roll_{window}"] = (
                 float(np.mean(loads[-window:])) if len(loads) >= window else None
             )
@@ -401,10 +553,10 @@ def functime_forecasts(train: Any, horizon: int) -> tuple[Any, dict[str, dict[st
     )
     model_specs = {
         "functime_snaive": snaive(freq="1d", sp=7),
-        "functime_ridge": ridge(freq="1d", lags=28),
+        "functime_ridge": ridge(freq="1d", lags=max(LAGS)),
         "functime_lightgbm": lightgbm(
             freq="1d",
-            lags=28,
+            lags=max(LAGS),
             n_estimators=80,
             learning_rate=0.08,
             max_depth=5,
@@ -601,6 +753,171 @@ def evaluate_metrics(scored: Any, prediction_col: str, train: Any) -> dict[str, 
         "smape": smape,
         "bias": bias,
     }
+
+
+def write_forecast_plots(
+    scored: Any, metrics: dict[str, dict[str, float]], output_dir: Path, source: str
+) -> list[str]:
+    pl = require_polars()
+    output_dir.mkdir(parents=True, exist_ok=True)
+    top_series = (
+        scored.group_by("series_id")
+        .agg(pl.col("actual").sum().alias("actual_sum"))
+        .sort("actual_sum", descending=True)
+        .head(4)
+        .select("series_id")
+        .to_series()
+        .to_list()
+    )
+    paths = [
+        plot_metric_bars(metrics, output_dir / f"{source}_tool_metric_comparison.png"),
+        plot_horizon_errors(scored, output_dir / f"{source}_horizon_rmse_by_tool.png"),
+        plot_forecast_lines(scored, top_series, output_dir / f"{source}_forecast_lines.png"),
+        plot_forecast_scatter(scored, metrics, output_dir / f"{source}_actual_vs_predicted.png"),
+    ]
+    return [str(path.as_posix()) for path in paths]
+
+
+def model_color(model: str) -> str:
+    model_colors = {
+        "cartoboost_lag": "#0f766e",
+        "functime_snaive": "#6d28d9",
+        "functime_ridge": "#a855f7",
+        "functime_lightgbm": "#c084fc",
+        "statsforecast_seasonal_naive": "#c2410c",
+        "statsforecast_autoets": "#f97316",
+        "prophet_additive": "#2563eb",
+    }
+    return model_colors[model]
+
+
+def model_label(model: str) -> str:
+    return f"{model.replace('_', ' ')} ({MODEL_LIBRARIES[model]})"
+
+
+def plot_metric_bars(metrics: dict[str, dict[str, float]], output_path: Path) -> Path:
+    models = sorted(metrics, key=lambda name: metrics[name]["rmse"])
+    metric_names = ["rmse", "mae", "wape"]
+    fig, axes = plt.subplots(1, 3, figsize=(16, 7), sharey=True)
+    y_positions = np.arange(len(models))
+    for axis, metric in zip(axes, metric_names, strict=True):
+        values = [metrics[model][metric] for model in models]
+        bars = axis.barh(
+            y_positions,
+            values,
+            color=[model_color(model) for model in models],
+            edgecolor="#111827",
+            linewidth=0.5,
+        )
+        axis.bar_label(bars, labels=[f"{value:.3f}" for value in values], fontsize=8, padding=2)
+        axis.set_title(metric.upper())
+        axis.set_yticks(y_positions, [model_label(model) for model in models])
+        axis.invert_yaxis()
+        axis.tick_params(axis="y", labelsize=9)
+        axis.grid(axis="x", alpha=0.25)
+        axis.set_xlabel(metric.upper())
+    handles = [
+        plt.Line2D([0], [0], color=color, lw=8, label=library)
+        for library, color in {
+            "cartoboost": "#0f766e",
+            "functime": "#7c3aed",
+            "statsforecast": "#c2410c",
+            "prophet": "#2563eb",
+        }.items()
+    ]
+    fig.legend(handles=handles, ncol=4, loc="upper center", bbox_to_anchor=(0.5, 1.02))
+    fig.suptitle("Forecasting tool quality on the same held-out lane days", y=1.06, fontsize=14)
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=170, bbox_inches="tight")
+    plt.close(fig)
+    return output_path
+
+
+def plot_horizon_errors(scored: Any, output_path: Path) -> Path:
+    models = ["cartoboost_lag", *FORECASTING_LIBRARY_BASELINES]
+    frame = scored.to_pandas()
+    fig, axis = plt.subplots(figsize=(11, 5.5))
+    for model in models:
+        horizon_rmse = (
+            frame.assign(squared_error=(frame[model] - frame["actual"]) ** 2)
+            .groupby("horizon", as_index=False)["squared_error"]
+            .mean()
+        )
+        axis.plot(
+            horizon_rmse["horizon"],
+            np.sqrt(horizon_rmse["squared_error"]),
+            marker="o",
+            linewidth=1.8,
+            markersize=4,
+            color=model_color(model),
+            alpha=0.95,
+            label=model,
+        )
+    axis.set_title("RMSE by forecast horizon")
+    axis.set_xlabel("days ahead")
+    axis.set_ylabel("RMSE in daily trips")
+    axis.grid(alpha=0.25)
+    axis.legend(ncol=2, fontsize=8)
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=170)
+    plt.close(fig)
+    return output_path
+
+
+def plot_forecast_lines(scored: Any, series_ids: list[str], output_path: Path) -> Path:
+    pl = require_polars()
+    frame = scored.filter(pl.col("series_id").is_in(series_ids)).to_pandas()
+    models = ["cartoboost_lag", "prophet_additive", "statsforecast_autoets", "functime_snaive"]
+    fig, axes = plt.subplots(
+        len(series_ids), 1, figsize=(11, max(3, 2.6 * len(series_ids))), sharex=True
+    )
+    if len(series_ids) == 1:
+        axes = [axes]
+    for axis, series_id in zip(axes, series_ids, strict=True):
+        lane = frame[frame["series_id"] == series_id].sort_values("timestamp")
+        axis.plot(lane["timestamp"], lane["actual"], color="#111827", linewidth=2.2, label="actual")
+        for model in models:
+            axis.plot(
+                lane["timestamp"],
+                lane[model],
+                color=model_color(model),
+                linewidth=1.4,
+                label=model,
+            )
+        axis.set_title(series_id, fontsize=10)
+        axis.set_ylabel("daily trips")
+        axis.grid(alpha=0.25)
+    axes[0].legend(ncol=3, fontsize=8, loc="upper left")
+    axes[-1].set_xlabel("forecast date")
+    fig.suptitle("Forecast horizon: actual vs model predictions", fontsize=13)
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=160)
+    plt.close(fig)
+    return output_path
+
+
+def plot_forecast_scatter(
+    scored: Any, metrics: dict[str, dict[str, float]], output_path: Path
+) -> Path:
+    frame = scored.to_pandas()
+    models = sorted(metrics, key=lambda name: metrics[name]["rmse"])[:4]
+    fig, axes = plt.subplots(2, 2, figsize=(10, 8), sharex=True, sharey=True)
+    actual_min = float(frame["actual"].min())
+    actual_max = float(frame["actual"].max())
+    for axis, model in zip(axes.ravel(), models, strict=True):
+        axis.scatter(frame["actual"], frame[model], s=10, alpha=0.45, color=model_color(model))
+        axis.plot([actual_min, actual_max], [actual_min, actual_max], color="#111827", linewidth=1)
+        axis.set_title(f"{model} RMSE={metrics[model]['rmse']:.3f}", fontsize=10)
+        axis.grid(alpha=0.25)
+    for axis in axes[:, 0]:
+        axis.set_ylabel("predicted daily trips")
+    for axis in axes[-1, :]:
+        axis.set_xlabel("actual daily trips")
+    fig.suptitle("Forecast accuracy across held-out lane days", fontsize=13)
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=160)
+    plt.close(fig)
+    return output_path
 
 
 def require_polars() -> Any:

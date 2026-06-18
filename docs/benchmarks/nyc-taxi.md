@@ -106,6 +106,19 @@ LightGBM on RMSE and R2:
 Full result tables and plots are stored in
 `docs/assets/nyc_taxi_benchmarks/`.
 
+## What Each Row Models
+
+The five comparison rows are not five repeats of the same problem. They cover
+different prediction units and validation questions:
+
+| task/split | prediction unit | target being modeled | validation question | why the winning row is plausible |
+| --- | --- | --- | --- | --- |
+| duration/random | One completed taxi trip. | Log trip duration in seconds. | Can the model explain ordinary held-out trips drawn from the same month-wide trip distribution? | Base CartoBoost uses trip distance, passenger count, hour/weekday periodicity, pickup/dropoff zones, and route geometry. |
+| duration/spatial_holdout | One completed taxi trip from held-out pickup zones. | Log trip duration in seconds. | Does the trip-duration structure transfer when pickup zones are held out? | The gain comes from spatial splitters and route geometry rather than memorizing the exact validation rows. |
+| fare/random | One completed taxi trip. | Log total fare amount. | Can the model recover fare structure for ordinary held-out trips? | Distance, pickup/dropoff zones, hour/weekday effects, and cartometric route features align with how fares vary. |
+| fare/spatial_holdout | One completed taxi trip from held-out pickup zones. | Log total fare amount. | Does fare modeling generalize to zones not present in the training pickup set? | Route and zone geometry carry transferable fare signal beyond target-mean zone encodings. |
+| pickup_demand/random | Pickup zone x hour x weekday bucket. | Log pickup trip count. | Can the model explain recurring zone-time demand for observed zones? | The node2vec row adds topology from observed pickup-zone relationships before modeling hour, weekday, and zone effects. |
+
 ## Interpretation
 
 Fare and duration are geotemporal row-level targets. The winning row is base

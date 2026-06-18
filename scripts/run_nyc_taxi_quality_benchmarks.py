@@ -2505,8 +2505,41 @@ def write_markdown(results: dict[str, Any], output_dir: Path) -> None:
     lines = [
         "# NYC Taxi Model Quality Benchmarks",
         "",
-        "These artifacts compare predictive quality and speed on NYC TLC taxi-derived tasks.",
-        "Quality metrics are computed on transformed regression targets.",
+        "## Research Question",
+        "",
+        "On real NYC taxi data, do geographic and temporal feature families improve",
+        "prediction quality for trip duration, fare amount, and pickup-zone demand when",
+        "compared with strong gradient-boosted tabular baselines?",
+        "",
+        "## Dataset",
+        "",
+        "The benchmark uses NYC TLC taxi-derived records. The row-level tasks use trip",
+        "records with pickup/dropoff zone context, trip attributes, passenger count, and",
+        "time-of-day features. The demand task aggregates pickup activity by zone and",
+        "time bucket.",
+        "",
+        "## Targets",
+        "",
+        "Quality metrics are computed on transformed regression targets:",
+        "",
+        "- Trip duration: log trip duration.",
+        "- Fare amount: log total amount.",
+        "- Pickup-zone demand: log pickup trip count for a zone-time bucket.",
+        "",
+        "## Feature Sets",
+        "",
+        "- Geographic features: pickup zone, dropoff zone, route geometry, and",
+        "  zone-level encodings.",
+        "- Temporal features: hour, weekday, and periodic time structure.",
+        "- Trip features: distance, passenger count, and related trip descriptors.",
+        "- Graph features for pickup demand: topology learned from observed pickup-zone",
+        "  relationships.",
+        "",
+        "## Comparison Method",
+        "",
+        "CartoBoost-family models are compared with LightGBM, XGBoost, and a mean",
+        "baseline under the same task, split, target transformation, and global",
+        "benchmark settings.",
         "",
         f"- dataset source: {results['dataset']['source']}",
         f"- models requested: {', '.join(results['models_requested'])}",
@@ -2543,6 +2576,23 @@ def write_markdown(results: dict[str, Any], output_dir: Path) -> None:
                 f"{row['best_cartoboost_rmse']:.6f} | {row['lightgbm_rmse']:.6f} | "
                 f"{row['rmse_delta_vs_lightgbm']:.6f} | "
                 f"{row['r2_delta_vs_lightgbm']:.6f} | {row['winner']} |"
+            )
+        lines.extend(
+            [
+                "",
+                "### What Each Comparison Row Models",
+                "",
+                (
+                    "| task/split | prediction unit | target being modeled | validation question | "
+                    "why the winning row is plausible |"
+                ),
+                "| --- | --- | --- | --- | --- |",
+            ]
+        )
+        for row in modeled_comparison_rows():
+            lines.append(
+                f"| {row['task_split']} | {row['unit']} | {row['target']} | "
+                f"{row['validation_question']} | {row['winning_signal']} |"
             )
         lines.extend(
             [
@@ -2593,7 +2643,11 @@ def write_markdown(results: dict[str, Any], output_dir: Path) -> None:
                 ]
             )
             lines.append("| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |")
-            for model_name, model in split["models"].items():
+            model_names = [
+                name for name in results["models_requested"] if name in split["models"]
+            ] + [name for name in split["models"] if name not in results["models_requested"]]
+            for model_name in model_names:
+                model = split["models"][model_name]
                 if model["status"] == "ok":
                     metrics = model["metrics"]
                     timing = model["timing"]
@@ -2654,6 +2708,72 @@ def lightgbm_comparison(results: dict[str, Any]) -> list[dict[str, Any]]:
                 }
             )
     return comparisons
+
+
+def modeled_comparison_rows() -> list[dict[str, str]]:
+    return [
+        {
+            "task_split": "duration/random",
+            "unit": "one completed taxi trip",
+            "target": "log trip duration in seconds",
+            "validation_question": (
+                "Can the model explain ordinary held-out trips drawn from the same month-wide "
+                "trip distribution?"
+            ),
+            "winning_signal": (
+                "Base CartoBoost uses trip distance, passenger count, hour/weekday periodicity, "
+                "pickup/dropoff zones, and route geometry."
+            ),
+        },
+        {
+            "task_split": "duration/spatial_holdout",
+            "unit": "one completed taxi trip from held-out pickup zones",
+            "target": "log trip duration in seconds",
+            "validation_question": (
+                "Does the trip-duration structure transfer when pickup zones are held out?"
+            ),
+            "winning_signal": (
+                "The gain comes from spatial splitters and route geometry rather than memorizing "
+                "the exact validation rows."
+            ),
+        },
+        {
+            "task_split": "fare/random",
+            "unit": "one completed taxi trip",
+            "target": "log total fare amount",
+            "validation_question": (
+                "Can the model recover fare structure for ordinary held-out trips?"
+            ),
+            "winning_signal": (
+                "Distance, pickup/dropoff zones, hour/weekday effects, and cartometric route "
+                "features align with how fares vary."
+            ),
+        },
+        {
+            "task_split": "fare/spatial_holdout",
+            "unit": "one completed taxi trip from held-out pickup zones",
+            "target": "log total fare amount",
+            "validation_question": (
+                "Does fare modeling generalize to zones not present in the training pickup set?"
+            ),
+            "winning_signal": (
+                "Route and zone geometry carry transferable fare signal beyond target-mean "
+                "zone encodings."
+            ),
+        },
+        {
+            "task_split": "pickup_demand/random",
+            "unit": "pickup zone x hour x weekday bucket",
+            "target": "log pickup trip count",
+            "validation_question": (
+                "Can the model explain recurring zone-time demand for observed zones?"
+            ),
+            "winning_signal": (
+                "The node2vec row adds topology from observed pickup-zone relationships before "
+                "modeling hour, weekday, and zone effects."
+            ),
+        },
+    ]
 
 
 def write_outputs(results: dict[str, Any], output_dir: Path) -> None:

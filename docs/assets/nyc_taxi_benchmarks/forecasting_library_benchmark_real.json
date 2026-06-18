@@ -1,0 +1,251 @@
+{
+  "benchmark": "geotemporal_lane_demand_forecasting_libraries",
+  "cartoboost_version": "0.1.23",
+  "comparison_libraries": [
+    "functime",
+    "statsforecast",
+    "prophet"
+  ],
+  "created_at": "2026-06-18T20:53:54.766547+00:00",
+  "dataset": {
+    "aggregated_rows": 744,
+    "clean_rows": 2827685,
+    "days": 31,
+    "domain": "real daily NYC TLC yellow taxi pickup/dropoff lane demand",
+    "horizon": 7,
+    "months": [
+      1
+    ],
+    "raw_rows": 2964624,
+    "series": 24,
+    "source": "nyc_tlc_trip_records",
+    "source_url": "https://www.nyc.gov/site/tlc/about/tlc-trip-record-data.page",
+    "static_covariates": [
+      "pickup_zone",
+      "dropoff_zone",
+      "distance_miles",
+      "airport_lane",
+      "pickup_borough_code"
+    ],
+    "taxi_type": "yellow",
+    "year": 2024
+  },
+  "fixture_source": "nyc-taxi",
+  "forecasting_library_models": {
+    "functime": [
+      "functime_snaive",
+      "functime_ridge",
+      "functime_lightgbm"
+    ],
+    "prophet": [
+      "prophet_additive"
+    ],
+    "statsforecast": [
+      "statsforecast_seasonal_naive",
+      "statsforecast_autoets"
+    ]
+  },
+  "metrics": {
+    "cartoboost_lag": {
+      "bias": 26.045128536433488,
+      "mae": 43.03953587280695,
+      "mase": 0.6836992149238917,
+      "rmse": 59.87968883569313,
+      "smape": 0.13762509175179458,
+      "wape": 0.1383007923689141
+    },
+    "functime_lightgbm": {
+      "bias": -27.765465001874595,
+      "mae": 66.42580387509855,
+      "mase": 1.0551988779411388,
+      "rmse": 99.75409185927997,
+      "smape": 0.2298810479791188,
+      "wape": 0.21344889352007493
+    },
+    "functime_ridge": {
+      "bias": 36.32846732366653,
+      "mae": 63.40290768941244,
+      "mase": 1.007179035091118,
+      "rmse": 90.96144224846556,
+      "smape": 0.19751185707594407,
+      "wape": 0.20373529114841224
+    },
+    "functime_snaive": {
+      "bias": 10.779761904761905,
+      "mae": 29.172619047619047,
+      "mase": 0.4634180256746835,
+      "rmse": 39.0339443244442,
+      "smape": 0.10187111022463727,
+      "wape": 0.09374163191920737
+    },
+    "prophet_additive": {
+      "bias": 54.13874042274377,
+      "mae": 60.65497979322087,
+      "mase": 0.9635271669379424,
+      "rmse": 79.87624946508426,
+      "smape": 0.1778730754239094,
+      "wape": 0.19490525621171925
+    },
+    "statsforecast_autoets": {
+      "bias": 23.57908050064837,
+      "mae": 36.24238941934576,
+      "mase": 0.5757239870383535,
+      "rmse": 44.598077666138586,
+      "smape": 0.1296068229826035,
+      "wape": 0.11645922922707792
+    },
+    "statsforecast_seasonal_naive": {
+      "bias": 10.779761904761905,
+      "mae": 29.172619047619047,
+      "mase": 0.4634180256746835,
+      "rmse": 39.0339443244442,
+      "smape": 0.10187111022463727,
+      "wape": 0.09374163191920737
+    }
+  },
+  "model_libraries": {
+    "cartoboost_lag": "cartoboost",
+    "functime_lightgbm": "functime",
+    "functime_ridge": "functime",
+    "functime_snaive": "functime",
+    "prophet_additive": "prophet",
+    "statsforecast_autoets": "statsforecast",
+    "statsforecast_seasonal_naive": "statsforecast"
+  },
+  "models": [
+    "cartoboost_lag",
+    "functime_snaive",
+    "functime_ridge",
+    "functime_lightgbm",
+    "statsforecast_seasonal_naive",
+    "statsforecast_autoets",
+    "prophet_additive"
+  ],
+  "plots": [
+    "docs/assets/nyc_taxi_benchmarks/forecasting_plots/nyc-taxi_tool_metric_comparison.png",
+    "docs/assets/nyc_taxi_benchmarks/forecasting_plots/nyc-taxi_horizon_rmse_by_tool.png",
+    "docs/assets/nyc_taxi_benchmarks/forecasting_plots/nyc-taxi_forecast_lines.png",
+    "docs/assets/nyc_taxi_benchmarks/forecasting_plots/nyc-taxi_actual_vs_predicted.png"
+  ],
+  "quality": {
+    "best_forecasting_library": "functime",
+    "best_forecasting_library_mae": 29.172619047619047,
+    "best_forecasting_library_model": "functime_snaive",
+    "best_forecasting_library_rmse": 39.0339443244442,
+    "best_forecasting_library_wape": 0.09374163191920737,
+    "best_functime_method": "functime_snaive",
+    "best_functime_rmse": 39.0339443244442,
+    "best_prophet_method": "prophet_additive",
+    "best_prophet_rmse": 79.87624946508426,
+    "best_statsforecast_method": "statsforecast_seasonal_naive",
+    "best_statsforecast_rmse": 39.0339443244442,
+    "cartoboost_mae": 43.03953587280695,
+    "cartoboost_rmse": 59.87968883569313,
+    "cartoboost_wape": 0.1383007923689141,
+    "comparison_libraries": [
+      "functime",
+      "statsforecast",
+      "prophet"
+    ],
+    "forecasting_library_models": {
+      "functime": [
+        "functime_snaive",
+        "functime_ridge",
+        "functime_lightgbm"
+      ],
+      "prophet": [
+        "prophet_additive"
+      ],
+      "statsforecast": [
+        "statsforecast_seasonal_naive",
+        "statsforecast_autoets"
+      ]
+    },
+    "mae_delta_vs_best_forecasting_library": 13.866916825187904,
+    "mae_ranking": [
+      "functime_snaive",
+      "statsforecast_seasonal_naive",
+      "statsforecast_autoets",
+      "cartoboost_lag",
+      "prophet_additive",
+      "functime_ridge",
+      "functime_lightgbm"
+    ],
+    "mae_reduction_vs_best_forecasting_library": -0.47534014010029946,
+    "model_libraries": {
+      "cartoboost_lag": "cartoboost",
+      "functime_lightgbm": "functime",
+      "functime_ridge": "functime",
+      "functime_snaive": "functime",
+      "prophet_additive": "prophet",
+      "statsforecast_autoets": "statsforecast",
+      "statsforecast_seasonal_naive": "statsforecast"
+    },
+    "rmse_delta_vs_best_forecasting_library": 20.84574451124893,
+    "rmse_ranking": [
+      "functime_snaive",
+      "statsforecast_seasonal_naive",
+      "statsforecast_autoets",
+      "cartoboost_lag",
+      "prophet_additive",
+      "functime_ridge",
+      "functime_lightgbm"
+    ],
+    "rmse_ratio_vs_best_forecasting_library": 1.5340414573014267,
+    "rmse_reduction_vs_best_forecasting_library": -0.5340414573014267,
+    "wape_ranking": [
+      "functime_snaive",
+      "statsforecast_seasonal_naive",
+      "statsforecast_autoets",
+      "cartoboost_lag",
+      "prophet_additive",
+      "functime_ridge",
+      "functime_lightgbm"
+    ],
+    "wape_reduction_vs_best_forecasting_library": -0.47534014010029946,
+    "winner": "functime_snaive"
+  },
+  "timing": {
+    "load_seconds": 5.323774016054813,
+    "models": {
+      "cartoboost_lag": {
+        "feature_seconds": 0.0025387740461155772,
+        "fit_predict_seconds": 0.22987314296187833,
+        "fit_seconds": 0.14569008897524327,
+        "predict_seconds": 0.08418305398663506,
+        "total_seconds": 0.2324119170079939
+      },
+      "functime_lightgbm": {
+        "fit_predict_seconds": 0.17446243797894567,
+        "fit_seconds": 0.099634935031645,
+        "predict_seconds": 0.07482750294730067
+      },
+      "functime_ridge": {
+        "fit_predict_seconds": 0.04609382903436199,
+        "fit_seconds": 0.012595754000358284,
+        "predict_seconds": 0.033498075034003705
+      },
+      "functime_snaive": {
+        "fit_predict_seconds": 0.006247045937925577,
+        "fit_seconds": 0.002052175987046212,
+        "predict_seconds": 0.004194869950879365
+      },
+      "prophet_additive": {
+        "fit_predict_seconds": 1.62312007707078,
+        "fit_seconds": 1.3797066660481505,
+        "predict_seconds": 0.2434134110226296
+      },
+      "statsforecast_autoets": {
+        "fit_predict_seconds": 0.15328235097695142,
+        "fit_seconds": 0.15328235097695142,
+        "predict_seconds": 0.0
+      },
+      "statsforecast_seasonal_naive": {
+        "fit_predict_seconds": 0.004462977987714112,
+        "fit_seconds": 0.004462977987714112,
+        "predict_seconds": 0.0
+      }
+    },
+    "total_seconds": 9.738282695005182
+  }
+}
