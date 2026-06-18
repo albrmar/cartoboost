@@ -73,7 +73,7 @@ wheels = [
 
 [[package]]
 name = "cartoboost"
-version = "0.1.14"
+version = "0.1.17"
 source = { editable = "." }
 dependencies = [
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
@@ -117,6 +117,7 @@ dev = [
 docs = [
     { name = "mkdocs" },
     { name = "mkdocs-material" },
+    { name = "pymdown-extensions" },
 ]
 
 [package.metadata]
@@ -151,6 +152,7 @@ dev = [
 docs = [
     { name = "mkdocs", specifier = ">=1.6,<2" },
     { name = "mkdocs-material", specifier = ">=9.5" },
+    { name = "pymdown-extensions", specifier = ">=10.0" },
 ]
 
 [[package]]
