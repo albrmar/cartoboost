@@ -7,6 +7,7 @@ spatial, geotemporal, and graph-derived regression workflows.
 ## Contents
 
 - [Getting Started](getting-started.md)
+- [Feature Catalog](feature_catalog.md)
 - [Python Estimator](user-guide/python-estimator.md)
 - [Parameters](user-guide/parameters.md)
 - [Objectives](objectives.md)

@@ -64,6 +64,7 @@ nav:
   - Home: index.md
   - Installation: installation.md
   - Getting Started: getting-started.md
+  - Feature Catalog: feature_catalog.md
   - User Guide:
       - Python Estimator: user-guide/python-estimator.md
       - Parameters: user-guide/parameters.md

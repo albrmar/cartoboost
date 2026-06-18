@@ -75,6 +75,8 @@ Forecasters:
 | `OptimizedThetaForecaster` | Deterministically selects theta/alpha from a validation grid. |
 | `ETSForecaster` | Rust-native additive ETS with optional additive seasonality. |
 | `AutoARIMAForecaster` | Rust-native AutoARIMA over bounded ARIMA(p,d,q) candidates. |
+| `KalmanForecaster` | Rust-native local-linear state-space forecaster with level, trend, and observation variances. |
+| `KrigingForecaster` | Rust-native ordinary-kriging panel forecaster requiring explicit coordinates by series id. |
 | `CartoBoostLagForecaster` | Global recursive forecaster using leakage-safe lag, rolling, calendar, static, and known-future features with `CartoBoostRegressor`. |
 | `WeightedEnsembleForecaster` | Combines aligned component forecasts with fixed weights. |
 | `BacktestWeightedEnsembleForecaster` | Reserved; raises clearly until Rust backtest-weight learning is implemented. |

@@ -10,6 +10,7 @@ Use this guide as the first read before making changes. Start in the relevant co
 - [Python project manifest](https://github.com/TheCulliganMan/CartoBoost/blob/main/pyproject.toml): dependency groups and Python packaging settings.
 - [Python environment lockfile](https://github.com/TheCulliganMan/CartoBoost/blob/main/uv.lock): pinned dependency state for reproducible Python builds.
 - [Docs home](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/index.md): documentation index and user-facing map.
+- [Feature catalog](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/feature_catalog.md): complete public feature map across regression, forecasting, graph, neural, sparse, artifact, CLI, and benchmark surfaces.
 
 ## Core Components
 - [Python package API](https://github.com/TheCulliganMan/CartoBoost/blob/main/python/cartoboost): user-facing estimator, graph helpers, neural feature workflows, and utility functions.
@@ -22,6 +23,7 @@ Use this guide as the first read before making changes. Start in the relevant co
 - [Docs index](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/index.md): entrypoint and topical structure.
 - [Installation guide](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/installation.md): install paths and optional extras.
 - [Getting started](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/getting-started.md): first run flow and local checks.
+- [Feature catalog](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/feature_catalog.md): full capability map and links to detailed topic pages.
 - [Python API reference](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/reference/python-api.md): authoritative API contracts.
 - [CLI reference](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/reference/cli.md): argument/flag behavior and output formats.
 - [Python estimator guide](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/user-guide/python-estimator.md): estimator usage and expected semantics.

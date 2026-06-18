@@ -19,6 +19,8 @@ context.
   development, and troubleshooting.
 - [Getting Started](getting-started.md): train a first model, use neural
   embeddings, save artifacts, and run local checks.
+- [Feature Catalog](feature_catalog.md): complete map of public modeling,
+  forecasting, graph, neural, sparse, artifact, CLI, and benchmark features.
 - [Python Estimator](user-guide/python-estimator.md): sklearn-style fit,
   predict, save, load, and explanation workflow.
 - [Parameters](user-guide/parameters.md): estimator controls and supported
@@ -43,6 +45,8 @@ context.
 ## What CartoBoost Supports
 
 - L2 and quantile regression.
+- L1, Huber, and log-L2 regression modes where supported by the current Rust
+  backend.
 - Constant and linear residual leaves.
 - Axis, histogram-axis, diagonal 2D, Gaussian/radial 2D, periodic, sparse-set,
   and fuzzy split behavior.
@@ -57,6 +61,8 @@ context.
 - Neural embedding features.
 - node2vec, GraphSAGE, heterogeneous GraphSAGE, and typed-schema HinSAGE graph
   encoders plus standalone graph regressors and link predictors.
+
+For a complete feature-by-feature map, see [Feature Catalog](feature_catalog.md).
 
 ## Why It Helps Temporal-Spatial Models
 

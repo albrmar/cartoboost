@@ -287,6 +287,7 @@ cartoboost eval --model model.json --data test_with_target.csv
 - [Documentation Home](docs/index.md)
 - [Installation](docs/installation.md)
 - [Getting Started](docs/getting-started.md)
+- [Feature Catalog](docs/feature_catalog.md)
 - [Python Estimator](docs/user-guide/python-estimator.md)
 - [Parameters](docs/user-guide/parameters.md)
 - [Spatial Modeling](docs/spatial_modeling.md)

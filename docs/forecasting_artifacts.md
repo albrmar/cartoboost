@@ -40,16 +40,20 @@ smoke tests and Parquet for larger forecast tables when the dependency is instal
 - `optimized_theta`
 - `ets`
 - `auto_arima`
+- `kalman`
+- `kriging`
 - `cartoboost_lag`
 
 Forecasting model wrappers validate constructor parameters in Python where that
 does not require model execution. Fitting and prediction are delegated to Rust
 bindings for `naive`, `seasonal_naive`, `theta`, `optimized_theta`, `ets`,
-`auto_arima`, and `cartoboost_lag`. `WeightedEnsembleForecaster` is available
-as a direct Python class when explicit native component models are supplied.
-Unsupported modes fail explicitly instead of running Python fallback forecasting
-algorithms. Duplicate registry entries are rejected unless
-`override=True` is passed.
+`auto_arima`, `kalman`, `kriging`, and `cartoboost_lag`.
+`KrigingForecaster` requires explicit coordinates keyed by series id, so
+artifact/config examples should include the coordinate mapping whenever kriging
+is constructed. `WeightedEnsembleForecaster` is available as a direct Python
+class when explicit native component models are supplied. Unsupported modes
+fail explicitly instead of running Python fallback forecasting algorithms.
+Duplicate registry entries are rejected unless `override=True` is passed.
 
 `ForecastingConfig` parses TOML strictly. Unknown root or model fields raise by default. Set
 `allow_unknown = true` to retain unknown fields under manifest/config metadata instead of rejecting
