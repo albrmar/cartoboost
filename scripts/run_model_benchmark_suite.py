@@ -30,6 +30,17 @@ GRAPH_MODEL_FAMILIES = {
     "cartoboost_graph_hetero_graphsage": "hetero_graphsage",
     "cartoboost_graph_hinsage": "hinsage",
 }
+STANDALONE_MODELS = {
+    "neural_embedding_regressor",
+    "node2vec_regressor",
+    "graphsage_regressor",
+    "hetero_graphsage_regressor",
+    "hinsage_regressor",
+    "node2vec_link_predictor",
+    "graphsage_link_predictor",
+    "hetero_graphsage_link_predictor",
+    "hinsage_link_predictor",
+}
 
 
 @dataclass(frozen=True)
@@ -63,12 +74,19 @@ def parse_args() -> argparse.Namespace:
         default=(
             "mean,cartoboost,cartoboost_neural,cartoboost_graph_node2vec,"
             "cartoboost_graph_graphsage,cartoboost_graph_hetero_graphsage,"
-            "cartoboost_graph_hinsage,xgboost,lightgbm"
+            "cartoboost_graph_hinsage,neural_embedding_regressor,"
+            "node2vec_regressor,graphsage_regressor,hetero_graphsage_regressor,"
+            "hinsage_regressor,node2vec_link_predictor,graphsage_link_predictor,"
+            "hetero_graphsage_link_predictor,hinsage_link_predictor,xgboost,lightgbm"
         ),
         help=(
             "Comma-separated models from: mean, cartoboost, cartoboost_neural, "
             "cartoboost_graph, cartoboost_graph_node2vec, cartoboost_graph_graphsage, "
-            "cartoboost_graph_hetero_graphsage, cartoboost_graph_hinsage, xgboost, lightgbm"
+            "cartoboost_graph_hetero_graphsage, cartoboost_graph_hinsage, "
+            "neural_embedding_regressor, node2vec_regressor, graphsage_regressor, "
+            "hetero_graphsage_regressor, hinsage_regressor, node2vec_link_predictor, "
+            "graphsage_link_predictor, hetero_graphsage_link_predictor, "
+            "hinsage_link_predictor, xgboost, lightgbm"
         ),
     )
     parser.add_argument("--n-estimators", type=int, default=80)
@@ -492,6 +510,358 @@ def run_graph(
     return prediction, timing, config
 
 
+def run_standalone_neural(
+    workload: Workload,
+    train_idx: np.ndarray,
+    test_idx: np.ndarray,
+    args: argparse.Namespace,
+) -> tuple[np.ndarray, dict[str, float], dict[str, Any]]:
+    if workload.embedding_ids is None:
+        raise ValueError("standalone neural benchmark requires embedding ids")
+    from cartoboost import NeuralEmbeddingStandaloneRegressor
+
+    model = NeuralEmbeddingStandaloneRegressor(
+        dim=args.neural_dim,
+        random_state=args.seed,
+        support_prior_strength=2.0,
+        n_estimators=args.n_estimators,
+        learning_rate=args.learning_rate,
+        max_depth=args.max_depth,
+        min_samples_leaf=2,
+    )
+    prediction, timing = timed_fit_predict(
+        lambda: model.fit(
+            workload.embedding_ids[train_idx],
+            workload.target[train_idx],
+            dense=workload.features[train_idx],
+        ),
+        lambda: model.predict(workload.embedding_ids[test_idx], dense=workload.features[test_idx]),
+        len(test_idx),
+    )
+    return prediction, timing, {"embedding_dim": int(args.neural_dim), "backend": "rust"}
+
+
+def run_standalone_node2vec_regressor(
+    workload: Workload,
+    train_idx: np.ndarray,
+    test_idx: np.ndarray,
+    args: argparse.Namespace,
+) -> tuple[np.ndarray, dict[str, float], dict[str, Any]]:
+    if (
+        workload.graph_source is None
+        or workload.graph_target is None
+        or workload.graph_edges is None
+    ):
+        raise ValueError("standalone node2vec benchmark requires graph topology")
+    from cartoboost import Node2VecStandaloneRegressor
+
+    node_count = int(max(workload.graph_source.max(), workload.graph_target.max()) + 1)
+    train_edges = sorted(
+        {
+            (int(workload.graph_source[index]), int(workload.graph_target[index]))
+            for index in train_idx
+        }
+    )
+    model = Node2VecStandaloneRegressor(
+        dim=args.graph_dim,
+        walk_length=16,
+        walks_per_node=4,
+        window_size=4,
+        epochs=args.graph_epochs,
+        negative_samples=3,
+        seed=args.seed,
+        n_estimators=args.n_estimators,
+        booster_learning_rate=args.learning_rate,
+        max_depth=args.max_depth,
+        min_samples_leaf=2,
+    )
+    prediction, timing = timed_fit_predict(
+        lambda: model.fit(
+            node_count=node_count,
+            edges=train_edges or workload.graph_edges,
+            row_nodes=workload.graph_source[train_idx],
+            row_targets=workload.graph_target[train_idx],
+            dense=workload.features[train_idx],
+            y=workload.target[train_idx],
+        ),
+        lambda: model.predict(
+            workload.graph_source[test_idx],
+            row_targets=workload.graph_target[test_idx],
+            dense=workload.features[test_idx],
+        ),
+        len(test_idx),
+    )
+    return (
+        prediction,
+        timing,
+        {"graph_dim": int(args.graph_dim), "graph_epochs": int(args.graph_epochs)},
+    )
+
+
+def run_standalone_graphsage_regressor(
+    workload: Workload,
+    train_idx: np.ndarray,
+    test_idx: np.ndarray,
+    args: argparse.Namespace,
+) -> tuple[np.ndarray, dict[str, float], dict[str, Any]]:
+    if (
+        workload.graph_source is None
+        or workload.graph_target is None
+        or workload.graph_edges is None
+        or workload.graph_node_features is None
+    ):
+        raise ValueError("standalone graphsage benchmark requires graph topology")
+    from cartoboost import GraphSageStandaloneRegressor
+
+    train_edges = sorted(
+        {
+            (int(workload.graph_source[index]), int(workload.graph_target[index]))
+            for index in train_idx
+        }
+    )
+    model = GraphSageStandaloneRegressor(
+        input_dim=int(workload.graph_node_features.shape[1]),
+        hidden_dims=(args.graph_dim,),
+        epochs=args.graph_epochs,
+        seed=args.seed,
+        n_estimators=args.n_estimators,
+        booster_learning_rate=args.learning_rate,
+        max_depth=args.max_depth,
+        min_samples_leaf=2,
+    )
+    prediction, timing = timed_fit_predict(
+        lambda: model.fit(
+            node_features=workload.graph_node_features,
+            edges=train_edges or workload.graph_edges,
+            row_nodes=workload.graph_source[train_idx],
+            row_targets=workload.graph_target[train_idx],
+            dense=workload.features[train_idx],
+            y=workload.target[train_idx],
+        ),
+        lambda: model.predict(
+            node_features=workload.graph_node_features,
+            row_nodes=workload.graph_source[test_idx],
+            row_targets=workload.graph_target[test_idx],
+            dense=workload.features[test_idx],
+        ),
+        len(test_idx),
+    )
+    return (
+        prediction,
+        timing,
+        {"graph_dim": int(args.graph_dim), "graph_epochs": int(args.graph_epochs)},
+    )
+
+
+def run_standalone_typed_graphsage_regressor(
+    model_name: str,
+    workload: Workload,
+    train_idx: np.ndarray,
+    test_idx: np.ndarray,
+    args: argparse.Namespace,
+) -> tuple[np.ndarray, dict[str, float], dict[str, Any]]:
+    if (
+        workload.graph_source is None
+        or workload.graph_target is None
+        or workload.graph_edges is None
+        or workload.graph_node_features is None
+    ):
+        raise ValueError("standalone typed graphsage benchmark requires graph topology")
+    graph_edges = workload.graph_edges
+    train_edges = sorted(
+        {
+            (int(workload.graph_source[index]), int(workload.graph_target[index]), 0)
+            for index in train_idx
+        }
+    )
+    fit_kwargs: dict[str, Any] = {}
+    if model_name == "hetero_graphsage_regressor":
+        from cartoboost import HeteroGraphSageStandaloneRegressor
+
+        model = HeteroGraphSageStandaloneRegressor(
+            input_dim=int(workload.graph_node_features.shape[1]),
+            relation_count=1,
+            hidden_dims=(args.graph_dim,),
+            epochs=args.graph_epochs,
+            seed=args.seed,
+            n_estimators=args.n_estimators,
+            booster_learning_rate=args.learning_rate,
+            max_depth=args.max_depth,
+            min_samples_leaf=2,
+        )
+    else:
+        from cartoboost import HinSageStandaloneRegressor
+
+        model = HinSageStandaloneRegressor(
+            input_dim=int(workload.graph_node_features.shape[1]),
+            node_type_count=1,
+            edge_type_triples=[(0, 0, 0)],
+            hidden_dims=(args.graph_dim,),
+            epochs=args.graph_epochs,
+            seed=args.seed,
+            n_estimators=args.n_estimators,
+            booster_learning_rate=args.learning_rate,
+            max_depth=args.max_depth,
+            min_samples_leaf=2,
+        )
+        fit_kwargs["node_types"] = [0] * int(workload.graph_node_features.shape[0])
+
+    prediction, timing = timed_fit_predict(
+        lambda: model.fit(
+            node_features=workload.graph_node_features,
+            edges=train_edges or [(source, target, 0) for source, target in graph_edges],
+            row_nodes=workload.graph_source[train_idx],
+            row_targets=workload.graph_target[train_idx],
+            dense=workload.features[train_idx],
+            y=workload.target[train_idx],
+            **fit_kwargs,
+        ),
+        lambda: model.predict(
+            node_features=workload.graph_node_features,
+            row_nodes=workload.graph_source[test_idx],
+            row_targets=workload.graph_target[test_idx],
+            dense=workload.features[test_idx],
+        ),
+        len(test_idx),
+    )
+    return (
+        prediction,
+        timing,
+        {"graph_dim": int(args.graph_dim), "graph_epochs": int(args.graph_epochs)},
+    )
+
+
+def run_standalone_link_predictor(
+    model_name: str,
+    workload: Workload,
+    train_idx: np.ndarray,
+    test_idx: np.ndarray,
+    args: argparse.Namespace,
+) -> dict[str, Any]:
+    if (
+        workload.graph_source is None
+        or workload.graph_target is None
+        or workload.graph_edges is None
+        or workload.graph_node_features is None
+    ):
+        return {"status": "skipped", "reason": "workload has no graph topology"}
+    node_count = int(max(workload.graph_source.max(), workload.graph_target.max()) + 1)
+    train_edges = sorted(
+        {
+            (int(workload.graph_source[index]), int(workload.graph_target[index]))
+            for index in train_idx
+        }
+    )
+    positives = [
+        (int(workload.graph_source[index]), int(workload.graph_target[index]))
+        for index in test_idx[: min(len(test_idx), 512)]
+    ]
+    positive_set = set(train_edges) | set(positives)
+    negatives: list[tuple[int, int]] = []
+    for source, target in positives:
+        candidate = (source, (target + max(1, node_count // 3)) % node_count)
+        if candidate in positive_set:
+            candidate = ((source + 1) % node_count, target)
+        negatives.append(candidate)
+    pairs = positives + negatives
+    labels = [1] * len(positives) + [0] * len(negatives)
+    query_ids = [source for source, _target in pairs]
+
+    if model_name == "node2vec_link_predictor":
+        from cartoboost import Node2VecLinkPredictor
+
+        model = Node2VecLinkPredictor(
+            dim=args.graph_dim,
+            walk_length=16,
+            walks_per_node=4,
+            window_size=4,
+            epochs=args.graph_epochs,
+            negative_samples=3,
+            seed=args.seed,
+        )
+        start = time.perf_counter()
+        model.fit(node_count=node_count, edges=train_edges or workload.graph_edges)
+        train_seconds = time.perf_counter() - start
+        start = time.perf_counter()
+        scores = model.predict_scores(pairs)
+        predict_seconds = time.perf_counter() - start
+    elif model_name == "graphsage_link_predictor":
+        from cartoboost import GraphSageLinkPredictor
+
+        model = GraphSageLinkPredictor(
+            input_dim=int(workload.graph_node_features.shape[1]),
+            hidden_dims=(args.graph_dim,),
+            epochs=args.graph_epochs,
+            seed=args.seed,
+        )
+        start = time.perf_counter()
+        model.fit(
+            node_features=workload.graph_node_features, edges=train_edges or workload.graph_edges
+        )
+        train_seconds = time.perf_counter() - start
+        start = time.perf_counter()
+        scores = model.predict_scores(node_features=workload.graph_node_features, pairs=pairs)
+        predict_seconds = time.perf_counter() - start
+    elif model_name == "hetero_graphsage_link_predictor":
+        from cartoboost import HeteroGraphSageLinkPredictor
+
+        typed_train_edges = [
+            (source, target, 0) for source, target in (train_edges or workload.graph_edges)
+        ]
+        model = HeteroGraphSageLinkPredictor(
+            input_dim=int(workload.graph_node_features.shape[1]),
+            relation_count=1,
+            hidden_dims=(args.graph_dim,),
+            epochs=args.graph_epochs,
+            seed=args.seed,
+        )
+        start = time.perf_counter()
+        model.fit(node_features=workload.graph_node_features, edges=typed_train_edges)
+        train_seconds = time.perf_counter() - start
+        start = time.perf_counter()
+        scores = model.predict_scores(node_features=workload.graph_node_features, pairs=pairs)
+        predict_seconds = time.perf_counter() - start
+    else:
+        from cartoboost import HinSageLinkPredictor
+
+        typed_train_edges = [
+            (source, target, 0) for source, target in (train_edges or workload.graph_edges)
+        ]
+        model = HinSageLinkPredictor(
+            input_dim=int(workload.graph_node_features.shape[1]),
+            node_type_count=1,
+            edge_type_triples=[(0, 0, 0)],
+            hidden_dims=(args.graph_dim,),
+            epochs=args.graph_epochs,
+            seed=args.seed,
+        )
+        start = time.perf_counter()
+        model.fit(
+            node_features=workload.graph_node_features,
+            node_types=[0] * int(workload.graph_node_features.shape[0]),
+            edges=typed_train_edges,
+        )
+        train_seconds = time.perf_counter() - start
+        start = time.perf_counter()
+        scores = model.predict_scores(node_features=workload.graph_node_features, pairs=pairs)
+        predict_seconds = time.perf_counter() - start
+
+    from cartoboost.graph import link_prediction_report
+
+    return {
+        "status": "ok",
+        "metrics": link_prediction_report(labels, scores.tolist(), query_ids=query_ids, k=10),
+        "timing": {
+            "train_seconds": float(train_seconds),
+            "predict_seconds": float(predict_seconds),
+            "predict_rows_per_second": float(len(pairs) / predict_seconds)
+            if predict_seconds > 0.0
+            else float("inf"),
+        },
+        "config": {"graph_dim": int(args.graph_dim), "graph_epochs": int(args.graph_epochs)},
+    }
+
+
 def run_xgboost(
     train_x: np.ndarray,
     train_y: np.ndarray,
@@ -576,6 +946,35 @@ def run_one_model(
                 args,
                 GRAPH_MODEL_FAMILIES[model_name],
             )
+        elif model_name == "neural_embedding_regressor":
+            if workload.embedding_ids is None:
+                return {"status": "skipped", "reason": "workload has no embedding ids"}
+            prediction, timing, config = run_standalone_neural(workload, train_idx, test_idx, args)
+        elif model_name == "node2vec_regressor":
+            if workload.graph_edges is None:
+                return {"status": "skipped", "reason": "workload has no graph topology"}
+            prediction, timing, config = run_standalone_node2vec_regressor(
+                workload, train_idx, test_idx, args
+            )
+        elif model_name == "graphsage_regressor":
+            if workload.graph_edges is None:
+                return {"status": "skipped", "reason": "workload has no graph topology"}
+            prediction, timing, config = run_standalone_graphsage_regressor(
+                workload, train_idx, test_idx, args
+            )
+        elif model_name in {"hetero_graphsage_regressor", "hinsage_regressor"}:
+            if workload.graph_edges is None:
+                return {"status": "skipped", "reason": "workload has no graph topology"}
+            prediction, timing, config = run_standalone_typed_graphsage_regressor(
+                model_name, workload, train_idx, test_idx, args
+            )
+        elif model_name in {
+            "node2vec_link_predictor",
+            "graphsage_link_predictor",
+            "hetero_graphsage_link_predictor",
+            "hinsage_link_predictor",
+        }:
+            return run_standalone_link_predictor(model_name, workload, train_idx, test_idx, args)
         elif model_name == "xgboost":
             prediction, timing, config = run_xgboost(train_x, train_y, test_x, args)
         elif model_name == "lightgbm":
@@ -602,6 +1001,7 @@ def run_suite(workloads: list[Workload], args: argparse.Namespace) -> dict[str, 
         "xgboost",
         "lightgbm",
         *GRAPH_MODEL_FAMILIES,
+        *STANDALONE_MODELS,
     }
     unknown = sorted(set(models) - valid)
     if unknown:
@@ -714,11 +1114,24 @@ def write_markdown(payload: dict[str, Any], output_path: Path) -> None:
                 if result["status"] == "ok":
                     metrics = result["metrics"]
                     timing = result["timing"]
-                    lines.append(
-                        f"| {model_name} | ok | {metrics['mae']:.4f} | {metrics['rmse']:.4f} | "
-                        f"{metrics['r2']:.4f} | {timing['train_seconds']:.4f} | "
-                        f"{timing['predict_rows_per_second']:.0f} |"
-                    )
+                    if "mae" in metrics:
+                        lines.append(
+                            f"| {model_name} | ok | {metrics['mae']:.4f} | {metrics['rmse']:.4f} | "
+                            f"{metrics['r2']:.4f} | {timing['train_seconds']:.4f} | "
+                            f"{timing['predict_rows_per_second']:.0f} |"
+                        )
+                    elif "auc" in metrics:
+                        lines.append(
+                            f"| {model_name} | ok link: AUC {metrics['auc']:.4f}, "
+                            f"AP {metrics['average_precision']:.4f} |  |  |  | "
+                            f"{timing['train_seconds']:.4f} | "
+                            f"{timing['predict_rows_per_second']:.0f} |"
+                        )
+                    else:
+                        lines.append(
+                            f"| {model_name} | ok |  |  |  | {timing['train_seconds']:.4f} | "
+                            f"{timing['predict_rows_per_second']:.0f} |"
+                        )
                 else:
                     lines.append(f"| {model_name} | skipped: {result['reason']} |  |  |  |  |  |")
             lines.append("")
@@ -755,6 +1168,7 @@ def write_markdown(payload: dict[str, Any], output_path: Path) -> None:
 
 
 def plot_metric(rows: list[dict[str, Any]], metric: str, title: str, output_path: Path) -> None:
+    rows = [row for row in rows if metric in row and math.isfinite(float(row[metric]))]
     if not rows:
         return
     labels = [f"{row['workload']}\n{row['split']}\n{row['model']}" for row in rows]

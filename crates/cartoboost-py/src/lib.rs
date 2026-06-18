@@ -6,8 +6,12 @@ use cartoboost_neural::{
     build_embedding_table_artifact, compute_directional_features, fit_embedding_table_with_options,
     materialize_source_target_pair_nodes, validate_directed_metapath,
     write_embedding_table_artifact, ArtifactFallbackKind, EmbeddingTable, GraphSageConfig,
-    GraphSageEncoder, HeteroGraph, HeteroGraphSageConfig, HeteroGraphSageEncoder, HeteroTypedEdge,
-    HinSageConfig, HinSageEncoder, HinSageGraph, HomogeneousGraph, Node2VecConfig, Node2VecEncoder,
+    GraphSageEncoder, GraphSageLinkPredictor, GraphSageRegressor, HeteroGraph,
+    HeteroGraphSageConfig, HeteroGraphSageEncoder, HeteroGraphSageLinkPredictor,
+    HeteroGraphSageRegressor, HeteroTypedEdge, HinSageConfig, HinSageEncoder, HinSageGraph,
+    HinSageLinkPredictor, HinSageRegressor, HomogeneousGraph,
+    NeuralEmbeddingRegressor as StandaloneNeuralEmbeddingRegressor, Node2VecConfig,
+    Node2VecEncoder, Node2VecLinkPredictor, Node2VecRegressor, StandaloneBoosterConfig,
 };
 use numpy::{IntoPyArray, PyArray1, PyReadonlyArray1, PyReadonlyArray2, PyUntypedArrayMethods};
 use pyo3::exceptions::{PyIOError, PyRuntimeError, PyValueError};
@@ -1140,6 +1144,781 @@ impl NativeNode2VecEncoder {
     }
 }
 
+#[pyclass(name = "StandaloneNeuralEmbeddingRegressor")]
+#[derive(Clone)]
+struct NativeStandaloneNeuralEmbeddingRegressor {
+    model: StandaloneNeuralEmbeddingRegressor,
+}
+
+#[pymethods]
+impl NativeStandaloneNeuralEmbeddingRegressor {
+    #[new]
+    #[pyo3(signature = (dim, fallback="global_mean_vector", random_state=None, support_prior_strength=1.0, n_estimators=80, learning_rate=0.07, max_depth=4, min_samples_leaf=2, min_gain=0.0))]
+    #[allow(clippy::too_many_arguments)]
+    fn new(
+        dim: usize,
+        fallback: &str,
+        random_state: Option<u64>,
+        support_prior_strength: f64,
+        n_estimators: usize,
+        learning_rate: f64,
+        max_depth: usize,
+        min_samples_leaf: usize,
+        min_gain: f64,
+    ) -> PyResult<Self> {
+        let fallback = parse_embedding_fallback(fallback, None)?;
+        let model = StandaloneNeuralEmbeddingRegressor::new(
+            dim,
+            fallback,
+            random_state,
+            support_prior_strength,
+            standalone_booster_config(
+                n_estimators,
+                learning_rate,
+                max_depth,
+                min_samples_leaf,
+                min_gain,
+            ),
+        )
+        .map_err(to_py_neural_error)?;
+        Ok(Self { model })
+    }
+
+    #[pyo3(signature = (ids, y, dense=None))]
+    fn fit(&mut self, ids: Vec<u64>, y: Vec<f64>, dense: Option<Vec<Vec<f64>>>) -> PyResult<()> {
+        self.model
+            .fit(&ids, &y, dense.as_deref())
+            .map_err(to_py_neural_error)
+    }
+
+    #[pyo3(signature = (ids, dense=None))]
+    fn predict(&self, ids: Vec<u64>, dense: Option<Vec<Vec<f64>>>) -> PyResult<Vec<f64>> {
+        self.model
+            .predict(&ids, dense.as_deref())
+            .map_err(to_py_neural_error)
+    }
+
+    fn save_artifact_json(&self, path: String) -> PyResult<()> {
+        self.model
+            .save_artifact_json(path)
+            .map_err(to_py_neural_error)
+    }
+
+    #[classmethod]
+    fn load_artifact_json(_cls: &Bound<'_, PyType>, path: String) -> PyResult<Self> {
+        let model = StandaloneNeuralEmbeddingRegressor::load_artifact_json(path)
+            .map_err(to_py_neural_error)?;
+        Ok(Self { model })
+    }
+}
+
+#[pyclass(name = "StandaloneNode2VecRegressor")]
+#[derive(Clone)]
+struct NativeStandaloneNode2VecRegressor {
+    model: Node2VecRegressor,
+}
+
+#[pymethods]
+impl NativeStandaloneNode2VecRegressor {
+    #[new]
+    #[pyo3(signature = (dim=16, walk_length=16, walks_per_node=8, window_size=5, epochs=3, learning_rate=0.025, min_learning_rate=0.0001, negative_samples=5, p=1.0, q=1.0, seed=0xA2B2_C2D2_E2F2_1234, l2_regularization=0.0, normalize=true, n_estimators=80, booster_learning_rate=0.07, max_depth=4, min_samples_leaf=2, min_gain=0.0))]
+    #[allow(clippy::too_many_arguments)]
+    fn new(
+        dim: usize,
+        walk_length: usize,
+        walks_per_node: usize,
+        window_size: usize,
+        epochs: usize,
+        learning_rate: f32,
+        min_learning_rate: f32,
+        negative_samples: usize,
+        p: f32,
+        q: f32,
+        seed: u64,
+        l2_regularization: f32,
+        normalize: bool,
+        n_estimators: usize,
+        booster_learning_rate: f64,
+        max_depth: usize,
+        min_samples_leaf: usize,
+        min_gain: f64,
+    ) -> PyResult<Self> {
+        let config = Node2VecConfig {
+            dim,
+            walk_length,
+            walks_per_node,
+            window_size,
+            epochs,
+            learning_rate,
+            min_learning_rate,
+            negative_samples,
+            p,
+            q,
+            seed,
+            l2_regularization,
+            normalize,
+        };
+        let model = Node2VecRegressor::new(
+            config,
+            standalone_booster_config(
+                n_estimators,
+                booster_learning_rate,
+                max_depth,
+                min_samples_leaf,
+                min_gain,
+            ),
+        )
+        .map_err(to_py_neural_error)?;
+        Ok(Self { model })
+    }
+
+    #[pyo3(signature = (node_count, edges, row_nodes, y, row_targets=None, dense=None, edge_weights=None))]
+    #[allow(clippy::too_many_arguments)]
+    fn fit(
+        &mut self,
+        node_count: usize,
+        edges: Vec<(usize, usize)>,
+        row_nodes: Vec<usize>,
+        y: Vec<f64>,
+        row_targets: Option<Vec<usize>>,
+        dense: Option<Vec<Vec<f64>>>,
+        edge_weights: Option<Vec<f32>>,
+    ) -> PyResult<()> {
+        self.model
+            .fit(
+                node_count,
+                &edges,
+                edge_weights.as_deref(),
+                &row_nodes,
+                row_targets.as_deref(),
+                dense.as_deref(),
+                &y,
+            )
+            .map_err(to_py_neural_error)
+    }
+
+    #[pyo3(signature = (row_nodes, row_targets=None, dense=None))]
+    fn predict(
+        &self,
+        row_nodes: Vec<usize>,
+        row_targets: Option<Vec<usize>>,
+        dense: Option<Vec<Vec<f64>>>,
+    ) -> PyResult<Vec<f64>> {
+        self.model
+            .predict(&row_nodes, row_targets.as_deref(), dense.as_deref())
+            .map_err(to_py_neural_error)
+    }
+
+    fn save_artifact_json(&self, path: String) -> PyResult<()> {
+        self.model
+            .save_artifact_json(path)
+            .map_err(to_py_neural_error)
+    }
+
+    #[classmethod]
+    fn load_artifact_json(_cls: &Bound<'_, PyType>, path: String) -> PyResult<Self> {
+        let model = Node2VecRegressor::load_artifact_json(path).map_err(to_py_neural_error)?;
+        Ok(Self { model })
+    }
+}
+
+#[pyclass(name = "StandaloneGraphSageRegressor")]
+#[derive(Clone)]
+struct NativeStandaloneGraphSageRegressor {
+    model: GraphSageRegressor,
+}
+
+#[pymethods]
+impl NativeStandaloneGraphSageRegressor {
+    #[new]
+    #[pyo3(signature = (input_dim, hidden_dims=None, epochs=20, learning_rate=0.05, negative_samples=4, seed=0x5A17_9A4E_7F33_C0DE, add_self_loop=true, l2_regularization=1e-5, n_estimators=80, booster_learning_rate=0.07, max_depth=4, min_samples_leaf=2, min_gain=0.0))]
+    #[allow(clippy::too_many_arguments)]
+    fn new(
+        input_dim: usize,
+        hidden_dims: Option<Vec<usize>>,
+        epochs: usize,
+        learning_rate: f32,
+        negative_samples: usize,
+        seed: u64,
+        add_self_loop: bool,
+        l2_regularization: f32,
+        n_estimators: usize,
+        booster_learning_rate: f64,
+        max_depth: usize,
+        min_samples_leaf: usize,
+        min_gain: f64,
+    ) -> PyResult<Self> {
+        let config = GraphSageConfig {
+            hidden_dims: hidden_dims.unwrap_or_else(|| vec![16]),
+            epochs,
+            learning_rate,
+            negative_samples,
+            seed,
+            add_self_loop,
+            l2_regularization,
+        };
+        let model = GraphSageRegressor::new(
+            config,
+            input_dim,
+            standalone_booster_config(
+                n_estimators,
+                booster_learning_rate,
+                max_depth,
+                min_samples_leaf,
+                min_gain,
+            ),
+        )
+        .map_err(to_py_neural_error)?;
+        Ok(Self { model })
+    }
+
+    #[pyo3(signature = (node_features, edges, row_nodes, y, row_targets=None, dense=None))]
+    fn fit(
+        &mut self,
+        node_features: Vec<Vec<f32>>,
+        edges: Vec<(usize, usize)>,
+        row_nodes: Vec<usize>,
+        y: Vec<f64>,
+        row_targets: Option<Vec<usize>>,
+        dense: Option<Vec<Vec<f64>>>,
+    ) -> PyResult<()> {
+        self.model
+            .fit(
+                &node_features,
+                &edges,
+                &row_nodes,
+                row_targets.as_deref(),
+                dense.as_deref(),
+                &y,
+            )
+            .map_err(to_py_neural_error)
+    }
+
+    #[pyo3(signature = (node_features, row_nodes, row_targets=None, dense=None))]
+    fn predict(
+        &self,
+        node_features: Vec<Vec<f32>>,
+        row_nodes: Vec<usize>,
+        row_targets: Option<Vec<usize>>,
+        dense: Option<Vec<Vec<f64>>>,
+    ) -> PyResult<Vec<f64>> {
+        self.model
+            .predict(
+                &node_features,
+                &row_nodes,
+                row_targets.as_deref(),
+                dense.as_deref(),
+            )
+            .map_err(to_py_neural_error)
+    }
+
+    fn save_artifact_json(&self, path: String) -> PyResult<()> {
+        self.model
+            .save_artifact_json(path)
+            .map_err(to_py_neural_error)
+    }
+
+    #[classmethod]
+    fn load_artifact_json(_cls: &Bound<'_, PyType>, path: String) -> PyResult<Self> {
+        let model = GraphSageRegressor::load_artifact_json(path).map_err(to_py_neural_error)?;
+        Ok(Self { model })
+    }
+}
+
+#[pyclass(name = "StandaloneHeteroGraphSageRegressor")]
+#[derive(Clone)]
+struct NativeStandaloneHeteroGraphSageRegressor {
+    model: HeteroGraphSageRegressor,
+}
+
+#[pymethods]
+impl NativeStandaloneHeteroGraphSageRegressor {
+    #[new]
+    #[pyo3(signature = (input_dim, relation_count, hidden_dims=None, epochs=20, learning_rate=0.05, negative_samples=4, seed=0x0D1A_2A3B_4C5D_6E7F, l2_regularization=1e-5, n_estimators=80, booster_learning_rate=0.07, max_depth=4, min_samples_leaf=2, min_gain=0.0))]
+    #[allow(clippy::too_many_arguments)]
+    fn new(
+        input_dim: usize,
+        relation_count: usize,
+        hidden_dims: Option<Vec<usize>>,
+        epochs: usize,
+        learning_rate: f32,
+        negative_samples: usize,
+        seed: u64,
+        l2_regularization: f32,
+        n_estimators: usize,
+        booster_learning_rate: f64,
+        max_depth: usize,
+        min_samples_leaf: usize,
+        min_gain: f64,
+    ) -> PyResult<Self> {
+        let config = HeteroGraphSageConfig {
+            hidden_dims: hidden_dims.unwrap_or_else(|| vec![16]),
+            epochs,
+            learning_rate,
+            negative_samples,
+            seed,
+            l2_regularization,
+        };
+        let model = HeteroGraphSageRegressor::new(
+            config,
+            input_dim,
+            relation_count,
+            standalone_booster_config(
+                n_estimators,
+                booster_learning_rate,
+                max_depth,
+                min_samples_leaf,
+                min_gain,
+            ),
+        )
+        .map_err(to_py_neural_error)?;
+        Ok(Self { model })
+    }
+
+    #[pyo3(signature = (node_features, edges, row_nodes, y, row_targets=None, dense=None))]
+    #[allow(clippy::too_many_arguments)]
+    fn fit(
+        &mut self,
+        node_features: Vec<Vec<f32>>,
+        edges: Vec<(usize, usize, usize)>,
+        row_nodes: Vec<usize>,
+        y: Vec<f64>,
+        row_targets: Option<Vec<usize>>,
+        dense: Option<Vec<Vec<f64>>>,
+    ) -> PyResult<()> {
+        self.model
+            .fit(
+                &node_features,
+                &edges,
+                &row_nodes,
+                row_targets.as_deref(),
+                dense.as_deref(),
+                &y,
+            )
+            .map_err(to_py_neural_error)
+    }
+
+    #[pyo3(signature = (node_features, row_nodes, row_targets=None, dense=None))]
+    fn predict(
+        &self,
+        node_features: Vec<Vec<f32>>,
+        row_nodes: Vec<usize>,
+        row_targets: Option<Vec<usize>>,
+        dense: Option<Vec<Vec<f64>>>,
+    ) -> PyResult<Vec<f64>> {
+        self.model
+            .predict(
+                &node_features,
+                &row_nodes,
+                row_targets.as_deref(),
+                dense.as_deref(),
+            )
+            .map_err(to_py_neural_error)
+    }
+
+    fn save_artifact_json(&self, path: String) -> PyResult<()> {
+        self.model
+            .save_artifact_json(path)
+            .map_err(to_py_neural_error)
+    }
+
+    #[classmethod]
+    fn load_artifact_json(_cls: &Bound<'_, PyType>, path: String) -> PyResult<Self> {
+        let model =
+            HeteroGraphSageRegressor::load_artifact_json(path).map_err(to_py_neural_error)?;
+        Ok(Self { model })
+    }
+}
+
+#[pyclass(name = "StandaloneHinSageRegressor")]
+#[derive(Clone)]
+struct NativeStandaloneHinSageRegressor {
+    model: HinSageRegressor,
+}
+
+#[pymethods]
+impl NativeStandaloneHinSageRegressor {
+    #[new]
+    #[pyo3(signature = (input_dim, node_type_count, edge_type_triples, hidden_dims=None, epochs=20, learning_rate=0.05, negative_samples=4, seed=0xA11C_E5A6_5EED_1234, l2_regularization=1e-5, neighbor_samples=None, n_estimators=80, booster_learning_rate=0.07, max_depth=4, min_samples_leaf=2, min_gain=0.0))]
+    #[allow(clippy::too_many_arguments)]
+    fn new(
+        input_dim: usize,
+        node_type_count: usize,
+        edge_type_triples: Vec<(usize, usize, usize)>,
+        hidden_dims: Option<Vec<usize>>,
+        epochs: usize,
+        learning_rate: f32,
+        negative_samples: usize,
+        seed: u64,
+        l2_regularization: f32,
+        neighbor_samples: Option<Vec<usize>>,
+        n_estimators: usize,
+        booster_learning_rate: f64,
+        max_depth: usize,
+        min_samples_leaf: usize,
+        min_gain: f64,
+    ) -> PyResult<Self> {
+        let config = HinSageConfig {
+            hidden_dims: hidden_dims.unwrap_or_else(|| vec![16]),
+            epochs,
+            learning_rate,
+            negative_samples,
+            seed,
+            l2_regularization,
+            neighbor_samples: neighbor_samples.unwrap_or_default(),
+        };
+        let model = HinSageRegressor::new(
+            config,
+            input_dim,
+            node_type_count,
+            edge_type_triples,
+            standalone_booster_config(
+                n_estimators,
+                booster_learning_rate,
+                max_depth,
+                min_samples_leaf,
+                min_gain,
+            ),
+        )
+        .map_err(to_py_neural_error)?;
+        Ok(Self { model })
+    }
+
+    #[pyo3(signature = (node_features, node_types, edges, row_nodes, y, row_targets=None, dense=None))]
+    #[allow(clippy::too_many_arguments)]
+    fn fit(
+        &mut self,
+        node_features: Vec<Vec<f32>>,
+        node_types: Vec<usize>,
+        edges: Vec<(usize, usize, usize)>,
+        row_nodes: Vec<usize>,
+        y: Vec<f64>,
+        row_targets: Option<Vec<usize>>,
+        dense: Option<Vec<Vec<f64>>>,
+    ) -> PyResult<()> {
+        self.model
+            .fit(
+                &node_features,
+                &node_types,
+                &edges,
+                &row_nodes,
+                row_targets.as_deref(),
+                dense.as_deref(),
+                &y,
+            )
+            .map_err(to_py_neural_error)
+    }
+
+    #[pyo3(signature = (node_features, row_nodes, row_targets=None, dense=None))]
+    fn predict(
+        &self,
+        node_features: Vec<Vec<f32>>,
+        row_nodes: Vec<usize>,
+        row_targets: Option<Vec<usize>>,
+        dense: Option<Vec<Vec<f64>>>,
+    ) -> PyResult<Vec<f64>> {
+        self.model
+            .predict(
+                &node_features,
+                &row_nodes,
+                row_targets.as_deref(),
+                dense.as_deref(),
+            )
+            .map_err(to_py_neural_error)
+    }
+
+    fn save_artifact_json(&self, path: String) -> PyResult<()> {
+        self.model
+            .save_artifact_json(path)
+            .map_err(to_py_neural_error)
+    }
+
+    #[classmethod]
+    fn load_artifact_json(_cls: &Bound<'_, PyType>, path: String) -> PyResult<Self> {
+        let model = HinSageRegressor::load_artifact_json(path).map_err(to_py_neural_error)?;
+        Ok(Self { model })
+    }
+}
+
+#[pyclass(name = "StandaloneNode2VecLinkPredictor")]
+#[derive(Clone)]
+struct NativeStandaloneNode2VecLinkPredictor {
+    model: Node2VecLinkPredictor,
+}
+
+#[pymethods]
+impl NativeStandaloneNode2VecLinkPredictor {
+    #[new]
+    #[pyo3(signature = (dim=16, walk_length=16, walks_per_node=8, window_size=5, epochs=3, learning_rate=0.025, min_learning_rate=0.0001, negative_samples=5, p=1.0, q=1.0, seed=0xA2B2_C2D2_E2F2_1234, l2_regularization=0.0, normalize=true))]
+    #[allow(clippy::too_many_arguments)]
+    fn new(
+        dim: usize,
+        walk_length: usize,
+        walks_per_node: usize,
+        window_size: usize,
+        epochs: usize,
+        learning_rate: f32,
+        min_learning_rate: f32,
+        negative_samples: usize,
+        p: f32,
+        q: f32,
+        seed: u64,
+        l2_regularization: f32,
+        normalize: bool,
+    ) -> PyResult<Self> {
+        let config = Node2VecConfig {
+            dim,
+            walk_length,
+            walks_per_node,
+            window_size,
+            epochs,
+            learning_rate,
+            min_learning_rate,
+            negative_samples,
+            p,
+            q,
+            seed,
+            l2_regularization,
+            normalize,
+        };
+        let model = Node2VecLinkPredictor::new(config).map_err(to_py_neural_error)?;
+        Ok(Self { model })
+    }
+
+    #[pyo3(signature = (node_count, edges, edge_weights=None))]
+    fn fit(
+        &mut self,
+        node_count: usize,
+        edges: Vec<(usize, usize)>,
+        edge_weights: Option<Vec<f32>>,
+    ) -> PyResult<()> {
+        self.model
+            .fit(node_count, &edges, edge_weights.as_deref())
+            .map_err(to_py_neural_error)
+    }
+
+    fn predict_scores(&self, pairs: Vec<(usize, usize)>) -> PyResult<Vec<f64>> {
+        self.model
+            .predict_scores(&pairs)
+            .map_err(to_py_neural_error)
+    }
+
+    fn save_artifact_json(&self, path: String) -> PyResult<()> {
+        self.model
+            .save_artifact_json(path)
+            .map_err(to_py_neural_error)
+    }
+
+    #[classmethod]
+    fn load_artifact_json(_cls: &Bound<'_, PyType>, path: String) -> PyResult<Self> {
+        let model = Node2VecLinkPredictor::load_artifact_json(path).map_err(to_py_neural_error)?;
+        Ok(Self { model })
+    }
+}
+
+#[pyclass(name = "StandaloneGraphSageLinkPredictor")]
+#[derive(Clone)]
+struct NativeStandaloneGraphSageLinkPredictor {
+    model: GraphSageLinkPredictor,
+}
+
+#[pymethods]
+impl NativeStandaloneGraphSageLinkPredictor {
+    #[new]
+    #[pyo3(signature = (input_dim, hidden_dims=None, epochs=20, learning_rate=0.05, negative_samples=4, seed=0x5A17_9A4E_7F33_C0DE, add_self_loop=true, l2_regularization=1e-5))]
+    #[allow(clippy::too_many_arguments)]
+    fn new(
+        input_dim: usize,
+        hidden_dims: Option<Vec<usize>>,
+        epochs: usize,
+        learning_rate: f32,
+        negative_samples: usize,
+        seed: u64,
+        add_self_loop: bool,
+        l2_regularization: f32,
+    ) -> PyResult<Self> {
+        let config = GraphSageConfig {
+            hidden_dims: hidden_dims.unwrap_or_else(|| vec![16]),
+            epochs,
+            learning_rate,
+            negative_samples,
+            seed,
+            add_self_loop,
+            l2_regularization,
+        };
+        let model = GraphSageLinkPredictor::new(config, input_dim).map_err(to_py_neural_error)?;
+        Ok(Self { model })
+    }
+
+    fn fit(&mut self, node_features: Vec<Vec<f32>>, edges: Vec<(usize, usize)>) -> PyResult<()> {
+        self.model
+            .fit(&node_features, &edges)
+            .map_err(to_py_neural_error)
+    }
+
+    fn predict_scores(
+        &self,
+        node_features: Vec<Vec<f32>>,
+        pairs: Vec<(usize, usize)>,
+    ) -> PyResult<Vec<f64>> {
+        self.model
+            .predict_scores(&node_features, &pairs)
+            .map_err(to_py_neural_error)
+    }
+
+    fn save_artifact_json(&self, path: String) -> PyResult<()> {
+        self.model
+            .save_artifact_json(path)
+            .map_err(to_py_neural_error)
+    }
+
+    #[classmethod]
+    fn load_artifact_json(_cls: &Bound<'_, PyType>, path: String) -> PyResult<Self> {
+        let model = GraphSageLinkPredictor::load_artifact_json(path).map_err(to_py_neural_error)?;
+        Ok(Self { model })
+    }
+}
+
+#[pyclass(name = "StandaloneHeteroGraphSageLinkPredictor")]
+#[derive(Clone)]
+struct NativeStandaloneHeteroGraphSageLinkPredictor {
+    model: HeteroGraphSageLinkPredictor,
+}
+
+#[pymethods]
+impl NativeStandaloneHeteroGraphSageLinkPredictor {
+    #[new]
+    #[pyo3(signature = (input_dim, relation_count, hidden_dims=None, epochs=20, learning_rate=0.05, negative_samples=4, seed=0x0D1A_2A3B_4C5D_6E7F, l2_regularization=1e-5))]
+    #[allow(clippy::too_many_arguments)]
+    fn new(
+        input_dim: usize,
+        relation_count: usize,
+        hidden_dims: Option<Vec<usize>>,
+        epochs: usize,
+        learning_rate: f32,
+        negative_samples: usize,
+        seed: u64,
+        l2_regularization: f32,
+    ) -> PyResult<Self> {
+        let config = HeteroGraphSageConfig {
+            hidden_dims: hidden_dims.unwrap_or_else(|| vec![16]),
+            epochs,
+            learning_rate,
+            negative_samples,
+            seed,
+            l2_regularization,
+        };
+        let model = HeteroGraphSageLinkPredictor::new(config, input_dim, relation_count)
+            .map_err(to_py_neural_error)?;
+        Ok(Self { model })
+    }
+
+    fn fit(
+        &mut self,
+        node_features: Vec<Vec<f32>>,
+        edges: Vec<(usize, usize, usize)>,
+    ) -> PyResult<()> {
+        self.model
+            .fit(&node_features, &edges)
+            .map_err(to_py_neural_error)
+    }
+
+    fn predict_scores(
+        &self,
+        node_features: Vec<Vec<f32>>,
+        pairs: Vec<(usize, usize)>,
+    ) -> PyResult<Vec<f64>> {
+        self.model
+            .predict_scores(&node_features, &pairs)
+            .map_err(to_py_neural_error)
+    }
+
+    fn save_artifact_json(&self, path: String) -> PyResult<()> {
+        self.model
+            .save_artifact_json(path)
+            .map_err(to_py_neural_error)
+    }
+
+    #[classmethod]
+    fn load_artifact_json(_cls: &Bound<'_, PyType>, path: String) -> PyResult<Self> {
+        let model =
+            HeteroGraphSageLinkPredictor::load_artifact_json(path).map_err(to_py_neural_error)?;
+        Ok(Self { model })
+    }
+}
+
+#[pyclass(name = "StandaloneHinSageLinkPredictor")]
+#[derive(Clone)]
+struct NativeStandaloneHinSageLinkPredictor {
+    model: HinSageLinkPredictor,
+}
+
+#[pymethods]
+impl NativeStandaloneHinSageLinkPredictor {
+    #[new]
+    #[pyo3(signature = (input_dim, node_type_count, edge_type_triples, hidden_dims=None, epochs=20, learning_rate=0.05, negative_samples=4, seed=0xA11C_E5A6_5EED_1234, l2_regularization=1e-5, neighbor_samples=None))]
+    #[allow(clippy::too_many_arguments)]
+    fn new(
+        input_dim: usize,
+        node_type_count: usize,
+        edge_type_triples: Vec<(usize, usize, usize)>,
+        hidden_dims: Option<Vec<usize>>,
+        epochs: usize,
+        learning_rate: f32,
+        negative_samples: usize,
+        seed: u64,
+        l2_regularization: f32,
+        neighbor_samples: Option<Vec<usize>>,
+    ) -> PyResult<Self> {
+        let config = HinSageConfig {
+            hidden_dims: hidden_dims.unwrap_or_else(|| vec![16]),
+            epochs,
+            learning_rate,
+            negative_samples,
+            seed,
+            l2_regularization,
+            neighbor_samples: neighbor_samples.unwrap_or_default(),
+        };
+        let model =
+            HinSageLinkPredictor::new(config, input_dim, node_type_count, edge_type_triples)
+                .map_err(to_py_neural_error)?;
+        Ok(Self { model })
+    }
+
+    fn fit(
+        &mut self,
+        node_features: Vec<Vec<f32>>,
+        node_types: Vec<usize>,
+        edges: Vec<(usize, usize, usize)>,
+    ) -> PyResult<()> {
+        self.model
+            .fit(&node_features, &node_types, &edges)
+            .map_err(to_py_neural_error)
+    }
+
+    fn predict_scores(
+        &self,
+        node_features: Vec<Vec<f32>>,
+        pairs: Vec<(usize, usize)>,
+    ) -> PyResult<Vec<f64>> {
+        self.model
+            .predict_scores(&node_features, &pairs)
+            .map_err(to_py_neural_error)
+    }
+
+    fn save_artifact_json(&self, path: String) -> PyResult<()> {
+        self.model
+            .save_artifact_json(path)
+            .map_err(to_py_neural_error)
+    }
+
+    #[classmethod]
+    fn load_artifact_json(_cls: &Bound<'_, PyType>, path: String) -> PyResult<Self> {
+        let model = HinSageLinkPredictor::load_artifact_json(path).map_err(to_py_neural_error)?;
+        Ok(Self { model })
+    }
+}
+
 #[pyclass(name = "HeteroGraphSageEncoder")]
 #[derive(Clone)]
 struct NativeHeteroGraphSageEncoder {
@@ -1384,6 +2163,36 @@ impl NativeHinSageEncoder {
         Ok(embedding.into_inner())
     }
 
+    #[pyo3(signature = (node_types, edges, node_features))]
+    fn encode_graph(
+        &self,
+        node_types: Vec<usize>,
+        edges: Vec<(usize, usize, usize)>,
+        node_features: Vec<Vec<f32>>,
+    ) -> PyResult<Vec<Vec<f32>>> {
+        let typed_edges = edges
+            .into_iter()
+            .map(|(source, target, relation)| HeteroTypedEdge {
+                source,
+                target,
+                relation,
+            })
+            .collect::<Vec<_>>();
+        let graph = HinSageGraph::from_typed_schema(
+            node_types,
+            self.node_type_count,
+            self.edge_type_triples.len(),
+            self.edge_type_triples.clone(),
+            typed_edges,
+        )
+        .map_err(to_py_neural_error)?;
+        let embedding = self
+            .encoder
+            .encode_graph(&graph, &node_features)
+            .map_err(to_py_neural_error)?;
+        Ok(embedding.into_inner())
+    }
+
     fn link_embeddings(
         &self,
         embeddings: Vec<Vec<f32>>,
@@ -1514,6 +2323,22 @@ fn artifact_fallback_name(fallback: &ArtifactFallbackKind) -> &'static str {
         ArtifactFallbackKind::ZeroVector => "zero_vector",
         ArtifactFallbackKind::GlobalMeanVector => "global_mean_vector",
         ArtifactFallbackKind::ParentCell { .. } => "parent_cell",
+    }
+}
+
+fn standalone_booster_config(
+    n_estimators: usize,
+    learning_rate: f64,
+    max_depth: usize,
+    min_samples_leaf: usize,
+    min_gain: f64,
+) -> StandaloneBoosterConfig {
+    StandaloneBoosterConfig {
+        n_estimators,
+        learning_rate,
+        max_depth,
+        min_samples_leaf,
+        min_gain,
     }
 }
 
@@ -2300,6 +3125,15 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<NativeNeuralEmbeddingFeatures>()?;
     m.add_class::<NativeGraphSageEncoder>()?;
     m.add_class::<NativeNode2VecEncoder>()?;
+    m.add_class::<NativeStandaloneNeuralEmbeddingRegressor>()?;
+    m.add_class::<NativeStandaloneNode2VecRegressor>()?;
+    m.add_class::<NativeStandaloneGraphSageRegressor>()?;
+    m.add_class::<NativeStandaloneHeteroGraphSageRegressor>()?;
+    m.add_class::<NativeStandaloneHinSageRegressor>()?;
+    m.add_class::<NativeStandaloneNode2VecLinkPredictor>()?;
+    m.add_class::<NativeStandaloneGraphSageLinkPredictor>()?;
+    m.add_class::<NativeStandaloneHeteroGraphSageLinkPredictor>()?;
+    m.add_class::<NativeStandaloneHinSageLinkPredictor>()?;
     m.add_class::<NativeHeteroGraphSageEncoder>()?;
     m.add_class::<NativeHinSageEncoder>()?;
     m.add_function(wrap_pyfunction!(graph_compute_directional_features, m)?)?;

@@ -1,7 +1,7 @@
 """Python interface for the clean-room CartoBoost-inspired regressor."""
 
 from . import graph
-from ._native import GraphSageEncoder, HeteroGraphSageEncoder, HinSageEncoder
+from ._native import GraphSageEncoder, HeteroGraphSageEncoder, HinSageEncoder, Node2VecEncoder
 from .evaluation import (
     grouped_blocked_cv,
     out_of_time_split,
@@ -33,6 +33,17 @@ from .neural import (
 from .overlay import OverlayConfig, weighted_overlay
 from .regressor import CartoBoostRegressor
 from .schema import FeatureKind, FeatureSchema
+from .standalone import (
+    GraphSageLinkPredictor,
+    GraphSageStandaloneRegressor,
+    HeteroGraphSageLinkPredictor,
+    HeteroGraphSageStandaloneRegressor,
+    HinSageLinkPredictor,
+    HinSageStandaloneRegressor,
+    NeuralEmbeddingStandaloneRegressor,
+    Node2VecLinkPredictor,
+    Node2VecStandaloneRegressor,
+)
 
 __version__ = "0.1.19"
 
@@ -41,10 +52,20 @@ __all__ = [
     "GraphSageEncoder",
     "HeteroGraphSageEncoder",
     "HinSageEncoder",
+    "Node2VecEncoder",
     "FeatureSchema",
     "graph",
     "NeuralEmbeddingFeatures",
     "NeuralEmbeddingRegressor",
+    "NeuralEmbeddingStandaloneRegressor",
+    "Node2VecStandaloneRegressor",
+    "GraphSageStandaloneRegressor",
+    "HeteroGraphSageStandaloneRegressor",
+    "HinSageStandaloneRegressor",
+    "Node2VecLinkPredictor",
+    "GraphSageLinkPredictor",
+    "HeteroGraphSageLinkPredictor",
+    "HinSageLinkPredictor",
     "benchmark_neural_vs_cartoboost",
     "FeatureKind",
     "CartoBoostRegressor",

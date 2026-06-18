@@ -47,6 +47,28 @@ from .schema import (
 )
 from .walks import MetaPathWalkGenerator, SignedEdgeSampler, TemporalWalkGenerator
 
+_STANDALONE_EXPORTS = {
+    "Node2VecStandaloneRegressor",
+    "GraphSageStandaloneRegressor",
+    "HeteroGraphSageStandaloneRegressor",
+    "HinSageStandaloneRegressor",
+    "Node2VecLinkPredictor",
+    "GraphSageLinkPredictor",
+    "HeteroGraphSageLinkPredictor",
+    "HinSageLinkPredictor",
+}
+
+
+def __getattr__(name: str) -> object:
+    if name in _STANDALONE_EXPORTS:
+        from .. import standalone
+
+        value = getattr(standalone, name)
+        globals()[name] = value
+        return value
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
 __all__ = [
     "EdgeType",
     "DirectionalityConfig",
@@ -76,6 +98,14 @@ __all__ = [
     "HeteroGraphSageFeatureEncoder",
     "HinSageFeatureEncoder",
     "Node2VecFeatureEncoder",
+    "Node2VecStandaloneRegressor",
+    "GraphSageStandaloneRegressor",
+    "HeteroGraphSageStandaloneRegressor",
+    "HinSageStandaloneRegressor",
+    "Node2VecLinkPredictor",
+    "GraphSageLinkPredictor",
+    "HeteroGraphSageLinkPredictor",
+    "HinSageLinkPredictor",
     "GraphFeatureTransformer",
     "GraphFeatureBundle",
     "MetaPathWalkGenerator",
