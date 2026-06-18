@@ -14,9 +14,6 @@ checks prediction from Python and the CLI.
 uv add cartoboost
 ```
 
-The PyPI package includes `cartoboost._native`, the Rust native extension used
-for training and prediction.
-
 Verify the install:
 
 ```sh
@@ -62,8 +59,8 @@ memberships.
 ## Add Neural Features (Hybrid)
 
 Use `NeuralEmbeddingRegressor` for neural features: learn a small ID-based
-embedding table from residuals via the Rust-backed trainer, then append those
-dense vectors to your model input.
+embedding table from residuals, then append those dense vectors to your model
+input.
 
 ```python
 import numpy as np
@@ -115,8 +112,7 @@ format, and benchmarks.
 ## Add Graph Features
 
 Use graph features when rows depend on relationships between entities, places,
-or source-target pairs. Graph encoders are implemented in Rust and exposed
-through Python wrappers.
+or source-target pairs.
 
 ```python
 from cartoboost.graph import (
@@ -205,15 +201,7 @@ constant-leaf models when the optional `onnx` dependency is installed.
 
 ## Run Local Checks
 
-Local checks are for source checkouts. Clone the repository and build the native
-extension into the development environment first:
-
-```sh
-git clone https://github.com/TheCulliganMan/CartoBoost.git
-cd CartoBoost
-uv sync --group dev
-uv run --group dev maturin develop
-```
+For a source checkout, run the full local validation suite with:
 
 ```sh
 just validate

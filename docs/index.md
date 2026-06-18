@@ -7,11 +7,11 @@
 [![Publish](https://github.com/TheCulliganMan/CartoBoost/actions/workflows/publish-pypi.yml/badge.svg)](https://github.com/TheCulliganMan/CartoBoost/actions/workflows/publish-pypi.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/TheCulliganMan/CartoBoost/blob/main/LICENSE)
 
-CartoBoost is a Rust-backed Python regression toolkit for temporal, spatial,
-geotemporal, and graph-derived prediction problems. It is built for teams that
-want a familiar estimator workflow while giving the model explicit structure for
-place, time, sparse route membership, source-target directionality, and learned
-graph context.
+CartoBoost is a Python regression toolkit for temporal, spatial, geotemporal,
+and graph-derived prediction problems. It is built for teams that want a
+familiar estimator workflow while giving the model explicit structure for place,
+time, sparse route membership, source-target directionality, and learned graph
+context.
 
 ## Start Here
 
@@ -28,7 +28,7 @@ graph context.
 - [Graph Features](graph-features.md): Node2Vec, GraphSAGE, HeteroGraphSAGE,
   HinSAGE, directed source-target features, metapaths, and graph feature
   bundles.
-- [Neural Features](neural-features.md): Rust-native embedding features and
+- [Neural Features](neural-features.md): ID embedding features and
   neural-augmented boosted models.
 - [Evaluation Protocol](evaluation_protocol.md): out-of-time, spatial-blocked,
   grouped, and leakage-aware validation.
@@ -46,9 +46,9 @@ graph context.
 - Versioned JSON model and weights artifacts.
 - Optional SHAP explanations, Optuna tuning, Polars input support, and ONNX
   export for the supported dense axis-tree subset.
-- Rust-native neural embedding features.
-- Rust-native node2vec, GraphSAGE, heterogeneous GraphSAGE, and typed-schema
-  HinSAGE graph encoders exposed through Python wrappers.
+- Neural embedding features.
+- node2vec, GraphSAGE, heterogeneous GraphSAGE, and typed-schema HinSAGE graph
+  encoders.
 
 ## Why It Helps Temporal-Spatial Models
 
@@ -68,9 +68,6 @@ geotemporal patterns:
   behave similarly.
 - Directional graph features preserve source-target semantics such as
   `origin -> destination`, `upstream -> downstream`, and `supply -> demand`.
-
-The PyPI package ships the Rust native extension required for training,
-prediction, neural embeddings, and graph encoders.
 
 ## Install
 

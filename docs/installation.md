@@ -1,8 +1,6 @@
 # Installation
 
-CartoBoost is published on PyPI as `cartoboost`. The PyPI package includes the
-Rust native extension used by `CartoBoostRegressor`, so most users do not need a
-Rust toolchain.
+CartoBoost is published on PyPI as `cartoboost`.
 
 ## Install From PyPI
 
@@ -16,9 +14,8 @@ The published wheels target CPython 3.10, 3.11, 3.12, and 3.13 on:
 - macOS x86_64 and arm64.
 - Windows x86_64 and arm64.
 
-If a matching wheel is available, `uv` installs the compiled Rust extension
-directly. If no compatible wheel exists, `uv` may try to build from source,
-which requires Rust and the Python build toolchain.
+If no compatible wheel exists, `uv` may try to build from source, which requires
+the project build toolchain.
 
 ## Optional Extras
 
@@ -45,7 +42,7 @@ python -c "import cartoboost; print(cartoboost.__version__)"
 cartoboost --help
 ```
 
-Python usage should import without any separate native build step:
+Python usage should work immediately after install:
 
 ```python
 from cartoboost import CartoBoostRegressor
@@ -53,34 +50,10 @@ from cartoboost import CartoBoostRegressor
 model = CartoBoostRegressor(n_estimators=10, max_depth=2)
 ```
 
-## Source Checkout
-
-Use a source checkout for development, local validation, or benchmark scripts
-that rely on repository files:
-
-```sh
-git clone https://github.com/TheCulliganMan/CartoBoost.git
-cd CartoBoost
-uv sync --group dev
-uv run --group dev maturin develop
-```
-
-For a release-mode local extension, useful for benchmarks:
-
-```sh
-uv run --group dev maturin develop --release
-```
-
-Run local validation with:
-
-```sh
-just validate
-```
-
 ## Troubleshooting
 
 | Symptom | Fix |
 | --- | --- |
-| `ImportError: cartoboost._native` | Reinstall from PyPI or run `uv run --group dev maturin develop` in a source checkout. |
-| `uv` tries to compile from source | Use CPython 3.10-3.13 on a supported platform, or install Rust before building. |
+| `ImportError` during import | Reinstall CartoBoost in a clean Python environment. |
+| `uv` tries to compile from source | Use CPython 3.10-3.13 on a supported platform, or install the project build toolchain before building. |
 | `cartoboost` command not found | Make sure the Python environment where `cartoboost` was installed is active. |

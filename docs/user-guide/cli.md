@@ -21,12 +21,6 @@ cartoboost eval --model <path> --data <csv> [--output json|csv]
 cartoboost inspect [--model <path>] [--config <toml>] [--data <csv>] [--output json|csv]
 ```
 
-From a source checkout, you can run the binary through Cargo:
-
-```sh
-cargo run -p cartoboost-cli -- train --data train.csv --config config.toml --model-out model.json
-```
-
 ## Input CSV
 
 - The first non-empty row is the header.

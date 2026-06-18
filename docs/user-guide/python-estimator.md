@@ -52,13 +52,6 @@ For robust residuals, set `loss="mae"` or `loss="huber"`. For asymmetric
 intervals or service-level targets, use `loss="quantile"` with
 `quantile_alpha`.
 
-## Native Extension
-
-`CartoBoostRegressor` requires `cartoboost._native`. The PyPI package includes
-this compiled Rust extension for supported Python and platform combinations. In
-a source checkout, build it with `uv run --group dev maturin develop`. If the
-extension is missing, fitting or loading a model raises `ImportError`.
-
 ## Sparse-Set Features
 
 Sparse-set columns are passed separately from dense features:
@@ -78,8 +71,8 @@ predictions = model.predict(X_dense, sparse_sets={"route_cells": route_cells})
 ```
 
 Sparse IDs must be non-negative integers. Duplicate IDs inside a row are
-normalized by the Rust dataset layer. Models that contain sparse-list splits
-require `sparse_sets=` at prediction time.
+normalized before training. Models that contain sparse-list splits require
+`sparse_sets=` at prediction time.
 
 ## Feature Schema
 
@@ -104,8 +97,8 @@ model.fit(
 )
 ```
 
-See [Feature Schema](../feature_schema.md) for validation rules and the Rust
-artifact representation.
+See [Feature Schema](../feature_schema.md) for validation rules and saved
+schema representation.
 
 ## Sample Weights
 
@@ -116,7 +109,7 @@ non-negative values.
 model.fit(X_train, y_train, sample_weight=weights)
 ```
 
-Weights are passed to the native trainer.
+Weights affect split scoring and leaf values during training.
 
 ## Optuna Tuning
 
@@ -178,15 +171,14 @@ model.save_weights("model.weights.json")
 weights_loaded = CartoBoostRegressor.load_weights("model.weights.json")
 ```
 
-Native JSON artifacts preserve training metadata when available, including
-splitters, leaf predictor, fuzzy settings, loss, schema, and sparse-set
-requirements.
+JSON artifacts preserve training metadata when available, including splitters,
+leaf predictor, fuzzy settings, loss, schema, and sparse-set requirements.
 
 ## Common Errors
 
 | Error | Cause |
 | --- | --- |
-| `ImportError` | The native extension is unavailable. |
-| `NotImplementedError` | The installed native extension does not support a requested feature. |
+| `ImportError` | The package import failed or the installed package is incomplete. |
+| `NotImplementedError` | The installed package does not support a requested feature. |
 | `ValueError` | Invalid parameters, unknown splitters, mismatched row counts, or incompatible sparse/schema inputs. |
 | `RuntimeError` | Prediction or save was called before fit. |

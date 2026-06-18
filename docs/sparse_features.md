@@ -1,7 +1,7 @@
 # Sparse Features
 
-CartoBoost supports list-valued sparse columns through the Rust backend. Each row
-can contain zero or more non-negative integer IDs for route cells, zones,
+CartoBoost supports list-valued sparse columns. Each row can contain zero or
+more non-negative integer IDs for route cells, zones,
 encoded H3 cells, grid cells, corridors, or other memberships.
 
 This is useful when a temporal-spatial row belongs to several places at once,
@@ -115,7 +115,7 @@ Validation rules:
 - Each sparse column must have the same row count as `X` and `y` during fit.
 - Each sparse prediction column must have the same row count as `X`.
 - IDs must be non-negative integers.
-- Duplicate IDs in a row are sorted and deduplicated by the Rust dataset layer.
+- Duplicate IDs in a row are sorted and deduplicated before training.
 - A model that learned sparse-list splits requires `sparse_sets=` for prediction.
 
 ## H3 Sparse Helpers
@@ -137,8 +137,7 @@ schema = FeatureSchema(
 )
 ```
 
-The Rust payload still uses the existing `"SparseSet"` feature kind, while the
-Python schema metadata keeps the H3 resolution fields for callers and saved
+Saved schema metadata keeps the H3 resolution fields for callers and fitted
 estimator metadata.
 
 `cartoboost.h3.normalize_h3_id` accepts non-negative integer IDs plus decimal or
@@ -172,4 +171,4 @@ estimator for sparse route-cell training and prediction.
 - Candidate search currently considers one sparse ID per candidate.
 - Sparse sets accept non-negative integer IDs in the model interface; helper utilities
   can map abstract geo labels (for example zone IDs) to stable numeric IDs.
-- Sparse support is regression-only and native-backend-only.
+- Sparse support is regression-only.

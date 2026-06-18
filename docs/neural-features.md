@@ -3,21 +3,21 @@
 This document defines the neural and graph-derived feature pattern used in this
 repository:
 
-1. Train neural-style embeddings using the Rust-native `NeuralEmbeddingFeatures.fit`.
+1. Train neural-style embeddings using `NeuralEmbeddingFeatures.fit`.
 2. Serialize embeddings into a versioned artifact.
-3. Load and validate embeddings at inference (Rust).
+3. Load and validate embeddings at inference.
 4. Append generated dense vectors to the input matrix.
 5. Keep `CartoBoostRegressor` as the final scorer.
 
-This keeps all gradient-boosting behavior in the existing CartoBoost runtime while
-adding learned dense context through generated columns.
+This keeps gradient-boosting behavior in the standard CartoBoost prediction path
+while adding learned dense context through generated columns.
 
 ## Why This Architecture
 
 Neural-augmented boosting is intentionally conservative.
 
-- **No neural runtime inside scoring path**: inference remains deterministic Rust
-  and fast.
+- **No neural runtime inside scoring path**: inference remains deterministic and
+  fast.
 - **No API split in the final model**: the booster still sees only numeric dense
   + sparse inputs.
 - **Stable ordering and contracts**: generated feature names and counts are fixed
@@ -98,41 +98,6 @@ Implemented controls:
   averaging known adjacent-zone or typed-neighbor embeddings.
 - Validate the embedding dimension, fallback mode, and residual-vs-target
   training choice under the same holdout used for the product claim.
-
-## Implementation Surface
-
-### Python ownership
-
-- `python/cartoboost/neural/features.py`
-  - `NeuralEmbeddingFeatures`
-  - Wraps Rust-native embedding training behind a Python API.
-  - Exports a JSON artifact with version/metadata and checksum.
-  - Loads artifact for parity checks.
-
-- `python/cartoboost/neural/pipeline.py`
-  - `NeuralEmbeddingRegressor`
-  - Orchestrates residual pipeline and final `CartoBoostRegressor` fit.
-  - Appends embedding columns at training and inference time.
-
-- `scripts/run_neural_embedding_benchmark.py`
-  - Quick structured-only vs neural-augmented boosted comparison on synthetic data.
-
-### Rust ownership
-
-- `crates/cartoboost-neural/`
-  - `EmbeddingTable` artifact parsing/validation
-  - fallback logic (`zero`, `global_mean`, parent placeholder)
-  - encoder trait and dense block assembly utilities
-  - deterministic feature name generation (`name_00`, `name_01`, ...)
-  - node2vec, GraphSAGE, heterogeneous GraphSAGE, and typed-schema HinSAGE encoders
-
-Graph neural support follows the same ownership rule: typed graph semantics and
-node2vec, GraphSAGE, HeteroGraphSAGE, and HinSAGE execution live in Rust, while
-Python provides configuration and wrapper ergonomics. The native HinSAGE surface
-validates node types, relation triples, edge type consistency, relation-ordered
-neighbor sampling caps, artifact serialization, and link-prediction feature
-construction. Python callers pass typed integer arrays into the Rust encoder
-rather than reimplementing graph encoder logic in Python.
 
 ## Directional Geotemporal Graph Features
 
@@ -264,7 +229,7 @@ directionality:
   reverse_relation_suffix: "_reverse"
 ```
 
-#### Native HinSAGE support
+#### HinSAGE support
 
 For typed heterogeneous graphs, use the HinSAGE family with an explicit node
 type count, edge-type triples, and optional per-relation neighbor sampling caps:
@@ -294,10 +259,9 @@ graph_embeddings:
 
 `GraphFeatureTransformer.fit_transform(...)` requires `node_types` when this
 family is selected, and edges must be `(source, target, relation)` integer
-triples. The Rust layer rejects edges whose source/target node types do not
-match the configured relation schema. The Python `HinSageFeatureEncoder` also
-exposes `link_embeddings(embeddings, pairs)` for source-target link-prediction
-features.
+triples. CartoBoost rejects edges whose source/target node types do not match
+the configured relation schema. `HinSageFeatureEncoder` also exposes
+`link_embeddings(embeddings, pairs)` for source-target link-prediction features.
 
 #### 2) Direction-aware feature generation
 
@@ -403,8 +367,7 @@ If residual training is enabled:
 
 `r_i = y_i - f0(x_i)`.
 
-`Φ` is then fit only to summarize residual behavior by ID family using the Rust
-native implementation.
+`Φ` is then fit only to summarize residual behavior by ID family.
 
 Key property:
 
@@ -462,24 +425,20 @@ CartoBoost and let trees decide when that signal is useful.
 `use_residual=False` trains embeddings on raw target `y` directly. This is
 available but less common in this phase.
 
-## 4.5) Transformer setup and internals (`NeuralEmbeddingFeatures`)
-
-The embedding trainer is implemented in Rust; Python orchestration remains
-minimal and deterministic.
+## 4.5) Transformer setup (`NeuralEmbeddingFeatures`)
 
 ### What this transformer is
 
 - It is keyed by one or more IDs (`u64` keys).
 - It learns one fixed vector per ID in `fit()`.
-- It exports rows to JSON artifact for Rust-native lookup.
+- It exports rows to a JSON artifact for lookup.
 - At inference, it emits a dense matrix of shape `(n_rows, dim)`.
 
-### How it is trained in code (`fit`)
+### How it is trained (`fit`)
 
-From Python, `NeuralEmbeddingFeatures.fit(ids, target)` validates inputs and
-delegates to `cartoboost._native.NeuralEmbeddingFeatures.fit`.
-The trained vectors are exposed through `transform()` and persisted via
-`export()` as artifact rows + metadata.
+`NeuralEmbeddingFeatures.fit(ids, target)` validates inputs, learns vectors, and
+exposes them through `transform()`. `export()` persists the vectors as artifact
+rows plus metadata.
 
 ### How lookup works at transform time (`transform`)
 
@@ -489,7 +448,7 @@ For each row id:
 - Else:
   - `zero_vector`: all zeros
   - `global_mean_vector`: use global mean of learned vectors
-  - `parent_cell`: deferred callback hook in Rust path
+  - `parent_cell`: reserved parent-cell fallback path
 
  The output has:
 
@@ -580,7 +539,7 @@ Checksum is computed over sorted rows and metadata and validated on load.
 
 ### Fallback strategies
 
-Missing IDs are resolved by strategy in this order (implemented in Rust):
+Missing IDs are resolved by strategy in this order:
 
 - `zero_vector`
 - `global_mean_vector`
@@ -761,9 +720,8 @@ in cold-sparse settings by widening the feature space with structured dense embe
 ## 11) Graph Encoder Performance Notes
 
 node2vec, GraphSAGE, heterogeneous GraphSAGE, and HinSAGE encoders are
-available through Rust-native classes: `cartoboost.Node2VecEncoder`,
-`cartoboost.GraphSageEncoder`, `cartoboost.HeteroGraphSageEncoder`, and
-`cartoboost.HinSageEncoder`.
+available through `cartoboost.Node2VecEncoder`, `cartoboost.GraphSageEncoder`,
+`cartoboost.HeteroGraphSageEncoder`, and `cartoboost.HinSageEncoder`.
 
 Complexity is approximately:
 

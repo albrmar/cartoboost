@@ -42,14 +42,13 @@ This is intentionally compatible with JSON weights artifacts. ONNX export should
 still be treated as dense-axis-tree only; graph encoders and random-walk
 precomputation are not represented inside ONNX.
 
-Rust-native graph encoder artifacts are separate from the booster artifact.
-`Node2VecEncoder`, `GraphSageEncoder`, `HeteroGraphSageEncoder`, and
-`HinSageEncoder` can be saved as JSON through their encoder APIs. node2vec
-artifacts include walk/training hyperparameters and fitted node embeddings;
-HinSAGE artifacts include the typed node schema, relation triples,
-relation-ordered neighbor sampling settings, fitted weights, and training loss
-curve. Persist the encoder artifact path or checksum in booster metadata when
-graph features are generated offline.
+Graph encoder artifacts are separate from the booster artifact. `Node2VecEncoder`,
+`GraphSageEncoder`, `HeteroGraphSageEncoder`, and `HinSageEncoder` can be saved
+as JSON through their encoder APIs. node2vec artifacts include walk/training
+hyperparameters and fitted node embeddings; HinSAGE artifacts include the typed
+node schema, relation triples, relation-ordered neighbor sampling settings,
+fitted weights, and training loss curve. Persist the encoder artifact path or
+checksum in booster metadata when graph features are generated offline.
 
 ## Save And Load
 
@@ -79,10 +78,10 @@ The JSON wrapper uses:
 - `backend`
 - `model`
 
-The `model` field contains the same versioned model payload used by native
-CartoBoost artifacts, so the file is directly inspectable and can be loaded
-without relying on pickle or process-local Python classes. `load_weights` also
-accepts plain native model JSON for compatibility.
+The `model` field contains the same versioned model payload used by CartoBoost
+artifacts, so the file is directly inspectable and can be loaded without relying
+on pickle or process-local Python classes. `load_weights` also accepts plain
+model JSON for compatibility.
 
 `save_weights("model.onnx")` or `save_weights(path, format="onnx")` exports an
 ONNX `TreeEnsembleRegressor` when the optional `onnx` dependency is installed.

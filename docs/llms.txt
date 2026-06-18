@@ -1,25 +1,21 @@
 # CartoBoost Agent Operating Guide
 
-> CartoBoost is a Rust-first temporal-spatial regression toolbox with a Python API, CLI tooling, and a benchmark-driven validation pipeline.
+> CartoBoost is a temporal-spatial regression toolbox with a Python API, CLI tooling, and a benchmark-driven validation pipeline.
 
 Use this guide as the first read before making changes. Start in the relevant code component, then update contracts, then run the validation commands defined in AGENTS.
 
 ## Workspace Overview
 - [Repository README](https://github.com/TheCulliganMan/CartoBoost/blob/main/README.md): global project intent, quick workflow examples, and component-level capabilities.
 - [Root AGENTS instructions](https://github.com/TheCulliganMan/CartoBoost/blob/main/AGENTS.md): workspace development rules, validation commands, and release caveats.
-- [Cargo workspace manifest](https://github.com/TheCulliganMan/CartoBoost/blob/main/Cargo.toml): workspace members and shared build configuration.
 - [Python project manifest](https://github.com/TheCulliganMan/CartoBoost/blob/main/pyproject.toml): dependency groups and Python packaging settings.
 - [Python environment lockfile](https://github.com/TheCulliganMan/CartoBoost/blob/main/uv.lock): pinned dependency state for reproducible Python builds.
 - [Docs home](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/index.md): documentation index and user-facing map.
 
 ## Core Components
-- [cartoboost-core crate](https://github.com/TheCulliganMan/CartoBoost/blob/main/crates/cartoboost-core): shared modeling core, splitters, objective logic, and schema contracts.
-- [cartoboost-cli crate](https://github.com/TheCulliganMan/CartoBoost/blob/main/crates/cartoboost-cli): command implementation for `train`, `predict`, `eval`, and `inspect`.
-- [cartoboost-neural crate](https://github.com/TheCulliganMan/CartoBoost/blob/main/crates/cartoboost-neural): Rust-native neural embeddings, node2vec, GraphSAGE, HeteroGraphSAGE, HinSAGE, graph feature validation, and encoder artifacts.
+- [Python package API](https://github.com/TheCulliganMan/CartoBoost/blob/main/python/cartoboost): user-facing estimator, graph helpers, neural feature workflows, and utility functions.
+- [CLI reference](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/reference/cli.md): command behavior for `train`, `predict`, `eval`, and `inspect`.
+- [Neural features guide](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/neural-features.md): ID embeddings, neural-augmented boosting, graph-aware fallback, and benchmark guidance.
 - [Graph features guide](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/graph-features.md): node2vec, GraphSAGE, HeteroGraphSAGE, HinSAGE, directed source-target features, and graph feature bundle contracts.
-- [cartoboost-py crate](https://github.com/TheCulliganMan/CartoBoost/blob/main/crates/cartoboost-py): PyO3 binding layer.
-- [Python package API](https://github.com/TheCulliganMan/CartoBoost/blob/main/python/cartoboost): user-facing Python package and ergonomic wrappers.
-- [Benchmarks crate workspace](https://github.com/TheCulliganMan/CartoBoost/blob/main/benches): timing, benchmark definitions, and reporting harnesses.
 - [Scripts folder](https://github.com/TheCulliganMan/CartoBoost/blob/main/scripts): acceptance metrics and dataset generation utilities used for validation.
 
 ## Documentation Contracts
@@ -39,16 +35,12 @@ Use this guide as the first read before making changes. Start in the relevant co
 - [Benchmarks overview](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/benchmarks/index.md), [NYC Taxi](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/benchmarks/nyc-taxi.md), [Lane-level acceptance](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/benchmarks/lane-level.md): expected evidence format.
 
 ## Where to Edit by Change Type
-- For core algorithm changes: edit `crates/cartoboost-core` and then update [feature schema](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/feature_schema.md) + [tests](https://github.com/TheCulliganMan/CartoBoost/blob/main/tests) as needed.
-- For CLI behavior and I/O format changes: edit `crates/cartoboost-cli/src/main.rs`, update [CLI guide](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/user-guide/cli.md), [CLI reference](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/reference/cli.md), and integration tests under `../tests/integration`.
+- For model behavior changes: update [feature schema](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/feature_schema.md) + [tests](https://github.com/TheCulliganMan/CartoBoost/blob/main/tests) as needed.
+- For CLI behavior and I/O format changes: update [CLI guide](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/user-guide/cli.md), [CLI reference](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/reference/cli.md), and integration tests under `../tests/integration`.
 - For Python API changes: edit `python/cartoboost`, update [Python API reference](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/reference/python-api.md), and add/adjust tests under `../tests/python`.
-- For bindings/debugging interop: edit `crates/cartoboost-py/src/lib.rs`, then run `uv run --group dev maturin develop` after any native changes.
 - For benchmark or acceptance behavior changes: edit `scripts`, benchmark sources in `benches`, and benchmark docs under `docs/benchmarks`.
 
 ## Validation and Runtime Checks
-- Run `cargo fmt --all --check` before any Rust merge attempt.
-- Run `cargo clippy --workspace --all-targets -- -D warnings` before finalizing CLI/core edits.
-- Run `cargo test --workspace` for native Rust behavior changes.
 - Run `uv run --group dev ruff format --check python tests scripts` and `uv run --group dev ruff check python tests scripts` after Python-facing edits.
 - Run `uv run --group dev pytest` after changing Python APIs or estimator behavior.
 - Use `just validate` for full local validation only when comprehensive smoke coverage is needed.

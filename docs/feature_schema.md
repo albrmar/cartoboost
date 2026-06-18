@@ -23,7 +23,7 @@ schema = {
 }
 ```
 
-Pass the schema to native training:
+Pass the schema during training:
 
 ```python
 model.fit(
@@ -34,10 +34,9 @@ model.fit(
 )
 ```
 
-## Rust Artifact Format
+## Saved Schema Format
 
-The Python wrapper converts supported schema dictionaries into the Rust schema
-payload:
+CartoBoost stores supported schema dictionaries in a compact artifact payload:
 
 ```json
 {

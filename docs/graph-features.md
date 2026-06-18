@@ -1,9 +1,7 @@
 # Graph Features
 
 CartoBoost graph support is a precompute layer for creating dense graph-derived
-columns before fitting `CartoBoostRegressor`. The graph encoders and validation
-logic live in Rust; Python provides configuration, data preparation, and wrapper
-APIs.
+columns before fitting `CartoBoostRegressor`.
 
 Use graph features when prediction depends on relationships such as movement,
 service, containment, interaction, or source-target imbalance:
@@ -26,7 +24,7 @@ the standard CartoBoost booster.
 
 ```text
 typed graph + node features
-    -> Rust-native graph encoder
+    -> graph encoder
     -> GraphFeatureBundle
     -> dense/sparse model matrix
     -> CartoBoostRegressor
@@ -40,16 +38,12 @@ offline.
 
 CartoBoost exposes four graph encoder families.
 
-| Family | Use case | Native implementation |
-| --- | --- | --- |
-| Node2Vec | Lightweight transductive graph embeddings from directed/weighted random-walk contexts. | Rust |
-| GraphSAGE | Homogeneous graphs with one node/edge type. | Rust |
-| HeteroGraphSAGE | Typed relations without a strict HinSAGE schema contract. | Rust |
-| HinSAGE | Typed nodes, typed relation triples, relation-aware sampling, and link features. | Rust |
-
-Python wrappers are intentionally thin. Core behavior such as schema validation,
-neighbor sampling, node2vec walk generation, fitting, encoding, link feature
-construction, and artifact serialization is implemented in Rust.
+| Family | Use case |
+| --- | --- |
+| Node2Vec | Lightweight transductive graph embeddings from directed/weighted random-walk contexts. |
+| GraphSAGE | Homogeneous graphs with one node/edge type. |
+| HeteroGraphSAGE | Typed relations without a strict HinSAGE schema contract. |
+| HinSAGE | Typed nodes, typed relation triples, relation-aware sampling, and link features. |
 
 ## Node2Vec Configuration
 
@@ -58,9 +52,8 @@ walks generate graph contexts, then a skip-gram negative-sampling objective
 learns one dense vector per node. The return parameter `p` controls how strongly
 walks avoid immediately returning to the previous node; the in-out parameter `q`
 controls whether walks favor local breadth-first behavior or outward/deeper
-exploration. CartoBoost's implementation keeps transitions directed, multiplies
-transition probabilities by optional edge weights, and uses deterministic native
-training.
+exploration. CartoBoost keeps transitions directed, multiplies transition
+probabilities by optional edge weights, and trains deterministically.
 
 Use `node2vec` when you want a compact graph-only signal appended to booster
 features and do not need node attributes to drive the representation. Use
@@ -227,7 +220,7 @@ graph_embeddings:
     compute_asymmetry_features: true
 ```
 
-The Rust layer validates that:
+CartoBoost validates that:
 
 - `node_type_count` is positive;
 - relation IDs are zero-based and ordered;

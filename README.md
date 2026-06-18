@@ -7,11 +7,10 @@
 [![Publish](https://github.com/TheCulliganMan/CartoBoost/actions/workflows/publish-pypi.yml/badge.svg)](https://github.com/TheCulliganMan/CartoBoost/actions/workflows/publish-pypi.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-CartoBoost is a Rust-backed Python regression toolkit for temporal, spatial,
-geotemporal, and graph-derived prediction problems. It keeps the estimator
-workflow familiar to scikit-learn users while adding modeling primitives for
-place, time, sparse route membership, source-target directionality, and learned
-graph context.
+CartoBoost is a Python regression toolkit for temporal, spatial, geotemporal,
+and graph-derived prediction problems. It keeps the estimator workflow familiar
+to scikit-learn users while adding modeling primitives for place, time, sparse
+route membership, source-target directionality, and learned graph context.
 
 Use CartoBoost when a standard tabular booster is a strong baseline, but your
 problem still requires hand-built features to represent:
@@ -21,10 +20,6 @@ problem still requires hand-built features to represent:
 - list-valued memberships such as route cells, zones, markets, or H3 cells;
 - source-target movement such as origin-to-destination flows;
 - high-cardinality IDs that benefit from learned embeddings.
-
-The modeling core is implemented in Rust. Python provides the estimator API,
-configuration ergonomics, graph wrappers, benchmark tooling, and integration
-with common data-science workflows.
 
 ## Core Capabilities
 
@@ -37,12 +32,12 @@ CartoBoost supports:
 - Dense numeric arrays plus list-valued sparse-set features.
 - Feature schemas for numeric, periodic, sparse-set, and model-contract
   validation.
-- Native JSON model artifacts and portable weights artifacts.
+- JSON model artifacts and portable weights artifacts.
 - Optional SHAP explanations, Optuna tuning, Polars input support, and ONNX
   export for the supported dense axis-tree subset.
-- Rust-native neural embedding features for high-cardinality IDs.
-- Rust-native node2vec, GraphSAGE, heterogeneous GraphSAGE, and typed-schema
-  HinSAGE feature encoders exposed through thin Python wrappers.
+- Neural embedding features for high-cardinality IDs.
+- node2vec, GraphSAGE, heterogeneous GraphSAGE, and typed-schema HinSAGE graph
+  feature encoders.
 
 ## Install
 
@@ -51,9 +46,6 @@ Install the released package from PyPI:
 ```sh
 uv add cartoboost
 ```
-
-The published wheels include the Rust native extension for CPython 3.10-3.13 on
-supported Linux, macOS, and Windows targets.
 
 Optional integrations:
 
@@ -69,13 +61,6 @@ Verify the install:
 ```sh
 python -c "import cartoboost; print(cartoboost.__version__)"
 cartoboost --help
-```
-
-For source development:
-
-```sh
-uv sync --group dev
-uv run --group dev maturin develop
 ```
 
 ## Basic Regression
@@ -153,7 +138,7 @@ Why this helps:
 
 ## Graph Features
 
-CartoBoost can precompute Rust-native graph columns before booster training.
+CartoBoost can precompute graph-derived columns before booster training.
 Supported encoder families are node2vec, GraphSAGE, HeteroGraphSAGE, and
 HinSAGE. Direction is a first-class contract: `A -> B` and `B -> A` can be
 separate facts, features, and embeddings.
@@ -205,10 +190,9 @@ explanation = loaded.explain_shap(
 )
 ```
 
-Native model artifacts are versioned JSON and include optional metadata, feature
-schema, and training configuration fields. Graph and neural encoders have their
-own artifacts and should be persisted alongside the booster when features are
-precomputed offline.
+Model artifacts are versioned JSON and include optional metadata, feature
+schema, and training configuration fields. Graph and neural feature artifacts
+should be persisted alongside the booster when features are precomputed offline.
 
 ## CLI
 

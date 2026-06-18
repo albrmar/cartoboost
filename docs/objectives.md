@@ -12,8 +12,8 @@ model = CartoBoostRegressor(loss="l2")
 ```
 
 Use L2 when your primary score is RMSE, R2, or general point-prediction quality.
-It supports the current splitters, sample weights, constant leaves, and Rust
-linear leaves.
+It supports the current splitters, sample weights, constant leaves, and linear
+leaves.
 
 ## Quantile Regression
 

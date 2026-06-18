@@ -14,7 +14,7 @@ regression.
 | `min_samples_leaf` | `20` | Minimum weighted row count per leaf candidate. |
 | `min_gain` | `1e-8` | Minimum gain required to split. |
 | `random_state` | `None` | Reserved for deterministic APIs; current training paths are deterministic. |
-| `n_threads` | `None` | Public parameter retained for compatibility; current Rust binding does not expose threaded training control. |
+| `n_threads` | `None` | Public parameter retained for compatibility; threaded training control is not currently exposed. |
 
 ## Loss
 
@@ -96,13 +96,3 @@ dense feature:
 
 Current constraints require constant leaves, non-fuzzy training, and axis-style
 splitters.
-
-## Native Extension Requirement
-
-All training and prediction through `CartoBoostRegressor` uses the native
-extension. PyPI installs include `cartoboost._native` for supported wheel
-platforms. In a source checkout, build it before fitting or loading models:
-
-```sh
-uv run --group dev maturin develop
-```

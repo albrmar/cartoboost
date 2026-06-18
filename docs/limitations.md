@@ -13,11 +13,6 @@ splitters match the structure in your data.
 - CartoBoost should not be described as generally superior to other boosters.
   Compare on the same data, split strategy, features, and metrics.
 
-## Backend Scope
-
-- The Python estimator requires the Rust native extension.
-- Training and prediction require that extension.
-
 ## Data Scope
 
 - Python sparse features require non-negative integer IDs.

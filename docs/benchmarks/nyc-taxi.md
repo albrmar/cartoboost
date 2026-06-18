@@ -30,12 +30,10 @@ normal model use:
 uv add cartoboost
 ```
 
-For reproducible benchmark development from a source checkout, use a release
-native extension:
+For reproducible benchmark development from a source checkout:
 
 ```sh
 uv sync --group dev --group bench
-uv run --group dev maturin develop --release
 ```
 
 The TLC data cache lives under `data/nyc_taxi/` and must not be committed.

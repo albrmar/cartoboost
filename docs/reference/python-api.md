@@ -42,7 +42,7 @@ CartoBoostRegressor(
 | `explain_shap(X, background=..., **kwargs)` | `shap.Explanation` | Convenience SHAP entry point. |
 | `save(path)` | `None` | Writes a model artifact. |
 | `save_weights(path, format="auto")` | `None` | Writes JSON weights or supported ONNX. |
-| `CartoBoostRegressor.load(path)` | estimator | Loads native model artifacts. |
+| `CartoBoostRegressor.load(path)` | estimator | Loads model artifacts. |
 | `CartoBoostRegressor.load_weights(path)` | estimator | Loads weights artifacts. |
 | `get_params(deep=True)` | `dict` | sklearn-compatible parameter inspection. |
 | `set_params(**params)` | `self` | Validates known parameter names. |
@@ -65,9 +65,8 @@ regressor = NeuralEmbeddingRegressor(
 )
 ```
 
-Rust-native neural-augmented boosted estimator that appends offline
-`NeuralEmbeddingFeatures` to dense features and trains `CartoBoostRegressor` on
-the expanded matrix.
+Neural-augmented boosted estimator that appends ID embedding features to dense
+features and trains `CartoBoostRegressor` on the expanded matrix.
 
 | Method | Returns | Notes |
 | --- | --- | --- |
@@ -82,12 +81,12 @@ Set `oof_folds > 1` to train final-model embedding columns out of fold. Use
 
 ## Graph Encoders
 
-Rust-native neighborhood-based encoders for downstream boosting workflows.
+Neighborhood-based encoders for downstream boosting workflows.
 
 `Node2VecEncoder` is for transductive directed/weighted random-walk embeddings;
 `GraphSageEncoder` is for homogeneous graphs; `HeteroGraphSageEncoder` is for
 typed relations; `HinSageEncoder` is the typed-schema HinSAGE surface with
-native Rust validation, relation-aware sampling, and link feature construction.
+relation-aware sampling and link feature construction.
 
 | Method | Returns | Notes |
 | --- | --- | --- |
@@ -111,9 +110,9 @@ precompute dense and sparse graph inputs before fitting `CartoBoostRegressor`.
 | `GraphFeatureConfig.from_config(cfg)` | Validates YAML-style graph config blocks with schema, directionality, metapaths, encoder settings, and outputs. |
 | `GraphSchema`, `EdgeType`, `DirectionalityConfig` | Describe directed heterogeneous graph schemas and source-target requirements. |
 | `DirectedMetaPath` | Validates typed node/relation/node metapaths against a `GraphSchema`. |
-| `GraphFeatureTransformer.from_config(cfg)` | Fits native node2vec, GraphSAGE, HeteroGraphSAGE, or typed-schema HinSAGE encoders and emits a `GraphFeatureBundle`. |
-| `Node2VecFeatureEncoder.from_config(cfg)` | Thin Python wrapper around Rust-native node2vec with `dim`, `walk_length`, `walks_per_node`, `window_size`, `p`, `q`, and optional edge weights. |
-| `HinSageFeatureEncoder.from_config(cfg)` | Thin Python wrapper around Rust-native HinSAGE with `node_type_count`, `edge_type_triples`, and optional per-relation `neighbor_samples`. |
+| `GraphFeatureTransformer.from_config(cfg)` | Fits node2vec, GraphSAGE, HeteroGraphSAGE, or typed-schema HinSAGE encoders and emits a `GraphFeatureBundle`. |
+| `Node2VecFeatureEncoder.from_config(cfg)` | Configures node2vec with `dim`, `walk_length`, `walks_per_node`, `window_size`, `p`, `q`, and optional edge weights. |
+| `HinSageFeatureEncoder.from_config(cfg)` | Configures HinSAGE with `node_type_count`, `edge_type_triples`, and optional per-relation `neighbor_samples`. |
 | `GraphFeatureBundle` | Carries dense graph columns, optional sparse sets, feature names, node IDs, and provenance metadata. |
 | `MetaPathWalkGenerator`, `TemporalWalkGenerator` | Generate constrained directed metapath walks and monotonic temporal walks. |
 | `materialize_source_target_pair_nodes(edges)` | Creates stable `("od_pair", source, target)` nodes so `A -> B` and `B -> A` stay distinct. |
@@ -163,8 +162,7 @@ Helper for declaring numeric, periodic, and sparse-set feature roles.
 | Method | Returns | Notes |
 | --- | --- | --- |
 | `to_dict()` | `dict` | Compact Python representation. |
-| `to_rust_payload(dense_width, sparse_names)` | `dict` | Validated `names` and `kinds` payload. |
-| `to_json(dense_width, sparse_names)` | `str` | JSON-encoded Rust payload. |
+| `to_json(dense_width, sparse_names)` | `str` | JSON-encoded schema payload. |
 
 ## SHAP Helpers
 

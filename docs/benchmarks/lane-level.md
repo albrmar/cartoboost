@@ -11,11 +11,9 @@ Install from PyPI for normal use:
 uv add cartoboost
 ```
 
-From a source checkout, rebuild the local native extension before regenerating
-the committed acceptance artifacts:
+From a source checkout, regenerate the committed acceptance artifacts with:
 
 ```sh
-uv run --group dev maturin develop
 uv run --group dev python scripts/run_lane_level_acceptance_metrics.py
 ```
 
