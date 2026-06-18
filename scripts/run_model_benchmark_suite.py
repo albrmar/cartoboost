@@ -41,6 +41,21 @@ STANDALONE_MODELS = {
     "hetero_graphsage_link_predictor",
     "hinsage_link_predictor",
 }
+QUALITATIVE_CARTOBOOST_SPLITTERS = [
+    "axis_histogram:256",
+    "diagonal_2d",
+    "gaussian_2d",
+]
+CARTOBOOST_FAMILY_MODELS = {
+    "cartoboost",
+    "cartoboost_neural",
+    *GRAPH_MODEL_FAMILIES,
+    "neural_embedding_regressor",
+    "node2vec_regressor",
+    "graphsage_regressor",
+    "hetero_graphsage_regressor",
+    "hinsage_regressor",
+}
 
 
 @dataclass(frozen=True)
@@ -306,7 +321,7 @@ def cartoboost_model(args: argparse.Namespace) -> Any:
         max_depth=args.max_depth,
         min_samples_leaf=2,
         min_gain=0.0,
-        splitters=["axis_histogram:256"],
+        splitters=QUALITATIVE_CARTOBOOST_SPLITTERS,
         random_state=args.seed,
         n_threads=args.n_threads or None,
     )
@@ -349,14 +364,14 @@ def run_neural(
             "learning_rate": args.learning_rate,
             "max_depth": args.max_depth,
             "min_samples_leaf": 2,
-            "splitters": ["axis_histogram:256"],
+            "splitters": QUALITATIVE_CARTOBOOST_SPLITTERS,
         },
         final_model_kwargs={
             "n_estimators": args.n_estimators,
             "learning_rate": args.learning_rate,
             "max_depth": args.max_depth,
             "min_samples_leaf": 2,
-            "splitters": ["axis_histogram:256"],
+            "splitters": QUALITATIVE_CARTOBOOST_SPLITTERS,
         },
     )
     train_x = workload.features[train_idx]
@@ -1021,6 +1036,7 @@ def run_suite(workloads: list[Workload], args: argparse.Namespace) -> dict[str, 
             "graph_dim": int(args.graph_dim),
             "graph_epochs": int(args.graph_epochs),
             "graph_model_families": dict(GRAPH_MODEL_FAMILIES),
+            "cartoboost_qualitative_splitters": list(QUALITATIVE_CARTOBOOST_SPLITTERS),
         },
         "workloads": {},
     }
@@ -1052,7 +1068,48 @@ def run_suite(workloads: list[Workload], args: argparse.Namespace) -> dict[str, 
                 )
             workload_report["splits"][split_name] = split_report
         payload["workloads"][workload.name] = workload_report
+    payload["lightgbm_comparison"] = lightgbm_comparison(payload)
     return payload
+
+
+def lightgbm_comparison(payload: dict[str, Any]) -> list[dict[str, Any]]:
+    comparisons: list[dict[str, Any]] = []
+    for workload_name, workload in payload["workloads"].items():
+        for split_name, split in workload["splits"].items():
+            lightgbm = split["models"].get("lightgbm")
+            if lightgbm is None or lightgbm["status"] != "ok":
+                continue
+            lightgbm_metrics = lightgbm["metrics"]
+            candidates = []
+            for model_name, result in split["models"].items():
+                if model_name not in CARTOBOOST_FAMILY_MODELS:
+                    continue
+                if result["status"] != "ok":
+                    continue
+                metrics = result.get("metrics", {})
+                if "rmse" not in metrics:
+                    continue
+                candidates.append((float(metrics["rmse"]), model_name, metrics))
+            if not candidates:
+                continue
+            best_rmse, best_name, best_metrics = min(candidates, key=lambda item: item[0])
+            lightgbm_rmse = float(lightgbm_metrics["rmse"])
+            comparisons.append(
+                {
+                    "workload": workload_name,
+                    "split": split_name,
+                    "best_cartoboost_model": best_name,
+                    "best_cartoboost_rmse": best_rmse,
+                    "lightgbm_rmse": lightgbm_rmse,
+                    "rmse_delta_vs_lightgbm": best_rmse - lightgbm_rmse,
+                    "best_cartoboost_r2": float(best_metrics["r2"]),
+                    "lightgbm_r2": float(lightgbm_metrics["r2"]),
+                    "r2_delta_vs_lightgbm": float(best_metrics["r2"])
+                    - float(lightgbm_metrics["r2"]),
+                    "winner": "cartoboost" if best_rmse < lightgbm_rmse else "lightgbm",
+                }
+            )
+    return comparisons
 
 
 def ok_rows(payload: dict[str, Any]) -> list[dict[str, Any]]:
@@ -1097,6 +1154,33 @@ def write_markdown(payload: dict[str, Any], output_path: Path) -> None:
         "## Results",
         "",
     ]
+    comparisons = payload.get("lightgbm_comparison", [])
+    if comparisons:
+        lines.extend(
+            [
+                "## LightGBM Comparison",
+                "",
+                (
+                    "For each benchmark split, this table compares LightGBM with the best "
+                    "CartoBoost-family model that finished successfully under the same data split "
+                    "and global benchmark settings."
+                ),
+                "",
+                (
+                    "| Workload | Split | Best CartoBoost-family model | CartoBoost RMSE | "
+                    "LightGBM RMSE | RMSE delta | R2 delta | Winner |"
+                ),
+                "| --- | --- | --- | ---: | ---: | ---: | ---: | --- |",
+            ]
+        )
+        for row in comparisons:
+            lines.append(
+                f"| {row['workload']} | {row['split']} | {row['best_cartoboost_model']} | "
+                f"{row['best_cartoboost_rmse']:.4f} | {row['lightgbm_rmse']:.4f} | "
+                f"{row['rmse_delta_vs_lightgbm']:.4f} | {row['r2_delta_vs_lightgbm']:.4f} | "
+                f"{row['winner']} |"
+            )
+        lines.append("")
     for workload in payload["workloads"].values():
         lines.extend([f"### {workload['display_name']}", "", workload["description"], ""])
         for split_name, split in workload["splits"].items():

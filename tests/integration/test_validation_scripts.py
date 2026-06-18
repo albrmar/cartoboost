@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import json
 import subprocess
 import sys
@@ -63,6 +64,59 @@ def test_model_benchmark_suite_smoke(tmp_path):
     assert results.exists()
     assert report.exists()
     assert "Normal dense" in report.read_text(encoding="utf-8")
+
+
+def test_model_benchmark_suite_reports_best_cartoboost_vs_lightgbm():
+    repo_root = Path(__file__).resolve().parents[2]
+    module_path = repo_root / "scripts" / "run_model_benchmark_suite.py"
+    spec = importlib.util.spec_from_file_location("run_model_benchmark_suite", module_path)
+    assert spec is not None
+    assert spec.loader is not None
+    benchmark_suite = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = benchmark_suite
+    spec.loader.exec_module(benchmark_suite)
+
+    payload = {
+        "workloads": {
+            "normal": {
+                "splits": {
+                    "random": {
+                        "models": {
+                            "cartoboost": {
+                                "status": "ok",
+                                "metrics": {"rmse": 0.42, "r2": 0.91},
+                            },
+                            "cartoboost_neural": {
+                                "status": "skipped",
+                                "reason": "not applicable",
+                            },
+                            "lightgbm": {
+                                "status": "ok",
+                                "metrics": {"rmse": 0.50, "r2": 0.88},
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    }
+
+    rows = benchmark_suite.lightgbm_comparison(payload)
+
+    assert rows == [
+        {
+            "workload": "normal",
+            "split": "random",
+            "best_cartoboost_model": "cartoboost",
+            "best_cartoboost_rmse": 0.42,
+            "lightgbm_rmse": 0.50,
+            "rmse_delta_vs_lightgbm": -0.08000000000000002,
+            "best_cartoboost_r2": 0.91,
+            "lightgbm_r2": 0.88,
+            "r2_delta_vs_lightgbm": 0.030000000000000027,
+            "winner": "cartoboost",
+        }
+    ]
 
 
 def test_model_benchmark_suite_graph_families_smoke(tmp_path):
