@@ -47,6 +47,10 @@ CartoBoostRegressor(
 | `get_params(deep=True)` | `dict` | sklearn-compatible parameter inspection. |
 | `set_params(**params)` | `self` | Validates known parameter names. |
 
+`X`, `y`, `sample_weight`, and sparse-set tables may be NumPy arrays or
+dataframe-style objects. Install `cartoboost[duckdb]` to pass DuckDB relations
+directly, or `cartoboost[polars]` for Polars inputs.
+
 ## `cartoboost.NeuralEmbeddingRegressor`
 
 ```python
@@ -126,6 +130,35 @@ Directional source-target features are opt-in through
 `graph_directed_temporal_drift`, and generic flow metrics such as
 `graph_source_target_affinity` and `graph_flow_asymmetry`.
 
+## Standalone Graph And Neural Models
+
+Use these models when graph or neural embeddings should score directly instead
+of becoming features for `CartoBoostRegressor`.
+
+Standalone regressors:
+
+| Entry point | Fit signature | Notes |
+| --- | --- | --- |
+| `NeuralEmbeddingStandaloneRegressor` | `fit(ids, y, dense=None)` | Supervised ID embeddings with optional dense row features. |
+| `Node2VecStandaloneRegressor` | `fit(node_count, edges, row_nodes, y, row_targets=None, dense=None, edge_weights=None)` | Graph-only random-walk embeddings plus row-level regression. |
+| `GraphSageStandaloneRegressor` | `fit(node_features, edges, row_nodes, y, row_targets=None, dense=None)` | Homogeneous graph regression with node attributes. |
+| `HeteroGraphSageStandaloneRegressor` | `fit(node_features, edges, row_nodes, y, row_targets=None, dense=None)` | Typed-edge regression without strict HinSAGE schema metadata. |
+| `HinSageStandaloneRegressor` | `fit(node_features, node_types, edges, row_nodes, y, row_targets=None, dense=None)` | Typed-node and typed-relation graph regression. |
+
+All standalone regressors expose `predict`, `score`, `save`, and `load`.
+
+Standalone link predictors:
+
+| Entry point | Fit signature | Notes |
+| --- | --- | --- |
+| `Node2VecLinkPredictor` | `fit(node_count, edges, edge_weights=None)` | Directed/weighted graph link scoring from random-walk embeddings. |
+| `GraphSageLinkPredictor` | `fit(node_features, edges)` | Homogeneous graph link scoring. |
+| `HeteroGraphSageLinkPredictor` | `fit(node_features, edges)` | Typed-edge link scoring. |
+| `HinSageLinkPredictor` | `fit(node_features, node_types, edges)` | Typed-node and typed-relation link scoring. |
+
+All standalone link predictors expose `predict_scores`, `report`, `save`, and
+`load`.
+
 ### Function: `cartoboost.benchmark_neural_vs_cartoboost`
 
 ```python
@@ -199,3 +232,22 @@ cartoboost.io.read_geojson(path)
 ```
 
 Reads a GeoJSON file into a Python dictionary.
+
+## Geo Encoding Helpers
+
+```python
+cartoboost.build_h3_sparse_sets(
+    {"pickup_h3": (pickup_latitude, pickup_longitude)},
+    resolution=9,
+    parent_resolutions=[5, 7],
+)
+cartoboost.build_s2_sparse_sets(
+    {"pickup_s2": (pickup_latitude, pickup_longitude)},
+    level=12,
+    parent_levels=[8, 10],
+)
+```
+
+These helpers return `sparse_sets` dictionaries suitable for
+`CartoBoostRegressor.fit(..., sparse_sets=...)`. H3 auto-encoding requires the
+optional `h3` package; S2 auto-encoding requires `s2sphere`.

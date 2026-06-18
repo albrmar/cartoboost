@@ -1,50 +1,50 @@
 # Sparse Features
 
 CartoBoost supports list-valued sparse columns. Each row can contain zero or
-more non-negative integer IDs for route cells, zones,
-encoded H3 cells, grid cells, corridors, or other memberships.
+more non-negative integer IDs for pickup zones, dropoff zones, encoded H3 cells,
+grid cells, corridors, or other memberships.
 
 This is useful when a temporal-spatial row belongs to several places at once,
-such as all route cells crossed by a trip. A generic tabular model usually
+such as both pickup and dropoff zones for a taxi trip. A generic tabular model usually
 needs a wide one-hot or hashing step for this data; CartoBoost can consume the
 lists directly.
 
 ## Python API
 
 ```python
-route_cells = [[7, 11], [11], [3], []]
+taxi_zones = [[132, 138], [161], [236], []]
 
 model.fit(
     X_dense,
     y,
-    sparse_sets={"route_cells": route_cells},
+    sparse_sets={"taxi_zones": taxi_zones},
 )
 
 pred = model.predict(
     X_dense_test,
-    sparse_sets={"route_cells": [[7], [], [3, 9]]},
+    sparse_sets={"taxi_zones": [[132], [], [236, 237]]},
 )
 ```
 
-Zip code features can be expanded into geographic sparse-columns with explicit
-origin/destination roles:
+Zone features can be expanded into geographic sparse-columns with explicit
+pickup/dropoff roles:
 
 ```python
 from cartoboost import build_zip_sparse_sets
 
 zip_sparse_sets = build_zip_sparse_sets(
-    origin_zip=["94103", "94122"],
-    destination_zip=["10001", "94103"],
+    origin_zip=["11430", "10019"],  # pickup ZIP
+    destination_zip=["10001", "11371"],  # dropoff ZIP
     parent_prefixes=(3, 2),
 )
 
 schema = {
     "dense": [{"name": "distance_m", "kind": "numeric"}],
     "sparse_sets": [
-        {"name": "ozip_zip5", "kind": "zip_sparse_set"},
-        {"name": "ozip_zip_p3", "kind": "zip_sparse_set"},
-        {"name": "dzip_zip5", "kind": "zip_sparse_set"},
-        {"name": "dzip_zip_p3", "kind": "zip3_sparse_set"},
+        {"name": "ozip_zip5", "kind": "zip_sparse_set"},  # pickup ZIP
+        {"name": "ozip_zip_p3", "kind": "zip_sparse_set"},  # pickup ZIP3
+        {"name": "dzip_zip5", "kind": "zip_sparse_set"},  # dropoff ZIP
+        {"name": "dzip_zip_p3", "kind": "zip3_sparse_set"},  # dropoff ZIP3
     ],
 }
 
@@ -57,8 +57,8 @@ model.fit(
 
 # Emit only ZIP3 hierarchy columns
 zip3_only_sparse_sets = build_zip_sparse_sets(
-    origin_zip=["94103", "94122"],
-    destination_zip=["10001", "94103"],
+    origin_zip=["11430", "10019"],  # pickup ZIP
+    destination_zip=["10001", "11371"],  # dropoff ZIP
     zip3_only=True,
 )
 ```
@@ -74,7 +74,7 @@ from cartoboost import build_geo_sparse_sets
 geo_sparse_sets = build_geo_sparse_sets(
     {
         "pickup_zone": ["Z1", "Z2", "Z3"],
-        "delivery_zone": ["D1", "D2", "D3"],
+        "dropoff_zone": ["D1", "D2", "D3"],
     },
     namespace="market_a",
 )
@@ -120,15 +120,22 @@ Validation rules:
 
 ## H3 Sparse Helpers
 
+Install the optional H3 extra to encode H3 cells from latitude/longitude inside
+CartoBoost:
+
+```sh
+uv add "cartoboost[h3]"
+```
+
 `FeatureSchema` accepts sparse entries with `kind="h3_sparse_set"` plus H3
-metadata when the caller has already encoded H3 cells:
+metadata:
 
 ```python
 schema = FeatureSchema(
     dense=[("distance_m", "numeric")],
     sparse_sets=[
         {
-            "name": "route_h3",
+            "name": "pickup_h3",
             "kind": "h3_sparse_set",
             "resolution": 9,
             "parent_resolutions": [5, 7],
@@ -140,10 +147,52 @@ schema = FeatureSchema(
 Saved schema metadata keeps the H3 resolution fields for callers and fitted
 estimator metadata.
 
+Use `build_h3_sparse_sets` to produce sparse-set rows from coordinate columns:
+
+```python
+from cartoboost import build_h3_sparse_sets
+
+h3_sparse_sets = build_h3_sparse_sets(
+    {
+        "pickup_h3": (pickup_latitude, pickup_longitude),
+        "dropoff_h3": (dropoff_latitude, dropoff_longitude),
+    },
+    resolution=9,
+    parent_resolutions=[5, 7],
+)
+
+model.fit(X_dense, y, sparse_sets=h3_sparse_sets, feature_schema=schema)
+```
+
 `cartoboost.h3.normalize_h3_id` accepts non-negative integer IDs plus decimal or
-hexadecimal strings. CartoBoost does not compute H3 cells from latitude and
-longitude; compute cells upstream, then pass the encoded IDs through
-`sparse_sets=`.
+hexadecimal strings when cells are already encoded upstream. Auto-encoding
+requires the optional `h3` package and raises `ImportError` if it is missing.
+
+## S2 Sparse Helpers
+
+Install the optional S2 extra for S2 cell encoding:
+
+```sh
+uv add "cartoboost[s2]"
+```
+
+```python
+from cartoboost import build_s2_sparse_sets
+
+s2_sparse_sets = build_s2_sparse_sets(
+    {
+        "pickup_s2": (pickup_latitude, pickup_longitude),
+        "dropoff_s2": (dropoff_latitude, dropoff_longitude),
+    },
+    level=12,
+    parent_levels=[8, 10],
+)
+```
+
+`cartoboost.s2.normalize_s2_id` accepts non-negative integer S2 IDs plus decimal
+or `0x`-prefixed strings when cells are already encoded upstream. Auto-encoding
+requires the optional `s2sphere` package and raises `ImportError` if it is
+missing.
 
 ## Routing Semantics
 
@@ -166,7 +215,7 @@ route.
 ## CLI Scope
 
 The CLI dense CSV workflow does not accept mixed sparse rows. Use the Python
-estimator for sparse route-cell training and prediction.
+estimator for sparse taxi-zone training and prediction.
 
 ## Limitations
 

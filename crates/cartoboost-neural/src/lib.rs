@@ -5,6 +5,7 @@ pub mod features;
 pub mod graph_features;
 pub mod graphsage;
 pub mod node2vec;
+pub mod standalone;
 mod trainer;
 
 pub use artifact::{
@@ -26,4 +27,14 @@ pub use graphsage::{
     HinSageEncoderArtifact, HinSageGraph, HomogeneousGraph,
 };
 pub use node2vec::{Node2VecConfig, Node2VecEncoder, Node2VecEncoderArtifact, Node2VecLoss};
+pub use standalone::{
+    GraphRegressionMode, GraphSageLinkPredictor, GraphSageLinkPredictorArtifact,
+    GraphSageRegressor, GraphSageRegressorArtifact, HeteroGraphSageLinkPredictor,
+    HeteroGraphSageLinkPredictorArtifact, HeteroGraphSageRegressor,
+    HeteroGraphSageRegressorArtifact, HinSageLinkPredictor, HinSageLinkPredictorArtifact,
+    HinSageRegressor, HinSageRegressorArtifact, NeuralEmbeddingRegressor,
+    NeuralEmbeddingRegressorArtifact, Node2VecLinkPredictor, Node2VecLinkPredictorArtifact,
+    Node2VecRegressor, Node2VecRegressorArtifact, StandaloneBoosterConfig,
+    STANDALONE_ARTIFACT_VERSION,
+};
 pub use trainer::{fit_embedding_table, fit_embedding_table_with_options};

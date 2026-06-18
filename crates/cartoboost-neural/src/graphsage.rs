@@ -933,6 +933,16 @@ impl HinSageEncoder {
         self.inner.encode(node_features)
     }
 
+    pub fn encode_graph(
+        &self,
+        graph: &HinSageGraph,
+        node_features: &[Vec<f32>],
+    ) -> Result<GraphSageEmbedding> {
+        self.validate_graph_schema(graph)?;
+        let hetero_graph = graph.to_hetero_graph(&self.config.neighbor_samples)?;
+        self.inner.encode_graph(&hetero_graph, node_features)
+    }
+
     pub fn link_embeddings(
         &self,
         embeddings: &[Vec<f32>],

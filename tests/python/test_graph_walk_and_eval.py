@@ -33,12 +33,12 @@ from cartoboost.graph import (
 
 def test_meta_path_generator_respects_relation_constraints() -> None:
     edges = [
-        (0, 1, "rep-lane"),
-        (1, 2, "lane-carrier"),
-        (2, 3, "carrier-rep"),
+        (0, 1, "pickup-trip"),
+        (1, 2, "trip-dropoff"),
+        (2, 3, "dropoff-pickup"),
     ]
     generator = MetaPathWalkGenerator(
-        metapath=("rep-lane", "lane-carrier", "carrier-rep"),
+        metapath=("pickup-trip", "trip-dropoff", "dropoff-pickup"),
         walk_length=4,
         walks_per_node=2,
         seed=7,
@@ -51,27 +51,27 @@ def test_meta_path_generator_respects_relation_constraints() -> None:
 
 def test_directed_metapath_validates_schema_and_drives_relation_walk() -> None:
     schema = GraphSchema(
-        node_types=["source_h3", "target_h3", "carrier"],
+        node_types=["pickup_zone", "dropoff_zone", "taxi_trip"],
         edge_types=[
-            EdgeType("carrier", "serves_outbound_from", "source_h3"),
-            EdgeType("source_h3", "flows_to", "target_h3"),
+            EdgeType("taxi_trip", "picked_up_in", "pickup_zone"),
+            EdgeType("pickup_zone", "flows_to", "dropoff_zone"),
         ],
         directionality=DirectionalityConfig(preserve_source_target_roles=True),
     ).validate()
     path = DirectedMetaPath(
         (
-            "carrier",
-            "serves_outbound_from",
-            "source_h3",
+            "taxi_trip",
+            "picked_up_in",
+            "pickup_zone",
             "flows_to",
-            "target_h3",
+            "dropoff_zone",
         ),
     ).validate(schema)
 
     generator = MetaPathWalkGenerator(metapath=path, walk_length=3, walks_per_node=1)
     walks = generator.generate(
         start_nodes=[0],
-        edges=[(0, 1, "serves_outbound_from"), (1, 2, "flows_to")],
+        edges=[(0, 1, "picked_up_in"), (1, 2, "flows_to")],
     )
     assert walks == [[0, 1, 2]]
 
@@ -637,7 +637,7 @@ def test_graph_feature_transformer_outputs_directional_features_contract() -> No
     ]
 
 
-def test_graph_feature_transformer_emits_freight_directional_aliases() -> None:
+def test_graph_feature_transformer_emits_geotemporal_directional_aliases() -> None:
     features = [[1.0, 0.0], [0.0, 1.0], [0.5, 0.5]]
     edges = [(0, 1), (1, 0), (0, 2)]
     transformer = GraphFeatureTransformer.from_config(
@@ -689,8 +689,8 @@ def test_graph_feature_transformer_emits_freight_directional_aliases() -> None:
 def test_graph_feature_transformer_hetero_directional_features_enabled() -> None:
     features = [[0.1, 0.2], [0.0, 0.3], [0.2, 0.7]]
     edges = [
-        (0, 1, "rep_lane"),
-        (1, 2, "lane_carrier"),
+        (0, 1, "pickup_trip"),
+        (1, 2, "trip_dropoff"),
     ]
     transformer = GraphFeatureTransformer.from_config(
         {
@@ -723,17 +723,17 @@ def test_graph_feature_transformer_hetero_directional_features_enabled() -> None
 
 def test_normalize_heterogeneous_graph_supports_reverse_relation_materialization() -> None:
     graph = normalize_heterogeneous_graph(
-        edges=[(0, 1, "origin_to_dest"), (1, 2, "origin_to_dest")],
+        edges=[(0, 1, "pickup_to_dropoff"), (1, 2, "pickup_to_dropoff")],
         directed=True,
         materialize_reverse_edges=True,
         reverse_relation_suffix="_reverse",
     )
     assert len(graph.edges) == 4
-    assert "origin_to_dest" in graph.relation_ids
-    assert "origin_to_dest_reverse" in graph.relation_ids
+    assert "pickup_to_dropoff" in graph.relation_ids
+    assert "pickup_to_dropoff_reverse" in graph.relation_ids
 
-    forward_relation = graph.relation_to_index["origin_to_dest"]
-    reverse_relation = graph.relation_to_index["origin_to_dest_reverse"]
+    forward_relation = graph.relation_to_index["pickup_to_dropoff"]
+    reverse_relation = graph.relation_to_index["pickup_to_dropoff_reverse"]
     assert (0, 1, forward_relation) in graph.edges
     assert (1, 0, reverse_relation) in graph.edges
     assert (2, 1, reverse_relation) in graph.edges
@@ -762,10 +762,10 @@ def test_source_target_pair_nodes_keep_forward_and_reverse_distinct() -> None:
 
 def test_graph_feature_transformer_can_create_od_pair_nodes_with_zero_features() -> None:
     features = [[0.1, 0.2], [0.0, 0.3], [0.2, 0.7]]
-    node_ids = ["carrier_a", "origin", "destination"]
+    node_ids = ["taxi_trip_a", "pickup", "dropoff"]
     edges = [
-        ("carrier_a", "origin", "serves_outbound_from"),
-        ("origin", "destination", "flows_to"),
+        ("taxi_trip_a", "pickup", "picked_up_in"),
+        ("pickup", "dropoff", "flows_to"),
     ]
     transformer = GraphFeatureTransformer.from_config(
         {
@@ -790,7 +790,7 @@ def test_graph_feature_transformer_can_create_od_pair_nodes_with_zero_features()
         node_ids=node_ids,
         directed=True,
     )
-    assert ("od_pair", "origin", "destination") in bundle.node_ids
+    assert ("od_pair", "pickup", "dropoff") in bundle.node_ids
     assert bundle.embeddings.shape[0] == 5
     assert "graph_flow_imbalance_ratio" in bundle.feature_names
 
@@ -805,17 +805,17 @@ def test_graph_feature_config_parses_directional_yaml_shape() -> None:
                 "graph": {
                     "directed": True,
                     "node_types": [
-                        "source_h3",
-                        "target_h3",
+                        "pickup_zone",
+                        "dropoff_zone",
                         "od_pair",
                         "entity",
                         "time_bucket",
                     ],
                     "edge_types": [
-                        ["source_h3", "flows_to", "target_h3"],
-                        ["target_h3", "reverse_flows_to", "source_h3"],
-                        ["entity", "active_from", "source_h3"],
-                        ["entity", "active_to", "target_h3"],
+                        ["pickup_zone", "flows_to", "dropoff_zone"],
+                        ["dropoff_zone", "reverse_flows_to", "pickup_zone"],
+                        ["entity", "active_from", "pickup_zone"],
+                        ["entity", "active_to", "dropoff_zone"],
                         ["entity", "observed_on", "od_pair"],
                     ],
                     "directionality": {
@@ -829,11 +829,11 @@ def test_graph_feature_config_parses_directional_yaml_shape() -> None:
                     "algorithm": "metapath2vec",
                     "metapaths": [
                         [
-                            "source_h3",
+                            "pickup_zone",
                             "flows_to",
-                            "target_h3",
+                            "dropoff_zone",
                             "reverse_flows_to",
-                            "source_h3",
+                            "pickup_zone",
                         ],
                     ],
                 },

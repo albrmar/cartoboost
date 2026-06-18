@@ -28,6 +28,33 @@ predictions = model.predict(X_test)
 
 `predict` returns a NumPy array.
 
+## Table Inputs
+
+`CartoBoostRegressor` accepts NumPy arrays plus dataframe-style inputs with
+column names. Install optional table integrations as needed:
+
+```sh
+uv add "cartoboost[duckdb]"
+uv add "cartoboost[polars]"
+```
+
+DuckDB relations can be passed directly; CartoBoost materializes them at the
+fit/predict boundary and preserves relation column names:
+
+```python
+import duckdb
+from cartoboost import CartoBoostRegressor
+
+trips = duckdb.sql("select trip_distance, hour, log_fare from taxi_training")
+
+model = CartoBoostRegressor(splitters=["axis", "periodic:24"])
+model.fit(
+    trips.select("trip_distance, hour"),
+    trips.select("log_fare"),
+)
+prediction = model.predict(trips.select("trip_distance, hour"))
+```
+
 ## Temporal-Spatial Usage
 
 CartoBoost can use splitters that match common time and location patterns:
@@ -45,8 +72,8 @@ model = CartoBoostRegressor(
 ```
 
 Use dense columns for coordinates, projected x/y values, distances, and
-periodic time features. Use `sparse_sets=` for route cells, zones, grid cells,
-or encoded H3 cells when a row can belong to multiple locations.
+periodic time features. Use `sparse_sets=` for pickup zones, dropoff zones,
+grid cells, or encoded H3 cells when a row can belong to multiple locations.
 
 For robust residuals, set `loss="mae"` or `loss="huber"`. For asymmetric
 intervals or service-level targets, use `loss="quantile"` with
@@ -57,7 +84,7 @@ intervals or service-level targets, use `loss="quantile"` with
 Sparse-set columns are passed separately from dense features:
 
 ```python
-route_cells = [[7, 11], [11], [3], []]
+taxi_zones = [[132, 138], [161], [236], []]
 
 model = CartoBoostRegressor(
     n_estimators=2,
@@ -66,8 +93,8 @@ model = CartoBoostRegressor(
     min_samples_leaf=1,
     splitters=["sparse_set"],
 )
-model.fit(X_dense, y, sparse_sets={"route_cells": route_cells})
-predictions = model.predict(X_dense, sparse_sets={"route_cells": route_cells})
+model.fit(X_dense, y, sparse_sets={"taxi_zones": taxi_zones})
+predictions = model.predict(X_dense, sparse_sets={"taxi_zones": taxi_zones})
 ```
 
 Sparse IDs must be non-negative integers. Duplicate IDs inside a row are
@@ -85,14 +112,14 @@ schema = {
         {"name": "hour_of_day", "kind": "periodic", "period": 24},
     ],
     "sparse_sets": [
-        {"name": "route_cells", "kind": "sparse_set"},
+        {"name": "taxi_zones", "kind": "sparse_set"},
     ],
 }
 
 model.fit(
     X_dense,
     y,
-    sparse_sets={"route_cells": route_cells},
+    sparse_sets={"taxi_zones": taxi_zones},
     feature_schema=schema,
 )
 ```

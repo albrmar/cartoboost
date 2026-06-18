@@ -27,7 +27,7 @@ splitters match the structure in your data.
   hour-of-day.
 - Diagonal and Gaussian/radial splitters operate on numeric feature pairs; the
   current schema does not declare named coordinate pairs.
-- H3, S2, grid, zone, or route-cell IDs must be precomputed by the caller and
+- H3, S2, grid, zone, or taxi-zone IDs must be precomputed by the caller and
   passed as sparse integer IDs.
 - Fuzzy bandwidth is on the scale of your input features, so coordinate system
   and units matter.

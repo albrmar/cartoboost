@@ -76,7 +76,7 @@ target = "demand"
 splitter = "axis,diagonal_2d,gaussian_2d,periodic_24"
 ```
 
-Sparse route-cell columns are not represented in CLI CSV input; train those
+Sparse taxi-zone columns are not represented in CLI CSV input; train those
 models with `CartoBoostRegressor`.
 
 ## Output

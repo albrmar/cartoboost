@@ -4,6 +4,8 @@ from typing import Any
 
 import numpy as np
 
+from .regressor import _tabular_column_mapping
+
 
 def make_shap_explainer(
     model: Any,
@@ -323,8 +325,7 @@ def _normalize_sparse_columns_with_names(
         if missing:
             raise ValueError(f"sparse_sets is missing columns: {missing}")
         items = [(name, mapping[name]) for name in names]
-    elif hasattr(sparse_sets, "columns"):
-        mapping = {str(name): sparse_sets[name] for name in sparse_sets.columns}
+    elif (mapping := _tabular_column_mapping(sparse_sets)) is not None:
         names = list(expected_names or mapping.keys())
         missing = [name for name in names if name not in mapping]
         if missing:

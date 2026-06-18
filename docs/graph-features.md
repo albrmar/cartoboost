@@ -6,12 +6,10 @@ columns before fitting `CartoBoostRegressor`.
 Use graph features when prediction depends on relationships such as movement,
 service, containment, interaction, or source-target imbalance:
 
-- `origin_h3 -> destination_h3`
+- `pickup_zone -> dropoff_zone`
 - `upstream -> downstream`
 - `supply -> demand`
-- `source_market -> sink_market`
-- `carrier -> lane`
-- `shipper -> lane`
+- `pickup_hour -> dropoff_hour`
 - `rep -> account`
 - `facility -> market`
 
@@ -44,6 +42,91 @@ CartoBoost exposes four graph encoder families.
 | GraphSAGE | Homogeneous graphs with one node/edge type. |
 | HeteroGraphSAGE | Typed relations without a strict HinSAGE schema contract. |
 | HinSAGE | Typed nodes, typed relation triples, relation-aware sampling, and link features. |
+
+## Standalone Graph Models
+
+Graph models can also be trained directly, without `CartoBoostRegressor` and
+without first turning embeddings into booster columns. Use these classes when
+the graph representation is the model you want to score or when you need a
+standalone link predictor for source-target pairs.
+
+Standalone graph regressors:
+
+- `Node2VecStandaloneRegressor`
+- `GraphSageStandaloneRegressor`
+- `HeteroGraphSageStandaloneRegressor`
+- `HinSageStandaloneRegressor`
+
+Each standalone regressor supports `fit`, `predict`, `score`, `save`, and
+`load`.
+
+```python
+import numpy as np
+from cartoboost.graph import GraphSageStandaloneRegressor
+
+node_features = np.array(
+    [
+        [1.0, 0.0],  # airport pickup zone
+        [0.0, 1.0],  # midtown dropoff zone
+        [0.8, 0.3],  # downtown pickup zone
+        [0.3, 0.8],  # residential dropoff zone
+    ],
+    dtype=np.float32,
+)
+edges = [(0, 1), (1, 2), (2, 3), (3, 0)]
+row_nodes = np.array([0, 1, 2, 3], dtype=np.uint64)
+row_targets = np.array([1, 2, 3, 0], dtype=np.uint64)
+trip_log_fare = np.array([1.2, 1.7, 2.1, 0.5])
+
+model = GraphSageStandaloneRegressor(
+    input_dim=2,
+    hidden_dims=(4,),
+    epochs=2,
+    n_estimators=20,
+    max_depth=2,
+    min_samples_leaf=1,
+)
+model.fit(
+    node_features=node_features,
+    edges=edges,
+    row_nodes=row_nodes,
+    row_targets=row_targets,
+    y=trip_log_fare,
+)
+
+pred = model.predict(
+    node_features=node_features,
+    row_nodes=row_nodes,
+    row_targets=row_targets,
+)
+model.save("taxi-graph-standalone.json")
+```
+
+Standalone link predictors:
+
+- `Node2VecLinkPredictor`
+- `GraphSageLinkPredictor`
+- `HeteroGraphSageLinkPredictor`
+- `HinSageLinkPredictor`
+
+Link predictors expose `predict_scores` for candidate source-target pairs and
+`report` for AUC/AP plus optional per-query ranking metrics.
+
+```python
+from cartoboost.graph import Node2VecLinkPredictor
+
+predictor = Node2VecLinkPredictor(
+    dim=8,
+    walk_length=8,
+    walks_per_node=4,
+    epochs=2,
+)
+predictor.fit(node_count=4, edges=edges)
+
+candidate_pairs = [(0, 1), (0, 3)]
+scores = predictor.predict_scores(candidate_pairs)
+report = predictor.report(candidate_pairs, labels=[1, 0], query_ids=[0, 0], k=1)
+```
 
 ## Node2Vec Configuration
 
@@ -123,9 +206,9 @@ controls used by this encoder.
 
 ## Direction Is A First-Class Contract
 
-Geotemporal graphs are often asymmetric. Movement from `A` to `B` can differ
-from `B` to `A`; outbound behavior can differ from inbound behavior; source-side
-and target-side market pressure can carry different signal.
+Taxi trip graphs are often asymmetric. Trips from pickup zone `A` to dropoff
+zone `B` can differ from trips in the reverse direction; pickup-side and
+dropoff-side demand pressure can carry different signal.
 
 Model these as directed typed facts:
 
@@ -134,18 +217,18 @@ graph:
   directed: true
 
   node_types:
-    - source_h3
-    - target_h3
-    - od_pair
-    - entity
+    - pickup_zone
+    - dropoff_zone
+    - pickup_dropoff_pair
+    - taxi_trip
     - time_bucket
 
   edge_types:
-    - [source_h3, flows_to, target_h3]
-    - [target_h3, reverse_flows_to, source_h3]
-    - [entity, active_from, source_h3]
-    - [entity, active_to, target_h3]
-    - [entity, observed_on, od_pair]
+    - [pickup_zone, trips_to, dropoff_zone]
+    - [dropoff_zone, reverse_trips_to, pickup_zone]
+    - [taxi_trip, picked_up_in, pickup_zone]
+    - [taxi_trip, dropped_off_in, dropoff_zone]
+    - [taxi_trip, observed_on, pickup_dropoff_pair]
 
   directionality:
     materialize_reverse_edges: true
@@ -154,9 +237,9 @@ graph:
     compute_asymmetry_features: true
 ```
 
-Do not collapse `Chicago -> Dallas` and `Dallas -> Chicago` into one undirected
-edge unless the domain is truly symmetric. They should normally be separate
-graph facts, separate features, and often separate learned embeddings.
+Do not collapse `JFK -> Midtown` and `Midtown -> JFK` into one undirected edge
+unless the domain is truly symmetric. They should normally be separate graph
+facts, separate features, and often separate learned embeddings.
 
 ## Directional Feature Outputs
 
@@ -184,12 +267,11 @@ Common output families include:
 - flow asymmetry and imbalance ratios;
 - weighted source out-degree and target in-degree;
 - directed temporal drift;
-- directional acceptance, price pressure, or market pressure columns when those
+- directional trip volume, fare pressure, or duration drift columns when those
   measures are supplied as edge weights.
 
 Generic package-level names remain source-target oriented. Domain-specific
-names such as origin, destination, carrier, shipper, or lane should be added at
-the feature-engineering layer above CartoBoost.
+names should be added at the feature-engineering layer above CartoBoost.
 
 ## HinSAGE Configuration
 
@@ -204,11 +286,11 @@ graph_embeddings:
     input_dim: 8
     node_type_count: 5
     edge_type_triples:
-      - [0, 0, 1]  # source_h3 flows_to target_h3
-      - [1, 1, 0]  # target_h3 reverse_flows_to source_h3
-      - [3, 2, 0]  # entity active_from source_h3
-      - [3, 3, 1]  # entity active_to target_h3
-      - [3, 4, 2]  # entity observed_on od_pair
+      - [0, 0, 1]  # pickup_zone trips_to dropoff_zone
+      - [1, 1, 0]  # dropoff_zone reverse_trips_to pickup_zone
+      - [3, 2, 0]  # taxi_trip picked_up_in pickup_zone
+      - [3, 3, 1]  # taxi_trip dropped_off_in dropoff_zone
+      - [3, 4, 2]  # taxi_trip observed_on pickup_dropoff_pair
     neighbor_samples: [25, 25, 10, 10, 20]
     hidden_dims: [16]
     epochs: 20
@@ -277,24 +359,12 @@ direction:
 
 ```mermaid
 flowchart LR
-    S1[source_h3] -->|flows_to| T1[target_h3]
-    T1 -->|receives_from| S1
-    E1[entity] -->|acts_on| P1[source_target_pair]
+    PZ[pickup_zone] -->|trips_to| DZ[dropoff_zone]
+    DZ -->|reverse_trips_to| PZ
+    T[taxi_trip] -->|uses| P1[pickup_dropoff_pair]
     P1 -->|observed_in| B1[time_bucket]
-    SM[source_market] -->|sends_to| TM[target_market]
-    TM -->|supplied_by| E2[entity]
-```
-
-Freight-style examples:
-
-```mermaid
-flowchart LR
-    C[carrier] -->|serves_outbound_from| O[origin_h3]
-    O -->|flows_to| D[destination_h3]
-    C -->|serves_inbound_to| D
-    D -->|reverse_flows_to| O
-    S[shipper] -->|tenders| OD[od_pair]
-    OD -->|quoted_by| C
+    PZ -->|pickup_hour_volume| B1
+    DZ -->|dropoff_hour_volume| B1
 ```
 
 Directed metapaths prevent embeddings from collapsing useful asymmetric

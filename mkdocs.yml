@@ -86,4 +86,4 @@ nav:
       - Overview: benchmarks/index.md
       - Model Benchmark Suite: benchmarks/model-suite.md
       - NYC Taxi Benchmarks: benchmarks/nyc-taxi.md
-      - Lane-Level Acceptance: benchmarks/lane-level.md
+      - Taxi Zone Acceptance: benchmarks/taxi-zone.md

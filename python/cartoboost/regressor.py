@@ -691,6 +691,8 @@ def _as_1d_float_array(values: Any) -> np.ndarray:
         rows = np.asarray(values, dtype=np.float64)
     except (TypeError, ValueError) as exc:
         raise ValueError("y must be a 1D numeric array") from exc
+    if rows.ndim == 2 and rows.shape[1] == 1:
+        rows = rows[:, 0]
     if rows.ndim != 1:
         raise ValueError("y must be a 1D numeric array")
     if rows.shape[0] == 0:
@@ -708,6 +710,8 @@ def _as_sample_weight_array(values: Any | None, expected: int) -> np.ndarray | N
         weights = np.asarray(values, dtype=np.float64)
     except (TypeError, ValueError) as exc:
         raise ValueError("sample_weight must be a 1D numeric array") from exc
+    if weights.ndim == 2 and weights.shape[1] == 1:
+        weights = weights[:, 0]
     if weights.ndim != 1:
         raise ValueError("sample_weight must be a 1D numeric array")
     if weights.shape[0] != expected:
@@ -769,8 +773,7 @@ def _normalize_sparse_sets(
             items = [(name, mapping[name]) for name in expected_names]
         else:
             items = list(mapping.items())
-    elif hasattr(values, "columns"):
-        mapping = {str(name): values[name] for name in values.columns}
+    elif (mapping := _tabular_column_mapping(values)) is not None:
         if expected_names is not None:
             missing = [name for name in expected_names if name not in mapping]
             unknown = [name for name in mapping if name not in expected_names]
@@ -822,9 +825,73 @@ def _is_empty_sparse_sets(values: Any | None) -> bool:
 
 
 def _to_numpy(values: Any) -> Any:
+    duckdb_array = _duckdb_to_numpy(values)
+    if duckdb_array is not None:
+        return duckdb_array
     if hasattr(values, "to_numpy"):
         return values.to_numpy()
     return values
+
+
+def _tabular_column_mapping(values: Any) -> dict[str, Any] | None:
+    columns = getattr(values, "columns", None)
+    if columns is None:
+        return None
+    duckdb_columns = _duckdb_column_mapping(values)
+    if duckdb_columns is not None:
+        return duckdb_columns
+    return {str(name): values[name] for name in columns}
+
+
+def _duckdb_column_mapping(values: Any) -> dict[str, Any] | None:
+    if not _looks_like_duckdb(values):
+        return None
+    columns = [str(column) for column in getattr(values, "columns", [])]
+    if not columns:
+        return None
+    if hasattr(values, "fetchnumpy"):
+        fetched = values.fetchnumpy()
+        return {name: fetched[name] for name in columns}
+    frame = _duckdb_to_dataframe(values)
+    if frame is not None:
+        return {str(name): frame[name] for name in frame.columns}
+    return None
+
+
+def _duckdb_to_numpy(values: Any) -> np.ndarray | None:
+    if not _looks_like_duckdb(values):
+        return None
+    if hasattr(values, "fetchnumpy"):
+        fetched = values.fetchnumpy()
+        columns = [str(column) for column in getattr(values, "columns", fetched.keys())]
+        return np.column_stack([fetched[name] for name in columns])
+    frame = _duckdb_to_dataframe(values)
+    if frame is not None and hasattr(frame, "to_numpy"):
+        return frame.to_numpy()
+    if hasattr(values, "fetchall"):
+        return np.asarray(values.fetchall(), dtype=object)
+    return None
+
+
+def _duckdb_to_dataframe(values: Any) -> Any | None:
+    for method_name in ("df", "fetchdf", "to_df"):
+        method = getattr(values, method_name, None)
+        if callable(method):
+            try:
+                return method()
+            except TypeError:
+                continue
+    return None
+
+
+def _looks_like_duckdb(values: Any) -> bool:
+    module = type(values).__module__.lower()
+    if "duckdb" in module:
+        return True
+    type_name = type(values).__name__.lower()
+    return "duckdb" in type_name or (
+        hasattr(values, "columns") and (hasattr(values, "fetchnumpy") or hasattr(values, "fetchdf"))
+    )
 
 
 def _sequence_values(values: Any) -> Any:

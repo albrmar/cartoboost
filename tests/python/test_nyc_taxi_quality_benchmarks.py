@@ -16,9 +16,12 @@ if str(REPO_ROOT) not in sys.path:
 from scripts.run_nyc_taxi_quality_benchmarks import (  # noqa: E402
     BenchmarkTask,
     ZoneContext,
+    benchmark_needs_zone_centroids,
     build_real_tasks,
+    cartoboost_schema,
     clean_tlc_frame,
     graph_augmented_split_features,
+    lightgbm_comparison,
     pickup_demand_cold_zone_fraction,
     sample_tlc_frame,
 )
@@ -114,6 +117,78 @@ def test_nyc_taxi_quality_benchmark_skips_missing_optional_models(tmp_path: Path
                     )
 
 
+def test_nyc_taxi_quality_benchmark_reports_best_cartoboost_vs_lightgbm():
+    payload = {
+        "tasks": {
+            "fare": {
+                "splits": {
+                    "random": {
+                        "models": {
+                            "cartoboost": {
+                                "status": "ok",
+                                "metrics": {"rmse": 0.15, "r2": 0.86},
+                            },
+                            "cartoboost_graph_node2vec": {
+                                "status": "ok",
+                                "metrics": {"rmse": 0.13, "r2": 0.89},
+                            },
+                            "lightgbm": {
+                                "status": "ok",
+                                "metrics": {"rmse": 0.17, "r2": 0.84},
+                            },
+                        },
+                    },
+                    "spatial_holdout": {
+                        "models": {
+                            "cartoboost": {
+                                "status": "skipped",
+                                "reason": "not applicable",
+                            },
+                            "lightgbm": {
+                                "status": "skipped",
+                                "reason": "not applicable",
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    }
+
+    assert lightgbm_comparison(payload) == [
+        {
+            "task": "fare",
+            "split": "random",
+            "best_cartoboost_model": "cartoboost_graph_node2vec",
+            "best_cartoboost_rmse": 0.13,
+            "lightgbm_rmse": 0.17,
+            "rmse_delta_vs_lightgbm": -0.04000000000000001,
+            "best_cartoboost_r2": 0.89,
+            "lightgbm_r2": 0.84,
+            "r2_delta_vs_lightgbm": 0.050000000000000044,
+            "winner": "cartoboost",
+        }
+    ]
+
+
+def test_nyc_taxi_centroids_are_only_required_for_cartoboost_geometry():
+    class Args:
+        models = "lightgbm,mean"
+        zone_treatment = "target_mean"
+        cartoboost_splitters = "axis_histogram:512,diagonal_2d,gaussian_2d"
+
+    assert not benchmark_needs_zone_centroids(Args())
+
+    Args.models = "cartoboost"
+    assert benchmark_needs_zone_centroids(Args())
+
+    Args.cartoboost_splitters = "axis_histogram:512,periodic:24,sparse_set"
+    assert not benchmark_needs_zone_centroids(Args())
+
+    Args.zone_treatment = "raw"
+    assert benchmark_needs_zone_centroids(Args())
+
+
 def test_real_pickup_demand_aggregates_full_cleaned_frame_when_rows_are_sampled():
     pandas = pytest.importorskip("pandas")
     frame = pandas.DataFrame(
@@ -162,6 +237,43 @@ def test_real_pickup_demand_aggregates_full_cleaned_frame_when_rows_are_sampled(
     }
     assert demand_by_zone[10] == np.log1p(3.0)
     assert demand_by_zone[20] == np.log1p(1.0)
+
+
+def test_cartoboost_schema_marks_zone_geometry_spatial_without_dense_sparse_schema():
+    task = BenchmarkTask(
+        name="fare",
+        display_name="Fare",
+        description="fixture",
+        features=np.asarray([[1.0, 2.0]], dtype=float),
+        target=np.asarray([1.0], dtype=float),
+        pickup_zones=np.asarray([1], dtype=int),
+        feature_names=["PULocationID", "hour"],
+        sparse_sets={"pickup_zone": [[1]]},
+    )
+
+    schema = cartoboost_schema(
+        task,
+        feature_names=[
+            "PULocationID",
+            "hour",
+            "PULocationID_centroid_x",
+            "PULocationID_centroid_y",
+            "od_centroid_distance",
+        ],
+        dense_id_sets=True,
+        include_sparse_sets=False,
+    )
+
+    assert schema == {
+        "dense": [
+            {"name": "PULocationID", "kind": "numeric"},
+            {"name": "hour", "kind": "periodic", "period": 24},
+            {"name": "PULocationID_centroid_x", "kind": "spatial"},
+            {"name": "PULocationID_centroid_y", "kind": "spatial"},
+            {"name": "od_centroid_distance", "kind": "numeric"},
+        ],
+        "sparse_sets": [],
+    }
 
 
 def test_nyc_taxi_quality_benchmark_runs_neural_and_graph_models(tmp_path: Path):

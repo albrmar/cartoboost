@@ -1,7 +1,8 @@
-# Lane-Level Acceptance
+# Taxi Zone Acceptance
 
-Lane-level checks exercise combined dense, temporal, spatial, and sparse
-route-cell behavior on deterministic synthetic data.
+Taxi-zone checks exercise combined dense, temporal, spatial, and sparse pickup
+and dropoff behavior on deterministic synthetic data shaped like the NYC taxi
+benchmark inputs.
 
 ## Command
 
@@ -19,10 +20,10 @@ uv run --group dev python scripts/run_lane_level_acceptance_metrics.py
 
 ## Dataset Shape
 
-- 4 origin regions x 4 destination regions = 16 lanes.
-- 24 hourly observations per lane.
-- Observable columns: origin x/y, destination x/y, lane ID, hour, midpoint x/y,
-  and distance.
+- 4 pickup regions x 4 dropoff regions = 16 pickup-dropoff pairs.
+- 24 hourly observations per pickup-dropoff pair.
+- Observable columns: pickup x/y, dropoff x/y, pickup-dropoff ID, hour,
+  midpoint x/y, and trip distance.
 - No hidden simulator metadata is passed into training.
 
 ## Outputs
@@ -35,16 +36,16 @@ Generated outputs live under `docs/assets/lane_level_tests/`:
 - `hour_profile.png`
 - `lane_heatmap.png`
 
-Use these files to inspect route cartometry, hour effects, lane-level residuals,
+Use these files to inspect trip cartometry, hour effects, taxi-zone residuals,
 and combined split behavior.
 
 ## What The Check Proves
 
-The lane-level dataset is intended to show whether CartoBoost captures:
+The taxi-zone dataset is intended to show whether CartoBoost captures:
 
-- Route-cell sparse-set encoding.
+- Pickup/dropoff sparse-set encoding.
 - Temporal profile behavior.
-- Spatial route cartometry behavior.
+- Spatial trip cartometry behavior.
 - Combined split behavior when several feature families are present.
 
 It is not a production quality benchmark. Any broader benchmark claim needs a
