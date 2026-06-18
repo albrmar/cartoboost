@@ -9,9 +9,7 @@ def test_naive_requires_fit_before_predict():
 
 
 def test_naive_predicts_last_value_with_intervals_and_timestamps():
-    timestamps = np.array(
-        ["2026-01-01", "2026-01-02", "2026-01-03"], dtype="datetime64[D]"
-    )
+    timestamps = np.array(["2026-01-01", "2026-01-02", "2026-01-03"], dtype="datetime64[D]")
     model = NaiveForecaster().fit([1.0, 2.0, 4.0], timestamps=timestamps)
 
     np.testing.assert_allclose(model.predict(3), [4.0, 4.0, 4.0])
