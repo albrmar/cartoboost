@@ -8,6 +8,11 @@ from pathlib import Path
 import matplotlib.image as mpimg
 import numpy as np
 
+from scripts.run_nyc_taxi_quality_benchmarks import (
+    BenchmarkTask,
+    graph_augmented_split_features,
+)
+
 
 def test_nyc_taxi_quality_benchmark_synthetic_smoke(tmp_path: Path):
     repo_root = Path(__file__).resolve().parents[2]
@@ -113,6 +118,16 @@ def test_nyc_taxi_quality_benchmark_runs_neural_and_graph_models(tmp_path: Path)
                 "cartoboost_neural,cartoboost_graph_node2vec,cartoboost_graph_graphsage,"
                 "cartoboost_graph_hetero_graphsage,cartoboost_graph_hinsage"
             ),
+            "--graph-dim",
+            "2",
+            "--graph-epochs",
+            "1",
+            "--neural-dim",
+            "2",
+            "--cartoboost-n-estimators",
+            "4",
+            "--model-workers",
+            "3",
             "--output-dir",
             str(output_dir),
         ],
@@ -134,3 +149,56 @@ def test_nyc_taxi_quality_benchmark_runs_neural_and_graph_models(tmp_path: Path)
             assert split["models"][model_name]["status"] == "ok"
             assert split["models"][model_name]["config"]["graph_family"] == family
             assert split["models"][model_name]["config"]["graph_edges"] > 0
+
+
+def test_pickup_demand_graph_uses_zone_context_topology_for_cold_holdout():
+    task = BenchmarkTask(
+        name="pickup_demand",
+        display_name="Pickup-zone demand",
+        description="fixture",
+        features=np.asarray(
+            [
+                [1.0, 8.0, 0.0],
+                [1.0, 9.0, 0.0],
+                [2.0, 8.0, 0.0],
+                [3.0, 8.0, 0.0],
+                [4.0, 8.0, 0.0],
+            ],
+            dtype=float,
+        ),
+        target=np.asarray([1.0, 1.2, 1.4, 1.6, 1.8], dtype=float),
+        pickup_zones=np.asarray([1, 1, 2, 3, 4], dtype=int),
+        feature_names=["PULocationID", "hour", "dayofweek"],
+        sparse_sets={
+            "pickup_zone": [[1], [1], [2], [3], [4]],
+            "pickup_borough": [[1], [1], [1], [2], [2]],
+            "pickup_service_zone": [[4], [4], [4], [2], [2]],
+        },
+        zone_adjacency={1: [2], 2: [1, 3], 3: [2, 4], 4: [3]},
+    )
+    train_indices = np.asarray([0, 1, 2], dtype=int)
+    test_indices = np.asarray([3, 4], dtype=int)
+
+    class Args:
+        graph_dim = 2
+        graph_epochs = 1
+        seed = 7
+
+    train_augmented, test_augmented, config = graph_augmented_split_features(
+        task,
+        train_indices,
+        test_indices,
+        task.features[train_indices],
+        task.features[test_indices],
+        Args(),
+        graph_family="graphsage",
+    )
+
+    assert config["graph_topology"] == "zone_adjacency_borough_service"
+    assert config["adjacency_edges"] > 0
+    assert config["borough_edges"] > 0
+    assert config["service_zone_edges"] > 0
+    assert config["context_hub_nodes"] > 0
+    assert train_augmented.shape[1] == test_augmented.shape[1]
+    assert config["graph_feature_count"] == train_augmented.shape[1] - task.features.shape[1]
+    assert float(np.std(test_augmented[:, task.features.shape[1] :])) > 0.0

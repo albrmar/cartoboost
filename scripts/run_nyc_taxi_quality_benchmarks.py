@@ -8,9 +8,12 @@ import csv
 import importlib
 import json
 import math
+import struct
 import sys
 import time
 import urllib.request
+import zipfile
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -28,6 +31,7 @@ DEFAULT_OUTPUT_DIR = ROOT / "docs" / "assets" / "nyc_taxi_benchmarks"
 TLC_TRIP_RECORD_PAGE = "https://www.nyc.gov/site/tlc/about/tlc-trip-record-data.page"
 TLC_PARQUET_BASE = "https://d37ci6vzurychx.cloudfront.net/trip-data"
 TAXI_ZONE_LOOKUP_URL = "https://d37ci6vzurychx.cloudfront.net/misc/taxi_zone_lookup.csv"
+TAXI_ZONES_ZIP_URL = "https://d37ci6vzurychx.cloudfront.net/misc/taxi_zones.zip"
 PLOT_SCATTER_MAX_POINTS = 50_000
 
 ROW_FEATURES = [
@@ -75,6 +79,7 @@ class BenchmarkTask:
     pickup_zones: np.ndarray
     feature_names: list[str]
     sparse_sets: dict[str, list[list[int]]]
+    zone_adjacency: dict[int, list[int]] | None = None
 
 
 @dataclass(frozen=True)
@@ -225,6 +230,12 @@ def parse_args() -> argparse.Namespace:
         default=20.0,
         help="Pseudo-count for train-only smoothed zone target-mean features.",
     )
+    parser.add_argument(
+        "--model-workers",
+        type=int,
+        default=1,
+        help="Number of model rows to train concurrently within each task/split.",
+    )
     parser.add_argument("--n-threads", type=int, default=0)
     parser.add_argument(
         "--synthetic-smoke",
@@ -315,6 +326,117 @@ def ensure_zone_lookup(*, cache_dir: Path, no_download: bool) -> dict[int, ZoneC
     return lookup
 
 
+def ensure_zone_adjacency(*, cache_dir: Path, no_download: bool) -> dict[int, list[int]]:
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    path = cache_dir / "taxi_zones.zip"
+    if not path.exists():
+        if no_download:
+            return {}
+        urllib.request.urlretrieve(TAXI_ZONES_ZIP_URL, path)
+    try:
+        return taxi_zone_adjacency_from_zip(path)
+    except (OSError, KeyError, ValueError, zipfile.BadZipFile):
+        return {}
+
+
+def taxi_zone_adjacency_from_zip(path: Path) -> dict[int, list[int]]:
+    with zipfile.ZipFile(path) as archive:
+        shp_name = next(name for name in archive.namelist() if name.endswith(".shp"))
+        dbf_name = next(name for name in archive.namelist() if name.endswith(".dbf"))
+        polygons = parse_shp_polygons(archive.read(shp_name))
+        location_ids = parse_dbf_location_ids(archive.read(dbf_name))
+    if len(polygons) != len(location_ids):
+        raise ValueError("taxi zone shapefile record count does not match DBF row count")
+
+    vertices_to_zones: dict[tuple[int, int], set[int]] = {}
+    for location_id, parts in zip(location_ids, polygons, strict=True):
+        for part in parts:
+            for x, y in part:
+                key = (round(x), round(y))
+                vertices_to_zones.setdefault(key, set()).add(location_id)
+
+    adjacency: dict[int, set[int]] = {location_id: set() for location_id in location_ids}
+    for zones in vertices_to_zones.values():
+        if len(zones) < 2:
+            continue
+        for zone in zones:
+            adjacency[zone].update(other for other in zones if other != zone)
+    return {zone: sorted(neighbors) for zone, neighbors in adjacency.items() if neighbors}
+
+
+def parse_shp_polygons(data: bytes) -> list[list[list[tuple[float, float]]]]:
+    if len(data) < 100:
+        raise ValueError("invalid shapefile")
+    offset = 100
+    polygons: list[list[list[tuple[float, float]]]] = []
+    while offset + 8 <= len(data):
+        _, content_words = struct.unpack(">2i", data[offset : offset + 8])
+        offset += 8
+        content_bytes = content_words * 2
+        record = data[offset : offset + content_bytes]
+        offset += content_bytes
+        if len(record) < 44:
+            continue
+        shape_type = struct.unpack("<i", record[:4])[0]
+        if shape_type == 0:
+            polygons.append([])
+            continue
+        if shape_type not in {5, 15, 25, 31}:
+            continue
+        num_parts, num_points = struct.unpack("<2i", record[36:44])
+        parts_start = 44
+        points_start = parts_start + num_parts * 4
+        if len(record) < points_start + num_points * 16:
+            raise ValueError("invalid polygon record")
+        part_offsets = list(struct.unpack(f"<{num_parts}i", record[parts_start:points_start]))
+        part_offsets.append(num_points)
+        points = [
+            struct.unpack("<2d", record[points_start + point * 16 : points_start + point * 16 + 16])
+            for point in range(num_points)
+        ]
+        polygons.append(
+            [points[part_offsets[index] : part_offsets[index + 1]] for index in range(num_parts)]
+        )
+    return polygons
+
+
+def parse_dbf_location_ids(data: bytes) -> list[int]:
+    if len(data) < 32:
+        raise ValueError("invalid DBF")
+    header_length = int.from_bytes(data[8:10], "little")
+    record_length = int.from_bytes(data[10:12], "little")
+    fields = []
+    offset = 32
+    while offset + 32 <= header_length and data[offset] != 0x0D:
+        raw_name = data[offset : offset + 11].split(b"\x00", 1)[0]
+        name = raw_name.decode("ascii", errors="ignore").strip()
+        length = data[offset + 16]
+        fields.append((name, length))
+        offset += 32
+    field_offset = 1
+    location_slice: slice | None = None
+    for name, length in fields:
+        next_offset = field_offset + length
+        if name == "LocationID":
+            location_slice = slice(field_offset, next_offset)
+            break
+        field_offset = next_offset
+    if location_slice is None:
+        raise ValueError("DBF is missing LocationID")
+
+    location_ids = []
+    offset = header_length
+    while offset + record_length <= len(data):
+        record = data[offset : offset + record_length]
+        offset += record_length
+        if not record or record[0:1] == b"*":
+            continue
+        raw_value = record[location_slice].decode("ascii", errors="ignore").strip()
+        if raw_value:
+            location_ids.append(int(float(raw_value)))
+    return location_ids
+
+
 def load_tlc_frame(paths: list[Path]) -> Any:
     pandas = optional_import("pandas")
     if pandas is None:
@@ -367,11 +489,16 @@ def clean_tlc_frame(frame: Any, *, sample_size: int, seed: int) -> Any:
     return data.reset_index(drop=True)
 
 
-def build_real_tasks(frame: Any, zone_lookup: dict[int, ZoneContext]) -> list[BenchmarkTask]:
+def build_real_tasks(
+    frame: Any,
+    zone_lookup: dict[int, ZoneContext],
+    zone_adjacency: dict[int, list[int]] | None = None,
+) -> list[BenchmarkTask]:
     return [
         row_task(
             frame,
             zone_lookup=zone_lookup,
+            zone_adjacency=zone_adjacency,
             name="duration",
             display_name="Trip duration",
             description="Predict log trip duration from zone, trip, passenger, and time features.",
@@ -380,12 +507,13 @@ def build_real_tasks(frame: Any, zone_lookup: dict[int, ZoneContext]) -> list[Be
         row_task(
             frame,
             zone_lookup=zone_lookup,
+            zone_adjacency=zone_adjacency,
             name="fare",
             display_name="Fare amount",
             description="Predict log total amount from zone, trip, passenger, and time features.",
             target_column="log_total_amount",
         ),
-        demand_task(frame, zone_lookup=zone_lookup),
+        demand_task(frame, zone_lookup=zone_lookup, zone_adjacency=zone_adjacency),
     ]
 
 
@@ -393,6 +521,7 @@ def row_task(
     frame: Any,
     *,
     zone_lookup: dict[int, ZoneContext],
+    zone_adjacency: dict[int, list[int]] | None,
     name: str,
     display_name: str,
     description: str,
@@ -426,10 +555,16 @@ def row_task(
         pickup_zones=pickup_zones,
         feature_names=list(ROW_FEATURES),
         sparse_sets=sparse_sets,
+        zone_adjacency=zone_adjacency,
     )
 
 
-def demand_task(frame: Any, *, zone_lookup: dict[int, ZoneContext]) -> BenchmarkTask:
+def demand_task(
+    frame: Any,
+    *,
+    zone_lookup: dict[int, ZoneContext],
+    zone_adjacency: dict[int, list[int]] | None,
+) -> BenchmarkTask:
     grouped = (
         frame.groupby(["PULocationID", "hour", "dayofweek"], as_index=False)
         .size()
@@ -452,6 +587,7 @@ def demand_task(frame: Any, *, zone_lookup: dict[int, ZoneContext]) -> Benchmark
         pickup_zones=pickup_zones,
         feature_names=list(DEMAND_FEATURES),
         sparse_sets=sparse_sets,
+        zone_adjacency=zone_adjacency,
     )
 
 
@@ -712,6 +848,90 @@ def task_embedding_ids(task: BenchmarkTask) -> np.ndarray:
     )
 
 
+def zone_context_maps(
+    task: BenchmarkTask,
+    pickup: np.ndarray,
+) -> tuple[dict[int, int], dict[int, int]]:
+    borough_by_zone: dict[int, int] = {}
+    service_by_zone: dict[int, int] = {}
+    borough_values = task.sparse_sets.get("pickup_borough", [])
+    service_values = task.sparse_sets.get("pickup_service_zone", [])
+    for row, raw_zone in enumerate(pickup):
+        zone = int(raw_zone)
+        if row < len(borough_values) and borough_values[row]:
+            borough_by_zone.setdefault(zone, int(borough_values[row][0]))
+        if row < len(service_values) and service_values[row]:
+            service_by_zone.setdefault(zone, int(service_values[row][0]))
+    return borough_by_zone, service_by_zone
+
+
+def add_zone_context_graph(
+    edges: set[tuple[int, int]],
+    task: BenchmarkTask,
+    pickup: np.ndarray,
+    node_features: np.ndarray,
+) -> tuple[int, dict[str, int]]:
+    observed_zones = sorted(int(zone) for zone in np.unique(pickup))
+    max_zone = node_features.shape[0] - 1
+    next_node = max_zone + 1
+    topology_counts = {
+        "self_loop_edges": 0,
+        "adjacency_edges": 0,
+        "borough_edges": 0,
+        "service_zone_edges": 0,
+        "context_hub_nodes": 0,
+    }
+
+    for zone in observed_zones:
+        edges.add((zone, zone))
+        topology_counts["self_loop_edges"] += 1
+
+    for source, neighbors in (task.zone_adjacency or {}).items():
+        if source not in observed_zones:
+            continue
+        for target in neighbors:
+            if target in observed_zones:
+                edges.add((int(source), int(target)))
+                topology_counts["adjacency_edges"] += 1
+
+    borough_by_zone, service_by_zone = zone_context_maps(task, pickup)
+    hub_features: list[list[float]] = []
+
+    def add_hub_edges(values_by_zone: dict[int, int], offset: int, count_key: str) -> None:
+        nonlocal next_node
+        hubs: dict[int, int] = {}
+        for zone in observed_zones:
+            value = values_by_zone.get(zone)
+            if value is None:
+                continue
+            if value not in hubs:
+                hubs[value] = next_node
+                next_node += 1
+                topology_counts["context_hub_nodes"] += 1
+                hub_features.append(
+                    [
+                        0.0,
+                        0.0,
+                        0.0,
+                        1.0,
+                        float(value if offset == 0 else 0) / 10.0,
+                        float(value if offset == 1 else 0) / 10.0,
+                    ]
+                )
+            hub = hubs[value]
+            edges.add((zone, hub))
+            edges.add((hub, zone))
+            topology_counts[count_key] += 2
+
+    add_hub_edges(borough_by_zone, 0, "borough_edges")
+    add_hub_edges(service_by_zone, 1, "service_zone_edges")
+
+    if hub_features:
+        node_features.resize((next_node, node_features.shape[1]), refcheck=False)
+        node_features[max_zone + 1 : next_node] = np.asarray(hub_features, dtype=np.float64)
+    return next_node, topology_counts
+
+
 def graph_augmented_split_features(
     task: BenchmarkTask,
     train_indices: np.ndarray,
@@ -733,22 +953,52 @@ def graph_augmented_split_features(
     node_count = max_zone + 1
     train_pickup = pickup[train_indices]
     train_dropoff = dropoff[train_indices]
-    edges = sorted(
-        {
-            (int(source), int(target))
-            for source, target in zip(train_pickup, train_dropoff, strict=True)
-        }
-    )
-    if not edges:
-        edges = [(int(zone), int(zone)) for zone in np.unique(train_pickup)]
+    edge_set = {
+        (int(source), int(target))
+        for source, target in zip(train_pickup, train_dropoff, strict=True)
+    }
+    if not edge_set:
+        edge_set = {(int(zone), int(zone)) for zone in np.unique(train_pickup)}
 
-    node_features = np.zeros((node_count, 4), dtype=np.float64)
+    node_features = np.zeros((node_count, 6), dtype=np.float64)
     node_features[:, 0] = np.arange(node_count, dtype=np.float64) / float(max(node_count - 1, 1))
     pickup_counts = np.bincount(train_pickup, minlength=node_count).astype(np.float64)
     dropoff_counts = np.bincount(train_dropoff, minlength=node_count).astype(np.float64)
-    node_features[:, 1] = np.log1p(pickup_counts)
-    node_features[:, 2] = np.log1p(dropoff_counts)
-    node_features[:, 3] = (pickup_counts + dropoff_counts > 0).astype(np.float64)
+    node_features[:node_count, 1] = np.log1p(pickup_counts)
+    node_features[:node_count, 2] = np.log1p(dropoff_counts)
+    node_features[:node_count, 3] = (pickup_counts + dropoff_counts > 0).astype(np.float64)
+    borough_by_zone, service_by_zone = zone_context_maps(task, pickup)
+    for zone, value in borough_by_zone.items():
+        if zone < node_count:
+            node_features[zone, 4] = float(value) / 10.0
+    for zone, value in service_by_zone.items():
+        if zone < node_count:
+            node_features[zone, 5] = float(value) / 10.0
+
+    topology_counts: dict[str, int] = {
+        "self_loop_edges": 0,
+        "adjacency_edges": 0,
+        "borough_edges": 0,
+        "service_zone_edges": 0,
+        "context_hub_nodes": 0,
+    }
+    graph_topology = "train_flow"
+    if task_zone_column(task, "DOLocationID") is None:
+        node_count, topology_counts = add_zone_context_graph(
+            edge_set,
+            task,
+            pickup,
+            node_features,
+        )
+        graph_topology = "zone_adjacency_borough_service"
+
+    edges = sorted(
+        {
+            (int(source), int(target))
+            for source, target in edge_set
+            if source < node_count and target < node_count
+        }
+    )
 
     from cartoboost.graph import (
         DirectionalFeature,
@@ -831,7 +1081,7 @@ def graph_augmented_split_features(
     source_embeddings = embeddings[pickup]
     target_embeddings = embeddings[dropoff]
     graph_features = (
-        source_embeddings
+        np.hstack([source_embeddings, node_features[pickup]])
         if task_zone_column(task, "DOLocationID") is None
         else np.hstack([source_embeddings, target_embeddings])
     )
@@ -842,11 +1092,38 @@ def graph_augmented_split_features(
             "graph_dim": int(args.graph_dim),
             "graph_epochs": int(args.graph_epochs),
             "graph_family": str(graph_family),
+            "graph_topology": graph_topology,
             "graph_edges": int(len(edges)),
             "graph_node_count": int(node_count),
             "graph_feature_count": int(graph_features.shape[1]),
+            **topology_counts,
         },
     )
+
+
+def graph_cartoboost_splitters(args: argparse.Namespace) -> list[str]:
+    splitters = [
+        splitter
+        for splitter in parse_splitters(args.cartoboost_splitters)
+        if splitter != "sparse_set"
+    ]
+    return splitters or ["axis_histogram:256"]
+
+
+def graph_augmented_schema(
+    task: BenchmarkTask,
+    feature_names: list[str],
+    graph_feature_count: int,
+) -> dict[str, list[dict[str, Any]]]:
+    schema = cartoboost_schema(
+        task,
+        feature_names=feature_names,
+        include_sparse_sets=False,
+    )
+    schema["dense"].extend(
+        {"name": f"graph_{index:02d}", "kind": "numeric"} for index in range(graph_feature_count)
+    )
+    return schema
 
 
 def fit_predict_model(
@@ -1090,10 +1367,19 @@ def fit_predict_model(
                 max_depth=args.cartoboost_max_depth,
                 min_samples_leaf=args.cartoboost_min_samples_leaf,
                 min_gain=0.0,
-                splitters=["axis_histogram:256"],
+                splitters=graph_cartoboost_splitters(args),
                 n_threads=args.n_threads or None,
             )
-            model.fit(train_augmented, train_y)
+            graph_feature_count = int(train_augmented.shape[1] - train_x.shape[1])
+            model.fit(
+                train_augmented,
+                train_y,
+                feature_schema=graph_augmented_schema(
+                    task,
+                    effective_feature_names,
+                    graph_feature_count,
+                ),
+            )
             train_seconds = time.perf_counter() - train_started
             _ = model.predict(test_augmented[: min(len(test_indices), 16)])
             predict_started = time.perf_counter()
@@ -1117,6 +1403,7 @@ def fit_predict_model(
                 "min_samples_leaf": int(args.cartoboost_min_samples_leaf),
                 "zone_treatment": args.zone_treatment,
                 "feature_count": int(train_augmented.shape[1]),
+                "splitters": graph_cartoboost_splitters(args),
                 **graph_config,
             },
             "predictions": np.asarray(prediction, dtype=float),
@@ -1274,6 +1561,7 @@ def run_benchmarks(tasks: list[BenchmarkTask], args: argparse.Namespace) -> dict
             "graph_dim": int(args.graph_dim),
             "graph_epochs": int(args.graph_epochs),
             "graph_family": str(args.graph_family),
+            "model_workers": int(args.model_workers),
             "zone_treatment": args.zone_treatment,
             "zone_target_smoothing": float(args.zone_target_smoothing),
         },
@@ -1298,20 +1586,53 @@ def run_benchmarks(tasks: list[BenchmarkTask], args: argparse.Namespace) -> dict
                 ),
                 "models": {},
             }
-            for model_name in models:
+
+            def run_model(
+                model_name: str,
+                *,
+                current_task: BenchmarkTask = task,
+                current_split_mode: str = split_mode,
+                current_train_indices: np.ndarray = train_indices,
+                current_test_indices: np.ndarray = test_indices,
+            ) -> tuple[str, dict[str, Any], np.ndarray | None]:
                 print(
-                    f"running task={task.name} split={split_mode} model={model_name} "
-                    f"train_rows={len(train_indices)} test_rows={len(test_indices)}",
+                    f"running task={current_task.name} split={current_split_mode} "
+                    f"model={model_name} train_rows={len(current_train_indices)} "
+                    f"test_rows={len(current_test_indices)}",
                     flush=True,
                 )
                 result = fit_predict_model(
                     model_name=model_name,
-                    task=task,
-                    train_indices=train_indices,
-                    test_indices=test_indices,
+                    task=current_task,
+                    train_indices=current_train_indices,
+                    test_indices=current_test_indices,
                     args=args,
                 )
                 prediction = result.pop("predictions", None)
+                print(
+                    f"finished task={current_task.name} split={current_split_mode} "
+                    f"model={model_name} status={result['status']}",
+                    flush=True,
+                )
+                return model_name, result, prediction
+
+            model_outputs: dict[str, tuple[dict[str, Any], np.ndarray | None]] = {}
+            workers = max(1, min(int(args.model_workers), len(models)))
+            if workers == 1:
+                for model_name in models:
+                    name, result, prediction = run_model(model_name)
+                    model_outputs[name] = (result, prediction)
+            else:
+                with ThreadPoolExecutor(max_workers=workers) as executor:
+                    futures = {
+                        executor.submit(run_model, model_name): model_name for model_name in models
+                    }
+                    for future in as_completed(futures):
+                        name, result, prediction = future.result()
+                        model_outputs[name] = (result, prediction)
+
+            for model_name in models:
+                result, prediction = model_outputs[model_name]
                 if prediction is not None:
                     write_prediction_plots(
                         args.output_dir,
@@ -1497,6 +1818,7 @@ def write_markdown(results: dict[str, Any], output_dir: Path) -> None:
         f"- CartoBoost candidate estimators: {results['model_config']['cartoboost_n_estimators']}",
         f"- baseline max depth: {results['model_config']['baseline_max_depth']}",
         f"- CartoBoost candidate max depth: {results['model_config']['cartoboost_max_depth']}",
+        f"- model workers: {results['model_config'].get('model_workers', 1)}",
         f"- zone treatment: {results['model_config'].get('zone_treatment', 'raw')}",
         "",
     ]
@@ -1559,8 +1881,12 @@ def main() -> None:
             no_download=args.no_download,
         )
         zone_lookup = ensure_zone_lookup(cache_dir=args.cache_dir, no_download=args.no_download)
+        zone_adjacency = ensure_zone_adjacency(
+            cache_dir=args.cache_dir,
+            no_download=args.no_download,
+        )
         frame = clean_tlc_frame(load_tlc_frame(paths), sample_size=args.sample_size, seed=args.seed)
-        tasks = build_real_tasks(frame, zone_lookup)
+        tasks = build_real_tasks(frame, zone_lookup, zone_adjacency)
     tasks = filter_tasks(tasks, args.tasks)
 
     results = run_benchmarks(tasks, args)
