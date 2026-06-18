@@ -2,8 +2,8 @@
 
 CartoBoost forecasting starts with explicit time-series contracts. The Python
 objects in `cartoboost.forecasting` validate pandas inputs, describe forecasting
-metadata, and standardize forecast outputs before model-specific estimators are
-added.
+metadata, and standardize forecast outputs. Model-specific estimators are thin
+wrappers over Rust bindings exposed through `cartoboost._native`.
 
 ## ForecastFrame
 

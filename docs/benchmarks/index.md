@@ -46,7 +46,12 @@ library baselines.
 
 ```sh
 uv run --group dev --group bench python scripts/forecasting_library_benchmark.py \
+  --source polars \
   --output artifacts/forecasting_library_benchmark_polars.json
+
+uv run --group dev --group bench python scripts/forecasting_library_benchmark.py \
+  --source duckdb \
+  --output artifacts/forecasting_library_benchmark_duckdb.json
 ```
 
 Current quality run, June 18, 2026:
@@ -60,16 +65,16 @@ Current quality run, June 18, 2026:
 | `functime_ridge` | `functime` | 2.673150 | 2.309550 | 0.110462 |
 | `functime_lightgbm` | `functime` | 2.965697 | 2.807547 | 0.134281 |
 
-Current speed context from the same artifact refresh:
+Current speed context from the Polars artifact refresh:
 
 | model | library | model seconds |
 | --- | --- | ---: |
-| `cartoboost_lag` | `cartoboost` | 0.514980 |
-| `statsforecast_autoets` | `statsforecast` | 0.551253 |
-| `functime_snaive` | `functime` | 0.054312 |
-| `statsforecast_seasonal_naive` | `statsforecast` | 0.017958 |
-| `functime_ridge` | `functime` | 0.177851 |
-| `functime_lightgbm` | `functime` | 0.718657 |
+| `cartoboost_lag` | `cartoboost` | 2.474875 |
+| `statsforecast_autoets` | `statsforecast` | 0.500582 |
+| `functime_snaive` | `functime` | 0.054331 |
+| `statsforecast_seasonal_naive` | `statsforecast` | 0.005745 |
+| `functime_ridge` | `functime` | 0.179506 |
+| `functime_lightgbm` | `functime` | 77.810239 |
 
 The strongest forecasting-library baseline in this run is
 `statsforecast_autoets` from `statsforecast`, with RMSE `0.550793`. CartoBoost
@@ -78,6 +83,8 @@ lag forecasting records RMSE `0.379765`, or `0.689487` times the
 
 The artifact records `comparison_libraries`, `forecasting_library_models`, and
 `model_libraries` so every score is tied to an explicit library and model name.
+The Polars and DuckDB source runs produced the same quality metrics; only source
+loading and model timing differed.
 
 This is targeted evidence for global geotemporal lag forecasting on many
 related short lane series. It should not be generalized to every forecasting

@@ -104,17 +104,20 @@ class ForecastRegistry:
 
 
 def default_model_specs() -> tuple[ForecastModelSpec, ...]:
+    from .ensemble import WeightedEnsembleForecaster
     from .global_models import CartoBoostLagForecaster
     from .local import (
         AutoARIMAForecaster,
         ETSForecaster,
+        NaiveForecaster,
         OptimizedThetaForecaster,
+        SeasonalNaiveForecaster,
         ThetaForecaster,
     )
 
     return (
-        ForecastModelSpec("naive", factory=_NaiveForecaster),
-        ForecastModelSpec("seasonal_naive", factory=_SeasonalNaiveForecaster),
+        ForecastModelSpec("naive", factory=NaiveForecaster),
+        ForecastModelSpec("seasonal_naive", factory=SeasonalNaiveForecaster),
         ForecastModelSpec("theta", factory=ThetaForecaster),
         ForecastModelSpec("optimized_theta", factory=OptimizedThetaForecaster),
         ForecastModelSpec("ets", factory=ETSForecaster),
@@ -122,97 +125,7 @@ def default_model_specs() -> tuple[ForecastModelSpec, ...]:
         ForecastModelSpec("cartoboost_lag", factory=CartoBoostLagForecaster),
         ForecastModelSpec(
             "weighted_ensemble",
-            factory=_weighted_ensemble_factory,
+            factory=WeightedEnsembleForecaster,
             metadata={"kind": "ensemble"},
         ),
     )
-
-
-class _NaiveForecaster:
-    def __init__(self, *, drift: bool = False) -> None:
-        self.drift = drift
-        self._series: list[float] | dict[Any, list[float]] | None = None
-
-    def fit(self, y: Any, **_: Any) -> _NaiveForecaster:
-        self._series = _copy_series(y)
-        return self
-
-    def predict(self, horizon: int, **_: Any) -> list[float] | dict[Any, list[float]]:
-        _validate_horizon(horizon)
-        if self._series is None:
-            raise ValueError("Naive forecaster must be fit before predict")
-        if isinstance(self._series, dict):
-            return {key: self._predict_one(values, horizon) for key, values in self._series.items()}
-        return self._predict_one(self._series, horizon)
-
-    def _predict_one(self, values: list[float], horizon: int) -> list[float]:
-        if not values:
-            raise ValueError("Naive forecaster requires at least one observation")
-        last = values[-1]
-        if not self.drift or len(values) < 2:
-            return [last] * horizon
-        step = (values[-1] - values[0]) / (len(values) - 1)
-        return [last + step * (idx + 1) for idx in range(horizon)]
-
-
-class _SeasonalNaiveForecaster:
-    def __init__(self, *, season_length: int = 1) -> None:
-        if season_length < 1:
-            raise ValueError("season_length must be >= 1")
-        self.season_length = int(season_length)
-        self._series: list[float] | dict[Any, list[float]] | None = None
-
-    def fit(self, y: Any, **_: Any) -> _SeasonalNaiveForecaster:
-        self._series = _copy_series(y)
-        return self
-
-    def predict(self, horizon: int, **_: Any) -> list[float] | dict[Any, list[float]]:
-        _validate_horizon(horizon)
-        if self._series is None:
-            raise ValueError("Seasonal naive forecaster must be fit before predict")
-        if isinstance(self._series, dict):
-            return {key: self._predict_one(values, horizon) for key, values in self._series.items()}
-        return self._predict_one(self._series, horizon)
-
-    def _predict_one(self, values: list[float], horizon: int) -> list[float]:
-        if not values:
-            raise ValueError("Seasonal naive forecaster requires at least one observation")
-        season = values[-self.season_length :]
-        return [season[idx % len(season)] for idx in range(horizon)]
-
-
-def _weighted_ensemble_factory(**params: Any) -> Any:
-    from .ensemble import WeightedEnsembleForecaster
-
-    return WeightedEnsembleForecaster(**params)
-
-
-def _missing_optional_factory(name: str) -> Factory:
-    def factory(**_: Any) -> Any:
-        raise ImportError(
-            f"Forecast model '{name}' needs a concrete backend adapter. "
-            "Register a ForecastModelSpec with a custom factory to use it."
-        )
-
-    return factory
-
-
-def _copy_series(y: Any) -> list[float] | dict[Any, list[float]]:
-    if isinstance(y, Mapping):
-        copied = {key: _float_list(values) for key, values in y.items()}
-        if not copied:
-            raise ValueError("panel series must contain at least one panel")
-        return copied
-    return _float_list(y)
-
-
-def _float_list(values: Any) -> list[float]:
-    result = [float(value) for value in values]
-    if not result:
-        raise ValueError("series must contain at least one observation")
-    return result
-
-
-def _validate_horizon(horizon: int) -> None:
-    if not isinstance(horizon, int) or horizon < 1:
-        raise ValueError("horizon must be a positive integer")

@@ -1,5 +1,5 @@
 use crate::{CartoBoostError, Result};
-use chrono::{Duration, NaiveDateTime};
+use chrono::{DateTime, Duration, NaiveDate, NaiveDateTime};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -22,6 +22,14 @@ impl ForecastFrequency {
         }
     }
 
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Hourly => "hourly",
+            Self::Daily => "daily",
+            Self::Weekly => "weekly",
+        }
+    }
+
     pub fn step(self) -> Duration {
         match self {
             Self::Hourly => Duration::hours(1),
@@ -38,4 +46,34 @@ impl ForecastFrequency {
             .checked_add_signed(self.step() * step_count)
             .ok_or_else(|| CartoBoostError::InvalidInput("forecast timestamp overflow".to_string()))
     }
+}
+
+pub fn parse_forecast_timestamp(value: &str) -> Result<NaiveDateTime> {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return Err(CartoBoostError::InvalidInput(
+            "forecast timestamp must not be empty".to_string(),
+        ));
+    }
+    for format in [
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%dT%H:%M:%S",
+        "%Y-%m-%d %H:%M",
+        "%Y-%m-%dT%H:%M",
+    ] {
+        if let Ok(timestamp) = NaiveDateTime::parse_from_str(trimmed, format) {
+            return Ok(timestamp);
+        }
+    }
+    if let Ok(date) = NaiveDate::parse_from_str(trimmed, "%Y-%m-%d") {
+        return date.and_hms_opt(0, 0, 0).ok_or_else(|| {
+            CartoBoostError::InvalidInput(format!("invalid forecast timestamp {value:?}"))
+        });
+    }
+    if let Ok(timestamp) = DateTime::parse_from_rfc3339(trimmed) {
+        return Ok(timestamp.naive_utc());
+    }
+    Err(CartoBoostError::InvalidInput(format!(
+        "forecast timestamp {value:?} is not parseable"
+    )))
 }

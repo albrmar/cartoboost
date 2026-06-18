@@ -1,10 +1,9 @@
 # Forecasting CLI
 
-CartoBoost Forecasting V1 provides a lightweight command surface for deterministic
-taxi time-series smoke workflows:
+The Forecasting V1 CLI is available through:
 
 ```bash
-uv run --group dev python scripts/forecast.py fit \
+PYTHONPATH=python uv run --group dev python -m cartoboost.forecasting.cli fit \
   --input examples/forecasting/forecast_cli_input.csv \
   --timestamp-col timestamp \
   --target-col pickup_demand \
@@ -13,8 +12,7 @@ uv run --group dev python scripts/forecast.py fit \
   --model theta \
   --horizon 7 \
   --season-length 7 \
-  --artifact-dir target/forecasting/theta \
-  --output target/forecasting/theta_forecast.csv
+  --artifact-dir target/forecasting/theta
 ```
 
 Commands are `fit`, `predict`, `backtest`, and `compare`. The script accepts
@@ -22,52 +20,14 @@ Commands are `fit`, `predict`, `backtest`, and `compare`. The script accepts
 `--model`, `--horizon`, `--season-length`, `--output`, `--artifact-dir`, and
 `--config`.
 
-Available Forecasting V1 model names are `naive`, `seasonal_naive`, `theta`,
-`optimized_theta`, `ets`, `auto_arima`, `cartoboost_lag`, and
-`weighted_ensemble`. Compatibility aliases `mean`, `drift`, and `cartoboost`
-are also accepted by the script. `compare --model all` evaluates every V1 model
-name and writes metrics ordered by RMSE.
+Available model names are `naive`, `seasonal_naive`, `theta`, `optimized_theta`,
+`ets`, `auto_arima`, `cartoboost_lag`, and `weighted_ensemble`.
 
-`fit` writes `model.json` and `resolved_config.json` under `--artifact-dir`.
-When `--output` is supplied it also writes a forecast CSV with `series_id`,
-`timestamp`, `model`, `horizon`, `forecast`, `lower_80`, and `upper_80`.
+The CLI does not run Python fallback forecasters. It validates configuration and
+input shape, then delegates to the Python wrapper for the selected Rust native
+model. If the corresponding `cartoboost._native` binding is not present, the
+command exits nonzero and prints a `Rust binding ... is not available` error.
 
-`predict` reads `model.json` from `--artifact-dir` and writes the forecast CSV:
-
-```bash
-uv run --group dev python scripts/forecast.py predict \
-  --artifact-dir target/forecasting/theta \
-  --horizon 3 \
-  --output target/forecasting/predictions.csv
-```
-
-`backtest` writes JSON metrics for the final holdout window:
-
-```bash
-uv run --group dev python scripts/forecast.py backtest \
-  --input examples/forecasting/forecast_cli_input.csv \
-  --timestamp-col timestamp \
-  --target-col pickup_demand \
-  --series-id-col PULocationID \
-  --model theta \
-  --horizon 3 \
-  --output target/forecasting/backtest_metrics.json
-```
-
-`compare` writes JSON metrics for one or more models:
-
-```bash
-uv run --group dev python scripts/forecast.py compare \
-  --input examples/forecasting/forecast_cli_input.csv \
-  --timestamp-col timestamp \
-  --target-col pickup_demand \
-  --series-id-col PULocationID \
-  --model all \
-  --horizon 3 \
-  --output target/forecasting/compare_metrics.json
-```
-
-Config files may be JSON or simple TOML-style `key = value` files. CLI options
-override config file values. Invalid model names, missing columns, non-finite
-targets, unknown config keys, and missing artifacts exit nonzero with an error
-message on stderr.
+`predict`, `backtest`, and `compare` also require Rust-side forecasting artifact,
+backtest, and comparison bindings. Until those bindings are exposed, these
+commands fail clearly rather than writing synthetic forecast CSVs or metrics.

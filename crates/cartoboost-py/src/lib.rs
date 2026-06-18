@@ -1,4 +1,13 @@
 use cartoboost_core::data::{FeatureSchema, SparseSetColumn};
+use cartoboost_core::forecasting::{
+    CalendarFeature, CartoBoostLagForecaster as CoreCartoBoostLagForecaster,
+    ForecastFrame as CoreForecastFrame, ForecastFrameMetadata, ForecastFrequency,
+    ForecastPrediction, ForecastResult as CoreForecastResult, Forecaster, LagFeatureConfig,
+    NaiveForecaster as CoreNaiveForecaster,
+    OptimizedThetaForecaster as CoreOptimizedThetaForecaster,
+    SeasonalNaiveForecaster as CoreSeasonalNaiveForecaster, ThetaForecaster as CoreThetaForecaster,
+    ThetaSeasonality,
+};
 use cartoboost_core::loss::{HuberLossConfig, LogL2LossConfig, LossConfig, QuantileLossConfig};
 use cartoboost_core::tree::{FlatAxisPredictor, FuzzyKernel, LeafPredictorKind, SplitterKind};
 use cartoboost_core::{Booster, BoosterConfig, CartoBoostError, Dataset, Model};
@@ -22,6 +31,358 @@ use std::cmp::Ordering;
 use std::path::PathBuf;
 
 type StringTypedEdges = Vec<(String, String, String)>;
+
+#[pyclass(name = "ForecastFrame")]
+#[derive(Clone, Debug)]
+struct NativeForecastFrame {
+    frame: CoreForecastFrame,
+}
+
+#[pymethods]
+impl NativeForecastFrame {
+    #[new]
+    #[pyo3(signature = (rows, frequency, timestamp_col=None, target_col=None, series_id_col=None, static_covariates=None, known_future_covariates=None, historical_covariates=None))]
+    #[allow(clippy::too_many_arguments)]
+    fn new(
+        rows: Vec<(String, String, f64)>,
+        frequency: &str,
+        timestamp_col: Option<String>,
+        target_col: Option<String>,
+        series_id_col: Option<String>,
+        static_covariates: Option<Vec<String>>,
+        known_future_covariates: Option<Vec<String>>,
+        historical_covariates: Option<Vec<String>>,
+    ) -> PyResult<Self> {
+        let frequency = ForecastFrequency::parse(frequency).map_err(to_py_value_error)?;
+        let metadata = ForecastFrameMetadata {
+            timestamp_col,
+            target_col,
+            series_id_col,
+            static_covariates: static_covariates.unwrap_or_default(),
+            known_future_covariates: known_future_covariates.unwrap_or_default(),
+            historical_covariates: historical_covariates.unwrap_or_default(),
+        };
+        let frame = CoreForecastFrame::from_string_rows(rows, frequency, metadata)
+            .map_err(to_py_value_error)?;
+        Ok(Self { frame })
+    }
+
+    fn row_count(&self) -> usize {
+        self.frame.rows().len()
+    }
+
+    fn frequency(&self) -> String {
+        self.frame.frequency().as_str().to_string()
+    }
+
+    fn series_ids(&self) -> Vec<String> {
+        self.frame.series_ids()
+    }
+
+    fn metadata_json(&self) -> PyResult<String> {
+        self.frame.metadata_json_string().map_err(to_py_value_error)
+    }
+
+    fn rows(&self) -> Vec<(String, String, f64)> {
+        self.frame
+            .rows()
+            .iter()
+            .map(|row| {
+                (
+                    row.series_id.clone(),
+                    row.timestamp.format("%Y-%m-%dT%H:%M:%S").to_string(),
+                    row.target,
+                )
+            })
+            .collect()
+    }
+}
+
+#[pyclass(name = "ForecastResult")]
+#[derive(Clone, Debug)]
+struct NativeForecastResult {
+    result: CoreForecastResult,
+}
+
+#[pymethods]
+impl NativeForecastResult {
+    #[new]
+    fn new(predictions: Vec<(String, String, usize, String, f64)>) -> PyResult<Self> {
+        let predictions = predictions
+            .into_iter()
+            .map(|(series_id, timestamp, horizon, model, mean)| {
+                Ok(ForecastPrediction {
+                    series_id,
+                    timestamp: cartoboost_core::forecasting::parse_forecast_timestamp(&timestamp)
+                        .map_err(to_py_value_error)?,
+                    horizon,
+                    model,
+                    mean,
+                })
+            })
+            .collect::<PyResult<Vec<_>>>()?;
+        let result = CoreForecastResult::new(predictions).map_err(to_py_value_error)?;
+        Ok(Self { result })
+    }
+
+    #[staticmethod]
+    fn from_json(value: &str) -> PyResult<Self> {
+        let result = CoreForecastResult::from_json_string(value).map_err(to_py_value_error)?;
+        Ok(Self { result })
+    }
+
+    fn to_json(&self) -> PyResult<String> {
+        self.result.to_json_string().map_err(to_py_value_error)
+    }
+
+    fn columns(&self) -> Vec<String> {
+        CoreForecastResult::prediction_columns()
+            .into_iter()
+            .map(str::to_string)
+            .collect()
+    }
+
+    fn predictions(&self) -> Vec<(String, String, usize, String, f64)> {
+        self.result
+            .predictions()
+            .iter()
+            .map(|prediction| {
+                (
+                    prediction.series_id.clone(),
+                    prediction.timestamp.format("%Y-%m-%dT%H:%M:%S").to_string(),
+                    prediction.horizon,
+                    prediction.model.clone(),
+                    prediction.mean,
+                )
+            })
+            .collect()
+    }
+}
+
+#[pyfunction]
+fn forecast_parse_frequency(value: &str) -> PyResult<String> {
+    Ok(ForecastFrequency::parse(value)
+        .map_err(to_py_value_error)?
+        .as_str()
+        .to_string())
+}
+
+#[pyclass(name = "NaiveForecaster")]
+#[derive(Clone, Debug)]
+struct NativeNaiveForecaster {
+    model: CoreNaiveForecaster,
+}
+
+#[pymethods]
+impl NativeNaiveForecaster {
+    #[new]
+    #[pyo3(signature = (prediction_interval_levels=None))]
+    fn new(prediction_interval_levels: Option<Vec<f64>>) -> PyResult<Self> {
+        validate_interval_levels(prediction_interval_levels.as_deref())?;
+        Ok(Self {
+            model: CoreNaiveForecaster::new(),
+        })
+    }
+
+    fn fit(&mut self, frame: &NativeForecastFrame) -> PyResult<()> {
+        self.model.fit(&frame.frame).map_err(to_py_value_error)
+    }
+
+    fn predict(&self, horizon: usize) -> PyResult<NativeForecastResult> {
+        forecast_to_py(self.model.predict(horizon))
+    }
+}
+
+#[pyclass(name = "SeasonalNaiveForecaster")]
+#[derive(Clone, Debug)]
+struct NativeSeasonalNaiveForecaster {
+    model: CoreSeasonalNaiveForecaster,
+}
+
+#[pymethods]
+impl NativeSeasonalNaiveForecaster {
+    #[new]
+    #[pyo3(signature = (season_length, prediction_interval_levels=None))]
+    fn new(season_length: usize, prediction_interval_levels: Option<Vec<f64>>) -> PyResult<Self> {
+        validate_interval_levels(prediction_interval_levels.as_deref())?;
+        Ok(Self {
+            model: CoreSeasonalNaiveForecaster::new(season_length).map_err(to_py_value_error)?,
+        })
+    }
+
+    fn fit(&mut self, frame: &NativeForecastFrame) -> PyResult<()> {
+        self.model.fit(&frame.frame).map_err(to_py_value_error)
+    }
+
+    fn predict(&self, horizon: usize) -> PyResult<NativeForecastResult> {
+        forecast_to_py(self.model.predict(horizon))
+    }
+}
+
+#[pyclass(name = "ThetaForecaster")]
+#[derive(Clone, Debug)]
+struct NativeThetaForecaster {
+    model: CoreThetaForecaster,
+}
+
+#[pymethods]
+impl NativeThetaForecaster {
+    #[new]
+    #[pyo3(signature = (theta=2.0, alpha=0.2, season_length=None, seasonality=None, prediction_interval_levels=None))]
+    fn new(
+        theta: f64,
+        alpha: f64,
+        season_length: Option<usize>,
+        seasonality: Option<String>,
+        prediction_interval_levels: Option<Vec<f64>>,
+    ) -> PyResult<Self> {
+        validate_interval_levels(prediction_interval_levels.as_deref())?;
+        let seasonality = parse_theta_seasonality(season_length, seasonality)?;
+        Ok(Self {
+            model: CoreThetaForecaster::with_seasonality(theta, alpha, seasonality)
+                .map_err(to_py_value_error)?,
+        })
+    }
+
+    fn fit(&mut self, frame: &NativeForecastFrame) -> PyResult<()> {
+        self.model.fit(&frame.frame).map_err(to_py_value_error)
+    }
+
+    fn predict(&self, horizon: usize) -> PyResult<NativeForecastResult> {
+        forecast_to_py(self.model.predict(horizon))
+    }
+}
+
+#[pyclass(name = "OptimizedThetaForecaster")]
+#[derive(Clone, Debug)]
+struct NativeOptimizedThetaForecaster {
+    model: CoreOptimizedThetaForecaster,
+}
+
+#[pymethods]
+impl NativeOptimizedThetaForecaster {
+    #[new]
+    #[pyo3(signature = (theta_grid=None, alpha_grid=None, season_length=None, seasonality=None, prediction_interval_levels=None))]
+    fn new(
+        theta_grid: Option<Vec<f64>>,
+        alpha_grid: Option<Vec<f64>>,
+        season_length: Option<usize>,
+        seasonality: Option<String>,
+        prediction_interval_levels: Option<Vec<f64>>,
+    ) -> PyResult<Self> {
+        validate_interval_levels(prediction_interval_levels.as_deref())?;
+        let seasonality = parse_theta_seasonality(season_length, seasonality)?;
+        Ok(Self {
+            model: CoreOptimizedThetaForecaster::with_seasonality(
+                theta_grid.unwrap_or_else(|| vec![1.0, 1.5, 2.0, 2.5, 3.0]),
+                alpha_grid.unwrap_or_else(|| vec![0.1, 0.2, 0.4, 0.6, 0.8]),
+                seasonality,
+            )
+            .map_err(to_py_value_error)?,
+        })
+    }
+
+    fn fit(&mut self, frame: &NativeForecastFrame) -> PyResult<()> {
+        self.model.fit(&frame.frame).map_err(to_py_value_error)
+    }
+
+    fn predict(&self, horizon: usize) -> PyResult<NativeForecastResult> {
+        forecast_to_py(self.model.predict(horizon))
+    }
+}
+
+#[pyclass(name = "CartoBoostLagForecaster")]
+#[derive(Clone, Debug)]
+struct NativeCartoBoostLagForecaster {
+    model: CoreCartoBoostLagForecaster,
+}
+
+#[pymethods]
+impl NativeCartoBoostLagForecaster {
+    #[new]
+    #[pyo3(signature = (lags=None, rolling_windows=None, calendar_features=true, recursive=true, prediction_interval_levels=None))]
+    fn new(
+        lags: Option<Vec<usize>>,
+        rolling_windows: Option<Vec<usize>>,
+        calendar_features: bool,
+        recursive: bool,
+        prediction_interval_levels: Option<Vec<f64>>,
+    ) -> PyResult<Self> {
+        if !recursive {
+            return Err(PyValueError::new_err(
+                "CartoBoostLagForecaster currently supports recursive=true only",
+            ));
+        }
+        validate_interval_levels(prediction_interval_levels.as_deref())?;
+        let config = LagFeatureConfig {
+            lags: lags.unwrap_or_else(|| vec![1, 7, 14]),
+            rolling_mean_windows: rolling_windows.unwrap_or_else(|| vec![7, 28]),
+            calendar_features: if calendar_features {
+                vec![
+                    CalendarFeature::DayOfWeek,
+                    CalendarFeature::Month,
+                    CalendarFeature::Day,
+                ]
+            } else {
+                Vec::new()
+            },
+        };
+        Ok(Self {
+            model: CoreCartoBoostLagForecaster::new(config, BoosterConfig::default())
+                .map_err(to_py_value_error)?,
+        })
+    }
+
+    fn fit(&mut self, frame: &NativeForecastFrame) -> PyResult<()> {
+        self.model.fit(&frame.frame).map_err(to_py_value_error)
+    }
+
+    fn predict(&self, horizon: usize) -> PyResult<NativeForecastResult> {
+        forecast_to_py(self.model.predict(horizon))
+    }
+}
+
+fn forecast_to_py(
+    result: cartoboost_core::Result<CoreForecastResult>,
+) -> PyResult<NativeForecastResult> {
+    Ok(NativeForecastResult {
+        result: result.map_err(to_py_value_error)?,
+    })
+}
+
+fn validate_interval_levels(levels: Option<&[f64]>) -> PyResult<()> {
+    for level in levels.unwrap_or(&[]) {
+        if !level.is_finite() || *level <= 0.0 || *level >= 1.0 {
+            return Err(PyValueError::new_err(
+                "prediction interval levels must be finite values between 0 and 1",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn parse_theta_seasonality(
+    season_length: Option<usize>,
+    seasonality: Option<String>,
+) -> PyResult<Option<ThetaSeasonality>> {
+    let Some(mode) = seasonality else {
+        return Ok(None);
+    };
+    let season_length = season_length.ok_or_else(|| {
+        PyValueError::new_err("season_length is required when seasonality is set")
+    })?;
+    match mode.as_str() {
+        "additive" => ThetaSeasonality::additive(season_length)
+            .map(Some)
+            .map_err(to_py_value_error),
+        "multiplicative" => ThetaSeasonality::multiplicative(season_length)
+            .map(Some)
+            .map_err(to_py_value_error),
+        _ => Err(PyValueError::new_err(
+            "seasonality must be 'additive' or 'multiplicative'",
+        )),
+    }
+}
 
 #[pyclass(name = "CartoBoostRegressor")]
 #[derive(Clone, Debug)]
@@ -3122,6 +3483,13 @@ fn to_py_neural_error(err: cartoboost_neural::NeuralError) -> PyErr {
 #[pymodule]
 fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<NativeCartoBoostRegressor>()?;
+    m.add_class::<NativeForecastFrame>()?;
+    m.add_class::<NativeForecastResult>()?;
+    m.add_class::<NativeNaiveForecaster>()?;
+    m.add_class::<NativeSeasonalNaiveForecaster>()?;
+    m.add_class::<NativeThetaForecaster>()?;
+    m.add_class::<NativeOptimizedThetaForecaster>()?;
+    m.add_class::<NativeCartoBoostLagForecaster>()?;
     m.add_class::<NativeNeuralEmbeddingFeatures>()?;
     m.add_class::<NativeGraphSageEncoder>()?;
     m.add_class::<NativeNode2VecEncoder>()?;
@@ -3143,5 +3511,6 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
         m
     )?)?;
     m.add_function(wrap_pyfunction!(weighted_overlay, m)?)?;
+    m.add_function(wrap_pyfunction!(forecast_parse_frequency, m)?)?;
     Ok(())
 }

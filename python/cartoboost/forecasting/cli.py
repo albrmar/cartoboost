@@ -6,11 +6,13 @@ import json
 import math
 import sys
 from collections import defaultdict
-from collections.abc import Iterable, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+from .registry import ForecastRegistry
 
 MODEL_NAMES = (
     "naive",
@@ -22,8 +24,6 @@ MODEL_NAMES = (
     "cartoboost_lag",
     "weighted_ensemble",
 )
-COMPAT_MODEL_NAMES = ("mean", "drift", "cartoboost")
-ACCEPTED_MODEL_NAMES = MODEL_NAMES + COMPAT_MODEL_NAMES
 
 
 class ForecastCliError(ValueError):
@@ -76,6 +76,9 @@ def main(argv: Sequence[str] | None = None) -> int:
     except ForecastCliError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
+    except NotImplementedError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
     return 0
 
 
@@ -83,8 +86,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="cartoboost forecast",
         description=(
-            "Forecast taxi pickup demand or trip metrics. "
-            f"Models: {', '.join(ACCEPTED_MODEL_NAMES)}."
+            f"Forecast taxi pickup demand or trip metrics. Models: {', '.join(MODEL_NAMES)}."
         ),
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -95,7 +97,7 @@ def _build_parser() -> argparse.ArgumentParser:
         sub.add_argument("--target-col", default=None)
         sub.add_argument("--series-id-col", default=None)
         sub.add_argument("--freq", default=None)
-        sub.add_argument("--model", default=None, help=f"one of: {', '.join(ACCEPTED_MODEL_NAMES)}")
+        sub.add_argument("--model", default=None, help=f"one of: {', '.join(MODEL_NAMES)}")
         sub.add_argument("--horizon", type=int, default=None)
         sub.add_argument("--season-length", type=int, default=None)
         sub.add_argument("--output")
@@ -114,10 +116,8 @@ def _resolve_config(args: argparse.Namespace) -> ForecastConfig:
         return file_config.get(name.replace("_", "-"), file_config.get(name, default))
 
     model = str(option("model", "theta")).strip().lower()
-    if model not in ACCEPTED_MODEL_NAMES and model != "all":
-        raise ForecastCliError(
-            f"unknown model {model!r}; expected one of {', '.join(ACCEPTED_MODEL_NAMES)}"
-        )
+    if model not in MODEL_NAMES and model != "all":
+        raise ForecastCliError(f"unknown model {model!r}; expected one of {', '.join(MODEL_NAMES)}")
     if model == "all" and args.command != "compare":
         raise ForecastCliError("--model all is only valid for compare")
     horizon = _positive_int(option("horizon", 7), "horizon")
@@ -218,11 +218,10 @@ def _parse_scalar(value: str) -> Any:
     try:
         return int(value)
     except ValueError:
-        pass
-    try:
-        return float(value)
-    except ValueError as exc:
-        raise ValueError(f"invalid unquoted config value {value!r}") from exc
+        try:
+            return float(value)
+        except ValueError as exc:
+            raise ValueError(f"invalid unquoted config value {value!r}") from exc
 
 
 def _first_panel_column(value: Any) -> str | None:
@@ -251,65 +250,48 @@ def _positive_int(value: Any, name: str) -> int:
 
 def _fit(config: ForecastConfig) -> None:
     rows = _read_series(config)
-    models = _fit_models(rows, config, [config.model])
+    model = _new_model(config)
+    model.fit(_target_payload(rows))
     artifact_dir = _require_artifact_dir(config)
     artifact_dir.mkdir(parents=True, exist_ok=True)
-    _write_json(artifact_dir / "model.json", {"models": models, "model_names": [config.model]})
     _write_json(artifact_dir / "resolved_config.json", config.to_json())
-    if config.output is not None:
-        forecasts = _forecast_from_models(models, config.horizon, config.freq)
-        _write_forecast_csv(config.output, forecasts, include_actual=False)
+    _write_json(
+        artifact_dir / "model.json",
+        {
+            "model": config.model,
+            "native_class": getattr(model, "native_class_name", None),
+            "note": "Native forecasting artifact serialization is delegated to Rust bindings.",
+        },
+    )
 
 
 def _predict(config: ForecastConfig) -> None:
-    artifact_dir = _require_artifact_dir(config)
-    artifact_path = artifact_dir / "model.json"
-    if not artifact_path.exists():
-        raise ForecastCliError(f"model artifact not found: {artifact_path}")
-    artifact = json.loads(artifact_path.read_text(encoding="utf-8"))
-    forecasts = _forecast_from_models(artifact["models"], config.horizon, config.freq)
-    _write_forecast_csv(_require_output(config), forecasts, include_actual=False)
+    _require_artifact_dir(config)
+    _require_output(config)
+    raise NotImplementedError(
+        "Rust binding for forecasting artifact loading/prediction is not available."
+    )
 
 
 def _backtest(config: ForecastConfig) -> None:
-    rows = _read_series(config)
-    metrics, forecasts = _evaluate_models(rows, config, [config.model])
-    payload = {"command": "backtest", "metrics": metrics[0], "resolved_config": config.to_json()}
-    _write_json(_require_output(config), payload)
-    if config.artifact_dir is not None:
-        config.artifact_dir.mkdir(parents=True, exist_ok=True)
-        _write_json(config.artifact_dir / "backtest_metrics.json", payload)
-        _write_forecast_csv(
-            config.artifact_dir / "backtest_forecasts.csv",
-            forecasts,
-            include_actual=True,
-        )
-        _write_json(config.artifact_dir / "resolved_config.json", config.to_json())
+    _read_series(config)
+    _require_output(config)
+    raise NotImplementedError("Rust binding for forecasting backtests is not available.")
 
 
 def _compare(config: ForecastConfig) -> None:
-    rows = _read_series(config)
-    names = list(MODEL_NAMES if config.model == "all" else _split_models(config.model))
-    metrics, forecasts = _evaluate_models(rows, config, names)
-    payload = {"command": "compare", "metrics": metrics, "resolved_config": config.to_json()}
-    _write_json(_require_output(config), payload)
-    if config.artifact_dir is not None:
-        config.artifact_dir.mkdir(parents=True, exist_ok=True)
-        _write_json(config.artifact_dir / "compare_metrics.json", payload)
-        _write_forecast_csv(
-            config.artifact_dir / "compare_forecasts.csv",
-            forecasts,
-            include_actual=True,
-        )
-        _write_json(config.artifact_dir / "resolved_config.json", config.to_json())
+    _read_series(config)
+    _require_output(config)
+    _split_models(config.model if config.model != "all" else ",".join(MODEL_NAMES))
+    raise NotImplementedError("Rust binding for forecasting model comparison is not available.")
 
 
 def _split_models(value: str) -> list[str]:
     models = [part.strip().lower() for part in value.split(",") if part.strip()]
     for model in models:
-        if model not in ACCEPTED_MODEL_NAMES:
+        if model not in MODEL_NAMES:
             raise ForecastCliError(
-                f"unknown model {model!r}; expected one of {', '.join(ACCEPTED_MODEL_NAMES)}"
+                f"unknown model {model!r}; expected one of {', '.join(MODEL_NAMES)}"
             )
     return models
 
@@ -367,164 +349,23 @@ def _parse_float(value: str | None, row_number: int, column: str) -> float:
     return parsed
 
 
-def _fit_models(
-    rows: dict[str, list[dict[str, Any]]], config: ForecastConfig, model_names: Iterable[str]
-) -> list[dict[str, Any]]:
-    models = []
-    for model_name in model_names:
-        for series_id, values in rows.items():
-            targets = [float(item["target"]) for item in values]
-            models.append(
-                {
-                    "model": model_name,
-                    "series_id": series_id,
-                    "last_timestamp": values[-1]["timestamp"].isoformat(),
-                    "targets": targets,
-                    "residual_scale": _residual_scale(targets, model_name, config.season_length),
-                    "season_length": config.season_length,
-                }
-            )
-    return models
-
-
-def _evaluate_models(
-    rows: dict[str, list[dict[str, Any]]], config: ForecastConfig, model_names: list[str]
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    metric_rows = []
-    forecast_rows = []
-    for model_name in model_names:
-        errors = []
-        absolute_errors = []
-        squared_errors = []
-        for series_id, values in rows.items():
-            if len(values) <= config.horizon:
-                raise ForecastCliError(
-                    f"series {series_id!r} needs more than "
-                    f"horizon={config.horizon} rows for backtest"
-                )
-            train = values[: -config.horizon]
-            test = values[-config.horizon :]
-            models = _fit_models({series_id: train}, config, [model_name])
-            forecasts = _forecast_from_models(models, config.horizon, config.freq)
-            for forecast, actual in zip(forecasts, test, strict=True):
-                error = forecast["forecast"] - float(actual["target"])
-                errors.append(error)
-                absolute_errors.append(abs(error))
-                squared_errors.append(error * error)
-                forecast_rows.append({**forecast, "actual": float(actual["target"])})
-        metric_rows.append(
-            {
-                "model": model_name,
-                "rmse": math.sqrt(sum(squared_errors) / len(squared_errors)),
-                "mae": sum(absolute_errors) / len(absolute_errors),
-                "bias": sum(errors) / len(errors),
-                "n": len(errors),
-            }
+def _new_model(config: ForecastConfig) -> Any:
+    if config.model == "seasonal_naive":
+        return ForecastRegistry.defaults().create(config.model, season_length=config.season_length)
+    if config.model == "weighted_ensemble":
+        raise NotImplementedError(
+            "Rust binding for WeightedEnsembleForecaster is not available through the CLI."
         )
-    metric_rows.sort(key=lambda item: (item["rmse"], item["mae"], item["model"]))
-    return metric_rows, forecast_rows
+    return ForecastRegistry.defaults().create(config.model)
 
 
-def _forecast_from_models(
-    models: Sequence[dict[str, Any]], horizon: int, freq: str
-) -> list[dict[str, Any]]:
-    forecasts = []
-    for model in models:
-        targets = [float(value) for value in model["targets"]]
-        last_timestamp = datetime.fromisoformat(model["last_timestamp"])
-        scale = float(model.get("residual_scale", 0.0))
-        for step in range(1, horizon + 1):
-            point = _forecast_value(
-                str(model["model"]), targets, step, int(model.get("season_length", 1))
-            )
-            forecasts.append(
-                {
-                    "series_id": model["series_id"],
-                    "timestamp": _add_freq(last_timestamp, freq, step).isoformat(),
-                    "model": model["model"],
-                    "horizon": step,
-                    "forecast": point,
-                    "lower_80": point - 1.281551565545 * scale,
-                    "upper_80": point + 1.281551565545 * scale,
-                }
-            )
-    return forecasts
-
-
-def _forecast_value(model: str, targets: list[float], step: int, season_length: int) -> float:
-    if model == "naive":
-        return targets[-1]
-    if model == "seasonal_naive":
-        index = len(targets) - season_length + ((step - 1) % season_length)
-        return targets[index] if index >= 0 else targets[-1]
-    if model == "mean":
-        return sum(targets) / len(targets)
-    if model == "drift":
-        slope = (targets[-1] - targets[0]) / max(1, len(targets) - 1)
-        return targets[-1] + slope * step
-    if model in {"theta", "optimized_theta", "ets", "cartoboost", "cartoboost_lag"}:
-        drift = _forecast_value("drift", targets, step, season_length)
-        seasonal = _forecast_value("seasonal_naive", targets, step, season_length)
-        return 0.5 * drift + 0.5 * seasonal
-    if model == "auto_arima":
-        drift = _forecast_value("drift", targets, step, season_length)
-        seasonal = _forecast_value("seasonal_naive", targets, step, season_length)
-        mean = _forecast_value("mean", targets, step, season_length)
-        return (drift + seasonal + mean) / 3.0
-    if model == "weighted_ensemble":
-        naive = _forecast_value("naive", targets, step, season_length)
-        seasonal = _forecast_value("seasonal_naive", targets, step, season_length)
-        theta = _forecast_value("theta", targets, step, season_length)
-        return 0.2 * naive + 0.3 * seasonal + 0.5 * theta
-    raise ForecastCliError(f"unknown model {model!r}")
-
-
-def _residual_scale(targets: list[float], model: str, season_length: int) -> float:
-    if len(targets) < 3:
-        return 0.0
-    residuals = []
-    for end in range(2, len(targets)):
-        prediction = _forecast_value(model, targets[:end], 1, season_length)
-        residuals.append(targets[end] - prediction)
-    mean = sum(residuals) / len(residuals)
-    variance = sum((value - mean) ** 2 for value in residuals) / len(residuals)
-    return math.sqrt(variance)
-
-
-def _add_freq(timestamp: datetime, freq: str, step: int) -> datetime:
-    if freq == "D":
-        return timestamp + timedelta(days=step)
-    if freq == "H":
-        return timestamp + timedelta(hours=step)
-    if freq == "W":
-        return timestamp + timedelta(weeks=step)
-    if freq == "M":
-        month_index = timestamp.month - 1 + step
-        year = timestamp.year + month_index // 12
-        month = month_index % 12 + 1
-        day = min(timestamp.day, _days_in_month(year, month))
-        return timestamp.replace(year=year, month=month, day=day)
-    raise ForecastCliError("freq must be one of D, H, W, or M")
-
-
-def _days_in_month(year: int, month: int) -> int:
-    if month == 12:
-        next_month = datetime(year + 1, 1, 1)
-    else:
-        next_month = datetime(year, month + 1, 1)
-    return (next_month - timedelta(days=1)).day
-
-
-def _write_forecast_csv(path: Path, rows: Sequence[dict[str, Any]], include_actual: bool) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fieldnames = ["series_id", "timestamp", "model", "horizon", "forecast", "lower_80", "upper_80"]
-    if include_actual:
-        fieldnames.append("actual")
-    with path.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=fieldnames)
-        writer.writeheader()
-        for row in rows:
-            writer.writerow({key: row.get(key, "") for key in fieldnames})
+def _target_payload(rows: dict[str, list[dict[str, Any]]]) -> list[float] | dict[str, list[float]]:
+    payload = {
+        series_id: [float(item["target"]) for item in values] for series_id, values in rows.items()
+    }
+    if set(payload) == {"series"}:
+        return payload["series"]
+    return payload
 
 
 def _write_json(path: Path, payload: Any) -> None:

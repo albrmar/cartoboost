@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import math
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -41,6 +41,7 @@ class ForecastFrame:
     known_future_covariates: tuple[str, ...] = ()
     historical_covariates: tuple[str, ...] = ()
     allow_irregular: bool = False
+    _native_frame: Any | None = field(default=None, repr=False, compare=False)
 
     @classmethod
     def from_pandas(
@@ -118,7 +119,7 @@ class ForecastFrame:
                 allow_irregular=allow_irregular,
             )
 
-        return cls(
+        result = cls(
             data=data,
             timestamp_col=timestamp_col,
             target_col=target_col,
@@ -128,6 +129,19 @@ class ForecastFrame:
             known_future_covariates=tuple(known_future),
             historical_covariates=tuple(historical),
             allow_irregular=allow_irregular,
+        )
+        native_frame = _build_native_frame(result)
+        return cls(
+            data=result.data,
+            timestamp_col=result.timestamp_col,
+            target_col=result.target_col,
+            series_id_col=result.series_id_col,
+            freq=result.freq,
+            static_covariates=result.static_covariates,
+            known_future_covariates=result.known_future_covariates,
+            historical_covariates=result.historical_covariates,
+            allow_irregular=result.allow_irregular,
+            _native_frame=native_frame,
         )
 
     @property
@@ -369,3 +383,32 @@ def _resolve_panel_frequency(
     if not resolved:
         return None
     return next(iter(resolved))
+
+
+def _build_native_frame(frame: ForecastFrame) -> Any:
+    if frame.freq is None:
+        return None
+    try:
+        from cartoboost import _native
+    except ImportError as exc:
+        raise RuntimeError("cartoboost._native is required for ForecastFrame validation") from exc
+    rows = []
+    data = frame.data
+    for row in data.itertuples(index=False):
+        values = row._asdict()
+        series_id = (
+            "__single__" if frame.series_id_col is None else str(values[frame.series_id_col])
+        )
+        timestamp = values[frame.timestamp_col].isoformat()
+        target = float(values[frame.target_col])
+        rows.append((series_id, timestamp, target))
+    return _native.ForecastFrame(
+        rows,
+        frame.freq,
+        timestamp_col=frame.timestamp_col,
+        target_col=frame.target_col,
+        series_id_col=frame.series_id_col,
+        static_covariates=list(frame.static_covariates),
+        known_future_covariates=list(frame.known_future_covariates),
+        historical_covariates=list(frame.historical_covariates),
+    )

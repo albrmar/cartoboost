@@ -5,7 +5,7 @@
     "functime",
     "statsforecast"
   ],
-  "created_at": "2026-06-18T18:18:22.298669+00:00",
+  "created_at": "2026-06-18T18:51:58.010464+00:00",
   "dataset": {
     "days": 90,
     "domain": "daily NYC taxi-style pickup/dropoff lane demand",
@@ -50,12 +50,12 @@
       "wape": 0.13428061115661882
     },
     "functime_ridge": {
-      "bias": -0.0630821605332255,
-      "mae": 2.3095498328527473,
-      "mase": 3.1598635048173684,
-      "rmse": 2.673149948568076,
-      "smape": 0.11340955856803238,
-      "wape": 0.11046216707946076
+      "bias": -0.06308211512016282,
+      "mae": 2.3095498593437003,
+      "mase": 3.1598635410615725,
+      "rmse": 2.673150007707841,
+      "smape": 0.11340955980771976,
+      "wape": 0.11046216834648175
     },
     "functime_snaive": {
       "bias": -0.452222222222222,
@@ -167,41 +167,41 @@
     "winner": "cartoboost_lag"
   },
   "timing": {
-    "load_seconds": 0.20109639799920842,
+    "load_seconds": 0.15720146795501933,
     "models": {
       "cartoboost_lag": {
-        "feature_seconds": 0.01981932099442929,
-        "fit_predict_seconds": 0.49516073503764346,
-        "fit_seconds": 0.2364528970210813,
-        "predict_seconds": 0.25870783801656216,
-        "total_seconds": 0.5149800560320728
+        "feature_seconds": 0.01951020397245884,
+        "fit_predict_seconds": 2.4553652350441553,
+        "fit_seconds": 1.9626325140125118,
+        "predict_seconds": 0.49273272103164345,
+        "total_seconds": 2.474875439016614
       },
       "functime_lightgbm": {
-        "fit_predict_seconds": 0.7186569899786264,
-        "fit_seconds": 0.5685355300083756,
-        "predict_seconds": 0.15012145997025073
+        "fit_predict_seconds": 77.81023860001005,
+        "fit_seconds": 77.62749572499888,
+        "predict_seconds": 0.18274287501117215
       },
       "functime_ridge": {
-        "fit_predict_seconds": 0.17785102897323668,
-        "fit_seconds": 0.05058662500232458,
-        "predict_seconds": 0.1272644039709121
+        "fit_predict_seconds": 0.17950625799130648,
+        "fit_seconds": 0.05372005800018087,
+        "predict_seconds": 0.1257861999911256
       },
       "functime_snaive": {
-        "fit_predict_seconds": 0.054312310938257724,
-        "fit_seconds": 0.040568599943071604,
-        "predict_seconds": 0.01374371099518612
+        "fit_predict_seconds": 0.05433127994183451,
+        "fit_seconds": 0.03943099395837635,
+        "predict_seconds": 0.014900285983458161
       },
       "statsforecast_autoets": {
-        "fit_predict_seconds": 0.5512529880506918,
-        "fit_seconds": 0.5512529880506918,
+        "fit_predict_seconds": 0.5005821399972774,
+        "fit_seconds": 0.5005821399972774,
         "predict_seconds": 0.0
       },
       "statsforecast_seasonal_naive": {
-        "fit_predict_seconds": 0.017958141048438847,
-        "fit_seconds": 0.017958141048438847,
+        "fit_predict_seconds": 0.005745299975387752,
+        "fit_seconds": 0.005745299975387752,
         "predict_seconds": 0.0
       }
     },
-    "total_seconds": 5.606167263991665
+    "total_seconds": 82.61370647395961
   }
 }

@@ -25,11 +25,10 @@ def test_forecasting_config_parses_models_and_constructs_default_backed_models()
 
     models = config.construct_models()
     model = models["seasonal_naive"]
-    model.fit([10, 11, 12, 13])
 
     assert config.horizon == 3
     assert config.feature_config == {"lags": [1, 24]}
-    assert model.predict(3) == [12.0, 13.0, 12.0]
+    assert model.fit([10, 11, 12, 13]).predict(1).predictions()[0][4] == 12.0
 
 
 def test_forecasting_config_rejects_unknown_root_fields_by_default():

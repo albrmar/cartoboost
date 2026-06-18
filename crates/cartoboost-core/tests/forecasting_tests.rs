@@ -1,12 +1,19 @@
 use cartoboost_core::forecasting::{
-    ForecastActual, ForecastFrame, ForecastFrequency, ForecastRow, Forecaster, NaiveForecaster,
-    SeasonalNaiveForecaster,
+    ForecastActual, ForecastFrame, ForecastFrameMetadata, ForecastFrequency, ForecastResult,
+    ForecastRow, ForecastWindow, Forecaster, NaiveForecaster, RollingOriginBacktester,
+    RollingOriginSplitter, SeasonalNaiveForecaster,
 };
 use chrono::{NaiveDate, NaiveDateTime};
 
 fn ts(day: u32) -> NaiveDateTime {
     NaiveDate::from_ymd_opt(2026, 1, day)
         .and_then(|date| date.and_hms_opt(0, 0, 0))
+        .expect("valid fixture timestamp")
+}
+
+fn hour(day: u32, hour: u32) -> NaiveDateTime {
+    NaiveDate::from_ymd_opt(2026, 1, day)
+        .and_then(|date| date.and_hms_opt(hour, 0, 0))
         .expect("valid fixture timestamp")
 }
 
@@ -68,6 +75,80 @@ fn rejects_non_finite_targets() {
     )
     .expect_err("nan should be rejected");
     assert!(err.to_string().contains("forecast targets must be finite"));
+}
+
+#[test]
+fn parses_string_rows_and_validates_hourly_frequency() {
+    let frame = ForecastFrame::from_string_rows(
+        vec![
+            ("A".to_string(), "2026-01-01T01:00:00".to_string(), 11.0),
+            ("A".to_string(), "2026-01-01 00:00:00".to_string(), 10.0),
+        ],
+        ForecastFrequency::Hourly,
+        ForecastFrameMetadata::default(),
+    )
+    .expect("valid hourly rows");
+
+    assert_eq!(frame.rows()[0].timestamp, hour(1, 0));
+    assert_eq!(frame.rows()[1].timestamp, hour(1, 1));
+}
+
+#[test]
+fn validates_weekly_frequency() {
+    let frame = ForecastFrame::new(
+        vec![
+            ForecastRow::single(ts(1), 1.0),
+            ForecastRow::single(ts(8), 8.0),
+        ],
+        ForecastFrequency::Weekly,
+    )
+    .expect("weekly frame");
+    assert_eq!(frame.frequency(), ForecastFrequency::Weekly);
+}
+
+#[test]
+fn rejects_unparseable_string_timestamp() {
+    let err = ForecastFrame::from_string_rows(
+        vec![("A".to_string(), "not-a-timestamp".to_string(), 1.0)],
+        ForecastFrequency::Daily,
+        ForecastFrameMetadata::default(),
+    )
+    .expect_err("unparseable timestamp");
+    assert!(err.to_string().contains("not parseable"));
+}
+
+#[test]
+fn exports_metadata_json() {
+    let frame = ForecastFrame::with_metadata(
+        vec![ForecastRow::new("PULocationID=132", ts(1), 42.0)],
+        ForecastFrequency::Daily,
+        ForecastFrameMetadata {
+            timestamp_col: Some("pickup_hour".to_string()),
+            target_col: Some("fare".to_string()),
+            series_id_col: Some("PULocationID".to_string()),
+            static_covariates: vec!["DOLocationID".to_string()],
+            known_future_covariates: vec!["hour".to_string(), "day_of_week".to_string()],
+            historical_covariates: vec!["trip_distance".to_string()],
+        },
+    )
+    .expect("valid frame");
+
+    let metadata: serde_json::Value =
+        serde_json::from_str(&frame.metadata_json_string().expect("metadata json"))
+            .expect("valid json");
+    assert_eq!(metadata["timestamp_col"], "pickup_hour");
+    assert_eq!(metadata["target_col"], "fare");
+    assert_eq!(metadata["series_id_col"], "PULocationID");
+    assert_eq!(metadata["frequency"], "daily");
+    assert_eq!(metadata["is_panel"], true);
+    assert_eq!(
+        metadata["series_ids"],
+        serde_json::json!(["PULocationID=132"])
+    );
+    assert_eq!(
+        metadata["static_covariates"],
+        serde_json::json!(["DOLocationID"])
+    );
 }
 
 #[test]
@@ -152,9 +233,22 @@ fn forecast_result_json_round_trips() {
     model.fit(&frame).expect("fit");
     let forecast = model.predict(1).expect("predict");
     let json = forecast.to_json_string().expect("json");
+    let value: serde_json::Value = serde_json::from_str(&json).expect("result json");
+    assert_eq!(
+        value["columns"],
+        serde_json::json!(["series_id", "timestamp", "horizon", "model", "prediction"])
+    );
     let restored = cartoboost_core::forecasting::ForecastResult::from_json_string(&json)
         .expect("json round trip");
     assert_eq!(forecast, restored);
+}
+
+#[test]
+fn forecast_result_columns_are_stable() {
+    assert_eq!(
+        ForecastResult::prediction_columns(),
+        vec!["series_id", "timestamp", "horizon", "model", "prediction"]
+    );
 }
 
 #[test]
@@ -193,4 +287,104 @@ fn metrics_align_by_series_timestamp_and_horizon() {
     .expect("metrics");
     assert_eq!(metrics.mae, 1.0);
     assert_eq!(metrics.bias, -1.0);
+    assert_eq!(metrics.mase, None);
+}
+
+#[test]
+fn metrics_reject_unmatched_forecast_rows() {
+    let frame = ForecastFrame::new(
+        vec![
+            ForecastRow::single(ts(1), 10.0),
+            ForecastRow::single(ts(2), 11.0),
+        ],
+        ForecastFrequency::Daily,
+    )
+    .expect("valid frame");
+    let mut model = NaiveForecaster::new();
+    model.fit(&frame).expect("fit");
+    let forecast = model.predict(2).expect("predict");
+
+    let err = cartoboost_core::forecasting::evaluate_forecast(
+        &forecast,
+        &[ForecastActual {
+            series_id: "__single__".to_string(),
+            timestamp: ts(3),
+            horizon: 1,
+            actual: 12.0,
+        }],
+    )
+    .expect_err("extra forecast row should be rejected");
+    assert!(err.to_string().contains("no matching actual"));
+}
+
+#[test]
+fn rolling_origin_splitter_is_leakage_safe_and_deterministic() {
+    let frame = taxi_panel_frame(6);
+    let splitter = RollingOriginSplitter::new(2, 2, 3, None, None, ForecastWindow::Expanding)
+        .expect("splitter");
+
+    let folds = splitter.split(&frame).expect("folds");
+
+    assert_eq!(
+        folds
+            .iter()
+            .map(|fold| fold.fold_id.as_str())
+            .collect::<Vec<_>>(),
+        vec!["fold_0000"]
+    );
+    let fold = &folds[0];
+    assert!(fold.train_end < fold.validation_start);
+    assert_eq!(fold.metadata.origin_timestamp, ts(3));
+    assert_eq!(fold.metadata.train_timestamp_count, 3);
+    assert_eq!(fold.metadata.validation_timestamp_count, 2);
+    assert_eq!(fold.metadata.series_count, 2);
+}
+
+#[test]
+fn sliding_splitter_respects_max_train_size() {
+    let frame = taxi_panel_frame(7);
+    let splitter = RollingOriginSplitter::new(1, 1, 2, Some(3), None, ForecastWindow::Sliding)
+        .expect("splitter");
+
+    let folds = splitter.split(&frame).expect("folds");
+    let last = folds.last().expect("at least one fold");
+
+    assert_eq!(last.train_start, ts(4));
+    assert_eq!(last.train_end, ts(6));
+    assert_eq!(last.validation_start, ts(7));
+    assert_eq!(last.metadata.train_timestamp_count, 3);
+}
+
+#[test]
+fn rolling_origin_backtester_scores_each_fold_with_mase() {
+    let frame = taxi_panel_frame(6);
+    let splitter = RollingOriginSplitter::new(1, 1, 3, None, Some(2), ForecastWindow::Expanding)
+        .expect("splitter");
+    let backtester = RollingOriginBacktester::new(splitter)
+        .with_mase_seasonality(1)
+        .expect("mase");
+
+    let result = backtester
+        .run(NaiveForecaster::new(), &frame)
+        .expect("backtest");
+
+    assert_eq!(result.folds.len(), 2);
+    assert!(result
+        .folds
+        .iter()
+        .all(|fold| fold.fold.train_end < fold.fold.validation_start));
+    let metrics = result.metrics.expect("aggregate metrics");
+    assert_eq!(metrics.mae, 1.0);
+    assert_eq!(metrics.bias, -1.0);
+    assert_eq!(metrics.mase, Some(1.0));
+}
+
+fn taxi_panel_frame(days: u32) -> ForecastFrame {
+    let mut rows = Vec::new();
+    for series in ["PULocationID=1", "PULocationID=2"] {
+        for day in 1..=days {
+            rows.push(ForecastRow::new(series, ts(day), f64::from(day)));
+        }
+    }
+    ForecastFrame::new(rows, ForecastFrequency::Daily).expect("valid taxi panel frame")
 }
