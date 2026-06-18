@@ -29,38 +29,6 @@ RMSE, MASE, WAPE, sMAPE, bias, and interval coverage placeholders. These runs
 are intended to prove repeatability, row alignment, and leakage-safe evaluation;
 they are not presented as universal model superiority evidence.
 
-## Forecasting Library Comparison
-
-`scripts/forecasting_library_benchmark.py` compares CartoBoost global lag
-forecasting with StatsForecast local statistical models on a deterministic
-geographic-temporal pickup/dropoff lane demand fixture. StatsForecast is the
-explicit known forecasting library baseline; the benchmark runs `SeasonalNaive`,
-`AutoTheta`, and `AutoETS` and compares CartoBoost against the best RMSE among
-those methods.
-
-The fixture can be sourced through Polars or DuckDB:
-
-```sh
-uv run --group dev --group bench python scripts/forecasting_library_benchmark.py \
-  --backend polars \
-  --output artifacts/forecasting_library_benchmark_polars.json
-
-uv run --group dev --group bench python scripts/forecasting_library_benchmark.py \
-  --backend duckdb \
-  --output artifacts/forecasting_library_benchmark_duckdb.json
-```
-
-Current run, June 18, 2026:
-
-| backend | known library | best known method | CartoBoost RMSE | best known RMSE | RMSE ratio |
-| --- | --- | --- | ---: | ---: | ---: |
-| Polars | StatsForecast | AutoETS | 0.379638 | 0.585976 | 0.647873 |
-| DuckDB | StatsForecast | AutoETS | 0.379638 | 0.585976 | 0.647873 |
-
-This is targeted evidence for global geotemporal lag forecasting on many
-related short lane series. It should not be generalized to every forecasting
-task or to long single-series statistical forecasting workloads.
-
 ## Evaluation Helpers
 
 Objective, calibration, spatial-diagnostic, and blocked-validation helpers are

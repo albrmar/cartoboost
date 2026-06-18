@@ -60,7 +60,6 @@ bench = [
     "lightgbm>=4.0",
     "pandas>=2.0,<3",
     "pyarrow>=14.0",
-    "statsforecast>=1.7",
     "xgboost>=2.0",
 ]
 dev = [
