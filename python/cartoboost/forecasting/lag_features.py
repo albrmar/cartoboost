@@ -277,7 +277,10 @@ class LagFeatureBuilder:
         if feature == "is_weekend":
             return float(ts.dayofweek >= 5)
         if feature == "is_holiday":
-            return float(bool(self.holiday_fn(ts)))
+            holiday_fn = self.holiday_fn
+            if holiday_fn is None:
+                raise ValueError("calendar feature 'is_holiday' requires holiday_fn")
+            return float(bool(holiday_fn(ts)))
         raise ValueError(f"unsupported calendar feature {feature!r}")
 
     def _panel_history_before(self, history: Any, row: Any) -> Any:
