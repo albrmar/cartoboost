@@ -35,9 +35,11 @@ CartoBoost supports:
 - JSON model artifacts and portable weights artifacts.
 - Optional SHAP explanations, Optuna tuning, Polars input support, and ONNX
   export for the supported dense axis-tree subset.
-- Neural embedding features for high-cardinality IDs.
-- node2vec, GraphSAGE, heterogeneous GraphSAGE, and typed-schema HinSAGE graph
-  feature encoders.
+- Standalone neural embedding regressors for high-cardinality IDs, plus optional
+  neural feature-generation workflows.
+- Standalone node2vec, GraphSAGE, heterogeneous GraphSAGE, and typed-schema
+  HinSAGE graph regressors and link predictors, plus optional graph feature
+  encoders.
 
 ## Install
 
@@ -239,8 +241,8 @@ cartoboost eval --model model.json --data test_with_target.csv
 - [Python Estimator](docs/user-guide/python-estimator.md)
 - [Parameters](docs/user-guide/parameters.md)
 - [Spatial Modeling](docs/spatial_modeling.md)
-- [Graph Features](docs/graph-features.md)
-- [Neural Features](docs/neural-features.md)
+- [Graph Models And Features](docs/graph-features.md)
+- [Neural Embedding Models And Features](docs/neural-features.md)
 - [Evaluation Protocol](docs/evaluation_protocol.md)
 - [Feature Schema](docs/feature_schema.md)
 - [Sparse Features](docs/sparse_features.md)

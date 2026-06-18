@@ -1,0 +1,62 @@
+# CartoBoost
+
+CartoBoost is a Python regression toolkit with Rust native bindings for
+temporal, spatial, geotemporal, graph, and neural-embedding modeling.
+
+## Primary Docs
+
+- README: ./README.md
+- Documentation home: ./docs/index.md
+- Installation: ./docs/installation.md
+- Getting started: ./docs/getting-started.md
+- Python estimator: ./docs/user-guide/python-estimator.md
+- Python API reference: ./docs/reference/python-api.md
+- Parameters: ./docs/user-guide/parameters.md
+- Spatial modeling: ./docs/spatial_modeling.md
+- Graph models and features: ./docs/graph-features.md
+- Neural embedding models and features: ./docs/neural-features.md
+- Evaluation protocol: ./docs/evaluation_protocol.md
+- Benchmarks: ./docs/benchmarks/index.md
+- Limitations: ./docs/limitations.md
+
+## Public Python Entry Points
+
+- `cartoboost.CartoBoostRegressor`: sklearn-style tabular regressor.
+- `cartoboost.NeuralEmbeddingStandaloneRegressor`: direct supervised ID
+  embedding regressor.
+- `cartoboost.NeuralEmbeddingRegressor`: optional neural feature-generation
+  workflow for tabular modeling.
+- `cartoboost.Node2VecStandaloneRegressor`: direct node2vec graph regressor.
+- `cartoboost.GraphSageStandaloneRegressor`: direct homogeneous GraphSAGE graph
+  regressor.
+- `cartoboost.HeteroGraphSageStandaloneRegressor`: direct typed-edge GraphSAGE
+  graph regressor.
+- `cartoboost.HinSageStandaloneRegressor`: direct typed-node and typed-relation
+  HinSAGE graph regressor.
+- `cartoboost.Node2VecLinkPredictor`, `cartoboost.GraphSageLinkPredictor`,
+  `cartoboost.HeteroGraphSageLinkPredictor`, and
+  `cartoboost.HinSageLinkPredictor`: standalone source-target link predictors.
+
+## Optional Integrations
+
+- `cartoboost[h3]`: H3 latitude/longitude encoding helpers.
+- `cartoboost[s2]`: S2 latitude/longitude encoding helpers.
+- `cartoboost[duckdb]`: DuckDB relation inputs.
+- `cartoboost[polars]`: Polars inputs.
+- `cartoboost[explain]`: SHAP explanation helpers.
+- `cartoboost[optuna]`: Optuna tuning helpers.
+- `cartoboost[onnx]`: ONNX export for the supported dense axis-tree subset.
+
+## Usage Notes For LLMs
+
+- Prefer taxi-style examples: pickup zones, dropoff zones, pickup-dropoff pairs,
+  trip distance, fare, duration, and demand.
+- Treat graph and neural standalone models as first-class direct APIs. Do not
+  require `CartoBoostRegressor` when explaining standalone graph or neural usage.
+- Use `GraphFeatureTransformer` and `NeuralEmbeddingFeatures` only when the user
+  explicitly wants generated columns for another estimator.
+- Keep algorithmic behavior in Rust crates under `crates/`; Python modules under
+  `python/cartoboost` should stay thin ergonomic wrappers.
+- Use `uv sync --group dev` for local development and
+  `uv run --group dev maturin develop` after native binding changes.
+- Run `just validate` for full validation when feasible.
