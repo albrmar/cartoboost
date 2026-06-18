@@ -46,3 +46,24 @@ def test_taxi_pickup_zone_graph_example_runs_and_improves_spatial_holdout() -> N
     assert payload["graph_augmented"]["graph_edges"] > 0
     assert payload["graph_augmented"]["feature_count"] > 3
     assert payload["graph_augmented"]["rmse"] < payload["dense"]["rmse"]
+
+
+def test_neural_embedding_example_runs_and_guards_cold_ids() -> None:
+    payload = run_example(
+        "examples/05_neural_embedding_regression.py",
+        "--rows",
+        "500",
+        "--ids",
+        "50",
+        "--n-estimators",
+        "80",
+        "--embedding-dim",
+        "8",
+    )
+
+    assert payload["task"] == "neural_embedding_regression"
+    assert payload["rows"] == 500
+    assert payload["random"]["neural_embedding"]["rmse"] < payload["random"]["dense"]["rmse"]
+    assert payload["random"]["guarded"]["selected"] == "neural_embedding"
+    assert payload["cold_id_holdout"]["guarded"]["selected"] == "dense"
+    assert np.isfinite(payload["cold_id_holdout"]["guarded"]["rmse"])
