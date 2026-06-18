@@ -125,7 +125,6 @@ source = { editable = "." }
 dependencies = [
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
-    { name = "pandas" },
     { name = "scikit-learn", version = "1.7.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "scikit-learn", version = "1.9.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
 ]
@@ -158,7 +157,6 @@ bench = [
     { name = "functime", version = "0.9.5", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "functime", version = "1.0.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "lightgbm" },
-    { name = "pandas" },
     { name = "pyarrow" },
     { name = "xgboost" },
 ]
@@ -169,6 +167,7 @@ dev = [
     { name = "maturin" },
     { name = "mypy" },
     { name = "optuna" },
+    { name = "pandas" },
     { name = "polars" },
     { name = "pre-commit" },
     { name = "pytest" },
@@ -188,7 +187,6 @@ requires-dist = [
     { name = "numpy", specifier = ">=1.23" },
     { name = "onnx", marker = "extra == 'onnx'", specifier = ">=1.16" },
     { name = "optuna", marker = "extra == 'optuna'", specifier = ">=4.0" },
-    { name = "pandas", specifier = ">=2.0,<3" },
     { name = "polars", marker = "extra == 'polars'", specifier = ">=1.0" },
     { name = "s2sphere", marker = "extra == 's2'", specifier = ">=0.2" },
     { name = "scikit-learn", specifier = ">=1.2" },
@@ -200,7 +198,6 @@ provides-extras = ["duckdb", "explain", "h3", "s2", "onnx", "optuna", "polars"]
 bench = [
     { name = "functime", specifier = ">=0.9" },
     { name = "lightgbm", specifier = ">=4.0" },
-    { name = "pandas", specifier = ">=2.0,<3" },
     { name = "pyarrow", specifier = ">=14.0" },
     { name = "xgboost", specifier = ">=2.0" },
 ]
@@ -211,6 +208,7 @@ dev = [
     { name = "maturin", specifier = ">=1.7,<2" },
     { name = "mypy", specifier = ">=1.10" },
     { name = "optuna", specifier = ">=4.0" },
+    { name = "pandas", specifier = ">=2.0,<3" },
     { name = "polars", specifier = ">=1.0" },
     { name = "pre-commit", specifier = ">=4.6.0" },
     { name = "pytest", specifier = ">=8" },

@@ -28,7 +28,6 @@ classifiers = [
 keywords = ["boosting", "gradient-boosting", "machine-learning", "python", "rust"]
 dependencies = [
     "numpy>=1.23",
-    "pandas>=2.0,<3",
     "scikit-learn>=1.2",
 ]
 
@@ -59,7 +58,6 @@ polars = [
 bench = [
     "functime>=0.9",
     "lightgbm>=4.0",
-    "pandas>=2.0,<3",
     "pyarrow>=14.0",
     "xgboost>=2.0",
 ]
@@ -70,6 +68,7 @@ dev = [
     "matplotlib>=3.7",
     "mypy>=1.10",
     "optuna>=4.0",
+    "pandas>=2.0,<3",
     "polars>=1.0",
     "pre-commit>=4.6.0",
     "pytest>=8",
