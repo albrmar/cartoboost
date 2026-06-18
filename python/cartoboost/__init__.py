@@ -59,7 +59,7 @@ from .standalone import (
     Node2VecStandaloneRegressor,
 )
 
-__version__ = "0.1.22"
+__version__ = "0.1.23"
 
 __all__ = [
     "ArtifactFallback",
