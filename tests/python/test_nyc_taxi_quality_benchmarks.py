@@ -9,7 +9,11 @@ import matplotlib.image as mpimg
 import numpy as np
 import pytest
 
-from scripts.run_nyc_taxi_quality_benchmarks import (
+REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
+
+from scripts.run_nyc_taxi_quality_benchmarks import (  # noqa: E402
     BenchmarkTask,
     ZoneContext,
     build_real_tasks,
