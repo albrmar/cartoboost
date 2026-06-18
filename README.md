@@ -40,10 +40,10 @@ CartoBoost supports:
 - Standalone node2vec, GraphSAGE, heterogeneous GraphSAGE, and typed-schema
   HinSAGE graph regressors and link predictors, plus optional graph feature
   encoders.
-- Forecasting APIs for single-series and panel demand forecasting, including
-  rolling-origin backtests, local baselines, theta models, supervised
-  CartoBoost lag forecasting, weighted ensembles, CLI runs, and portable
-  forecast artifacts.
+- Forecasting APIs for geographic and temporal single-series or panel demand,
+  including rolling-origin backtests, local baselines, theta models,
+  supervised CartoBoost lag forecasting, weighted ensembles, CLI runs, and
+  portable forecast artifacts.
 
 ## Forecasting
 
@@ -51,10 +51,10 @@ CartoBoost supports:
 from cartoboost.forecasting import ForecastFrame, ThetaForecaster
 
 frame = ForecastFrame.from_pandas(
-    trips_by_lane,
-    timestamp_col="date",
-    target_col="loads",
-    series_id_col="lane_id",
+    taxi_lane_demand,
+    timestamp_col="pickup_date",
+    target_col="pickup_trips",
+    series_id_col="pickup_dropoff_lane",
     freq="D",
 )
 
@@ -65,8 +65,9 @@ forecast = model.predict(horizon=14)
 
 Forecast outputs use deterministic columns:
 `series_id`, `timestamp`, `horizon`, `model`, `mean`, and interval columns such
-as `lower_80` and `upper_80`. See the forecasting docs for CLI usage,
-lag-feature forecasting, backtesting, artifacts, and examples.
+as `lower_80` and `upper_80`. Use the forecasting docs for geographic-temporal
+CLI usage, lag-feature forecasting, backtesting, artifacts, and examples built
+around pickup/dropoff lanes and taxi-zone demand.
 
 ## Install
 

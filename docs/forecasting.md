@@ -1,8 +1,10 @@
 # Forecasting
 
-CartoBoost forecasting turns timestamped taxi-style series into deterministic
+CartoBoost forecasting turns timestamped geographic series into deterministic
 forecast tables, rolling-origin backtests, lag-supervised CartoBoost models,
-ensembles, and portable artifacts.
+ensembles, and portable artifacts. The default examples use NYC taxi-style
+pickup/dropoff lanes, pickup zones, daily or hourly demand, fares, durations,
+trip distance, and calendar features.
 
 The public workflow is:
 
@@ -35,10 +37,10 @@ Single-series forecasts use `__single__` as the exported `series_id`.
 | Use case                          | Default method                      | Backup method                  |
 | --------------------------------- | ----------------------------------- | ------------------------------ |
 | Very short series                 | Naive / Seasonal Naive              | Theta if enough history        |
-| Short univariate business series  | Theta                               | ETS                            |
+| Short zone or lane series         | Theta                               | ETS                            |
 | Trended univariate series         | Optimized Theta                     | ETS damped trend               |
 | Strong weekly seasonality         | Seasonal Naive + Theta seasonal     | ETS seasonal                   |
-| Many related lane/customer series | CartoBoostLagForecaster             | Weighted ensemble              |
+| Many related pickup/dropoff lanes | CartoBoostLagForecaster             | Weighted ensemble              |
 | Rich known-future covariates      | CartoBoostLagForecaster             | ETS/ARIMA baseline comparison  |
 | Need robust production baseline   | WeightedEnsembleForecaster          | Best backtested local model    |
 | Need uncertainty intervals        | Theta/ETS with calibrated intervals | conformal residual calibration |
