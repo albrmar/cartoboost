@@ -29,7 +29,11 @@ def radial_dataset() -> tuple[list[list[float]], list[float]]:
     return points, targets
 
 
-def fit_and_report(name: str, splitters: list[str], data: tuple[list[list[float]], list[float]]) -> None:
+def fit_and_report(
+    name: str,
+    splitters: list[str],
+    data: tuple[list[list[float]], list[float]],
+) -> None:
     x, y = data
     model = CartoBoostRegressor(
         n_estimators=1,
