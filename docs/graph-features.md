@@ -1,40 +1,46 @@
-# Graph Features
+# Graph Models And Features
 
-CartoBoost graph support is a precompute layer for creating dense graph-derived
-columns before fitting `CartoBoostRegressor`.
+CartoBoost graph support has two independent entry points:
 
-Use graph features when prediction depends on relationships such as movement,
-service, containment, interaction, or source-target imbalance:
+- standalone graph models that fit, predict, score, save, and load without
+  `CartoBoostRegressor`;
+- graph feature generators that emit dense graph-derived columns for another
+  estimator when you explicitly want that workflow.
+
+Start with the standalone classes when the graph is the modeling surface. Use
+feature generation only when you want graph embeddings to become columns in a
+separate tabular model.
+
+Use graph models when prediction depends on relationships such as movement,
+containment, interaction, or source-target imbalance:
 
 - `pickup_zone -> dropoff_zone`
-- `upstream -> downstream`
-- `supply -> demand`
 - `pickup_hour -> dropoff_hour`
-- `rep -> account`
-- `facility -> market`
+- `pickup_zone -> fare_bucket`
+- `pickup_dropoff_pair -> trip_duration_bucket`
+- `taxi_trip -> pickup_zone`
+- `taxi_trip -> dropoff_zone`
 
 ## Architecture
 
-The graph layer emits a `GraphFeatureBundle` containing dense graph columns,
-optional sparse memberships, feature names, node IDs, and provenance metadata.
-Those columns are appended to the tabular model input; the final scorer remains
-the standard CartoBoost booster.
+The standalone path keeps graph training, row scoring, metrics, and artifacts in
+the graph model itself.
 
 ```mermaid
 flowchart LR
-    A["Typed graph + node features"] --> B["Graph encoder"]
-    B --> C["GraphFeatureBundle"]
-    C --> D["Dense/sparse model matrix"]
-    D --> E["CartoBoostRegressor"]
+    A["Typed graph + node features"] --> B["Graph standalone model"]
+    B --> C["fit / predict / score"]
+    C --> D["Graph model artifact"]
 ```
 
-Graph encoders have their own JSON artifacts. Persist graph encoder artifacts or
-checksums alongside the booster metadata when graph features are generated
-offline.
+The optional feature-generation path emits a `GraphFeatureBundle` containing
+dense graph columns, optional sparse memberships, feature names, node IDs, and
+provenance metadata. Persist those encoder artifacts wherever the downstream
+model expects its feature-generation contract.
 
 ## Encoders
 
-CartoBoost exposes four graph encoder families.
+CartoBoost exposes four graph families.
 
 | Family | Use case |
 | --- | --- |
@@ -45,10 +51,10 @@ CartoBoost exposes four graph encoder families.
 
 ## Standalone Graph Models
 
-Graph models can also be trained directly, without `CartoBoostRegressor` and
-without first turning embeddings into booster columns. Use these classes when
-the graph representation is the model you want to score or when you need a
-standalone link predictor for source-target pairs.
+Graph models can be trained directly without first turning embeddings into
+feature columns. Use these classes when the graph representation is the model you
+want to ship or when you need a standalone link predictor for source-target
+pairs.
 
 Standalone graph regressors:
 
@@ -59,6 +65,56 @@ Standalone graph regressors:
 
 Each standalone regressor supports `fit`, `predict`, `score`, `save`, and
 `load`.
+
+### Node2Vec Pair Regression
+
+Use `Node2VecStandaloneRegressor` for directed pickup-dropoff graphs when node
+attributes are not required.
+
+```python
+import numpy as np
+from cartoboost.graph import Node2VecStandaloneRegressor
+
+edges = [(0, 1), (1, 2), (2, 3), (3, 0), (0, 2)]
+pickup_zones = np.array([0, 1, 2, 3], dtype=np.uint64)
+dropoff_zones = np.array([1, 2, 3, 0], dtype=np.uint64)
+dense = np.column_stack(
+    [
+        pickup_zones.astype(float),
+        dropoff_zones.astype(float),
+    ]
+)
+log_duration = np.array([1.0, 1.5, 2.0, 0.7])
+
+model = Node2VecStandaloneRegressor(
+    dim=8,
+    walk_length=8,
+    walks_per_node=4,
+    window_size=3,
+    epochs=2,
+    n_estimators=20,
+    max_depth=2,
+    min_samples_leaf=1,
+    seed=11,
+)
+model.fit(
+    node_count=4,
+    edges=edges,
+    row_nodes=pickup_zones,
+    row_targets=dropoff_zones,
+    dense=dense,
+    y=log_duration,
+)
+
+pred = model.predict(pickup_zones, row_targets=dropoff_zones, dense=dense)
+model.save("taxi-node2vec-regressor.json")
+reloaded = Node2VecStandaloneRegressor.load("taxi-node2vec-regressor.json")
+```
+
+### GraphSAGE Pair Regression
+
+Use `GraphSageStandaloneRegressor` when each zone has node attributes such as
+airport flag, borough indicator, recent pickup volume, or recent dropoff volume.
 
 ```python
 import numpy as np
@@ -102,6 +158,59 @@ pred = model.predict(
 model.save("taxi-graph-standalone.json")
 ```
 
+### Heterogeneous Graph Regression
+
+Use `HeteroGraphSageStandaloneRegressor` when edges carry relation IDs but you do
+not need a strict node-type schema. Use `HinSageStandaloneRegressor` when the
+graph has typed nodes and each relation must validate its source and target node
+types.
+
+```python
+import numpy as np
+from cartoboost.graph import HinSageStandaloneRegressor
+
+node_features = np.array(
+    [
+        [1.0, 0.0],
+        [0.0, 1.0],
+        [0.8, 0.3],
+        [0.3, 0.8],
+    ],
+    dtype=np.float32,
+)
+node_types = [0, 1, 0, 1]  # pickup_zone, dropoff_zone, pickup_zone, dropoff_zone
+typed_edges = [(0, 1, 0), (1, 2, 1), (2, 3, 0), (3, 0, 1)]
+row_nodes = np.array([0, 1, 2, 3], dtype=np.uint64)
+row_targets = np.array([1, 2, 3, 0], dtype=np.uint64)
+log_fare = np.array([1.2, 1.7, 2.1, 0.5])
+
+model = HinSageStandaloneRegressor(
+    input_dim=2,
+    node_type_count=2,
+    edge_type_triples=[(0, 0, 1), (1, 1, 0)],
+    hidden_dims=(4,),
+    epochs=2,
+    n_estimators=20,
+    max_depth=2,
+    min_samples_leaf=1,
+    seed=29,
+)
+model.fit(
+    node_features=node_features,
+    node_types=node_types,
+    edges=typed_edges,
+    row_nodes=row_nodes,
+    row_targets=row_targets,
+    y=log_fare,
+)
+
+pred = model.predict(
+    node_features=node_features,
+    row_nodes=row_nodes,
+    row_targets=row_targets,
+)
+```
+
 Standalone link predictors:
 
 - `Node2VecLinkPredictor`
@@ -128,6 +237,9 @@ scores = predictor.predict_scores(candidate_pairs)
 report = predictor.report(candidate_pairs, labels=[1, 0], query_ids=[0, 0], k=1)
 ```
 
+Standalone graph artifacts contain the learned encoder state and row scorer.
+They are deployable without a separate booster artifact.
+
 ## Node2Vec Configuration
 
 `node2vec` implements the Grover and Leskovec design: second-order biased random
@@ -138,10 +250,10 @@ controls whether walks favor local breadth-first behavior or outward/deeper
 exploration. CartoBoost keeps transitions directed, multiplies transition
 probabilities by optional edge weights, and trains deterministically.
 
-Use `node2vec` when you want a compact graph-only signal appended to booster
-features and do not need node attributes to drive the representation. Use
-GraphSAGE or HinSAGE when node attributes, node types, or typed neighbor
-aggregation should shape the embeddings.
+Use `node2vec` when you want a compact graph-only representation and do not need
+node attributes to drive the representation. Use GraphSAGE or HinSAGE when node
+attributes, node types, or typed neighbor aggregation should shape the
+embeddings.
 
 ```yaml
 graph_embeddings:
@@ -171,7 +283,7 @@ graph_embeddings:
       - flow_imbalance_ratio
 ```
 
-Python usage:
+Optional feature-generation usage:
 
 ```python
 from cartoboost.graph import GraphFeatureTransformer
@@ -243,8 +355,9 @@ facts, separate features, and often separate learned embeddings.
 
 ## Directional Feature Outputs
 
-Directional features are explicit booster inputs, not only a latent effect of
-the embedding model. Configure them through the `directionality` block:
+Directional features are explicit output channels in the optional
+feature-generation path, not only a latent effect of the embedding model.
+Configure them through the `directionality` block:
 
 ```yaml
 directionality:
@@ -311,7 +424,7 @@ CartoBoost validates that:
 - each edge source and target node type matches its relation triple;
 - `neighbor_samples`, when supplied, has one cap per relation.
 
-## Python Usage
+## Optional Feature-Generation Path
 
 Use `GraphFeatureTransformer` for configuration-driven feature generation:
 
@@ -395,5 +508,5 @@ outputs:
     - directed_temporal_drift
 ```
 
-Persist this provenance in `CartoBoostRegressor` metadata or training
+Persist this provenance in the downstream model metadata or training
 configuration when graph columns are generated outside the model fit call.
