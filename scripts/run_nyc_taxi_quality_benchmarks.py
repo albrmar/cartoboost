@@ -36,6 +36,7 @@ TLC_PARQUET_BASE = "https://d37ci6vzurychx.cloudfront.net/trip-data"
 TAXI_ZONE_LOOKUP_URL = "https://d37ci6vzurychx.cloudfront.net/misc/taxi_zone_lookup.csv"
 TAXI_ZONES_ZIP_URL = "https://d37ci6vzurychx.cloudfront.net/misc/taxi_zones.zip"
 PLOT_SCATTER_MAX_POINTS = 50_000
+GRAPH_AUGMENTATION_RELATIVE_VALIDATION_MARGIN = 0.01
 
 ROW_FEATURES = [
     "trip_distance",
@@ -1480,11 +1481,7 @@ def graph_augmented_split_features(
 
 
 def graph_cartoboost_splitters(args: argparse.Namespace) -> list[str]:
-    splitters = [
-        splitter
-        for splitter in parse_splitters(args.cartoboost_splitters)
-        if splitter != "sparse_set"
-    ]
+    splitters = parse_splitters(args.cartoboost_splitters)
     return splitters or ["axis_histogram:256"]
 
 
@@ -1502,6 +1499,118 @@ def graph_augmented_schema(
         {"name": f"graph_{index:02d}", "kind": "numeric"} for index in range(graph_feature_count)
     )
     return schema
+
+
+def deterministic_inner_validation_split(
+    row_count: int, *, seed: int
+) -> tuple[np.ndarray, np.ndarray]:
+    if row_count < 10:
+        indices = np.arange(row_count)
+        return indices, indices
+    rng = np.random.default_rng(seed + 997)
+    permutation = rng.permutation(row_count)
+    validation_count = max(1, int(row_count * 0.2))
+    validation = permutation[:validation_count]
+    train = permutation[validation_count:]
+    if len(train) == 0:
+        return permutation, permutation
+    return train, validation
+
+
+def fit_graph_guarded_cartoboost(
+    *,
+    task: BenchmarkTask,
+    train_x: np.ndarray,
+    test_x: np.ndarray,
+    train_augmented: np.ndarray,
+    test_augmented: np.ndarray,
+    train_y: np.ndarray,
+    effective_feature_names: list[str],
+    graph_feature_count: int,
+    args: argparse.Namespace,
+) -> tuple[Any, np.ndarray, dict[str, Any]]:
+    from cartoboost import CartoBoostRegressor
+
+    splitters = graph_cartoboost_splitters(args)
+    base_schema = cartoboost_schema(
+        task,
+        feature_names=effective_feature_names,
+        include_sparse_sets=False,
+    )
+    graph_schema = graph_augmented_schema(
+        task,
+        effective_feature_names,
+        graph_feature_count,
+    )
+
+    def build_model() -> CartoBoostRegressor:
+        return CartoBoostRegressor(
+            n_estimators=args.cartoboost_n_estimators,
+            learning_rate=args.learning_rate,
+            max_depth=args.cartoboost_max_depth,
+            min_samples_leaf=args.cartoboost_min_samples_leaf,
+            min_gain=0.0,
+            splitters=splitters,
+            n_threads=args.n_threads or None,
+        )
+
+    inner_train, inner_validation = deterministic_inner_validation_split(
+        len(train_y),
+        seed=args.seed,
+    )
+    graph_probe = build_model()
+    graph_probe.fit(
+        train_augmented[inner_train],
+        train_y[inner_train],
+        feature_schema=graph_schema,
+    )
+    graph_validation_prediction = graph_probe.predict(train_augmented[inner_validation])
+    graph_validation_rmse = float(
+        np.sqrt(np.mean((train_y[inner_validation] - graph_validation_prediction) ** 2))
+    )
+
+    base_probe = build_model()
+    base_probe.fit(
+        train_x[inner_train],
+        train_y[inner_train],
+        feature_schema=base_schema,
+    )
+    base_validation_prediction = base_probe.predict(train_x[inner_validation])
+    base_validation_rmse = float(
+        np.sqrt(np.mean((train_y[inner_validation] - base_validation_prediction) ** 2))
+    )
+
+    required_graph_rmse = base_validation_rmse * (
+        1.0 - GRAPH_AUGMENTATION_RELATIVE_VALIDATION_MARGIN
+    )
+    use_graph = graph_validation_rmse <= required_graph_rmse
+    final_model = build_model()
+    if use_graph:
+        final_model.fit(train_augmented, train_y, feature_schema=graph_schema)
+        prediction_input = test_augmented
+        selected_feature_count = int(train_augmented.shape[1])
+        selected_schema = "graph_augmented"
+    else:
+        final_model.fit(train_x, train_y, feature_schema=base_schema)
+        prediction_input = test_x
+        selected_feature_count = int(train_x.shape[1])
+        selected_schema = "base"
+
+    return (
+        final_model,
+        prediction_input,
+        {
+            "backend": getattr(final_model, "_backend_used", None),
+            "splitters": splitters,
+            "graph_guard": {
+                "selected": selected_schema,
+                "base_validation_rmse": base_validation_rmse,
+                "graph_validation_rmse": graph_validation_rmse,
+                "relative_validation_margin": GRAPH_AUGMENTATION_RELATIVE_VALIDATION_MARGIN,
+            },
+            "selected_feature_count": selected_feature_count,
+        },
+    )
 
 
 def fit_predict_model(
@@ -1687,7 +1796,7 @@ def fit_predict_model(
                 "max_depth": args.cartoboost_max_depth,
                 "min_samples_leaf": args.cartoboost_min_samples_leaf,
                 "min_gain": 0.0,
-                "splitters": ["axis_histogram:256"],
+                "splitters": parse_splitters(args.cartoboost_splitters),
                 "n_threads": args.n_threads or None,
             },
             final_model_kwargs={
@@ -1696,7 +1805,7 @@ def fit_predict_model(
                 "max_depth": args.cartoboost_max_depth,
                 "min_samples_leaf": args.cartoboost_min_samples_leaf,
                 "min_gain": 0.0,
-                "splitters": ["axis_histogram:256"],
+                "splitters": parse_splitters(args.cartoboost_splitters),
                 "n_threads": args.n_threads or None,
             },
         )
@@ -1708,6 +1817,11 @@ def fit_predict_model(
                 ids=ids[train_indices],
                 fallback_ids=train_fallback_ids,
                 neighbor_ids=train_neighbor_ids,
+                feature_schema=cartoboost_schema(
+                    task,
+                    feature_names=effective_feature_names,
+                    include_sparse_sets=False,
+                ),
             )
             train_seconds = time.perf_counter() - train_started
             smoke_indices = test_indices[: min(len(test_indices), 16)]
@@ -1775,29 +1889,22 @@ def fit_predict_model(
                 args,
                 graph_family=graph_family,
             )
-            model = CartoBoostRegressor(
-                n_estimators=args.cartoboost_n_estimators,
-                learning_rate=args.learning_rate,
-                max_depth=args.cartoboost_max_depth,
-                min_samples_leaf=args.cartoboost_min_samples_leaf,
-                min_gain=0.0,
-                splitters=graph_cartoboost_splitters(args),
-                n_threads=args.n_threads or None,
-            )
             graph_feature_count = int(train_augmented.shape[1] - train_x.shape[1])
-            model.fit(
-                train_augmented,
-                train_y,
-                feature_schema=graph_augmented_schema(
-                    task,
-                    effective_feature_names,
-                    graph_feature_count,
-                ),
+            model, prediction_input, graph_guard_config = fit_graph_guarded_cartoboost(
+                task=task,
+                train_x=train_x,
+                test_x=test_x,
+                train_augmented=train_augmented,
+                test_augmented=test_augmented,
+                train_y=train_y,
+                effective_feature_names=effective_feature_names,
+                graph_feature_count=graph_feature_count,
+                args=args,
             )
             train_seconds = time.perf_counter() - train_started
-            _ = model.predict(test_augmented[: min(len(test_indices), 16)])
             predict_started = time.perf_counter()
-            prediction = model.predict(test_augmented)
+            _ = model.predict(prediction_input[: min(len(test_indices), 16)])
+            prediction = model.predict(prediction_input)
             predict_seconds = time.perf_counter() - predict_started
         except Exception as exc:  # noqa: BLE001
             return skipped(f"cartoboost graph run failed: {exc}")
@@ -1809,15 +1916,16 @@ def fit_predict_model(
                 predict_seconds=predict_seconds,
                 prediction_rows=len(test_indices),
             ),
-            "backend": getattr(model, "_backend_used", None),
+            "backend": graph_guard_config["backend"],
             "config": {
                 "n_estimators": int(args.cartoboost_n_estimators),
                 "learning_rate": float(args.learning_rate),
                 "max_depth": int(args.cartoboost_max_depth),
                 "min_samples_leaf": int(args.cartoboost_min_samples_leaf),
                 "zone_treatment": args.zone_treatment,
-                "feature_count": int(train_augmented.shape[1]),
-                "splitters": graph_cartoboost_splitters(args),
+                "feature_count": int(graph_guard_config["selected_feature_count"]),
+                "splitters": graph_guard_config["splitters"],
+                "graph_guard": graph_guard_config["graph_guard"],
                 **graph_config,
             },
             "predictions": np.asarray(prediction, dtype=float),

@@ -46,6 +46,8 @@ QUALITATIVE_CARTOBOOST_SPLITTERS = [
     "diagonal_2d",
     "gaussian_2d",
 ]
+CARTOBOOST_MIN_SAMPLES_LEAF = 20
+NEURAL_AUGMENTATION_RELATIVE_VALIDATION_MARGIN = 0.01
 CARTOBOOST_FAMILY_MODELS = {
     "cartoboost",
     "cartoboost_neural",
@@ -239,6 +241,24 @@ def random_split(n_rows: int, *, train_frac: float, seed: int) -> tuple[np.ndarr
     return indices[:split], indices[split:]
 
 
+def deterministic_inner_validation_split(
+    row_count: int,
+    *,
+    seed: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    if row_count < 10:
+        indices = np.arange(row_count)
+        return indices, indices
+    rng = np.random.default_rng(seed + 997)
+    permutation = rng.permutation(row_count)
+    validation_count = max(1, int(row_count * 0.2))
+    validation = permutation[:validation_count]
+    train = permutation[validation_count:]
+    if len(train) == 0:
+        return permutation, permutation
+    return train, validation
+
+
 def group_holdout_split(
     groups: np.ndarray,
     *,
@@ -319,7 +339,7 @@ def cartoboost_model(args: argparse.Namespace) -> Any:
         n_estimators=args.n_estimators,
         learning_rate=args.learning_rate,
         max_depth=args.max_depth,
-        min_samples_leaf=2,
+        min_samples_leaf=CARTOBOOST_MIN_SAMPLES_LEAF,
         min_gain=0.0,
         splitters=QUALITATIVE_CARTOBOOST_SPLITTERS,
         random_state=args.seed,
@@ -352,38 +372,86 @@ def run_neural(
         raise ValueError("neural benchmark requires embedding ids")
     from cartoboost import NeuralEmbeddingRegressor
 
-    model = NeuralEmbeddingRegressor(
-        dim=args.neural_dim,
-        drop_id_column=False,
-        id_column=None,
-        random_state=args.seed,
-        oof_folds=5,
-        support_prior_strength=2.0,
-        base_model_kwargs={
-            "n_estimators": max(10, args.n_estimators // 2),
-            "learning_rate": args.learning_rate,
-            "max_depth": args.max_depth,
-            "min_samples_leaf": 2,
-            "splitters": QUALITATIVE_CARTOBOOST_SPLITTERS,
-        },
-        final_model_kwargs={
-            "n_estimators": args.n_estimators,
-            "learning_rate": args.learning_rate,
-            "max_depth": args.max_depth,
-            "min_samples_leaf": 2,
-            "splitters": QUALITATIVE_CARTOBOOST_SPLITTERS,
-        },
-    )
+    def build_neural_model() -> NeuralEmbeddingRegressor:
+        return NeuralEmbeddingRegressor(
+            dim=args.neural_dim,
+            drop_id_column=False,
+            id_column=None,
+            random_state=args.seed,
+            oof_folds=5,
+            support_prior_strength=2.0,
+            base_model_kwargs={
+                "n_estimators": max(10, args.n_estimators // 2),
+                "learning_rate": args.learning_rate,
+                "max_depth": args.max_depth,
+                "min_samples_leaf": CARTOBOOST_MIN_SAMPLES_LEAF,
+                "splitters": QUALITATIVE_CARTOBOOST_SPLITTERS,
+            },
+            final_model_kwargs={
+                "n_estimators": args.n_estimators,
+                "learning_rate": args.learning_rate,
+                "max_depth": args.max_depth,
+                "min_samples_leaf": CARTOBOOST_MIN_SAMPLES_LEAF,
+                "splitters": QUALITATIVE_CARTOBOOST_SPLITTERS,
+            },
+        )
+
     train_x = workload.features[train_idx]
     test_x = workload.features[test_idx]
     train_y = workload.target[train_idx]
     train_ids = workload.embedding_ids[train_idx]
     test_ids = workload.embedding_ids[test_idx]
-    prediction, timing = timed_fit_predict(
-        lambda: model.fit(train_x, train_y, ids=train_ids),
-        lambda: model.predict(test_x, ids=test_ids),
-        len(test_idx),
+    train_id_set = {int(value) for value in np.asarray(train_ids).ravel()}
+    cold_id_fraction = float(
+        np.mean([int(value) not in train_id_set for value in np.asarray(test_ids).ravel()])
     )
+
+    inner_train, inner_validation = deterministic_inner_validation_split(
+        len(train_y),
+        seed=args.seed,
+    )
+    base_probe = cartoboost_model(args)
+    neural_probe = build_neural_model()
+    base_probe.fit(train_x[inner_train], train_y[inner_train])
+    neural_probe.fit(
+        train_x[inner_train],
+        train_y[inner_train],
+        ids=train_ids[inner_train],
+    )
+    base_validation_prediction = base_probe.predict(train_x[inner_validation])
+    neural_validation_prediction = neural_probe.predict(
+        train_x[inner_validation],
+        ids=train_ids[inner_validation],
+    )
+    base_validation_rmse = float(
+        np.sqrt(np.mean((train_y[inner_validation] - base_validation_prediction) ** 2))
+    )
+    neural_validation_rmse = float(
+        np.sqrt(np.mean((train_y[inner_validation] - neural_validation_prediction) ** 2))
+    )
+    required_neural_rmse = base_validation_rmse * (
+        1.0 - NEURAL_AUGMENTATION_RELATIVE_VALIDATION_MARGIN
+    )
+    use_neural = cold_id_fraction < 0.5 and neural_validation_rmse <= required_neural_rmse
+
+    if use_neural:
+        model = build_neural_model()
+        prediction, timing = timed_fit_predict(
+            lambda: model.fit(train_x, train_y, ids=train_ids),
+            lambda: model.predict(test_x, ids=test_ids),
+            len(test_idx),
+        )
+        fit_stages_ms = model.timings
+        selected = "neural_augmented"
+    else:
+        model = cartoboost_model(args)
+        prediction, timing = timed_fit_predict(
+            lambda: model.fit(train_x, train_y),
+            lambda: model.predict(test_x),
+            len(test_idx),
+        )
+        fit_stages_ms = {}
+        selected = "base"
     return (
         prediction,
         timing,
@@ -391,7 +459,14 @@ def run_neural(
             "embedding_dim": int(args.neural_dim),
             "oof_folds": 5,
             "support_prior_strength": 2.0,
-            "fit_stages_ms": model.timings,
+            "fit_stages_ms": fit_stages_ms,
+            "neural_guard": {
+                "selected": selected,
+                "base_validation_rmse": base_validation_rmse,
+                "neural_validation_rmse": neural_validation_rmse,
+                "cold_id_fraction": cold_id_fraction,
+                "relative_validation_margin": NEURAL_AUGMENTATION_RELATIVE_VALIDATION_MARGIN,
+            },
         },
     )
 
@@ -542,7 +617,7 @@ def run_standalone_neural(
         n_estimators=args.n_estimators,
         learning_rate=args.learning_rate,
         max_depth=args.max_depth,
-        min_samples_leaf=2,
+        min_samples_leaf=CARTOBOOST_MIN_SAMPLES_LEAF,
     )
     prediction, timing = timed_fit_predict(
         lambda: model.fit(
@@ -588,7 +663,7 @@ def run_standalone_node2vec_regressor(
         n_estimators=args.n_estimators,
         booster_learning_rate=args.learning_rate,
         max_depth=args.max_depth,
-        min_samples_leaf=2,
+        min_samples_leaf=CARTOBOOST_MIN_SAMPLES_LEAF,
     )
     prediction, timing = timed_fit_predict(
         lambda: model.fit(
@@ -642,7 +717,7 @@ def run_standalone_graphsage_regressor(
         n_estimators=args.n_estimators,
         booster_learning_rate=args.learning_rate,
         max_depth=args.max_depth,
-        min_samples_leaf=2,
+        min_samples_leaf=CARTOBOOST_MIN_SAMPLES_LEAF,
     )
     prediction, timing = timed_fit_predict(
         lambda: model.fit(
@@ -702,7 +777,7 @@ def run_standalone_typed_graphsage_regressor(
             n_estimators=args.n_estimators,
             booster_learning_rate=args.learning_rate,
             max_depth=args.max_depth,
-            min_samples_leaf=2,
+            min_samples_leaf=CARTOBOOST_MIN_SAMPLES_LEAF,
         )
     else:
         from cartoboost import HinSageStandaloneRegressor
@@ -717,7 +792,7 @@ def run_standalone_typed_graphsage_regressor(
             n_estimators=args.n_estimators,
             booster_learning_rate=args.learning_rate,
             max_depth=args.max_depth,
-            min_samples_leaf=2,
+            min_samples_leaf=CARTOBOOST_MIN_SAMPLES_LEAF,
         )
         fit_kwargs["node_types"] = [0] * int(workload.graph_node_features.shape[0])
 
