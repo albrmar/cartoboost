@@ -24,6 +24,7 @@ spatial, geotemporal, and graph-derived regression workflows.
 - [CLI Reference](reference/cli.md)
 - [Limitations](limitations.md)
 - [Benchmarks](benchmarks/index.md)
+  - [Neural Embedding Strategy Assessment](benchmarks/neural-embedding-strategy.md)
 
 CartoBoost is most useful when time, place, route membership, and directed graph
 relationships are more than ordinary scalar columns. Periodic hours, spatial
