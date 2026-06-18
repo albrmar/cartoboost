@@ -1,70 +1,152 @@
 # NYC Taxi Benchmarks
 
-`scripts/run_nyc_taxi_quality_benchmarks.py` runs model-quality and speed
-comparisons on NYC TLC yellow taxi trip-record Parquet files. It compares
-CartoBoost with LightGBM and XGBoost when optional benchmark packages are
-installed, and always supports a mean-prediction baseline.
+## Research Question
 
-The repeated wrapper, `scripts/run_repeated_nyc_taxi_benchmarks.py`, runs the
-single-run benchmark several times and summarizes speed and quality.
+On real NYC taxi data, do geographic and temporal feature families improve
+prediction quality for trip duration, fare amount, and pickup-zone demand under
+both random validation and pickup-zone spatial holdout?
 
-## Dependency Boundary
+The study is designed to answer where the signal comes from. Fare and duration
+are trip-row targets. Pickup demand is a zone-time target. Those are different
+prediction problems and should not be interpreted as one generic benchmark.
 
-CartoBoost runtime dependencies do not include the cross-package benchmark stack.
-Install the `bench` group only for these comparisons.
+## Dataset
 
-| Package | Used for |
-| --- | --- |
-| `xgboost>=2.0` | XGBoost `XGBRegressor` baseline with configurable `tree_method`. |
-| `lightgbm>=4.0` | LightGBM `LGBMRegressor` baseline. |
-| `pandas>=2.0` | TLC Parquet loading and cleaning. |
-| `pyarrow>=14.0` | Parquet engine for pandas. |
-| `matplotlib>=3.7` | Plots. |
-
-## Setup
-
-Benchmark scripts are repository workflows. Install the package from PyPI for
-normal model use:
+The maintained single-run artifact uses cached NYC TLC yellow taxi trip records
+for January 2024:
 
 ```sh
-uv add cartoboost
+PYTHONPATH=python uv run --group dev --group bench python \
+  scripts/run_nyc_taxi_quality_benchmarks.py \
+  --no-download \
+  --output-dir docs/assets/nyc_taxi_benchmarks
 ```
 
-For reproducible benchmark development from a source checkout:
+The command uses `--no-download`. If the real Parquet file is missing, the run
+fails instead of falling back to synthetic data. Raw TLC files are cached under
+`data/nyc_taxi/` and are not committed.
 
-```sh
-uv sync --group dev --group bench
-```
+## Targets
 
-The TLC data cache lives under `data/nyc_taxi/` and must not be committed.
-The benchmark also caches `taxi_zone_lookup.csv` there so demand and row tasks
-can use borough and service-zone context for spatial holdouts.
+| Task | Target | Unit of observation |
+| --- | --- | --- |
+| `duration` | Log trip duration. | Individual taxi trip. |
+| `fare` | Log total fare amount. | Individual taxi trip. |
+| `pickup_demand` | Log pickup trip count. | Pickup zone x hour x weekday bucket. |
 
-## Maintained Targets
+Quality metrics are computed on transformed regression targets.
 
-Single run:
+## Features
 
-```sh
-just nyc-quality-benchmark
-```
+All learned models receive comparable cleaned trip, zone, passenger, and time
+features. The maintained comparison uses `--zone-treatment target_mean`, which
+adds train-only smoothed pickup/dropoff zone target-mean features to every
+model, including XGBoost and LightGBM. This prevents the comparison from giving
+CartoBoost exclusive access to zone-level target context.
 
-Repeated 25k-row comparison:
+CartoBoost-family rows may additionally use feature families that match the
+task structure:
+
+- Periodic hour and weekday features.
+- Pickup and dropoff zone membership.
+- Pickup/dropoff geometry and route cartometry.
+- Sparse zone and lane membership.
+- Neural repeated-ID residual features.
+- Graph features from observed zone or source-target relationships.
+
+## Split Design
+
+Each task reports:
+
+- Random split: validation rows are sampled from the same overall distribution
+  as training rows.
+- Spatial holdout: validation rows come from held-out pickup zones.
+
+Pickup-demand spatial holdout intentionally skips learned models. That split
+removes the demand history needed to learn zone-level demand, so learned-model
+scores would measure fallback priors rather than a valid demand forecast.
+
+## Methods
+
+The requested model set is:
+
+- Mean baseline.
+- CartoBoost base candidate.
+- CartoBoost reference row.
+- CartoBoost neural row.
+- CartoBoost graph rows using node2vec, GraphSAGE, HeteroGraphSAGE, and
+  HinSAGE-style features.
+- LightGBM.
+- XGBoost.
+
+The maintained repeated preset uses 100 estimators for both CartoBoost and
+tree-boosting baselines, LightGBM/XGBoost max depth 4, CartoBoost max depth 5,
+and target-mean zone treatment.
+
+## Metrics
+
+RMSE is the primary comparison metric because the targets are transformed
+continuous regressions and larger errors matter. MAE is reported as a secondary
+error metric. R2 reports explained variance. Training and prediction speed are
+reported separately from quality.
+
+## Current Single-Run Results
+
+On every runnable learned-model split, the best CartoBoost-family row beats
+LightGBM on RMSE and R2:
+
+| task/split | best CartoBoost-family row | CartoBoost RMSE | LightGBM RMSE | RMSE delta | R2 delta |
+| --- | --- | ---: | ---: | ---: | ---: |
+| duration/random | `cartoboost` | 0.278843 | 0.289829 | -0.010986 | 0.012637 |
+| duration/spatial_holdout | `cartoboost` | 0.303525 | 0.316291 | -0.012766 | 0.018206 |
+| fare/random | `cartoboost` | 0.139640 | 0.143692 | -0.004052 | 0.004239 |
+| fare/spatial_holdout | `cartoboost` | 0.148375 | 0.152686 | -0.004311 | 0.007854 |
+| pickup_demand/random | `cartoboost_graph_node2vec` | 0.403529 | 0.481552 | -0.078024 | 0.016572 |
+
+Full result tables and plots are stored in
+`docs/assets/nyc_taxi_benchmarks/`.
+
+## Interpretation
+
+Fare and duration are geotemporal row-level targets. The winning row is base
+CartoBoost, not a neural or graph variant. That means the useful signal is
+mostly explained by hour/day periodicity, pickup/dropoff geometry, and zone
+membership. LightGBM receives comparable target-mean zone features but still
+has to approximate route geometry and cyclic time with axis-aligned tabular
+splits.
+
+Pickup demand is a zone-time graph problem. The best random-split row is
+`cartoboost_graph_node2vec`, which adds topology learned from observed pickup
+zone relationships before modeling hour, weekday, and zone effects. This is the
+case where graph structure contributes signal beyond the base feature set.
+
+Neural and graph rows are not universal upgrades. They are useful only when
+the target contains repeated-ID residual structure or source-target topology
+that ordinary dense columns do not expose.
+
+## Repeated-Run Speed Study
+
+The repeated target runs the same benchmark several times and summarizes
+quality and timing relative to XGBoost:
 
 ```sh
 just nyc-quality-benchmark-repeated
 ```
 
-The repeated target writes per-run outputs under `target/nyc_taxi_repeated/`
-and summary reports under `docs/assets/nyc_taxi_benchmarks/`.
+The repeated report shows that CartoBoost-family quality is better than XGBoost
+on RMSE/R2 for the maintained splits, but the speed gate misses because
+CartoBoost trains slower and predicts fewer rows per second than XGBoost under
+this preset. That is a quality-vs-throughput tradeoff, not a universal
+deployment recommendation.
 
-The maintained repeated preset uses:
+## Limitations
 
-- CartoBoost candidate: `n_estimators=100`, `max_depth=5`,
-  `splitters=axis_histogram:512,periodic:24,periodic:7,sparse_set`,
-  `min_samples_leaf=1`.
-- XGBoost baseline: `n_estimators=100`, `max_depth=4`,
-  `tree_method=hist`, `subsample=1.0`, `colsample_bytree=1.0`.
-- Zone IDs: `--zone-treatment target_mean`.
+- The current artifact is January 2024 yellow taxi data, not all TLC history.
+- Scores are on transformed targets.
+- Timing depends on local hardware and installed optional libraries.
+- Pickup-demand spatial holdout is intentionally excluded for learned models.
+- Claims should be refreshed when task definitions, split strategy, zone
+  treatment, estimator settings, or sample size change.
 
 ## Smaller Diagnostics
 
@@ -84,121 +166,3 @@ uv run --group dev --group bench python scripts/run_nyc_taxi_quality_benchmarks.
   --synthetic-smoke \
   --models mean
 ```
-
-## Tasks
-
-| Task | Target |
-| --- | --- |
-| `duration` | Log trip duration from trip, zone, passenger, and time features. |
-| `fare` | Log total fare amount from trip, zone, passenger, and time features. |
-| `pickup_demand` | Log pickup count by pickup zone, hour, and weekday bucket. |
-
-Each task reports a random split and a pickup-zone spatial holdout split.
-
-## Comparable Feature Handling
-
-The maintained comparison uses `--zone-treatment target_mean` by default. It
-appends train-only smoothed pickup/dropoff zone target-mean features to every
-model, including XGBoost and LightGBM. This keeps zone handling comparable
-instead of making it CartoBoost-specific.
-
-Neural and graph-augmented CartoBoost rows should be interpreted against the
-same split boundary. Neural ID embeddings can help when pickup or dropoff zones
-repeat between train and validation, but a cold-zone spatial holdout requires
-fallback vectors for unseen zones. The maintained neural row uses out-of-fold
-residual embeddings, support-aware shrinkage, multi-key zone embeddings, same
-service-zone and same-borough fallback representatives, and adjacent-zone
-neighbor fallback. Repeated-zone gains should not be reported as evidence of
-cold-zone generalization.
-
-To compare raw numeric zone IDs against target-mean treatment:
-
-```sh
-uv run --group dev --group bench python scripts/run_repeated_nyc_taxi_benchmarks.py \
-  --runs 3 \
-  --no-download \
-  --tasks pickup_demand \
-  --zone-treatment raw
-
-uv run --group dev --group bench python scripts/run_repeated_nyc_taxi_benchmarks.py \
-  --runs 3 \
-  --no-download \
-  --tasks pickup_demand \
-  --zone-treatment target_mean
-```
-
-## Outputs
-
-Single-run outputs under `docs/assets/nyc_taxi_benchmarks/`:
-
-- `results.json`
-- `results.md`
-- `metric_summary.png`
-- `speed_summary.png`
-- `prediction_throughput.png`
-- `plots/*_predicted_actual.png`
-- `plots/*_zone_residuals.png`
-
-Repeated-run summaries:
-
-- `repeated_results.json`
-- `repeated_results.md`
-
-## Current Snapshot
-
-The full single-run report was refreshed on June 18, 2026 with real January
-2024 NYC TLC yellow taxi data, target-mean zone treatment, all maintained
-CartoBoost, graph, neural, LightGBM, XGBoost, and mean rows, and the command:
-
-```sh
-PYTHONPATH=python uv run --group dev --group bench python \
-  scripts/run_nyc_taxi_quality_benchmarks.py \
-  --no-download \
-  --output-dir docs/assets/nyc_taxi_benchmarks
-```
-
-This command used the cached `data/nyc_taxi/yellow_tripdata_2024-01.parquet`
-file and `--no-download`, so missing real data would fail instead of falling
-back to a synthetic fixture.
-
-On every runnable learned-model split, the best CartoBoost-family row beats
-LightGBM on RMSE and R2:
-
-| task/split | best CartoBoost-family row | CartoBoost RMSE | LightGBM RMSE | RMSE delta | R2 delta |
-| --- | --- | ---: | ---: | ---: | ---: |
-| duration/random | `cartoboost` | 0.278843 | 0.289829 | -0.010986 | 0.012637 |
-| duration/spatial_holdout | `cartoboost` | 0.303525 | 0.316291 | -0.012766 | 0.018206 |
-| fare/random | `cartoboost` | 0.139640 | 0.143692 | -0.004052 | 0.004239 |
-| fare/spatial_holdout | `cartoboost` | 0.148375 | 0.152686 | -0.004311 | 0.007854 |
-| pickup_demand/random | `cartoboost_graph_node2vec` | 0.403529 | 0.481552 | -0.078024 | 0.016572 |
-
-The pickup-demand spatial holdout intentionally skips all learned models. That
-split removes all zone demand history, so learned-model predictions collapse to
-priors; reporting LightGBM or CartoBoost there would be a fallback comparison,
-not a valid quality comparison.
-
-## Why CartoBoost Is Better Here
-
-Fare and duration are geotemporal row tasks. The winning row is base
-CartoBoost, not a graph or neural variant, because the target is already well
-explained by primitives LightGBM does not natively have: periodic hour/day
-splitters, diagonal and radial spatial splitters, and sparse-set taxi-zone
-membership. LightGBM receives comparable target-mean zone features, but it still
-has to approximate pickup/dropoff geometry with axis-aligned tabular splits.
-
-Pickup demand is different. It is a zone-time graph problem, and the best row is
-`cartoboost_graph_node2vec`. The graph encoder learns pickup-zone topology from
-observed zone relationships, then CartoBoost models that topology together with
-hour, weekday, and zone effects. That is the benchmark case where graph
-augmentation adds signal beyond the base geotemporal splitter set.
-
-Neural and graph rows are therefore not treated as universal upgrades. If the
-base geotemporal splitter set already captures the target, they can match the
-base row while adding training cost. Their value is specific: neural rows expose
-train-observed ID residual structure, and graph rows expose source-target or
-zone-topology structure that ordinary dense columns do not encode.
-
-The results are setup-specific evidence for this preset. They are not a general
-claim about production accuracy or package superiority. Re-run the benchmark
-when changing task definitions, feature handling, row sample, split strategy,
-or estimator settings.

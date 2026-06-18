@@ -1,8 +1,32 @@
-# CartoBoost lane-level acceptance metrics
+# Taxi Lane Acceptance Metrics
 
-These deterministic fixtures adapt the upstream regional lane CPM idea to this repo's
-current API. The matrix columns are observable route features: origin/destination
-coordinates, lane ID, hour of day, route midpoint, and route distance.
+## Research Question
+
+Can the model recover the taxi-lane feature behaviors that matter for
+geographic and temporal prediction: lane membership, route midpoint geometry,
+hour wraparound, and combined regional lane structure?
+
+## Dataset
+
+The fixture is deterministic and intentionally small. Rows represent
+pickup/dropoff lanes observed across hours of day. All matrix columns are
+observable route features: origin/destination coordinates, lane ID, hour of
+day, route midpoint, and route distance.
+
+## Target
+
+Each phase uses a synthetic route-intensity target designed to isolate one
+feature contract. The target is not intended to represent real taxi demand; it
+is intended to prove whether the model can express the signal at all.
+
+## Feature Families
+
+- Sparse lane membership for pickup/dropoff lane IDs.
+- Route midpoint cartometry for route-centered geography.
+- Periodic hour features for 23:00-to-01:00 wraparound.
+- Combined lane, spatial, and temporal features for holdout demand structure.
+
+## Results
 
 | phase | model | metric | value |
 | --- | --- | --- | ---: |
@@ -14,6 +38,14 @@ coordinates, lane ID, hour of day, route midpoint, and route distance.
 | wraparound_lane_hour | periodic_hour | train_rmse | 1.98951966e-13 |
 | regional_lane_boosting | axis_only | holdout_rmse | 1.26819804e+01 |
 | regional_lane_boosting | lane_spatial_temporal | holdout_rmse | 4.85635574e+00 |
+
+## Interpretation
+
+The acceptance fixture passes all targeted checks. Sparse lane membership,
+route midpoint geometry, and periodic hour features recover the isolated
+signals almost exactly. The combined lane/spatial/temporal feature set reduces
+holdout RMSE from `12.6819804` to `4.85635574`, which is the primary
+acceptance result for the regional lane phase.
 
 ## Inspection Metrics
 
@@ -51,4 +83,3 @@ coordinates, lane ID, hour of day, route midpoint, and route distance.
 - `uses_hidden_simulator_metadata_in_training`: 0.00000000e+00
 - `full_beats_axis_holdout`: PASS (3.82933548e-01 < 6.50000000e-01)
 - `hot_cold_contrast_gt_120`: PASS (1.50385443e+02 > 1.20000000e+02)
-

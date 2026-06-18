@@ -96,3 +96,5 @@ nav:
       - Model Benchmark Suite: benchmarks/model-suite.md
       - NYC Taxi Benchmarks: benchmarks/nyc-taxi.md
       - Taxi Zone Acceptance: benchmarks/taxi-zone.md
+      - Neural Embedding Strategy: benchmarks/neural-embedding-strategy.md
+      - Neural Embedding Benchmark: benchmarks/neural-embedding-benchmark-latest.md

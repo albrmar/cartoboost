@@ -1,7 +1,40 @@
 # NYC Taxi Model Quality Benchmarks
 
-These artifacts compare predictive quality and speed on NYC TLC taxi-derived tasks.
-Quality metrics are computed on transformed regression targets.
+## Research Question
+
+On real NYC taxi data, do geographic and temporal feature families improve
+prediction quality for trip duration, fare amount, and pickup-zone demand when
+compared with strong gradient-boosted tabular baselines?
+
+## Dataset
+
+The benchmark uses NYC TLC taxi-derived records. The row-level tasks use trip
+records with pickup/dropoff zone context, trip attributes, passenger count, and
+time-of-day features. The demand task aggregates pickup activity by zone and
+time bucket.
+
+## Targets
+
+Quality metrics are computed on transformed regression targets:
+
+- Trip duration: log trip duration.
+- Fare amount: log total amount.
+- Pickup-zone demand: log pickup trip count for a zone-time bucket.
+
+## Feature Sets
+
+- Geographic features: pickup zone, dropoff zone, route geometry, and
+  zone-level encodings.
+- Temporal features: hour, weekday, and periodic time structure.
+- Trip features: distance, passenger count, and related trip descriptors.
+- Graph features for pickup demand: topology learned from observed pickup-zone
+  relationships.
+
+## Comparison Method
+
+CartoBoost-family models are compared with LightGBM, XGBoost, and a mean
+baseline under the same task, split, target transformation, and global
+benchmark settings.
 
 - dataset source: nyc_tlc_trip_records
 - models requested: cartoboost, cartoboost_reference, cartoboost_neural, cartoboost_graph_node2vec, cartoboost_graph_graphsage, cartoboost_graph_hetero_graphsage, cartoboost_graph_hinsage, lightgbm, xgboost, mean
@@ -24,7 +57,7 @@ For each runnable learned-model split, this table compares LightGBM with the bes
 | fare | spatial_holdout | cartoboost | 0.148375 | 0.152686 | -0.004311 | 0.007854 | cartoboost |
 | pickup_demand | random | cartoboost_graph_node2vec | 0.403529 | 0.481552 | -0.078024 | 0.016572 | cartoboost |
 
-### Why CartoBoost Wins Here
+### Interpretation
 
 - Fare and duration are primarily geotemporal row tasks. The base CartoBoost candidate wins through native periodic hour/day splitters, diagonal and radial spatial splitters, and sparse-set taxi-zone membership. Those primitives let the model express pickup/dropoff geometry directly instead of asking an axis-only tabular baseline to approximate it through many rectangular cuts.
 - Pickup demand is a zone-time graph problem. The best row in the random split is graph-augmented CartoBoost, because node2vec adds topology learned from observed pickup-zone relationships before the booster models hour, weekday, and zone effects.
@@ -132,4 +165,3 @@ Predict log pickup trip count for a pickup zone, hour, and weekday bucket.
 | lightgbm | skipped |  |  |  |  |  |  | learned models are skipped for pickup_demand cold-zone spatial holdout; the split removes all zone demand history, so predictions collapse to priors |
 | xgboost | skipped |  |  |  |  |  |  | learned models are skipped for pickup_demand cold-zone spatial holdout; the split removes all zone demand history, so predictions collapse to priors |
 | mean | ok | 2.088607 | 1.807484 | -0.002958 | 0.000054 | 0.000014 | 376318572.84 |  |
-

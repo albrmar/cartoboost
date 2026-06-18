@@ -1,51 +1,47 @@
 # Benchmarks
 
-CartoBoost benchmark docs are for reproducible model comparison. Use them to
-answer data-science questions such as whether temporal-spatial splitters improve
-random, spatial, or temporal holdouts against an axis-only CartoBoost model,
-XGBoost, LightGBM, or a mean baseline.
+These reports describe CartoBoost benchmarks as data-science studies. Each one
+states the target, dataset, features, split design, comparison methods, metrics,
+result, and interpretation. The goal is to explain what was measured and why it
+matters.
 
-| Page | Question |
+| Report | Primary question |
 | --- | --- |
-| [Model Benchmark Suite](model-suite.md) | How do dense, neural, standalone graph, and graph-augmented CartoBoost variants compare with XGBoost/LightGBM on deterministic workloads? |
-| [NYC Taxi Benchmarks](nyc-taxi.md) | Does CartoBoost beat LightGBM on real temporal-spatial taxi tasks, and which structural primitive explains the win? |
-| [Neural Embedding Strategy Assessment](neural-embedding-strategy.md) | When do neural embeddings help, and how did OOF, fallback, multi-key, and shrinkage changes compare? |
-| [Taxi Zone Acceptance](taxi-zone.md) | Does the model capture pickup/dropoff, temporal, spatial, and combined behavior on a controlled dataset? |
-| [Neural Embedding Benchmark (latest)](neural-embedding-benchmark-latest.md) | How much does neural feature augmentation improve MAE under synthetic temporal-spatial holdouts? |
+| [Model Benchmark Suite](model-suite.md) | On controlled synthetic regression tasks, when do dense, ID, and graph features improve predictive quality against XGBoost and LightGBM? |
+| [NYC Taxi Benchmarks](nyc-taxi.md) | On real NYC taxi fare, duration, and pickup-demand tasks, which feature families explain the quality gains under random and spatial holdout splits? |
+| [Taxi Zone Acceptance](taxi-zone.md) | On a controlled taxi-lane fixture, can the model recover lane membership, route geometry, hour-of-day periodicity, and combined geotemporal structure? |
+| [Neural Embedding Strategy Assessment](neural-embedding-strategy.md) | Do residual embeddings improve repeated-ID tasks without overstating cold-ID generalization? |
+| [Neural Embedding Benchmark](neural-embedding-benchmark-latest.md) | Across random, temporal, geographic, tail, and cold-ID splits, where does neural augmentation reduce MAE? |
 
 ## Forecasting Benchmark
 
-Forecasting V1 includes a deterministic benchmark harness for implemented
-Rust-native forecasting behavior:
+**Research question.** Can global lag features with geographic lane context
+forecast short panels of taxi-like demand better than explicit forecasting
+libraries on the same deterministic fixture?
 
-```sh
-python scripts/forecasting_benchmark.py --output artifacts/forecasting_benchmark.json
-```
+**Dataset.** The fixture is synthetic but taxi-shaped. Rows represent daily
+pickup/dropoff lane demand with pickup zone, dropoff zone, distance, airport
+lane indicator, borough code, weekly seasonality, and deterministic event
+spikes. The same data-generating process is loaded through both Polars and
+DuckDB sources to verify that the result is not tied to a single dataframe
+engine.
 
-The harness compares the implemented Rust-core local forecasters, CartoBoost
-lag forecasting, and Rust-core weighted ensembles across trend-only, weekly
-seasonal, intermittent sparse, panel lane, known-future covariate, and noisy
-geographic-temporal taxi fixtures. The output JSON records dataset names, model
-names, MAE, RMSE, MASE, WAPE, sMAPE, bias, and interval coverage placeholders.
-These runs are intended to prove repeatability, row alignment, and leakage-safe
-evaluation; they are not presented as universal model superiority evidence.
+**Target.** Future daily lane demand over a fixed forecast horizon.
 
-## Forecasting Library Comparison
+**Features.** CartoBoost receives lagged demand, rolling demand summaries,
+calendar fields, pickup/dropoff zone identifiers, distance, airport-lane flag,
+and borough code. Library baselines receive their native time-series inputs and
+the comparable covariate structure supported by the benchmark script.
 
-`scripts/forecasting_library_benchmark.py` compares Rust-native CartoBoost
-global lag forecasting with named forecasting-library baselines on a
-deterministic geographic-temporal pickup/dropoff lane demand fixture. The
-fixture is taxi-focused: related lane series represent pickup/dropoff movement,
-zone effects, weekly/hourly seasonality, and known future calendar structure.
-The benchmark compares against these forecasting libraries and model names:
+**Methods compared.**
 
 | library | model names |
 | --- | --- |
+| `cartoboost` | `cartoboost_lag` |
 | `functime` | `functime_snaive`, `functime_ridge`, `functime_lightgbm` |
 | `statsforecast` | `statsforecast_seasonal_naive`, `statsforecast_autoets` |
 
-CartoBoost is compared against the lowest RMSE across those named forecasting
-library baselines.
+**Command.**
 
 ```sh
 uv run --group dev --group bench python scripts/forecasting_library_benchmark.py \
@@ -57,7 +53,11 @@ uv run --group dev --group bench python scripts/forecasting_library_benchmark.py
   --output artifacts/forecasting_library_benchmark_duckdb.json
 ```
 
-Current quality run, June 18, 2026:
+**Metrics.** RMSE is the primary quality metric. MAE and WAPE are secondary
+quality metrics. Model seconds are reported as context, not as the primary
+claim.
+
+**Current result, June 18, 2026.**
 
 | model | library | RMSE | MAE | WAPE |
 | --- | --- | ---: | ---: | ---: |
@@ -68,7 +68,12 @@ Current quality run, June 18, 2026:
 | `functime_ridge` | `functime` | 2.673150 | 2.309550 | 0.110462 |
 | `functime_lightgbm` | `functime` | 2.965697 | 2.807547 | 0.134281 |
 
-Current speed context from the Polars artifact refresh:
+The best external forecasting-library baseline in this run is
+`statsforecast_autoets` from StatsForecast. CartoBoost lag forecasting reduces
+RMSE by 31.05% relative to that baseline on this fixture. Polars and DuckDB
+runs produced identical quality metrics; only loading and timing differed.
+
+**Timing context from the Polars run.**
 
 | model | library | model seconds |
 | --- | --- | ---: |
@@ -79,42 +84,23 @@ Current speed context from the Polars artifact refresh:
 | `functime_ridge` | `functime` | 0.179506 |
 | `functime_lightgbm` | `functime` | 77.810239 |
 
-The strongest forecasting-library baseline in this run is
-`statsforecast_autoets` from `statsforecast`, with RMSE `0.550793`. CartoBoost
-lag forecasting records RMSE `0.379765`, or `0.689487` times the
-`statsforecast_autoets` RMSE.
+**Interpretation.** The target is a panel of related geographic lanes, not a
+single long univariate series. The result supports the claim that supervised
+lag features plus lane covariates are useful for this kind of short-panel
+geotemporal demand problem. It should not be read as a claim that CartoBoost is
+better than every forecasting method on long single-series workloads.
 
-The artifact records `comparison_libraries`, `forecasting_library_models`, and
-`model_libraries` so every score is tied to an explicit library and model name.
-The Polars and DuckDB source runs produced the same quality metrics; only source
-loading and model timing differed.
+## Evaluation Rules
 
-This is targeted evidence for global geotemporal lag forecasting on many
-related short lane series. It should not be generalized to every forecasting
-task or to long single-series statistical forecasting workloads.
+- Report the command, data source, target, feature set, split, and metrics.
+- Name every comparison library and model.
+- Separate quality findings from timing observations.
+- Do not generalize synthetic or single-domain evidence beyond the measured
+  target and split design.
+- Refresh the written report whenever benchmark artifacts or benchmark behavior
+  change.
 
-## Evaluation Helpers
-
-Objective, calibration, spatial-diagnostic, and blocked-validation helpers are
-available from the Python package:
-
-```python
-from cartoboost import (
-    out_of_time_split,
-    residual_morans_i,
-    spatial_blocked_cv,
-    temporal_blocked_cv,
-)
-```
-
-Use `out_of_time_split` for the latest-period holdout, then compare that score
-with random and spatial holdouts. Temporal-spatial models should improve where
-the deployment split is hardest, not only on random validation rows.
-
-Prediction speed should be reported only with the benchmark command, data size,
-model settings, and comparison baseline.
-
-## Quick Commands
+## Commands
 
 Run dependency-light NYC smoke validation:
 
@@ -124,19 +110,19 @@ uv run --group dev --group bench python scripts/run_nyc_taxi_quality_benchmarks.
   --models mean
 ```
 
-Run the synthetic model suite with optional XGBoost and LightGBM baselines:
+Run the synthetic model suite:
 
 ```sh
 uv run --group dev --group bench python scripts/run_model_benchmark_suite.py
 ```
 
-Run the maintained repeated NYC comparison target:
+Run the maintained repeated NYC comparison:
 
 ```sh
 just nyc-quality-benchmark-repeated
 ```
 
-Run the full single-run NYC benchmark artifact refresh:
+Refresh the full single-run NYC artifact:
 
 ```sh
 PYTHONPATH=python uv run --group dev --group bench python \
@@ -144,12 +130,3 @@ PYTHONPATH=python uv run --group dev --group bench python \
   --no-download \
   --output-dir docs/assets/nyc_taxi_benchmarks
 ```
-
-## Reporting Rules
-
-- State the exact command, sample size, task set, model settings, and feature
-  handling.
-- Distinguish single-run diagnostics from repeated summaries.
-- Do not present synthetic checks or NYC taxi outputs as universal model
-  superiority claims.
-- Treat synthetic checks as behavior evidence, not broad quality claims.

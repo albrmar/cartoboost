@@ -71,6 +71,25 @@ fallback forecasts when a native binding is missing. Use the forecasting docs
 for geographic-temporal CLI usage, lag-feature forecasting, backtesting,
 artifacts, and examples built around pickup/dropoff lanes and taxi-zone demand.
 
+## Benchmarks
+
+The benchmark reports focus on the data-science question behind each run:
+dataset, target, feature set, split design, comparison models, metrics, and the
+meaning of the result.
+
+- NYC taxi benchmarks measure transformed trip duration, fare amount, and
+  pickup-zone demand from pickup/dropoff zones, trip attributes, and hour/day
+  features.
+- Forecasting benchmarks measure daily pickup/dropoff lane demand with lagged
+  demand, rolling summaries, calendar fields, zone IDs, airport-lane flags, and
+  borough context. External forecasting comparisons name the exact libraries:
+  StatsForecast and functime.
+- Synthetic model-suite benchmarks isolate dense numeric signal, repeated-ID
+  residual signal, and source-target graph signal against LightGBM and XGBoost.
+- Taxi-zone acceptance benchmarks check whether lane membership, route
+  geometry, and periodic hour behavior are recoverable before making broader
+  quality claims.
+
 ## Install
 
 Install the released package from PyPI:

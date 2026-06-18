@@ -1,15 +1,57 @@
 # Model Benchmark Suite
 
-The model benchmark suite is the maintained synthetic comparison for dense,
-neural-ID, and graph-feature regression workloads. It complements the NYC taxi
-benchmarks by keeping the data generation deterministic and small enough for
-local iteration while still exercising CartoBoost, XGBoost, LightGBM, neural
-embedding augmentation, and graph augmentation. The graph workload includes
-separate CartoBoost rows for node2vec, GraphSAGE, HeteroGraphSAGE, and HinSAGE.
+## Research Question
 
-## Latest Run
+On controlled regression problems, which feature families are responsible for
+quality gains: ordinary dense numeric features, repeated-ID residual structure,
+or graph source-target topology?
 
-Command:
+This study is not a production benchmark. It is a deterministic laboratory
+fixture designed to isolate data conditions that are difficult to separate in
+real taxi data.
+
+## Dataset
+
+The suite generates three synthetic workloads with 2,400 rows each and an
+80/20 train/test split. The random seed is `42`.
+
+| Workload | Dataset design | Deployment stress test |
+| --- | --- | --- |
+| Normal dense | IID dense numeric rows with nonlinear interactions. | Can the model handle ordinary tabular regression without ID or graph help? |
+| Neural ID | Dense rows plus repeated cell IDs with residual signal attached to IDs. | Does an embedding help when IDs repeat, and does it stop helping on cold IDs? |
+| Graph source-target | Directed source-target rows where node attributes and graph topology carry signal. | Does topology help beyond dense source/target columns, especially on cold source holdouts? |
+
+## Targets
+
+Each workload has a continuous regression target. For graph link-predictor rows,
+the target is edge ranking quality, reported as AUC/AP rather than regression
+error.
+
+## Features
+
+- Normal dense: numeric columns only.
+- Neural ID: numeric columns plus repeated cell identifiers.
+- Graph source-target: source node, target node, node attributes, and train
+  graph topology.
+- Graph augmentation rows add node2vec, GraphSAGE, HeteroGraphSAGE, or HinSAGE
+  embeddings learned from train topology.
+
+## Methods
+
+The benchmark compares:
+
+- Mean prediction baseline.
+- Base CartoBoost.
+- CartoBoost with neural ID residual embeddings.
+- CartoBoost with graph-derived node features.
+- Standalone neural/graph regressors and link predictors.
+- XGBoost and LightGBM when optional benchmark dependencies are installed.
+
+External baselines receive the same generated train/test rows and comparable
+dense columns. Graph and embedding rows are evaluated only on workloads where
+those inputs exist.
+
+## Command
 
 ```sh
 uv run --group dev --group bench python scripts/run_model_benchmark_suite.py \
@@ -24,31 +66,16 @@ Generated evidence:
 - `docs/assets/model_benchmarks/train_time_by_model.png`
 - `docs/assets/model_benchmarks/prediction_throughput_by_model.png`
 
-## Workloads
+## Metrics
 
-| Workload | Purpose | Split coverage |
-| --- | --- | --- |
-| Normal dense | IID numeric regression with nonlinear dense feature interactions. | Random |
-| Neural ID | Dense regression with repeated cell IDs and an ID-specific residual signal. | Random and cold group holdout |
-| Graph source-target | Directed source-target regression where node features and topology carry signal. | Random and cold source holdout |
+MAE and RMSE measure error magnitude. R2 measures explained variance. Training
+seconds and prediction rows per second are reported for operational context but
+are not the primary quality claim.
 
-The suite reports MAE, RMSE, R2, training seconds, and prediction rows per
-second for each model that can run in the current environment. XGBoost and
-LightGBM are optional benchmark dependencies; missing packages are recorded as
-skipped rows rather than causing the whole suite to fail.
+## Results
 
-## Result Images
-
-![MAE by model, workload, and split](../assets/model_benchmarks/mae_by_model.png)
-
-![Training time by model, workload, and split](../assets/model_benchmarks/train_time_by_model.png)
-
-![Prediction throughput by model, workload, and split](../assets/model_benchmarks/prediction_throughput_by_model.png)
-
-## Interpretation
-
-On the latest full run, the best CartoBoost-family row beats LightGBM on RMSE
-and R2 for every workload/split in the suite:
+In the latest run, the best CartoBoost-family row beats LightGBM on RMSE and R2
+for every workload/split where LightGBM ran:
 
 | workload/split | best CartoBoost-family row | CartoBoost RMSE | LightGBM RMSE | RMSE delta | R2 delta |
 | --- | --- | ---: | ---: | ---: | ---: |
@@ -58,41 +85,39 @@ and R2 for every workload/split in the suite:
 | graph/random | `graphsage_regressor` | 0.4495 | 0.4987 | -0.0493 | 0.0196 |
 | graph/group_holdout | `cartoboost` | 0.5210 | 0.5343 | -0.0132 | 0.0057 |
 
-The normal dense workload is a baseline sanity check. CartoBoost wins there
-without relying on graph or neural inputs, so the structured rows are not hiding
-a regression on ordinary numeric data.
+![MAE by model, workload, and split](../assets/model_benchmarks/mae_by_model.png)
+
+![Training time by model, workload, and split](../assets/model_benchmarks/train_time_by_model.png)
+
+![Prediction throughput by model, workload, and split](../assets/model_benchmarks/prediction_throughput_by_model.png)
+
+## Interpretation
+
+The dense workload is the control. CartoBoost performs well there without
+neural or graph inputs, so the structured rows are not masking a failure on
+ordinary numeric regression.
 
 The neural-ID workload separates repeated-ID learning from cold-ID deployment.
 `cartoboost_neural` improves the random split because validation rows reuse IDs
-seen during training. On the group holdout split, the embedding branch falls
-back to the base CartoBoost behavior instead of pretending unseen IDs can be
-recovered from an embedding table. Treat this as a guardrail: neural ID features
-should be reported with the split protocol, not as a universal quality
-improvement.
+seen during training. On group holdout, the embedding branch falls back toward
+base behavior because the tested IDs are unseen. That is the desired read:
+embedding gains are repeated-ID gains, not automatic cold-start generalization.
 
-The maintained `cartoboost_neural` row uses out-of-fold residual embeddings and
-support-aware shrinkage, and the API also supports hierarchical `fallback_ids`,
-multi-key 2D `ids`, and graph-aware `neighbor_ids`. Any claimed improvement
-should still be validated separately on repeated-ID and cold-ID splits because
-those are different deployment promises.
+The graph workload shows two different uses of topology. Graph-augmented
+CartoBoost rows append topology-derived features to a booster. Standalone graph
+regressors score the graph task directly. Link predictors report AUC/AP because
+they rank candidate edges rather than predict the regression target.
 
-The graph workload has two surfaces. Augmented CartoBoost rows fit node2vec,
-GraphSAGE, HeteroGraphSAGE, and HinSAGE features from train topology, then
-append source and target embeddings to CartoBoost inputs. Standalone graph rows
-score the graph task directly; `graphsage_regressor` is the best random-split
-regression row, and the link predictors report AUC/AP because they rank
-candidate source-target edges rather than predict the regression target.
+## Limitations
 
-The core difference from LightGBM is representational, not hyperparameter
-search. LightGBM receives dense columns. CartoBoost-family rows can add ID
-residual structure, graph topology, and source-target structure when the
-benchmark exposes those contracts.
+The suite is synthetic and small. It is useful for isolating mechanisms, not
+for claiming production accuracy. Timing should not be compared across
+machines unless hardware, dependency versions, and command settings are named.
 
-## Reproducibility Rules
+## Reporting Requirements
 
-- Commit `results.json`, `results.md`, and all plot PNGs together.
-- State the exact command and row count used for generated evidence.
-- Do not compare timing numbers across machines without naming the machine and
-  dependency versions.
-- Keep skipped XGBoost or LightGBM rows in the report when optional benchmark
-  packages are unavailable.
+- Commit `results.json`, `results.md`, and plot PNGs together.
+- Keep skipped XGBoost or LightGBM rows visible when optional dependencies are
+  unavailable.
+- State the workload, split, target, features, and command whenever quoting a
+  result.
