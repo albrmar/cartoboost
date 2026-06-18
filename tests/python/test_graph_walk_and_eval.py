@@ -279,9 +279,11 @@ def test_native_node2vec_writes_artifact_json() -> None:
     )
     encoder.fit(edges=[(0, 1), (1, 2)], node_count=3)
 
-    with tempfile.NamedTemporaryFile(suffix=".json") as file:
-        encoder.save_artifact_json(file.name)
-        payload = json.loads(open(file.name, encoding="utf-8").read())
+    with tempfile.TemporaryDirectory() as directory:
+        artifact_path = f"{directory}/node2vec.json"
+        encoder.save_artifact_json(artifact_path)
+        with open(artifact_path, encoding="utf-8") as file:
+            payload = json.loads(file.read())
 
     assert payload["artifact_type"] == "cartoboost.neural.node2vec_encoder"
     assert payload["artifact_version"] == 1
