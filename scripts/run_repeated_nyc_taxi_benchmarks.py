@@ -65,6 +65,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--xgboost-colsample-bytree", type=float, default=1.0)
     parser.add_argument("--zone-treatment", default="target_mean", choices=["raw", "target_mean"])
     parser.add_argument("--zone-target-smoothing", type=float, default=20.0)
+    parser.add_argument("--model-workers", type=int, default=1)
     parser.add_argument("--n-threads", type=int, default=1)
     parser.add_argument("--no-download", action="store_true")
     parser.add_argument("--synthetic-smoke", action="store_true")
@@ -118,6 +119,8 @@ def benchmark_command(args: argparse.Namespace, output_dir: Path) -> list[str]:
         args.zone_treatment,
         "--zone-target-smoothing",
         str(args.zone_target_smoothing),
+        "--model-workers",
+        str(args.model_workers),
         "--n-threads",
         str(args.n_threads),
         "--seed",

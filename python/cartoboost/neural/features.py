@@ -40,8 +40,8 @@ class NeuralEmbeddingFeatures:
         )
 
     def fit(self, ids: Iterable[Any], target: Iterable[Any]) -> NeuralEmbeddingFeatures:
-        id_values = np.asarray(list(ids), dtype=np.uint64)
-        target_values = np.asarray(list(target), dtype=np.float64)
+        id_values = _as_1d_array(ids, np.uint64, "ids")
+        target_values = _as_1d_array(target, np.float64, "target")
         if id_values.size != target_values.size:
             raise ValueError("ids and target must have the same length")
 
@@ -49,14 +49,14 @@ class NeuralEmbeddingFeatures:
         return self
 
     def transform(self, ids: Iterable[Any]) -> np.ndarray:
-        id_values = np.asarray(list(ids), dtype=np.uint64)
+        id_values = _as_1d_array(ids, np.uint64, "ids")
         if id_values.size == 0:
             return np.empty((0, self.dim), dtype=np.float32)
         return np.asarray(self._backend.transform(id_values), dtype=np.float32)
 
     def fit_transform(self, ids: Iterable[Any], target: Iterable[Any]) -> np.ndarray:
-        id_values = np.asarray(list(ids), dtype=np.uint64)
-        target_values = np.asarray(list(target), dtype=np.float64)
+        id_values = _as_1d_array(ids, np.uint64, "ids")
+        target_values = _as_1d_array(target, np.float64, "target")
         if id_values.size != target_values.size:
             raise ValueError("ids and target must have the same length")
 
@@ -89,3 +89,12 @@ class NeuralEmbeddingFeatures:
             {"id": int(row_id), "values": values}
             for row_id, values in self._backend.artifact_rows()
         ]
+
+
+def _as_1d_array(values: Iterable[Any], dtype: Any, name: str) -> np.ndarray:
+    array = np.asarray(values, dtype=dtype)
+    if array.ndim == 0:
+        raise ValueError(f"{name} must be 1D")
+    if array.ndim != 1:
+        array = np.ravel(array)
+    return np.ascontiguousarray(array, dtype=dtype)

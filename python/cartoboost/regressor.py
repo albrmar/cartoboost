@@ -15,6 +15,7 @@ from ._native import CartoBoostRegressor as _NativeRegressorModel
 from .schema import FeatureKind, normalize_feature_kind
 
 _VALID_SPLITTERS = {
+    "auto",
     "axis",
     "axis_histogram",
     "axis_hist",
@@ -173,7 +174,7 @@ class CartoBoostRegressor(RegressorMixin, BaseEstimator):
             quantile_alpha=float(loss_params["quantile_alpha"]),
             huber_delta=float(loss_params["huber_delta"]),
             log_offset=float(loss_params["log_offset"]),
-            splitters=list(self.splitters or ["axis"]),
+            splitters=list(self.splitters or ["auto"]),
             leaf_predictor=str(self.leaf_predictor),
             linear_leaf_features=_resolve_linear_leaf_features(
                 self.linear_leaf_features,
@@ -717,7 +718,7 @@ def _as_sample_weight_array(values: Any | None, expected: int) -> np.ndarray | N
 
 
 def _is_axis_splitters(splitters: Any) -> bool:
-    return splitters is None or list(splitters) == ["axis"]
+    return splitters is None or list(splitters) in (["auto"], ["axis"])
 
 
 def _is_axis_hist_splitters(splitters: Any) -> bool:
@@ -725,7 +726,7 @@ def _is_axis_hist_splitters(splitters: Any) -> bool:
         return True
     names = list(splitters)
     return bool(names) and all(
-        name in {"axis", "axis_histogram", "axis_hist", "histogram"}
+        name in {"auto", "axis", "axis_histogram", "axis_hist", "histogram"}
         or str(name).startswith(("axis_histogram:", "axis_hist:"))
         for name in names
     )

@@ -75,6 +75,23 @@ struct BestAxisCandidate {
 }
 
 #[derive(Debug, Clone)]
+struct BestOrderedCandidate {
+    split: Split,
+    gain: f64,
+    split_position: usize,
+    left_capacity: usize,
+    right_capacity: usize,
+    left_stats: CandidateStats,
+    right_stats: CandidateStats,
+}
+
+#[derive(Debug, Clone)]
+struct BestOrderedSplitCandidate {
+    candidate: BestOrderedCandidate,
+    pairs: Vec<(f64, usize)>,
+}
+
+#[derive(Debug, Clone)]
 struct PeriodicValueGroup {
     value: f64,
     count: usize,
@@ -115,7 +132,7 @@ impl FitContext {
     fn new(x: &Dataset, splitters: &[SplitterKind]) -> Self {
         let needs_exact_axis_order = splitters
             .iter()
-            .any(|splitter| matches!(splitter, SplitterKind::Axis));
+            .any(|splitter| matches!(splitter, SplitterKind::Auto | SplitterKind::Axis));
         let histogram_bins = splitters.iter().find_map(|splitter| match splitter {
             SplitterKind::AxisHistogram { bins } => Some((*bins).clamp(2, 1024)),
             _ => None,
@@ -197,6 +214,7 @@ impl FitContext {
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub enum SplitterKind {
     #[default]
+    Auto,
     Axis,
     AxisHistogram {
         bins: usize,
@@ -547,8 +565,16 @@ impl TreeBuilder {
         }
         for splitter in splitters {
             match splitter {
-                SplitterKind::Axis => self
-                    .axis_candidates(x, target, weights, indices, parent_sse, context, &mut best),
+                SplitterKind::Axis => profile::timed(profile::AXIS, || {
+                    self.axis_candidates(
+                        x, target, weights, indices, parent_sse, context, &mut best,
+                    )
+                }),
+                SplitterKind::Auto => profile::timed(profile::AXIS, || {
+                    self.axis_candidates(
+                        x, target, weights, indices, parent_sse, context, &mut best,
+                    )
+                }),
                 SplitterKind::AxisHistogram { bins } => {
                     if self.uses_l2_split_score() && self.monotonic_constraints.is_empty() {
                         self.axis_histogram_candidates(
@@ -570,18 +596,23 @@ impl TreeBuilder {
                         )
                     }
                 }
-                SplitterKind::Diagonal2D => {
+                SplitterKind::Diagonal2D => profile::timed(profile::DIAGONAL, || {
                     self.diagonal_candidates(x, target, weights, indices, parent_sse, &mut best)
-                }
-                SplitterKind::Gaussian2D => {
+                }),
+                SplitterKind::Gaussian2D => profile::timed(profile::GAUSSIAN, || {
                     self.gaussian_candidates(x, target, weights, indices, parent_sse, &mut best)
-                }
-                SplitterKind::Periodic { period } => self.periodic_candidates(
-                    x, target, weights, indices, parent_sse, *period, &mut best,
-                ),
-                SplitterKind::SparseSet => {
+                }),
+                SplitterKind::Periodic { period } => profile::timed(profile::PERIODIC, || {
+                    self.periodic_candidates(
+                        x, target, weights, indices, parent_sse, *period, &mut best,
+                    )
+                }),
+                SplitterKind::SparseSet => profile::timed(profile::SPARSE_SET, || {
                     self.sparse_set_candidates(x, target, weights, indices, parent_sse, &mut best)
-                }
+                }),
+            }
+            if split_objective_is_saturated(parent_sse, best.as_ref()) {
+                break;
             }
         }
 
@@ -1379,12 +1410,27 @@ impl TreeBuilder {
         if x.n_cols() < 2 {
             return;
         }
+        if self.uses_l2_split_score()
+            && (!self.fuzzy || self.fuzzy_bandwidth <= 0.0)
+            && self.monotonic_constraints.is_empty()
+        {
+            self.diagonal_candidates_ordered(x, target, weights, indices, parent_sse, best);
+            return;
+        }
+        let spatial_features = spatial_feature_indices(x);
+        if spatial_features.len() < 2 {
+            return;
+        }
         let normals = [(1.0, 1.0), (1.0, -1.0), (-1.0, 1.0)];
-        let mut candidates = (0..x.n_cols())
-            .into_par_iter()
+        let mut candidates = spatial_features
+            .par_iter()
+            .copied()
             .flat_map_iter(|x_feature| {
                 let mut work = Vec::new();
-                for y_feature in (x_feature + 1)..x.n_cols() {
+                for &y_feature in spatial_features
+                    .iter()
+                    .filter(|&&feature| feature > x_feature)
+                {
                     for (normal_idx, (normal_x, normal_y)) in normals.iter().copied().enumerate() {
                         work.push((x_feature, y_feature, normal_idx, normal_x, normal_y));
                     }
@@ -1404,6 +1450,108 @@ impl TreeBuilder {
         for (_, _, _, candidate) in candidates {
             merge_best_split(best, Some(candidate));
         }
+    }
+
+    fn diagonal_candidates_ordered(
+        &self,
+        x: &Dataset,
+        target: &[f64],
+        weights: &[f64],
+        indices: &[usize],
+        parent_sse: f64,
+        best: &mut Option<BestSplit>,
+    ) {
+        let spatial_features = spatial_feature_indices(x);
+        if spatial_features.len() < 2 {
+            return;
+        }
+        let normals = [(1.0, 1.0), (1.0, -1.0), (-1.0, 1.0)];
+        let mut candidates = spatial_features
+            .par_iter()
+            .copied()
+            .flat_map_iter(|x_feature| {
+                let mut work = Vec::new();
+                for &y_feature in spatial_features
+                    .iter()
+                    .filter(|&&feature| feature > x_feature)
+                {
+                    for (normal_idx, (normal_x, normal_y)) in normals.iter().copied().enumerate() {
+                        work.push((x_feature, y_feature, normal_idx, normal_x, normal_y));
+                    }
+                }
+                work
+            })
+            .filter_map(|(x_feature, y_feature, normal_idx, normal_x, normal_y)| {
+                self.best_diagonal_ordered_candidate_for_projection(
+                    x, target, weights, indices, parent_sse, x_feature, y_feature, normal_idx,
+                    normal_x, normal_y,
+                )
+            })
+            .collect::<Vec<_>>();
+        candidates.sort_by_key(|(x_feature, y_feature, normal_idx, _)| {
+            (*x_feature, *y_feature, *normal_idx)
+        });
+        let mut ordered_best: Option<BestOrderedSplitCandidate> = None;
+        for (_, _, _, candidate) in candidates {
+            merge_best_ordered_split(&mut ordered_best, Some(candidate));
+        }
+        if let Some(candidate) = ordered_best {
+            merge_best_split(
+                best,
+                Some(materialize_ordered_candidate(
+                    &candidate.pairs,
+                    candidate.candidate,
+                )),
+            );
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn best_diagonal_ordered_candidate_for_projection(
+        &self,
+        x: &Dataset,
+        target: &[f64],
+        weights: &[f64],
+        indices: &[usize],
+        parent_sse: f64,
+        x_feature: usize,
+        y_feature: usize,
+        normal_idx: usize,
+        normal_x: f64,
+        normal_y: f64,
+    ) -> Option<(usize, usize, usize, BestOrderedSplitCandidate)> {
+        if !dense_feature_allows_spatial(x, x_feature)
+            || !dense_feature_allows_spatial(x, y_feature)
+        {
+            return None;
+        }
+        let mut pairs = indices
+            .iter()
+            .map(|&idx| {
+                (
+                    normal_x * x.get(idx, x_feature) + normal_y * x.get(idx, y_feature),
+                    idx,
+                )
+            })
+            .collect::<Vec<_>>();
+        pairs.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
+        let candidate =
+            self.best_ordered_candidate(&pairs, target, weights, parent_sse, |threshold| {
+                Split::Diagonal2D {
+                    x_feature,
+                    y_feature,
+                    normal_x,
+                    normal_y,
+                    threshold,
+                    missing_goes_left: true,
+                }
+            })?;
+        Some((
+            x_feature,
+            y_feature,
+            normal_idx,
+            BestOrderedSplitCandidate { candidate, pairs },
+        ))
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1469,10 +1617,25 @@ impl TreeBuilder {
         if x.n_cols() < 2 || indices.is_empty() {
             return;
         }
-        let mut candidates = (0..x.n_cols())
-            .into_par_iter()
+        if self.uses_l2_split_score()
+            && (!self.fuzzy || self.fuzzy_bandwidth <= 0.0)
+            && self.monotonic_constraints.is_empty()
+        {
+            self.gaussian_candidates_ordered(x, target, weights, indices, parent_sse, best);
+            return;
+        }
+        let spatial_features = spatial_feature_indices(x);
+        if spatial_features.len() < 2 {
+            return;
+        }
+        let mut candidates = spatial_features
+            .par_iter()
+            .copied()
             .flat_map_iter(|x_feature| {
-                ((x_feature + 1)..x.n_cols())
+                spatial_features
+                    .iter()
+                    .copied()
+                    .filter(move |&y_feature| y_feature > x_feature)
                     .map(move |y_feature| (x_feature, y_feature))
                     .collect::<Vec<_>>()
             })
@@ -1486,6 +1649,104 @@ impl TreeBuilder {
         for (_, _, candidate) in candidates {
             merge_best_split(best, Some(candidate));
         }
+    }
+
+    fn gaussian_candidates_ordered(
+        &self,
+        x: &Dataset,
+        target: &[f64],
+        weights: &[f64],
+        indices: &[usize],
+        parent_sse: f64,
+        best: &mut Option<BestSplit>,
+    ) {
+        let spatial_features = spatial_feature_indices(x);
+        if spatial_features.len() < 2 {
+            return;
+        }
+        let mut candidates = spatial_features
+            .par_iter()
+            .copied()
+            .flat_map_iter(|x_feature| {
+                spatial_features
+                    .iter()
+                    .copied()
+                    .filter(move |&y_feature| y_feature > x_feature)
+                    .map(move |y_feature| (x_feature, y_feature))
+                    .collect::<Vec<_>>()
+            })
+            .filter_map(|(x_feature, y_feature)| {
+                self.best_gaussian_ordered_candidate_for_pair(
+                    x, target, weights, indices, parent_sse, x_feature, y_feature,
+                )
+            })
+            .collect::<Vec<_>>();
+        candidates.sort_by_key(|(x_feature, y_feature, _)| (*x_feature, *y_feature));
+        let mut ordered_best: Option<BestOrderedSplitCandidate> = None;
+        for (_, _, candidate) in candidates {
+            merge_best_ordered_split(&mut ordered_best, Some(candidate));
+        }
+        if let Some(candidate) = ordered_best {
+            merge_best_split(
+                best,
+                Some(materialize_ordered_candidate(
+                    &candidate.pairs,
+                    candidate.candidate,
+                )),
+            );
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn best_gaussian_ordered_candidate_for_pair(
+        &self,
+        x: &Dataset,
+        target: &[f64],
+        weights: &[f64],
+        indices: &[usize],
+        parent_sse: f64,
+        x_feature: usize,
+        y_feature: usize,
+    ) -> Option<(usize, usize, BestOrderedSplitCandidate)> {
+        if !dense_feature_allows_spatial(x, x_feature)
+            || !dense_feature_allows_spatial(x, y_feature)
+        {
+            return None;
+        }
+        let mut best = None;
+        for (center_x, center_y) in
+            self.gaussian_centers(x, target, weights, indices, x_feature, y_feature)
+        {
+            let mut distances = indices
+                .iter()
+                .map(|&idx| {
+                    (
+                        (x.get(idx, x_feature) - center_x).powi(2)
+                            + (x.get(idx, y_feature) - center_y).powi(2),
+                        idx,
+                    )
+                })
+                .filter(|(distance, _)| distance.is_finite())
+                .collect::<Vec<_>>();
+            distances.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
+            let candidate = self
+                .best_ordered_candidate(&distances, target, weights, parent_sse, |radius_sq| {
+                    Split::Gaussian2D {
+                        x_feature,
+                        y_feature,
+                        center_x,
+                        center_y,
+                        radius: radius_sq.max(0.0).sqrt(),
+                        missing_goes_left: true,
+                    }
+                })
+                .map(|candidate| BestOrderedSplitCandidate {
+                    candidate,
+                    pairs: distances,
+                });
+            merge_best_ordered_split(&mut best, candidate);
+        }
+        best.map(|best| (x_feature, y_feature, best))
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1541,6 +1802,68 @@ impl TreeBuilder {
             }
         }
         best.map(|best| (x_feature, y_feature, best))
+    }
+
+    fn best_ordered_candidate(
+        &self,
+        pairs: &[(f64, usize)],
+        target: &[f64],
+        weights: &[f64],
+        parent_sse: f64,
+        make_split: impl Fn(f64) -> Split,
+    ) -> Option<BestOrderedCandidate> {
+        if pairs.len() < self.min_samples_leaf * 2 {
+            return None;
+        }
+        let total = candidate_stats(pairs.iter().map(|(_, idx)| *idx), target, weights);
+        let parent_loss = if parent_sse == 0.0 {
+            total.sse()
+        } else {
+            parent_sse
+        };
+        let mut left_stats = CandidateStats::default();
+        let mut left_count = 0usize;
+        let mut previous: Option<(f64, usize)> = None;
+        let mut best = None;
+
+        for &(current_value, current_idx) in pairs {
+            let Some((previous_value, previous_idx)) = previous else {
+                previous = Some((current_value, current_idx));
+                continue;
+            };
+            left_stats.add_row(previous_idx, target, weights);
+            left_count += 1;
+
+            if previous_value == current_value {
+                previous = Some((current_value, current_idx));
+                continue;
+            }
+
+            let right_count = pairs.len() - left_count;
+            if left_count < self.min_samples_leaf || right_count < self.min_samples_leaf {
+                previous = Some((current_value, current_idx));
+                continue;
+            }
+            let right_stats = total.minus(&left_stats);
+            let split = make_split((previous_value + current_value) / 2.0);
+            let gain = parent_loss - left_stats.sse() - right_stats.sse();
+            if best.as_ref().is_none_or(|old: &BestOrderedCandidate| {
+                is_better_split_candidate(gain, &split, old.gain, &old.split)
+            }) {
+                best = Some(BestOrderedCandidate {
+                    split,
+                    gain,
+                    split_position: left_count - 1,
+                    left_capacity: left_count,
+                    right_capacity: right_count,
+                    left_stats,
+                    right_stats,
+                });
+            }
+            previous = Some((current_value, current_idx));
+        }
+
+        best
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1804,17 +2127,21 @@ impl TreeBuilder {
             ));
         }
 
-        let total_count = groups.iter().map(|group| group.count).sum::<usize>();
-        let total_weight = groups.iter().map(|group| group.weight_sum).sum::<f64>();
-        let total_weighted_target = groups
+        let total = groups
             .iter()
-            .map(|group| group.weighted_target_sum)
-            .sum::<f64>();
-        let total_weighted_target_sq = groups
-            .iter()
-            .map(|group| group.weighted_target_square_sum)
-            .sum::<f64>();
-        let mut best = None;
+            .fold(CandidateStats::default(), |mut total, group| {
+                total.count += group.count;
+                total.weight_sum += group.weight_sum;
+                total.weighted_target_sum += group.weighted_target_sum;
+                total.weighted_target_square_sum += group.weighted_target_square_sum;
+                total
+            });
+        let parent_loss = if parent_sse == 0.0 {
+            total.sse()
+        } else {
+            parent_sse
+        };
+        let mut best: Option<(Split, f64, CandidateStats, CandidateStats)> = None;
 
         for &start in &boundaries {
             for &end in &boundaries {
@@ -1822,38 +2149,24 @@ impl TreeBuilder {
                     continue;
                 }
 
-                let mut left_count = 0usize;
-                let mut left_weight = 0.0;
-                let mut left_weighted_target = 0.0;
-                let mut left_weighted_target_sq = 0.0;
+                let mut left_stats = CandidateStats::default();
                 for group in &groups {
                     if super::periodic_contains(group.value, feature_period, start, end) {
-                        left_count += group.count;
-                        left_weight += group.weight_sum;
-                        left_weighted_target += group.weighted_target_sum;
-                        left_weighted_target_sq += group.weighted_target_square_sum;
+                        left_stats.count += group.count;
+                        left_stats.weight_sum += group.weight_sum;
+                        left_stats.weighted_target_sum += group.weighted_target_sum;
+                        left_stats.weighted_target_square_sum += group.weighted_target_square_sum;
                     }
                 }
 
-                let right_count = total_count - left_count;
-                if left_count < self.min_samples_leaf || right_count < self.min_samples_leaf {
+                let right_stats = total.minus(&left_stats);
+                if left_stats.count < self.min_samples_leaf
+                    || right_stats.count < self.min_samples_leaf
+                {
                     continue;
                 }
 
-                let right_weight = total_weight - left_weight;
-                let right_weighted_target = total_weighted_target - left_weighted_target;
-                let right_weighted_target_sq = total_weighted_target_sq - left_weighted_target_sq;
-                let gain = parent_sse
-                    - weighted_sse_from_sums(
-                        left_weight,
-                        left_weighted_target,
-                        left_weighted_target_sq,
-                    )
-                    - weighted_sse_from_sums(
-                        right_weight,
-                        right_weighted_target,
-                        right_weighted_target_sq,
-                    );
+                let gain = parent_loss - left_stats.sse() - right_stats.sse();
                 let split = Split::PeriodicInterval {
                     feature,
                     period: feature_period,
@@ -1861,41 +2174,45 @@ impl TreeBuilder {
                     end,
                     missing_goes_left: true,
                 };
-                if best
-                    .as_ref()
-                    .is_some_and(|old| !is_better_split(gain, &split, old))
-                {
+                if best.as_ref().is_some_and(|(old_split, old_gain, _, _)| {
+                    !is_better_split_candidate(gain, &split, *old_gain, old_split)
+                }) {
                     continue;
                 }
 
-                let mut left = Vec::with_capacity(left_count);
-                let mut right = Vec::with_capacity(right_count);
-                for &idx in indices {
-                    if super::periodic_contains(x.get(idx, feature), feature_period, start, end) {
-                        left.push(idx);
-                    } else {
-                        right.push(idx);
-                    }
-                }
-
-                best = Some(BestSplit {
-                    split,
-                    gain,
-                    left,
-                    right,
-                    left_direct_node: None,
-                    right_direct_node: None,
-                    left_weights: None,
-                    right_weights: None,
-                    left_node_stats: None,
-                    right_node_stats: None,
-                    left_histogram_stats: None,
-                    right_histogram_stats: None,
-                });
+                best = Some((split, gain, left_stats, right_stats));
             }
         }
 
-        best.map(|best| (feature, best))
+        let (split, gain, left_stats, right_stats) = best?;
+        let mut left = Vec::with_capacity(left_stats.count);
+        let mut right = Vec::with_capacity(right_stats.count);
+        if let Split::PeriodicInterval { start, end, .. } = split {
+            for &idx in indices {
+                if super::periodic_contains(x.get(idx, feature), feature_period, start, end) {
+                    left.push(idx);
+                } else {
+                    right.push(idx);
+                }
+            }
+        }
+        Some((
+            feature,
+            BestSplit {
+                split,
+                gain,
+                left,
+                right,
+                left_direct_node: None,
+                right_direct_node: None,
+                left_weights: None,
+                right_weights: None,
+                left_node_stats: Some(left_stats),
+                right_node_stats: Some(right_stats),
+                left_histogram_stats: None,
+                right_histogram_stats: None,
+            },
+        ))
     }
 
     fn sparse_set_candidates(
@@ -2107,18 +2424,26 @@ impl TreeBuilder {
                 }
             }
         }
-        let mut best = None;
+        let mut best: Option<(u64, BestSplit)> = None;
         for (id, stats) in by_id {
             let split = Split::SparseListContainsAny {
                 sparse_feature,
                 ids: vec![id],
                 missing_goes_left: false,
             };
-            let mut candidate = self.grouped_binary_split_candidate(split, stats, total);
-            materialize_sparse_list_split(sparse_feature, id, x, indices, &mut candidate);
-            merge_best_split(&mut best, candidate);
+            if let Some(candidate) = self.grouped_binary_split_candidate(split, stats, total) {
+                if best
+                    .as_ref()
+                    .is_none_or(|(_, old)| is_better_split(candidate.gain, &candidate.split, old))
+                {
+                    best = Some((id, candidate));
+                }
+            }
         }
-        best.map(|best| (sparse_feature, best))
+        let (id, candidate) = best?;
+        let mut candidate = Some(candidate);
+        materialize_sparse_list_split(sparse_feature, id, x, indices, &mut candidate);
+        candidate.map(|candidate| (sparse_feature, candidate))
     }
 
     fn best_dense_sparse_grouped_candidate_for_feature(
@@ -2141,18 +2466,26 @@ impl TreeBuilder {
                 by_id.entry(id).or_default().add_row(idx, target, weights);
             }
         }
-        let mut best = None;
+        let mut best: Option<(u64, BestSplit)> = None;
         for (id, stats) in by_id {
             let split = Split::SparseSetContainsAny {
                 feature,
                 ids: vec![id],
                 missing_goes_left: false,
             };
-            let mut candidate = self.grouped_binary_split_candidate(split, stats, total);
-            materialize_dense_sparse_split(feature, id, x, indices, &mut candidate);
-            merge_best_split(&mut best, candidate);
+            if let Some(candidate) = self.grouped_binary_split_candidate(split, stats, total) {
+                if best
+                    .as_ref()
+                    .is_none_or(|(_, old)| is_better_split(candidate.gain, &candidate.split, old))
+                {
+                    best = Some((id, candidate));
+                }
+            }
         }
-        best.map(|best| (feature, best))
+        let (id, candidate) = best?;
+        let mut candidate = Some(candidate);
+        materialize_dense_sparse_split(feature, id, x, indices, &mut candidate);
+        candidate.map(|candidate| (feature, candidate))
     }
 
     fn uses_l2_split_score(&self) -> bool {
@@ -2537,6 +2870,20 @@ fn dense_feature_allows_spatial(x: &Dataset, feature: usize) -> bool {
     )
 }
 
+fn spatial_feature_indices(x: &Dataset) -> Vec<usize> {
+    if x.feature_schema().is_some() {
+        return (0..x.n_cols())
+            .filter(|&feature| dense_feature_allows_spatial(x, feature))
+            .collect();
+    }
+
+    if x.n_cols() >= 2 {
+        vec![0, 1]
+    } else {
+        Vec::new()
+    }
+}
+
 fn dense_feature_allows_sparse_set(x: &Dataset, feature: usize) -> bool {
     match x.feature_schema() {
         Some(_) => matches!(dense_feature_kind(x, feature), Some(FeatureKind::SparseSet)),
@@ -2851,6 +3198,39 @@ fn materialize_axis_candidate(
     profile::add(profile::MATERIALIZE, started.elapsed());
 }
 
+fn materialize_ordered_candidate(
+    pairs: &[(f64, usize)],
+    candidate: BestOrderedCandidate,
+) -> BestSplit {
+    let started = Instant::now();
+    let mut left = Vec::with_capacity(candidate.left_capacity);
+    let mut right = Vec::with_capacity(candidate.right_capacity);
+    for (position, &(_, idx)) in pairs.iter().enumerate() {
+        if position <= candidate.split_position {
+            left.push(idx);
+        } else {
+            right.push(idx);
+        }
+    }
+    debug_assert_eq!(left.len(), candidate.left_capacity);
+    debug_assert_eq!(right.len(), candidate.right_capacity);
+    profile::add(profile::MATERIALIZE, started.elapsed());
+    BestSplit {
+        split: candidate.split,
+        gain: candidate.gain,
+        left,
+        right,
+        left_direct_node: None,
+        right_direct_node: None,
+        left_weights: None,
+        right_weights: None,
+        left_node_stats: Some(candidate.left_stats),
+        right_node_stats: Some(candidate.right_stats),
+        left_histogram_stats: None,
+        right_histogram_stats: None,
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn materialize_histogram_candidate(
     candidate: &mut Option<BestHistogramCandidate>,
@@ -3071,6 +3451,29 @@ fn merge_best_split(best: &mut Option<BestSplit>, candidate: Option<BestSplit>) 
         .as_ref()
         .is_none_or(|old| is_better_split(candidate.gain, &candidate.split, old))
     {
+        *best = Some(candidate);
+    }
+}
+
+fn split_objective_is_saturated(parent_sse: f64, best: Option<&BestSplit>) -> bool {
+    best.is_some_and(|candidate| candidate.gain >= parent_sse.max(0.0) - 1e-12)
+}
+
+fn merge_best_ordered_split(
+    best: &mut Option<BestOrderedSplitCandidate>,
+    candidate: Option<BestOrderedSplitCandidate>,
+) {
+    let Some(candidate) = candidate else {
+        return;
+    };
+    if best.as_ref().is_none_or(|old| {
+        is_better_split_candidate(
+            candidate.candidate.gain,
+            &candidate.candidate.split,
+            old.candidate.gain,
+            &old.candidate.split,
+        )
+    }) {
         *best = Some(candidate);
     }
 }

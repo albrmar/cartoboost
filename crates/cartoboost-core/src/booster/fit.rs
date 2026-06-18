@@ -42,7 +42,7 @@ impl Default for BoosterConfig {
             max_depth: 4,
             min_samples_leaf: 20,
             min_gain: 1e-8,
-            splitters: vec![SplitterKind::Axis],
+            splitters: vec![SplitterKind::Auto],
             leaf_predictor: LeafPredictorKind::Constant,
             linear_leaf_features: Vec::new(),
             linear_lambda_l2: 1.0,
@@ -91,6 +91,7 @@ impl Booster {
         }
         let weights = validate_weights(sample_weight, y.len())?;
         validate_training_config(&self.config, x.n_cols())?;
+        let resolved_splitters = resolve_splitters(&self.config, x);
         let transformed_y;
         let training_targets = match self.config.loss {
             LossConfig::LogL2(config) => {
@@ -124,7 +125,7 @@ impl Booster {
             max_depth: self.config.max_depth,
             min_samples_leaf: self.config.min_samples_leaf,
             min_gain: self.config.min_gain,
-            splitters: self.config.splitters.clone(),
+            splitters: resolved_splitters.clone(),
             leaf_predictor: self.config.leaf_predictor.clone(),
             linear_leaf_features: self.config.linear_leaf_features.clone(),
             linear_lambda_l2: self.config.linear_lambda_l2,
@@ -202,7 +203,7 @@ impl Booster {
                 max_depth: self.config.max_depth,
                 min_samples_leaf: self.config.min_samples_leaf,
                 min_gain: self.config.min_gain,
-                splitters: self.config.splitters.clone(),
+                splitters: resolved_splitters,
                 leaf_predictor: self.config.leaf_predictor.clone(),
                 linear_leaf_features: self.config.linear_leaf_features.clone(),
                 linear_lambda_l2: self.config.linear_lambda_l2,
@@ -297,7 +298,7 @@ fn validate_training_config(config: &BoosterConfig, feature_count: usize) -> Res
         if config.splitters.iter().any(|splitter| {
             !matches!(
                 splitter,
-                SplitterKind::Axis | SplitterKind::AxisHistogram { .. }
+                SplitterKind::Auto | SplitterKind::Axis | SplitterKind::AxisHistogram { .. }
             )
         }) {
             return Err(CartoBoostError::InvalidInput(
@@ -306,6 +307,33 @@ fn validate_training_config(config: &BoosterConfig, feature_count: usize) -> Res
         }
     }
     Ok(())
+}
+
+fn resolve_splitters(config: &BoosterConfig, x: &Dataset) -> Vec<SplitterKind> {
+    let fallback = if should_use_histogram_auto(config, x) {
+        SplitterKind::AxisHistogram { bins: 512 }
+    } else {
+        SplitterKind::Axis
+    };
+    let mut resolved = Vec::with_capacity(config.splitters.len().max(1));
+    for splitter in &config.splitters {
+        match splitter {
+            SplitterKind::Auto => resolved.push(fallback.clone()),
+            other => resolved.push(other.clone()),
+        }
+    }
+    if resolved.is_empty() {
+        resolved.push(fallback);
+    }
+    resolved
+}
+
+fn should_use_histogram_auto(config: &BoosterConfig, x: &Dataset) -> bool {
+    x.n_rows() >= 2_048
+        && !config.fuzzy
+        && config.monotonic_constraints.is_empty()
+        && matches!(config.loss, LossConfig::L2 | LossConfig::LogL2(_))
+        && matches!(config.leaf_predictor, LeafPredictorKind::Constant)
 }
 
 #[cfg(test)]
@@ -342,6 +370,99 @@ mod tests {
                 "expected {expected}, got {actual}"
             );
         }
+    }
+
+    #[test]
+    fn auto_splitter_resolves_to_exact_axis_for_small_training_sets() {
+        let x = Dataset::from_rows(vec![vec![0.0], vec![1.0], vec![2.0], vec![3.0]]).unwrap();
+        let y = vec![0.0, 0.0, 1.0, 1.0];
+        let booster = Booster::new(BoosterConfig {
+            n_estimators: 1,
+            learning_rate: 1.0,
+            max_depth: 1,
+            min_samples_leaf: 1,
+            min_gain: 0.0,
+            ..BoosterConfig::default()
+        });
+
+        let model = booster.fit(&x, &y, None).unwrap();
+
+        assert_eq!(
+            model.training_config.as_ref().unwrap().splitters,
+            vec![SplitterKind::Axis]
+        );
+        assert!(matches!(
+            model.trees[0].root,
+            crate::tree::Node::Branch {
+                split: Split::Axis { .. },
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn auto_splitter_resolves_to_histogram_for_large_dense_l2_training_sets() {
+        let rows = 2_048;
+        let cols = 2;
+        let values = (0..rows * cols)
+            .map(|index| {
+                let row = index / cols;
+                let col = index % cols;
+                (row as f64 * 0.03 + col as f64).sin()
+            })
+            .collect::<Vec<_>>();
+        let y = (0..rows)
+            .map(|row| if row % 11 < 5 { 1.0 } else { -1.0 })
+            .collect::<Vec<_>>();
+        let x = Dataset::from_flat(rows, cols, values).unwrap();
+        let booster = Booster::new(BoosterConfig {
+            n_estimators: 1,
+            learning_rate: 1.0,
+            max_depth: 1,
+            min_samples_leaf: 2,
+            min_gain: 0.0,
+            ..BoosterConfig::default()
+        });
+
+        let model = booster.fit(&x, &y, None).unwrap();
+
+        assert_eq!(
+            model.training_config.as_ref().unwrap().splitters,
+            vec![SplitterKind::AxisHistogram { bins: 512 }]
+        );
+    }
+
+    #[test]
+    fn explicit_axis_splitter_preserves_exact_axis_metadata_on_large_training_sets() {
+        let rows = 2_048;
+        let x = Dataset::from_flat(rows, 1, (0..rows).map(|row| row as f64).collect::<Vec<_>>())
+            .unwrap();
+        let y = (0..rows)
+            .map(|row| if row < rows / 2 { 0.0 } else { 1.0 })
+            .collect::<Vec<_>>();
+        let booster = Booster::new(BoosterConfig {
+            n_estimators: 1,
+            learning_rate: 1.0,
+            max_depth: 1,
+            min_samples_leaf: 2,
+            min_gain: 0.0,
+            splitters: vec![SplitterKind::Axis],
+            ..BoosterConfig::default()
+        });
+
+        let model = booster.fit(&x, &y, None).unwrap();
+
+        assert_eq!(
+            model.training_config.as_ref().unwrap().splitters,
+            vec![SplitterKind::Axis]
+        );
+        assert!(matches!(
+            model.trees[0].root,
+            crate::tree::Node::Branch {
+                split: Split::Axis { .. },
+                ..
+            }
+        ));
     }
 
     #[test]

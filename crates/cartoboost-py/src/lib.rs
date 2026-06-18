@@ -83,7 +83,7 @@ impl NativeCartoBoostRegressor {
             log_offset,
         )?;
         parse_loss(loss, quantile_alpha, huber_delta, log_offset)?;
-        let splitters = splitters.unwrap_or_else(|| vec!["axis".to_string()]);
+        let splitters = splitters.unwrap_or_else(|| vec!["auto".to_string()]);
         parse_splitters(&splitters)?;
         parse_leaf_predictor(leaf_predictor)?;
         parse_fuzzy_kernel(fuzzy_kernel)?;
@@ -591,6 +591,7 @@ fn parse_splitters(names: &[String]) -> PyResult<Vec<SplitterKind>> {
     let mut splitters = Vec::with_capacity(names.len());
     for name in names {
         let splitter = match name.as_str() {
+            "auto" => SplitterKind::Auto,
             "axis" => SplitterKind::Axis,
             "axis_histogram" | "axis_hist" | "histogram" => {
                 SplitterKind::AxisHistogram { bins: 64 }
@@ -615,7 +616,7 @@ fn parse_splitters(names: &[String]) -> PyResult<Vec<SplitterKind>> {
                     SplitterKind::Periodic { period }
                 } else {
                     return Err(PyValueError::new_err(format!(
-                        "unknown splitter {name:?}; expected one of 'axis', 'axis_histogram', \
+                        "unknown splitter {name:?}; expected one of 'auto', 'axis', 'axis_histogram', \
                          'diagonal_2d', 'gaussian_2d', 'periodic_time', or 'sparse_set'"
                     )));
                 }
@@ -624,7 +625,7 @@ fn parse_splitters(names: &[String]) -> PyResult<Vec<SplitterKind>> {
         splitters.push(splitter);
     }
     if splitters.is_empty() {
-        Ok(vec![SplitterKind::Axis])
+        Ok(vec![SplitterKind::Auto])
     } else {
         Ok(splitters)
     }
@@ -1606,6 +1607,7 @@ fn splitter_names(splitters: &[SplitterKind]) -> Vec<String> {
     splitters
         .iter()
         .map(|splitter| match splitter {
+            SplitterKind::Auto => "auto".to_string(),
             SplitterKind::Axis => "axis".to_string(),
             SplitterKind::AxisHistogram { bins } => format!("axis_histogram:{bins}"),
             SplitterKind::Diagonal2D => "diagonal_2d".to_string(),

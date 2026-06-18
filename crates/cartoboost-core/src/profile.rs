@@ -14,8 +14,13 @@ pub const PARENT_SSE: usize = 9;
 pub const HIST_PREPARE: usize = 10;
 pub const MATERIALIZE_PARTITION: usize = 11;
 pub const MATERIALIZE_CHILD_HIST: usize = 12;
+pub const AXIS: usize = 13;
+pub const DIAGONAL: usize = 14;
+pub const GAUSSIAN: usize = 15;
+pub const PERIODIC: usize = 16;
+pub const SPARSE_SET: usize = 17;
 
-const NAMES: [&str; 13] = [
+const NAMES: [&str; 18] = [
     "context",
     "residual",
     "tree_fit",
@@ -29,9 +34,19 @@ const NAMES: [&str; 13] = [
     "hist_prepare",
     "materialize_partition",
     "materialize_child_hist",
+    "axis",
+    "diagonal",
+    "gaussian",
+    "periodic",
+    "sparse_set",
 ];
 
-static COUNTERS: [AtomicU64; 13] = [
+static COUNTERS: [AtomicU64; 18] = [
+    AtomicU64::new(0),
+    AtomicU64::new(0),
+    AtomicU64::new(0),
+    AtomicU64::new(0),
+    AtomicU64::new(0),
     AtomicU64::new(0),
     AtomicU64::new(0),
     AtomicU64::new(0),
