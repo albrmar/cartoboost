@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-"""Benchmark CartoBoost against functime, a Polars-native forecasting library.
+"""Benchmark CartoBoost against explicit forecasting libraries.
 
 The fixture is synthetic but domain-shaped: daily pickup/dropoff lane demand with
 zone IDs, route distance, airport-lane structure, borough codes, weekly effects,
-and deterministic event spikes. The same table can be sourced through Polars or
-DuckDB. The known-library baselines are functime seasonal naive, functime ridge,
-and functime LightGBM autoregressive forecasters.
+and deterministic event spikes. The library baselines are functime and
+StatsForecast models.
 """
 
 from __future__ import annotations
@@ -47,13 +46,24 @@ STATIC_COVARIATES = [
     "pickup_borough_code",
 ]
 FUNCTIME_MODELS = ["functime_snaive", "functime_ridge", "functime_lightgbm"]
+STATSFORECAST_MODELS = ["statsforecast_seasonal_naive", "statsforecast_autoets"]
+FORECASTING_LIBRARY_MODELS = {
+    "functime": FUNCTIME_MODELS,
+    "statsforecast": STATSFORECAST_MODELS,
+}
+MODEL_LIBRARIES = {
+    "cartoboost_lag": "cartoboost",
+    **{model: "functime" for model in FUNCTIME_MODELS},
+    **{model: "statsforecast" for model in STATSFORECAST_MODELS},
+}
+FORECASTING_LIBRARY_BASELINES = [*FUNCTIME_MODELS, *STATSFORECAST_MODELS]
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Compare CartoBoost global lag forecasts against functime."
+        description="Compare CartoBoost global lag forecasts against functime and StatsForecast."
     )
-    parser.add_argument("--backend", choices=["polars", "duckdb"], default="polars")
+    parser.add_argument("--source", choices=["polars", "duckdb"], default="polars")
     parser.add_argument("--output", default="artifacts/forecasting_library_benchmark_polars.json")
     parser.add_argument("--lanes", type=int, default=36)
     parser.add_argument("--days", type=int, default=90)
@@ -63,7 +73,8 @@ def main() -> int:
 
     benchmark_start = perf_counter()
     load_start = perf_counter()
-    table = load_fixture(args.backend, lanes=args.lanes, days=args.days, seed=args.seed)
+    source = args.source
+    table = load_fixture(source, lanes=args.lanes, days=args.days, seed=args.seed)
     load_seconds = perf_counter() - load_start
     metrics, quality, timing = score_models(table, horizon=args.horizon)
     total_seconds = perf_counter() - benchmark_start
@@ -75,9 +86,11 @@ def main() -> int:
     payload = {
         "created_at": datetime.now(timezone.utc).isoformat(),
         "cartoboost_version": __version__,
-        "benchmark": "geotemporal_lane_demand_functime",
-        "backend": args.backend,
-        "known_forecasting_library": "functime",
+        "benchmark": "geotemporal_lane_demand_forecasting_libraries",
+        "fixture_source": source,
+        "comparison_libraries": list(FORECASTING_LIBRARY_MODELS),
+        "forecasting_library_models": FORECASTING_LIBRARY_MODELS,
+        "model_libraries": MODEL_LIBRARIES,
         "dataset": {
             "series": args.lanes,
             "days": args.days,
@@ -86,7 +99,7 @@ def main() -> int:
             "domain": "daily NYC taxi-style pickup/dropoff lane demand",
             "static_covariates": STATIC_COVARIATES,
         },
-        "models": ["cartoboost_lag", *FUNCTIME_MODELS],
+        "models": ["cartoboost_lag", *FORECASTING_LIBRARY_BASELINES],
         "metrics": metrics,
         "quality": quality,
         "timing": timing,
@@ -98,11 +111,11 @@ def main() -> int:
     return 0
 
 
-def load_fixture(backend: str, *, lanes: int, days: int, seed: int) -> Any:
+def load_fixture(source: str, *, lanes: int, days: int, seed: int) -> Any:
     table = make_fixture(lanes=lanes, days=days, seed=seed)
-    if backend == "polars":
+    if source == "polars":
         return table
-    if backend == "duckdb":
+    if source == "duckdb":
         duckdb = require_duckdb()
         con = duckdb.connect(":memory:")
         try:
@@ -116,7 +129,7 @@ def load_fixture(backend: str, *, lanes: int, days: int, seed: int) -> Any:
             ).pl()
         finally:
             con.close()
-    raise ValueError(f"unsupported backend {backend!r}")
+    raise ValueError(f"unsupported fixture source {source!r}")
 
 
 def make_fixture(*, lanes: int, days: int, seed: int) -> Any:
@@ -180,8 +193,13 @@ def score_models(
     )
     cartoboost_predictions, cartoboost_timing = cartoboost_forecast(train, horizon)
     functime_predictions, functime_timing = functime_forecasts(train, horizon)
+    statsforecast_predictions, statsforecast_timing = statsforecast_forecasts(train, horizon)
     predictions = cartoboost_predictions.join(
         functime_predictions,
+        on=["series_id", "timestamp", "horizon"],
+        how="inner",
+    ).join(
+        statsforecast_predictions,
         on=["series_id", "timestamp", "horizon"],
         how="inner",
     )
@@ -191,45 +209,57 @@ def score_models(
 
     metrics = {
         model: evaluate_metrics(scored, model, train)
-        for model in ["cartoboost_lag", *FUNCTIME_MODELS]
+        for model in ["cartoboost_lag", *FORECASTING_LIBRARY_BASELINES]
     }
     quality = quality_summary(metrics)
     timing = {
         "models": {
             "cartoboost_lag": cartoboost_timing,
             **functime_timing,
+            **statsforecast_timing,
         }
     }
     return metrics, quality, timing
 
 
 def quality_summary(metrics: dict[str, dict[str, float]]) -> dict[str, Any]:
-    best_known = min(FUNCTIME_MODELS, key=lambda name: metrics[name]["rmse"])
+    best_library_model = min(FORECASTING_LIBRARY_BASELINES, key=lambda name: metrics[name]["rmse"])
+    best_functime = min(FUNCTIME_MODELS, key=lambda name: metrics[name]["rmse"])
+    best_statsforecast = min(STATSFORECAST_MODELS, key=lambda name: metrics[name]["rmse"])
     cartoboost_rmse = metrics["cartoboost_lag"]["rmse"]
-    known_rmse = metrics[best_known]["rmse"]
+    library_rmse = metrics[best_library_model]["rmse"]
     rmse_ranking = sorted(metrics, key=lambda name: metrics[name]["rmse"])
     mae_ranking = sorted(metrics, key=lambda name: metrics[name]["mae"])
     wape_ranking = sorted(metrics, key=lambda name: metrics[name]["wape"])
     return {
-        "winner": "cartoboost_lag" if cartoboost_rmse < known_rmse else best_known,
-        "best_known_method": best_known,
+        "winner": "cartoboost_lag" if cartoboost_rmse < library_rmse else best_library_model,
+        "comparison_libraries": list(FORECASTING_LIBRARY_MODELS),
+        "forecasting_library_models": FORECASTING_LIBRARY_MODELS,
+        "model_libraries": MODEL_LIBRARIES,
+        "best_forecasting_library": MODEL_LIBRARIES[best_library_model],
+        "best_forecasting_library_model": best_library_model,
+        "best_forecasting_library_rmse": library_rmse,
+        "best_forecasting_library_mae": metrics[best_library_model]["mae"],
+        "best_forecasting_library_wape": metrics[best_library_model]["wape"],
+        "best_functime_method": best_functime,
+        "best_functime_rmse": metrics[best_functime]["rmse"],
+        "best_statsforecast_method": best_statsforecast,
+        "best_statsforecast_rmse": metrics[best_statsforecast]["rmse"],
         "rmse_ranking": rmse_ranking,
         "mae_ranking": mae_ranking,
         "wape_ranking": wape_ranking,
         "cartoboost_rmse": cartoboost_rmse,
-        "best_known_rmse": known_rmse,
-        "rmse_delta_vs_best_known": cartoboost_rmse - known_rmse,
-        "rmse_ratio_vs_best_known": cartoboost_rmse / known_rmse,
-        "rmse_reduction_vs_best_known": 1.0 - cartoboost_rmse / known_rmse,
+        "rmse_delta_vs_best_forecasting_library": cartoboost_rmse - library_rmse,
+        "rmse_ratio_vs_best_forecasting_library": cartoboost_rmse / library_rmse,
+        "rmse_reduction_vs_best_forecasting_library": 1.0 - cartoboost_rmse / library_rmse,
         "cartoboost_mae": metrics["cartoboost_lag"]["mae"],
-        "best_known_mae": metrics[best_known]["mae"],
-        "mae_delta_vs_best_known": metrics["cartoboost_lag"]["mae"] - metrics[best_known]["mae"],
-        "mae_reduction_vs_best_known": 1.0
-        - metrics["cartoboost_lag"]["mae"] / metrics[best_known]["mae"],
+        "mae_delta_vs_best_forecasting_library": metrics["cartoboost_lag"]["mae"]
+        - metrics[best_library_model]["mae"],
+        "mae_reduction_vs_best_forecasting_library": 1.0
+        - metrics["cartoboost_lag"]["mae"] / metrics[best_library_model]["mae"],
         "cartoboost_wape": metrics["cartoboost_lag"]["wape"],
-        "best_known_wape": metrics[best_known]["wape"],
-        "wape_reduction_vs_best_known": 1.0
-        - metrics["cartoboost_lag"]["wape"] / metrics[best_known]["wape"],
+        "wape_reduction_vs_best_forecasting_library": 1.0
+        - metrics["cartoboost_lag"]["wape"] / metrics[best_library_model]["wape"],
     }
 
 
@@ -392,6 +422,71 @@ def functime_forecasts(train: Any, horizon: int) -> tuple[Any, dict[str, dict[st
     return combined, timings
 
 
+def statsforecast_forecasts(train: Any, horizon: int) -> tuple[Any, dict[str, dict[str, float]]]:
+    pl = require_polars()
+    pd = require_pandas_for_benchmark()
+    try:
+        from statsforecast import StatsForecast
+        from statsforecast.models import AutoETS, SeasonalNaive
+    except ImportError as exc:
+        raise ImportError(
+            "forecasting library benchmark requires statsforecast for the "
+            "StatsForecast baselines; run `uv sync --group dev --group bench`."
+        ) from exc
+
+    y = (
+        train.select(
+            pl.col("lane_id").alias("unique_id"),
+            pl.col("date").alias("ds"),
+            pl.col("loads").alias("y"),
+        )
+        .sort(["unique_id", "ds"])
+        .to_pandas()
+    )
+    model_specs = {
+        "statsforecast_seasonal_naive": SeasonalNaive(season_length=7),
+        "statsforecast_autoets": AutoETS(season_length=7, model="AAA"),
+    }
+    forecasts = []
+    timings = {}
+    for name, model in model_specs.items():
+        forecast_runner = StatsForecast(models=[model], freq="D", n_jobs=1)
+        fit_start = perf_counter()
+        forecast = forecast_runner.forecast(df=y, h=horizon)
+        fit_predict_seconds = perf_counter() - fit_start
+        value_columns = [column for column in forecast.columns if column not in {"unique_id", "ds"}]
+        if len(value_columns) != 1:
+            raise RuntimeError(
+                f"StatsForecast model {name} returned forecast columns {value_columns!r}"
+            )
+        forecast_frame = (
+            pl.from_pandas(
+                forecast.rename(
+                    columns={
+                        "unique_id": "series_id",
+                        "ds": "timestamp",
+                        value_columns[0]: name,
+                    }
+                )
+            )
+            .sort(["series_id", "timestamp"])
+            .with_columns((pl.int_range(pl.len()).over("series_id") + 1).alias("horizon"))
+            .select("series_id", "timestamp", "horizon", name)
+        )
+        forecasts.append(forecast_frame)
+        timings[name] = {
+            "fit_seconds": fit_predict_seconds,
+            "predict_seconds": 0.0,
+            "fit_predict_seconds": fit_predict_seconds,
+        }
+    del pd
+
+    combined = forecasts[0]
+    for frame in forecasts[1:]:
+        combined = combined.join(frame, on=["series_id", "timestamp", "horizon"], how="inner")
+    return combined, timings
+
+
 def evaluate_metrics(scored: Any, prediction_col: str, train: Any) -> dict[str, float]:
     pl = require_polars()
     error_frame = scored.select(
@@ -441,10 +536,21 @@ def require_duckdb() -> Any:
         import duckdb
     except ImportError as exc:
         raise ImportError(
-            "forecasting library benchmark requires duckdb for --backend duckdb; run "
+            "forecasting library benchmark requires duckdb for --source duckdb; run "
             "`uv sync --group dev --group bench`."
         ) from exc
     return duckdb
+
+
+def require_pandas_for_benchmark() -> Any:
+    try:
+        import pandas as pd
+    except ImportError as exc:
+        raise ImportError(
+            "forecasting library benchmark requires pandas through StatsForecast; run "
+            "`uv sync --group dev --group bench`."
+        ) from exc
+    return pd
 
 
 if __name__ == "__main__":

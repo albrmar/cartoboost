@@ -32,42 +32,52 @@ they are not presented as universal model superiority evidence.
 ## Forecasting Library Comparison
 
 `scripts/forecasting_library_benchmark.py` compares CartoBoost global lag
-forecasting with `functime` on a deterministic geographic-temporal
-pickup/dropoff lane demand fixture. `functime` is the explicit known forecasting
-library baseline; the benchmark runs Polars-native seasonal naive, ridge, and
-LightGBM autoregressive forecasters and compares CartoBoost against the best
-RMSE among those methods.
+forecasting with named forecasting-library baselines on a deterministic
+geographic-temporal pickup/dropoff lane demand fixture. The benchmark compares
+against these forecasting libraries and model names:
 
-The fixture can be sourced through Polars or DuckDB:
+| library | model names |
+| --- | --- |
+| `functime` | `functime_snaive`, `functime_ridge`, `functime_lightgbm` |
+| `statsforecast` | `statsforecast_seasonal_naive`, `statsforecast_autoets` |
+
+CartoBoost is compared against the lowest RMSE across those named forecasting
+library baselines.
 
 ```sh
 uv run --group dev --group bench python scripts/forecasting_library_benchmark.py \
-  --backend polars \
   --output artifacts/forecasting_library_benchmark_polars.json
-
-uv run --group dev --group bench python scripts/forecasting_library_benchmark.py \
-  --backend duckdb \
-  --output artifacts/forecasting_library_benchmark_duckdb.json
 ```
 
 Current quality run, June 18, 2026:
 
-| backend | known library | best known method | CartoBoost RMSE | best known RMSE | RMSE ratio |
-| --- | --- | --- | ---: | ---: | ---: |
-| Polars | functime | seasonal naive | 0.379765 | 0.841069 | 0.451526 |
-| DuckDB | functime | seasonal naive | 0.379765 | 0.841069 | 0.451526 |
+| model | library | RMSE | MAE | WAPE |
+| --- | --- | ---: | ---: | ---: |
+| `cartoboost_lag` | `cartoboost` | 0.379765 | 0.224178 | 0.010722 |
+| `statsforecast_autoets` | `statsforecast` | 0.550793 | 0.397769 | 0.019025 |
+| `functime_snaive` | `functime` | 0.841069 | 0.656984 | 0.031423 |
+| `statsforecast_seasonal_naive` | `statsforecast` | 0.841069 | 0.656984 | 0.031423 |
+| `functime_ridge` | `functime` | 2.673150 | 2.309550 | 0.110462 |
+| `functime_lightgbm` | `functime` | 2.965697 | 2.807547 | 0.134281 |
 
 Current speed context from the same artifact refresh:
 
-| backend | CartoBoost model seconds | best known model seconds | slowest known model seconds | total seconds |
-| --- | ---: | ---: | ---: | ---: |
-| Polars | 0.605414 | 0.008985 | 0.256526 | 1.840797 |
-| DuckDB | 0.493050 | 0.007441 | 0.216486 | 1.467652 |
+| model | library | model seconds |
+| --- | --- | ---: |
+| `cartoboost_lag` | `cartoboost` | 0.514980 |
+| `statsforecast_autoets` | `statsforecast` | 0.551253 |
+| `functime_snaive` | `functime` | 0.054312 |
+| `statsforecast_seasonal_naive` | `statsforecast` | 0.017958 |
+| `functime_ridge` | `functime` | 0.177851 |
+| `functime_lightgbm` | `functime` | 0.718657 |
 
-The best known `functime` method by RMSE is seasonal naive, which is much faster
-than CartoBoost but less accurate on this fixture. In this run,
-`functime_lightgbm` is the slowest known-method row and is also less accurate
-than seasonal naive on the deterministic lane-demand fixture.
+The strongest forecasting-library baseline in this run is
+`statsforecast_autoets` from `statsforecast`, with RMSE `0.550793`. CartoBoost
+lag forecasting records RMSE `0.379765`, or `0.689487` times the
+`statsforecast_autoets` RMSE.
+
+The artifact records `comparison_libraries`, `forecasting_library_models`, and
+`model_libraries` so every score is tied to an explicit library and model name.
 
 This is targeted evidence for global geotemporal lag forecasting on many
 related short lane series. It should not be generalized to every forecasting
