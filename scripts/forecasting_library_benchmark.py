@@ -13,7 +13,6 @@ import argparse
 import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from time import perf_counter
 from typing import Any
 
 import numpy as np
@@ -60,17 +59,8 @@ def main() -> int:
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
-    benchmark_start = perf_counter()
-    load_start = perf_counter()
     table = load_fixture(args.backend, lanes=args.lanes, days=args.days, seed=args.seed)
-    load_seconds = perf_counter() - load_start
-    metrics, quality, timing = score_models(table, horizon=args.horizon)
-    total_seconds = perf_counter() - benchmark_start
-    timing = {
-        "total_seconds": total_seconds,
-        "load_seconds": load_seconds,
-        **timing,
-    }
+    metrics, summary = score_models(table, horizon=args.horizon)
     payload = {
         "created_at": datetime.now(timezone.utc).isoformat(),
         "cartoboost_version": __version__,
@@ -87,13 +77,12 @@ def main() -> int:
         },
         "models": ["cartoboost_lag", *FUNCTIME_MODELS],
         "metrics": metrics,
-        "quality": quality,
-        "timing": timing,
+        "comparison": summary,
     }
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    print(json.dumps({"quality": quality, "timing": timing}, indent=2, sort_keys=True))
+    print(json.dumps(summary, indent=2, sort_keys=True))
     return 0
 
 
@@ -157,9 +146,7 @@ def make_fixture(*, lanes: int, days: int, seed: int) -> Any:
     return pl.DataFrame(rows)
 
 
-def score_models(
-    table: Any, *, horizon: int
-) -> tuple[dict[str, dict[str, float]], dict[str, Any], dict[str, Any]]:
+def score_models(table: Any, *, horizon: int) -> tuple[dict[str, dict[str, float]], dict[str, Any]]:
     pl = require_polars()
     cutoff = table.select(pl.col("date").unique().sort()).to_series()[-horizon]
     train = table.filter(pl.col("date") < cutoff)
@@ -177,10 +164,8 @@ def score_models(
             pl.col("loads").alias("actual"),
         )
     )
-    cartoboost_predictions, cartoboost_timing = cartoboost_forecast(train, horizon)
-    functime_predictions, functime_timing = functime_forecasts(train, horizon)
-    predictions = cartoboost_predictions.join(
-        functime_predictions,
+    predictions = cartoboost_forecast(train, horizon).join(
+        functime_forecasts(train, horizon),
         on=["series_id", "timestamp", "horizon"],
         how="inner",
     )
@@ -192,53 +177,28 @@ def score_models(
         model: evaluate_metrics(scored, model, train)
         for model in ["cartoboost_lag", *FUNCTIME_MODELS]
     }
-    quality = quality_summary(metrics)
-    timing = {
-        "models": {
-            "cartoboost_lag": cartoboost_timing,
-            **functime_timing,
-        }
-    }
-    return metrics, quality, timing
-
-
-def quality_summary(metrics: dict[str, dict[str, float]]) -> dict[str, Any]:
     best_known = min(FUNCTIME_MODELS, key=lambda name: metrics[name]["rmse"])
     cartoboost_rmse = metrics["cartoboost_lag"]["rmse"]
     known_rmse = metrics[best_known]["rmse"]
-    rmse_ranking = sorted(metrics, key=lambda name: metrics[name]["rmse"])
-    mae_ranking = sorted(metrics, key=lambda name: metrics[name]["mae"])
-    wape_ranking = sorted(metrics, key=lambda name: metrics[name]["wape"])
-    return {
+    summary = {
         "winner": "cartoboost_lag" if cartoboost_rmse < known_rmse else best_known,
         "best_known_method": best_known,
-        "rmse_ranking": rmse_ranking,
-        "mae_ranking": mae_ranking,
-        "wape_ranking": wape_ranking,
         "cartoboost_rmse": cartoboost_rmse,
         "best_known_rmse": known_rmse,
         "rmse_delta_vs_best_known": cartoboost_rmse - known_rmse,
         "rmse_ratio_vs_best_known": cartoboost_rmse / known_rmse,
-        "rmse_reduction_vs_best_known": 1.0 - cartoboost_rmse / known_rmse,
         "cartoboost_mae": metrics["cartoboost_lag"]["mae"],
         "best_known_mae": metrics[best_known]["mae"],
         "mae_delta_vs_best_known": metrics["cartoboost_lag"]["mae"] - metrics[best_known]["mae"],
-        "mae_reduction_vs_best_known": 1.0
-        - metrics["cartoboost_lag"]["mae"] / metrics[best_known]["mae"],
-        "cartoboost_wape": metrics["cartoboost_lag"]["wape"],
-        "best_known_wape": metrics[best_known]["wape"],
-        "wape_reduction_vs_best_known": 1.0
-        - metrics["cartoboost_lag"]["wape"] / metrics[best_known]["wape"],
     }
+    return metrics, summary
 
 
-def cartoboost_forecast(train: Any, horizon: int) -> tuple[Any, dict[str, float]]:
+def cartoboost_forecast(train: Any, horizon: int) -> Any:
     pl = require_polars()
-    feature_start = perf_counter()
     feature_frame = build_history_features(train).drop_nulls(FEATURE_COLUMNS)
     x = feature_frame.select(FEATURE_COLUMNS).to_numpy()
     y = feature_frame.select("loads").to_numpy().ravel()
-    feature_seconds = perf_counter() - feature_start
     model = CartoBoostRegressor(
         n_estimators=80,
         learning_rate=0.08,
@@ -246,11 +206,8 @@ def cartoboost_forecast(train: Any, horizon: int) -> tuple[Any, dict[str, float]
         min_samples_leaf=2,
         splitters=["axis_histogram:128", "periodic:7"],
     )
-    fit_start = perf_counter()
     model.fit(x, y)
-    fit_seconds = perf_counter() - fit_start
 
-    predict_start = perf_counter()
     history = train.clone()
     forecast_frames = []
     for step in range(1, horizon + 1):
@@ -276,15 +233,7 @@ def cartoboost_forecast(train: Any, horizon: int) -> tuple[Any, dict[str, float]
             ],
             how="vertical",
         )
-    predict_seconds = perf_counter() - predict_start
-    timing = {
-        "feature_seconds": feature_seconds,
-        "fit_seconds": fit_seconds,
-        "predict_seconds": predict_seconds,
-        "fit_predict_seconds": fit_seconds + predict_seconds,
-        "total_seconds": feature_seconds + fit_seconds + predict_seconds,
-    }
-    return pl.concat(forecast_frames, how="vertical"), timing
+    return pl.concat(forecast_frames, how="vertical")
 
 
 def build_history_features(frame: Any) -> Any:
@@ -341,7 +290,7 @@ def build_future_features(history: Any, future: Any) -> Any:
     return pl.DataFrame(pieces)
 
 
-def functime_forecasts(train: Any, horizon: int) -> tuple[Any, dict[str, dict[str, float]]]:
+def functime_forecasts(train: Any, horizon: int) -> Any:
     pl = require_polars()
     from functime.forecasting import lightgbm, ridge, snaive
 
@@ -364,31 +313,20 @@ def functime_forecasts(train: Any, horizon: int) -> tuple[Any, dict[str, dict[st
         ),
     }
     forecasts = []
-    timings = {}
     for name, model in model_specs.items():
-        fit_start = perf_counter()
         model.fit(y)
-        fit_seconds = perf_counter() - fit_start
-        predict_start = perf_counter()
-        forecast = (
+        forecasts.append(
             model.predict(horizon)
             .rename({"entity": "series_id", "time": "timestamp", "target": name})
             .sort(["series_id", "timestamp"])
             .with_columns((pl.int_range(pl.len()).over("series_id") + 1).alias("horizon"))
             .select("series_id", "timestamp", "horizon", name)
         )
-        predict_seconds = perf_counter() - predict_start
-        forecasts.append(forecast)
-        timings[name] = {
-            "fit_seconds": fit_seconds,
-            "predict_seconds": predict_seconds,
-            "fit_predict_seconds": fit_seconds + predict_seconds,
-        }
 
     combined = forecasts[0]
     for frame in forecasts[1:]:
         combined = combined.join(frame, on=["series_id", "timestamp", "horizon"], how="inner")
-    return combined, timings
+    return combined
 
 
 def evaluate_metrics(scored: Any, prediction_col: str, train: Any) -> dict[str, float]:

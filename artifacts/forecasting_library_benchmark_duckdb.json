@@ -2,7 +2,18 @@
   "backend": "duckdb",
   "benchmark": "geotemporal_lane_demand_functime",
   "cartoboost_version": "0.1.21",
-  "created_at": "2026-06-18T17:55:03.517803+00:00",
+  "comparison": {
+    "best_known_mae": 0.6569841269841273,
+    "best_known_method": "functime_snaive",
+    "best_known_rmse": 0.8410688588913666,
+    "cartoboost_mae": 0.2241779676321493,
+    "cartoboost_rmse": 0.3797647824327878,
+    "mae_delta_vs_best_known": -0.432806159351978,
+    "rmse_delta_vs_best_known": -0.46130407645857885,
+    "rmse_ratio_vs_best_known": 0.451526386238298,
+    "winner": "cartoboost_lag"
+  },
+  "created_at": "2026-06-18T17:50:16.832255+00:00",
   "dataset": {
     "days": 90,
     "domain": "daily NYC taxi-style pickup/dropoff lane demand",
@@ -36,12 +47,12 @@
       "wape": 0.13428061115661882
     },
     "functime_ridge": {
-      "bias": -0.06308213782669417,
-      "mae": 2.309549847990435,
-      "mase": 3.1598635255283423,
-      "rmse": 2.6731499767550164,
-      "smape": 0.11340955930697881,
-      "wape": 0.11046216780347275
+      "bias": -0.0630821264734285,
+      "mae": 2.3095498328527473,
+      "mase": 3.1598635048173684,
+      "rmse": 2.673149966798347,
+      "smape": 0.11340955855232841,
+      "wape": 0.11046216707946076
     },
     "functime_snaive": {
       "bias": -0.452222222222222,
@@ -57,67 +68,5 @@
     "functime_snaive",
     "functime_ridge",
     "functime_lightgbm"
-  ],
-  "quality": {
-    "best_known_mae": 0.6569841269841273,
-    "best_known_method": "functime_snaive",
-    "best_known_rmse": 0.8410688588913666,
-    "best_known_wape": 0.031422526317102156,
-    "cartoboost_mae": 0.2241779676321493,
-    "cartoboost_rmse": 0.3797647824327878,
-    "cartoboost_wape": 0.010722082617082582,
-    "mae_delta_vs_best_known": -0.432806159351978,
-    "mae_ranking": [
-      "cartoboost_lag",
-      "functime_snaive",
-      "functime_ridge",
-      "functime_lightgbm"
-    ],
-    "mae_reduction_vs_best_known": 0.658777193505064,
-    "rmse_delta_vs_best_known": -0.46130407645857885,
-    "rmse_ranking": [
-      "cartoboost_lag",
-      "functime_snaive",
-      "functime_ridge",
-      "functime_lightgbm"
-    ],
-    "rmse_ratio_vs_best_known": 0.451526386238298,
-    "rmse_reduction_vs_best_known": 0.548473613761702,
-    "wape_ranking": [
-      "cartoboost_lag",
-      "functime_snaive",
-      "functime_ridge",
-      "functime_lightgbm"
-    ],
-    "wape_reduction_vs_best_known": 0.658777193505064,
-    "winner": "cartoboost_lag"
-  },
-  "timing": {
-    "load_seconds": 0.18569777999073267,
-    "models": {
-      "cartoboost_lag": {
-        "feature_seconds": 0.004117938980925828,
-        "fit_predict_seconds": 0.7104860830004327,
-        "fit_seconds": 0.2799285229993984,
-        "predict_seconds": 0.4305575600010343,
-        "total_seconds": 0.7146040219813585
-      },
-      "functime_lightgbm": {
-        "fit_predict_seconds": 71.1117699239403,
-        "fit_seconds": 70.94169466994936,
-        "predict_seconds": 0.17007525399094447
-      },
-      "functime_ridge": {
-        "fit_predict_seconds": 0.19027585408184677,
-        "fit_seconds": 0.024914191046264023,
-        "predict_seconds": 0.16536166303558275
-      },
-      "functime_snaive": {
-        "fit_predict_seconds": 0.008966916997451335,
-        "fit_seconds": 0.004872052988503128,
-        "predict_seconds": 0.004094864008948207
-      }
-    },
-    "total_seconds": 72.59063346701441
-  }
+  ]
 }
