@@ -25,25 +25,33 @@ class NeuralEmbeddingRegressor:
         random_state: int | None = 42,
         neural_transformer: NeuralEmbeddingFeatures | None = None,
         use_residual: bool = True,
+        oof_folds: int = 1,
         drop_id_column: bool = True,
         id_column: int | str | None = None,
+        support_prior_strength: float = 1.0,
         base_model_kwargs: dict[str, Any] | None = None,
         final_model_kwargs: dict[str, Any] | None = None,
     ) -> None:
         if dim <= 0:
             raise ValueError("dim must be positive")
+        if oof_folds < 1:
+            raise ValueError("oof_folds must be at least 1")
 
         self.dim = int(dim)
         self.fallback = fallback
         self.random_state = random_state
         self.use_residual = use_residual
+        self.oof_folds = int(oof_folds)
         self.drop_id_column = drop_id_column
         self.id_column = id_column
+        self.support_prior_strength = float(support_prior_strength)
         self.neural_transformer = neural_transformer or NeuralEmbeddingFeatures(
             dim=dim,
             fallback=fallback,
             random_state=random_state,
+            support_prior_strength=support_prior_strength,
         )
+        self.neural_transformers: list[NeuralEmbeddingFeatures] = []
         self.base_model_kwargs = dict(base_model_kwargs or {})
         self.final_model_kwargs = dict(final_model_kwargs or self.base_model_kwargs)
 
@@ -62,6 +70,8 @@ class NeuralEmbeddingRegressor:
         sparse_sets: Any | None = None,
         id_column: int | str | None = None,
         ids: np.ndarray | list[Any] | None = None,
+        fallback_ids: Any | None = None,
+        neighbor_ids: Any | None = None,
         **fit_kwargs: Any,
     ) -> NeuralEmbeddingRegressor:
         resolved_id_column = self._resolve_id_column(id_column)
@@ -100,11 +110,15 @@ class NeuralEmbeddingRegressor:
             residual_target = target
 
         start = time.perf_counter()
-        self.neural_transformer.fit(id_values, residual_target)
+        neural_features = self._fit_transform_embeddings(
+            id_values,
+            residual_target,
+            fallback_ids=fallback_ids,
+            neighbor_ids=neighbor_ids,
+        )
         self._fit_timings_ms["neural_fit_ms"] = _ms_since(start)
 
-        neural_features = self.neural_transformer.transform(id_values)
-        if neural_features.shape != (dense.shape[0], self.dim):
+        if neural_features.shape[0] != dense.shape[0]:
             raise ValueError("neural transformer output dimension mismatch")
 
         x_train = _append_features(dense, neural_features)
@@ -114,7 +128,7 @@ class NeuralEmbeddingRegressor:
             feature_schema=feature_schema,
             dense_width=dense.shape[1],
             sparse_names=sparse_names,
-            neural_dim=self.dim,
+            neural_dim=neural_features.shape[1],
         )
 
         start = time.perf_counter()
@@ -129,7 +143,7 @@ class NeuralEmbeddingRegressor:
         self._feature_names_in_ = _build_neural_feature_names(
             getattr(X, "columns", None),
             dense.shape[1],
-            self.dim,
+            neural_features.shape[1],
         )
         return self
 
@@ -140,6 +154,8 @@ class NeuralEmbeddingRegressor:
         sparse_sets: Any | None = None,
         ids: np.ndarray | list[Any] | None = None,
         id_column: int | str | None = None,
+        fallback_ids: Any | None = None,
+        neighbor_ids: Any | None = None,
     ) -> np.ndarray:
         if self._final_model is None:
             raise RuntimeError("NeuralEmbeddingRegressor is not fitted")
@@ -149,7 +165,11 @@ class NeuralEmbeddingRegressor:
             ids,
             self._resolve_id_column(id_column),
         )
-        neural = self.neural_transformer.transform(id_values)
+        neural = self._transform_embeddings(
+            id_values,
+            fallback_ids=fallback_ids,
+            neighbor_ids=neighbor_ids,
+        )
         x_pred = _append_features(dense, neural)
         return self._final_model.predict(x_pred, sparse_sets=sparse_sets)
 
@@ -159,6 +179,8 @@ class NeuralEmbeddingRegressor:
         *,
         ids: np.ndarray | list[Any] | None = None,
         id_column: int | str | None = None,
+        fallback_ids: Any | None = None,
+        neighbor_ids: Any | None = None,
     ) -> np.ndarray:
         if self._final_model is None:
             raise RuntimeError("NeuralEmbeddingRegressor is not fitted")
@@ -168,7 +190,14 @@ class NeuralEmbeddingRegressor:
             ids,
             self._resolve_id_column(id_column),
         )
-        return _append_features(dense, self.neural_transformer.transform(id_values))
+        return _append_features(
+            dense,
+            self._transform_embeddings(
+                id_values,
+                fallback_ids=fallback_ids,
+                neighbor_ids=neighbor_ids,
+            ),
+        )
 
     def score(
         self,
@@ -178,12 +207,16 @@ class NeuralEmbeddingRegressor:
         sparse_sets: Any | None = None,
         id_column: int | str | None = None,
         ids: np.ndarray | list[Any] | None = None,
+        fallback_ids: Any | None = None,
+        neighbor_ids: Any | None = None,
     ) -> float:
         predictions = self.predict(
             X,
             sparse_sets=sparse_sets,
             ids=ids,
             id_column=id_column,
+            fallback_ids=fallback_ids,
+            neighbor_ids=neighbor_ids,
         )
         return float(mean_absolute_error(y, predictions))
 
@@ -219,6 +252,10 @@ class NeuralEmbeddingRegressor:
             raise RuntimeError("NeuralEmbeddingRegressor is not fitted")
         return self._final_model
 
+    @property
+    def neural_feature_count_(self) -> int:
+        return self.dim * max(1, len(self.neural_transformers))
+
     def _build_base_model(self) -> CartoBoostRegressor:
         return CartoBoostRegressor(**self.base_model_kwargs)
 
@@ -230,6 +267,116 @@ class NeuralEmbeddingRegressor:
             return id_column
         return self.id_column
 
+    def _fit_transform_embeddings(
+        self,
+        ids: np.ndarray,
+        target: np.ndarray,
+        *,
+        fallback_ids: Any | None,
+        neighbor_ids: Any | None,
+    ) -> np.ndarray:
+        id_matrix = _ensure_id_matrix(ids)
+        fallback_by_key = _split_fallback_by_key(
+            fallback_ids, id_matrix.shape[1], id_matrix.shape[0]
+        )
+        neighbor_by_key = _split_neighbor_by_key(
+            neighbor_ids, id_matrix.shape[1], id_matrix.shape[0]
+        )
+        self.neural_transformers = []
+
+        blocks: list[np.ndarray] = []
+        for key_index in range(id_matrix.shape[1]):
+            transformer = self._new_transformer(key_index)
+            key_ids = id_matrix[:, key_index]
+            if self.oof_folds > 1 and key_ids.shape[0] >= self.oof_folds:
+                block = self._oof_embedding_block(
+                    key_ids,
+                    target,
+                    key_index=key_index,
+                    fallback_ids=fallback_by_key[key_index],
+                    neighbor_ids=neighbor_by_key[key_index],
+                )
+                transformer.fit(key_ids, target)
+            else:
+                transformer.fit(key_ids, target)
+                block = transformer.transform_with_fallback(
+                    key_ids,
+                    fallback_ids=fallback_by_key[key_index],
+                    neighbor_ids=neighbor_by_key[key_index],
+                )
+            self.neural_transformers.append(transformer)
+            blocks.append(block)
+
+        if len(blocks) == 1:
+            self.neural_transformer = self.neural_transformers[0]
+            return blocks[0]
+        return np.hstack(blocks)
+
+    def _transform_embeddings(
+        self,
+        ids: np.ndarray,
+        *,
+        fallback_ids: Any | None,
+        neighbor_ids: Any | None,
+    ) -> np.ndarray:
+        if not self.neural_transformers:
+            raise RuntimeError("NeuralEmbeddingRegressor is not fitted")
+        id_matrix = _ensure_id_matrix(ids)
+        if id_matrix.shape[1] != len(self.neural_transformers):
+            raise ValueError("ids key count must match fitted neural transformers")
+        fallback_by_key = _split_fallback_by_key(
+            fallback_ids, id_matrix.shape[1], id_matrix.shape[0]
+        )
+        neighbor_by_key = _split_neighbor_by_key(
+            neighbor_ids, id_matrix.shape[1], id_matrix.shape[0]
+        )
+        blocks = [
+            transformer.transform_with_fallback(
+                id_matrix[:, key_index],
+                fallback_ids=fallback_by_key[key_index],
+                neighbor_ids=neighbor_by_key[key_index],
+            )
+            for key_index, transformer in enumerate(self.neural_transformers)
+        ]
+        if len(blocks) == 1:
+            return blocks[0]
+        return np.hstack(blocks)
+
+    def _oof_embedding_block(
+        self,
+        ids: np.ndarray,
+        target: np.ndarray,
+        *,
+        key_index: int,
+        fallback_ids: Any | None,
+        neighbor_ids: Any | None,
+    ) -> np.ndarray:
+        output = np.empty((ids.shape[0], self.dim), dtype=np.float32)
+        rng = np.random.default_rng(0 if self.random_state is None else self.random_state)
+        folds = np.array_split(rng.permutation(ids.shape[0]), self.oof_folds)
+        for fold_index, valid_idx in enumerate(folds):
+            if valid_idx.size == 0:
+                continue
+            train_mask = np.ones(ids.shape[0], dtype=bool)
+            train_mask[valid_idx] = False
+            transformer = self._new_transformer(key_index + fold_index + 1)
+            transformer.fit(ids[train_mask], target[train_mask])
+            output[valid_idx] = transformer.transform_with_fallback(
+                ids[valid_idx],
+                fallback_ids=_take_optional_rows(fallback_ids, valid_idx),
+                neighbor_ids=_take_optional_rows(neighbor_ids, valid_idx),
+            )
+        return output
+
+    def _new_transformer(self, salt: int) -> NeuralEmbeddingFeatures:
+        random_state = None if self.random_state is None else int(self.random_state) + salt
+        return NeuralEmbeddingFeatures(
+            dim=self.dim,
+            fallback=self.fallback,
+            random_state=random_state,
+            support_prior_strength=self.support_prior_strength,
+        )
+
     def _prepare_dense_and_ids(
         self,
         X: Any,
@@ -240,7 +387,7 @@ class NeuralEmbeddingRegressor:
             raise ValueError("provide either ids or id_column, not both")
 
         if ids is not None:
-            id_values = _to_u64_ids(ids)
+            id_values = _to_u64_id_matrix(ids)
             dense = _to_2d_float_array(X)
             return dense, id_values
 
@@ -251,7 +398,7 @@ class NeuralEmbeddingRegressor:
             dense = _to_2d_float_array(X)
             if id_column < 0 or id_column >= dense.shape[1]:
                 raise ValueError("id_column index is out of range")
-            id_values = _to_u64_ids(dense[:, id_column])
+            id_values = _to_u64_id_matrix(dense[:, id_column])
 
             if self.drop_id_column:
                 dense = np.delete(dense, id_column, axis=1)
@@ -262,7 +409,7 @@ class NeuralEmbeddingRegressor:
             raise ValueError("id_column string lookup requires object with named columns")
 
         try:
-            id_values = _to_u64_ids(X[id_column])
+            id_values = _to_u64_id_matrix(X[id_column])
         except (TypeError, KeyError) as exc:
             raise ValueError(f"id_column {id_column!r} not found") from exc
 
@@ -375,6 +522,92 @@ def _to_u64_ids(values: np.ndarray | list[Any] | tuple[Any, ...]) -> np.ndarray:
         raise ValueError("ids must be finite")
 
     return np.asarray(np.rint(float_ids).astype(np.uint64), dtype=np.uint64)
+
+
+def _to_u64_id_matrix(values: Any) -> np.ndarray:
+    array = np.asarray(values)
+    if array.ndim == 0:
+        raise ValueError("ids must be 1D or 2D")
+    if array.ndim > 2:
+        raise ValueError("ids must be 1D or 2D")
+
+    float_ids = np.asarray(array, dtype=np.float64)
+    if not np.all(np.isfinite(float_ids)):
+        raise ValueError("ids must be finite")
+
+    id_values = np.asarray(np.rint(float_ids).astype(np.uint64), dtype=np.uint64)
+    if id_values.ndim == 1:
+        id_values = id_values.reshape(-1, 1)
+    return np.ascontiguousarray(id_values, dtype=np.uint64)
+
+
+def _ensure_id_matrix(values: np.ndarray) -> np.ndarray:
+    array = np.asarray(values, dtype=np.uint64)
+    if array.ndim == 1:
+        return array.reshape(-1, 1)
+    if array.ndim != 2:
+        raise ValueError("ids must be 1D or 2D")
+    return np.ascontiguousarray(array, dtype=np.uint64)
+
+
+def _split_fallback_by_key(values: Any | None, n_keys: int, row_count: int) -> list[Any | None]:
+    if values is None:
+        return [None] * n_keys
+    if isinstance(values, (list, tuple)) and len(values) == n_keys:
+        try:
+            return [
+                None if item is None else _normalize_fallback_rows(item, row_count)
+                for item in values
+            ]
+        except ValueError:
+            pass
+
+    array = np.asarray(values)
+    if n_keys == 1:
+        return [_normalize_fallback_rows(array, row_count)]
+    if array.ndim == 2 and array.shape == (row_count, n_keys):
+        return [array[:, key_index] for key_index in range(n_keys)]
+    if array.ndim == 3 and array.shape[0] == row_count and array.shape[1] == n_keys:
+        return [array[:, key_index, :] for key_index in range(n_keys)]
+    raise ValueError("fallback_ids shape must align with rows and embedding keys")
+
+
+def _normalize_fallback_rows(values: Any, row_count: int) -> np.ndarray:
+    array = np.asarray(values)
+    if array.ndim == 1:
+        if array.shape[0] != row_count:
+            raise ValueError("fallback_ids length must match rows")
+        return np.ascontiguousarray(array, dtype=np.uint64)
+    if array.ndim == 2:
+        if array.shape[0] != row_count:
+            raise ValueError("fallback_ids row count must match rows")
+        return np.ascontiguousarray(array, dtype=np.uint64)
+    raise ValueError("fallback_ids for each key must be 1D or 2D")
+
+
+def _split_neighbor_by_key(values: Any | None, n_keys: int, row_count: int) -> list[Any | None]:
+    if values is None:
+        return [None] * n_keys
+    if n_keys == 1:
+        if len(values) != row_count:
+            raise ValueError("neighbor_ids length must match rows")
+        return [values]
+    if not isinstance(values, (list, tuple)) or len(values) != n_keys:
+        raise ValueError("neighbor_ids for multiple keys must be a list per key")
+    for item in values:
+        if item is None:
+            continue
+        if len(item) != row_count:
+            raise ValueError("each neighbor_ids key list length must match rows")
+    return list(values)
+
+
+def _take_optional_rows(values: Any | None, indices: np.ndarray) -> Any | None:
+    if values is None:
+        return None
+    if isinstance(values, np.ndarray):
+        return values[indices]
+    return [values[int(index)] for index in indices]
 
 
 def _drop_named_column(values: Any, column: str) -> Any:

@@ -3,7 +3,7 @@ use cartoboost_core::loss::{HuberLossConfig, LogL2LossConfig, LossConfig, Quanti
 use cartoboost_core::tree::{FlatAxisPredictor, FuzzyKernel, LeafPredictorKind, SplitterKind};
 use cartoboost_core::{Booster, BoosterConfig, CartoBoostError, Dataset, Model};
 use cartoboost_neural::{
-    build_embedding_table_artifact, compute_directional_features, fit_embedding_table,
+    build_embedding_table_artifact, compute_directional_features, fit_embedding_table_with_options,
     materialize_source_target_pair_nodes, validate_directed_metapath,
     write_embedding_table_artifact, ArtifactFallbackKind, EmbeddingTable, GraphSageConfig,
     GraphSageEncoder, HeteroGraph, HeteroGraphSageConfig, HeteroGraphSageEncoder, HeteroTypedEdge,
@@ -638,21 +638,28 @@ struct NativeNeuralEmbeddingFeatures {
     fallback: ArtifactFallbackKind,
     random_state: Option<i64>,
     parent_resolution: Option<u8>,
+    support_prior_strength: f64,
     table: Option<EmbeddingTable>,
 }
 
 #[pymethods]
 impl NativeNeuralEmbeddingFeatures {
     #[new]
-    #[pyo3(signature = (dim, fallback="global_mean_vector", random_state=None, parent_resolution=None))]
+    #[pyo3(signature = (dim, fallback="global_mean_vector", random_state=None, parent_resolution=None, support_prior_strength=1.0))]
     fn new(
         dim: usize,
         fallback: &str,
         random_state: Option<i64>,
         parent_resolution: Option<u8>,
+        support_prior_strength: f64,
     ) -> PyResult<Self> {
         if dim == 0 {
             return Err(PyValueError::new_err("dim must be positive"));
+        }
+        if !support_prior_strength.is_finite() || support_prior_strength <= 0.0 {
+            return Err(PyValueError::new_err(
+                "support_prior_strength must be positive and finite",
+            ));
         }
 
         let fallback = parse_embedding_fallback(fallback, parent_resolution)?;
@@ -662,6 +669,7 @@ impl NativeNeuralEmbeddingFeatures {
             fallback,
             random_state,
             parent_resolution,
+            support_prior_strength,
             table: None,
         })
     }
@@ -681,9 +689,15 @@ impl NativeNeuralEmbeddingFeatures {
             .collect();
         let random_state = self.random_state.map(|value| value as u64);
 
-        let table =
-            fit_embedding_table(self.dim, ids, &target, self.fallback.clone(), random_state)
-                .map_err(|err| PyValueError::new_err(err.to_string()))?;
+        let table = fit_embedding_table_with_options(
+            self.dim,
+            ids,
+            &target,
+            self.fallback.clone(),
+            random_state,
+            self.support_prior_strength,
+        )
+        .map_err(|err| PyValueError::new_err(err.to_string()))?;
         self.table = Some(table);
         Ok(())
     }
@@ -702,9 +716,15 @@ impl NativeNeuralEmbeddingFeatures {
             .map(|value| value as f32)
             .collect();
         let random_state = self.random_state.map(|value| value as u64);
-        let table =
-            fit_embedding_table(self.dim, ids, &target, self.fallback.clone(), random_state)
-                .map_err(|err| PyValueError::new_err(err.to_string()))?;
+        let table = fit_embedding_table_with_options(
+            self.dim,
+            ids,
+            &target,
+            self.fallback.clone(),
+            random_state,
+            self.support_prior_strength,
+        )
+        .map_err(|err| PyValueError::new_err(err.to_string()))?;
         self.table = Some(table);
 
         let table = self
@@ -771,6 +791,7 @@ impl NativeNeuralEmbeddingFeatures {
             fallback: metadata.fallback,
             random_state: None,
             parent_resolution,
+            support_prior_strength: 1.0,
             table: Some(table),
         })
     }
@@ -793,6 +814,11 @@ impl NativeNeuralEmbeddingFeatures {
     #[getter]
     fn parent_resolution(&self) -> Option<u8> {
         self.parent_resolution
+    }
+
+    #[getter]
+    fn support_prior_strength(&self) -> f64 {
+        self.support_prior_strength
     }
 
     #[getter]

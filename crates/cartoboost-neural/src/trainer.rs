@@ -21,9 +21,32 @@ pub fn fit_embedding_table(
     fallback: ArtifactFallbackKind,
     random_state: Option<u64>,
 ) -> Result<crate::artifact::EmbeddingTable> {
+    fit_embedding_table_with_options(
+        dim,
+        ids,
+        target,
+        fallback,
+        random_state,
+        DEFAULT_PRIOR_STRENGTH,
+    )
+}
+
+pub fn fit_embedding_table_with_options(
+    dim: usize,
+    ids: &[u64],
+    target: &[f32],
+    fallback: ArtifactFallbackKind,
+    random_state: Option<u64>,
+    prior_strength: f64,
+) -> Result<crate::artifact::EmbeddingTable> {
     if dim == 0 {
         return Err(NeuralError::InvalidArgument(
             "embedding dimension must be positive".to_string(),
+        ));
+    }
+    if !prior_strength.is_finite() || prior_strength <= 0.0 {
+        return Err(NeuralError::InvalidArgument(
+            "prior_strength must be positive and finite".to_string(),
         ));
     }
 
@@ -72,7 +95,14 @@ pub fn fit_embedding_table(
 
     for _ in 0..DEFAULT_TRAINING_ITERS {
         for state in &mut states {
-            state.embedding = updated_embedding(state.mean, state.count, &state.prior, &head, bias);
+            state.embedding = updated_embedding(
+                state.mean,
+                state.count,
+                &state.prior,
+                &head,
+                bias,
+                prior_strength,
+            );
         }
 
         let bias_numerator = states.iter().fold(0.0_f64, |acc, state| {
@@ -137,14 +167,21 @@ fn initial_head_vector(dim: usize, states: &[IdState], seed: &u64) -> Vec<f32> {
     head
 }
 
-fn updated_embedding(mean: f64, count: f64, prior: &[f32], head: &[f32], bias: f64) -> Vec<f32> {
+fn updated_embedding(
+    mean: f64,
+    count: f64,
+    prior: &[f32],
+    head: &[f32],
+    bias: f64,
+    prior_strength: f64,
+) -> Vec<f32> {
     let dim = head.len();
     let mut rhs = vec![0.0_f64; dim];
     let residual = mean - bias;
     let head_norm_sq = dot_sq(head);
 
     for (index, value) in prior.iter().enumerate() {
-        rhs[index] = DEFAULT_PRIOR_STRENGTH * f64::from(*value);
+        rhs[index] = prior_strength * f64::from(*value);
     }
 
     for (index, value) in head.iter().enumerate() {
@@ -153,16 +190,16 @@ fn updated_embedding(mean: f64, count: f64, prior: &[f32], head: &[f32], bias: f
 
     let projected = dot_f64_f64(&rhs, head);
     let denom = if head_norm_sq > 0.0 {
-        DEFAULT_PRIOR_STRENGTH * (DEFAULT_PRIOR_STRENGTH + count * head_norm_sq)
+        prior_strength * (prior_strength + count * head_norm_sq)
     } else {
-        DEFAULT_PRIOR_STRENGTH * DEFAULT_PRIOR_STRENGTH
+        prior_strength * prior_strength
     };
 
     rhs.iter()
         .enumerate()
         .map(|(index, value)| {
-            let value = value / DEFAULT_PRIOR_STRENGTH
-                - (count * projected * f64::from(head[index])) / denom;
+            let value =
+                value / prior_strength - (count * projected * f64::from(head[index])) / denom;
             value as f32
         })
         .collect()

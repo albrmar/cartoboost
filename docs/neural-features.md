@@ -80,18 +80,22 @@ recover ID-specific effects that were never observed. Report neural-embedding
 results with the split protocol; do not present repeated-ID gains as evidence of
 cold-start generalization.
 
-Practical improvement paths:
+Implemented controls:
 
-- Train final-model embeddings with out-of-fold residuals so the final booster
-  sees realistic embedding noise instead of fully in-sample residual lookups.
-- Use support-aware shrinkage: rare IDs should stay close to parent or global
-  priors, while frequent IDs can receive stronger individualized vectors.
-- Prefer hierarchical fallback over a single global vector: zone to borough,
-  service zone, adjacent-zone aggregate, and then global.
-- Add richer keys when the task supports them, such as pickup zone, dropoff
-  zone, origin-destination pair, zone-hour bucket, or route cluster.
-- Use graph-aware fallback for spatial IDs by borrowing signal from adjacent
-  zones or typed graph neighbors.
+- Set `oof_folds > 1` on `NeuralEmbeddingRegressor` to train final-model
+  embeddings with out-of-fold residuals, so the final booster sees realistic
+  embedding noise instead of fully in-sample residual lookups.
+- Tune `support_prior_strength` to control support-aware shrinkage: rare IDs
+  stay closer to prior vectors, while frequent IDs can receive stronger
+  individualized vectors.
+- Pass `fallback_ids` to `fit`, `predict`, or `transform` for hierarchical
+  fallback chains such as zone to same-service-zone representative to same-
+  borough representative to global representative.
+- Pass 2D `ids` to `NeuralEmbeddingRegressor` for multi-key embeddings, such as
+  pickup zone, dropoff zone, origin-destination pair, zone-hour bucket, or route
+  cluster.
+- Pass `neighbor_ids` for graph-aware fallback on unseen spatial IDs by
+  averaging known adjacent-zone or typed-neighbor embeddings.
 - Validate the embedding dimension, fallback mode, and residual-vs-target
   training choice under the same holdout used for the product claim.
 

@@ -981,13 +981,88 @@ def task_zone_column(task: BenchmarkTask, name: str) -> np.ndarray | None:
 def task_embedding_ids(task: BenchmarkTask) -> np.ndarray:
     pickup = task_zone_column(task, "PULocationID")
     if pickup is None:
-        return np.arange(len(task.target), dtype=np.uint64)
+        return np.arange(len(task.target), dtype=np.uint64).reshape(-1, 1)
+    hour = task_zone_column(task, "hour")
     dropoff = task_zone_column(task, "DOLocationID")
     if dropoff is None:
-        return pickup.astype(np.uint64)
-    return (pickup.astype(np.uint64) * np.uint64(1_000) + dropoff.astype(np.uint64)).astype(
-        np.uint64
-    )
+        if hour is None:
+            return pickup.astype(np.uint64).reshape(-1, 1)
+        pickup_hour = pickup.astype(np.uint64) * np.uint64(10_000) + hour.astype(np.uint64)
+        return np.column_stack([pickup.astype(np.uint64), pickup_hour])
+    od_pair = pickup.astype(np.uint64) * np.uint64(1_000) + dropoff.astype(np.uint64)
+    return np.column_stack([pickup.astype(np.uint64), dropoff.astype(np.uint64), od_pair])
+
+
+def task_embedding_fallback_context(
+    task: BenchmarkTask,
+    *,
+    train_indices: np.ndarray,
+    row_indices: np.ndarray,
+) -> tuple[list[np.ndarray | None], list[list[list[int]] | None]]:
+    ids = task_embedding_ids(task)
+    key_count = 1 if ids.ndim == 1 else ids.shape[1]
+    fallback_by_key: list[np.ndarray | None] = [None] * key_count
+    neighbor_by_key: list[list[list[int]] | None] = [None] * key_count
+    pickup = task_zone_column(task, "PULocationID")
+    dropoff = task_zone_column(task, "DOLocationID")
+
+    if pickup is not None and key_count >= 1:
+        fallback_by_key[0] = zone_fallback_matrix(
+            task, pickup, train_indices, row_indices, "pickup"
+        )
+        neighbor_by_key[0] = zone_neighbor_lists(task, pickup, row_indices)
+
+    if dropoff is not None and key_count >= 2:
+        fallback_by_key[1] = zone_fallback_matrix(
+            task, dropoff, train_indices, row_indices, "dropoff"
+        )
+        neighbor_by_key[1] = zone_neighbor_lists(task, dropoff, row_indices)
+
+    return fallback_by_key, neighbor_by_key
+
+
+def zone_fallback_matrix(
+    task: BenchmarkTask,
+    zones: np.ndarray,
+    train_indices: np.ndarray,
+    row_indices: np.ndarray,
+    prefix: str,
+) -> np.ndarray:
+    train_zones = zones[train_indices].astype(np.uint64)
+    borough_values = task.sparse_sets.get(f"{prefix}_borough", [])
+    service_values = task.sparse_sets.get(f"{prefix}_service_zone", [])
+    first_by_borough: dict[int, int] = {}
+    first_by_service: dict[int, int] = {}
+    global_zone = int(train_zones[0]) if len(train_zones) else 0
+    for row_index in train_indices:
+        zone = int(zones[row_index])
+        if row_index < len(borough_values) and borough_values[row_index]:
+            first_by_borough.setdefault(int(borough_values[row_index][0]), zone)
+        if row_index < len(service_values) and service_values[row_index]:
+            first_by_service.setdefault(int(service_values[row_index][0]), zone)
+
+    rows: list[list[int]] = []
+    for row_index in row_indices:
+        borough_zone = global_zone
+        service_zone = global_zone
+        if row_index < len(borough_values) and borough_values[row_index]:
+            borough_zone = first_by_borough.get(int(borough_values[row_index][0]), global_zone)
+        if row_index < len(service_values) and service_values[row_index]:
+            service_zone = first_by_service.get(int(service_values[row_index][0]), global_zone)
+        rows.append([service_zone, borough_zone, global_zone])
+    return np.asarray(rows, dtype=np.uint64)
+
+
+def zone_neighbor_lists(
+    task: BenchmarkTask,
+    zones: np.ndarray,
+    row_indices: np.ndarray,
+) -> list[list[int]]:
+    adjacency = task.zone_adjacency or {}
+    return [
+        [int(neighbor) for neighbor in adjacency.get(int(zones[row_index]), [])]
+        for row_index in row_indices
+    ]
 
 
 def zone_context_maps(
@@ -1431,11 +1506,23 @@ def fit_predict_model(
         except ImportError as exc:
             return skipped(f"cartoboost neural import failed: {exc}")
         ids = task_embedding_ids(task)
+        train_fallback_ids, train_neighbor_ids = task_embedding_fallback_context(
+            task,
+            train_indices=train_indices,
+            row_indices=train_indices,
+        )
+        test_fallback_ids, test_neighbor_ids = task_embedding_fallback_context(
+            task,
+            train_indices=train_indices,
+            row_indices=test_indices,
+        )
         model = NeuralEmbeddingRegressor(
             dim=args.neural_dim,
             drop_id_column=False,
             id_column=None,
             random_state=args.seed,
+            oof_folds=5,
+            support_prior_strength=2.0,
             base_model_kwargs={
                 "n_estimators": max(10, args.cartoboost_n_estimators // 2),
                 "learning_rate": args.learning_rate,
@@ -1457,14 +1544,33 @@ def fit_predict_model(
         )
         try:
             train_started = time.perf_counter()
-            model.fit(train_x, train_y, ids=ids[train_indices])
+            model.fit(
+                train_x,
+                train_y,
+                ids=ids[train_indices],
+                fallback_ids=train_fallback_ids,
+                neighbor_ids=train_neighbor_ids,
+            )
             train_seconds = time.perf_counter() - train_started
+            smoke_indices = test_indices[: min(len(test_indices), 16)]
+            smoke_fallback_ids, smoke_neighbor_ids = task_embedding_fallback_context(
+                task,
+                train_indices=train_indices,
+                row_indices=smoke_indices,
+            )
             _ = model.predict(
-                test_x[: min(len(test_indices), 16)],
-                ids=ids[test_indices[: min(len(test_indices), 16)]],
+                test_x[: len(smoke_indices)],
+                ids=ids[smoke_indices],
+                fallback_ids=smoke_fallback_ids,
+                neighbor_ids=smoke_neighbor_ids,
             )
             predict_started = time.perf_counter()
-            prediction = model.predict(test_x, ids=ids[test_indices])
+            prediction = model.predict(
+                test_x,
+                ids=ids[test_indices],
+                fallback_ids=test_fallback_ids,
+                neighbor_ids=test_neighbor_ids,
+            )
             predict_seconds = time.perf_counter() - predict_started
         except Exception as exc:  # noqa: BLE001
             return skipped(f"cartoboost neural run failed: {exc}")
@@ -1482,11 +1588,13 @@ def fit_predict_model(
                 "max_depth": int(args.cartoboost_max_depth),
                 "min_samples_leaf": int(args.cartoboost_min_samples_leaf),
                 "neural_dim": int(args.neural_dim),
-                "id_source": "PULocationID_DOLocationID"
-                if "DOLocationID" in task.feature_names
-                else "PULocationID",
+                "neural_key_count": int(ids.shape[1] if ids.ndim == 2 else 1),
+                "id_source": "multi_key_zone_context",
+                "oof_folds": 5,
+                "support_prior_strength": 2.0,
+                "fallback": "same_service_zone_same_borough_adjacent_zone_global",
                 "zone_treatment": args.zone_treatment,
-                "feature_count": int(train_x.shape[1] + args.neural_dim),
+                "feature_count": int(train_x.shape[1] + model.neural_feature_count_),
                 "fit_stages_ms": model.timings,
             },
             "predictions": np.asarray(prediction, dtype=float),

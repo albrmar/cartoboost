@@ -163,11 +163,11 @@
                 "r2": 0.7337123451191612
               },
               "timing": {
-                "train_seconds": 0.6778682080039289,
-                "predict_seconds": 0.0015416659953189082,
-                "fit_predict_seconds": 0.6794098739992478,
+                "train_seconds": 0.15795358400646364,
+                "predict_seconds": 0.0003042919997824356,
+                "fit_predict_seconds": 0.15825787600624608,
                 "prediction_rows": 2000.0,
-                "predict_rows_per_second": 1297297.8622300618
+                "predict_rows_per_second": 6572634.185026131
               },
               "backend": "rust",
               "config": {
@@ -200,11 +200,11 @@
                 "r2": 0.7337123451191612
               },
               "timing": {
-                "train_seconds": 1.3554253339971183,
-                "predict_seconds": 0.0016677919993526302,
-                "fit_predict_seconds": 1.357093125996471,
+                "train_seconds": 0.10231654199742479,
+                "predict_seconds": 0.0004163750054431148,
+                "fit_predict_seconds": 0.10273291700286791,
                 "prediction_rows": 2000.0,
-                "predict_rows_per_second": 1199190.3071703904
+                "predict_rows_per_second": 4803362.290854993
               },
               "backend": "rust",
               "config": {
@@ -232,16 +232,16 @@
             "cartoboost_neural": {
               "status": "ok",
               "metrics": {
-                "rmse": 0.37504320833439875,
-                "mae": 0.28992294739819824,
-                "r2": 0.7118293882855569
+                "rmse": 0.36493363366366804,
+                "mae": 0.28379149979196355,
+                "r2": 0.7271557154065945
               },
               "timing": {
-                "train_seconds": 0.8857233750022715,
-                "predict_seconds": 0.046915958999306895,
-                "fit_predict_seconds": 0.9326393340015784,
+                "train_seconds": 0.8863104589981958,
+                "predict_seconds": 0.003112999998847954,
+                "fit_predict_seconds": 0.8894234589970438,
                 "prediction_rows": 2000.0,
-                "predict_rows_per_second": 42629.41742338778
+                "predict_rows_per_second": 642467.0738002415
               },
               "config": {
                 "n_estimators": 20,
@@ -249,13 +249,17 @@
                 "max_depth": 3,
                 "min_samples_leaf": 1,
                 "neural_dim": 12,
-                "id_source": "PULocationID_DOLocationID",
+                "neural_key_count": 3,
+                "id_source": "multi_key_zone_context",
+                "oof_folds": 5,
+                "support_prior_strength": 2.0,
+                "fallback": "same_service_zone_same_borough_adjacent_zone_global",
                 "zone_treatment": "target_mean",
-                "feature_count": 26,
+                "feature_count": 50,
                 "fit_stages_ms": {
-                  "base_fit_ms": 46.61291599768447,
-                  "neural_fit_ms": 140.5440840026131,
-                  "final_fit_ms": 135.97870800003875
+                  "base_fit_ms": 6.587582996871788,
+                  "neural_fit_ms": 845.6315000003087,
+                  "final_fit_ms": 26.029916996776592
                 }
               }
             },
@@ -267,11 +271,11 @@
                 "r2": 0.7335077198665709
               },
               "timing": {
-                "train_seconds": 1.670991833001608,
-                "predict_seconds": 0.0020598749979399145,
-                "fit_predict_seconds": 1.673051707999548,
+                "train_seconds": 0.43449729200074216,
+                "predict_seconds": 0.00023133400100050494,
+                "fit_predict_seconds": 0.43472862600174267,
                 "prediction_rows": 2000.0,
-                "predict_rows_per_second": 970932.7031981088
+                "predict_rows_per_second": 8645508.1888098
               },
               "backend": "rust",
               "config": {
@@ -308,11 +312,11 @@
                 "r2": 0.7335956502576398
               },
               "timing": {
-                "train_seconds": 1.7078810000020894,
-                "predict_seconds": 0.0016591250023338944,
-                "fit_predict_seconds": 1.7095401250044233,
+                "train_seconds": 0.2508808749989839,
+                "predict_seconds": 0.0003257080024923198,
+                "fit_predict_seconds": 0.25120658300147625,
                 "prediction_rows": 2000.0,
-                "predict_rows_per_second": 1205454.6807423166
+                "predict_rows_per_second": 6140469.330492302
               },
               "backend": "rust",
               "config": {
@@ -349,11 +353,11 @@
                 "r2": 0.7336041025227871
               },
               "timing": {
-                "train_seconds": 0.956169040997338,
-                "predict_seconds": 0.0015690000000176951,
-                "fit_predict_seconds": 0.9577380409973557,
+                "train_seconds": 0.16580179200536804,
+                "predict_seconds": 0.00021354100317694247,
+                "fit_predict_seconds": 0.16601533300854499,
                 "prediction_rows": 2000.0,
-                "predict_rows_per_second": 1274697.2593865164
+                "predict_rows_per_second": 9365882.759025805
               },
               "backend": "rust",
               "config": {
@@ -390,11 +394,11 @@
                 "r2": 0.7335956502576398
               },
               "timing": {
-                "train_seconds": 3.9187617920033517,
-                "predict_seconds": 0.003922999996575527,
-                "fit_predict_seconds": 3.9226847919999273,
+                "train_seconds": 0.5290949580012239,
+                "predict_seconds": 0.00025425000058021396,
+                "fit_predict_seconds": 0.5293492080018041,
                 "prediction_rows": 2000.0,
-                "predict_rows_per_second": 509813.918364987
+                "predict_rows_per_second": 7866273.335047702
               },
               "backend": "rust",
               "config": {
@@ -431,11 +435,11 @@
                 "r2": 0.7268188907797446
               },
               "timing": {
-                "train_seconds": 0.07075525000254856,
-                "predict_seconds": 0.003935999993700534,
-                "fit_predict_seconds": 0.0746912499962491,
+                "train_seconds": 0.0401935410045553,
+                "predict_seconds": 0.0005182079985388555,
+                "fit_predict_seconds": 0.040711749003094155,
                 "prediction_rows": 2000.0,
-                "predict_rows_per_second": 508130.08211406204
+                "predict_rows_per_second": 3859454.1296915915
               },
               "config": {
                 "n_estimators": 20,
@@ -454,11 +458,11 @@
                 "r2": 0.7274115257474401
               },
               "timing": {
-                "train_seconds": 0.0506524590018671,
-                "predict_seconds": 0.0019757920017582364,
-                "fit_predict_seconds": 0.05262825100362534,
+                "train_seconds": 0.03027950000250712,
+                "predict_seconds": 0.0004068339985678904,
+                "fit_predict_seconds": 0.03068633400107501,
                 "prediction_rows": 2000.0,
-                "predict_rows_per_second": 1012252.3009609418
+                "predict_rows_per_second": 4916009.986973225
               },
               "config": {
                 "n_estimators": 20,
@@ -480,11 +484,11 @@
                 "r2": -5.757835634945252e-07
               },
               "timing": {
-                "train_seconds": 0.00011487500160001218,
-                "predict_seconds": 1.5833000361453742e-05,
-                "fit_predict_seconds": 0.00013070800196146592,
+                "train_seconds": 4.0291997720487416e-05,
+                "predict_seconds": 7.541995728388429e-06,
+                "fit_predict_seconds": 4.7833993448875844e-05,
                 "prediction_rows": 2000.0,
-                "predict_rows_per_second": 126318445.92570738
+                "predict_rows_per_second": 265181799.62259927
               }
             }
           }
@@ -533,11 +537,11 @@
                 "r2": 0.6918708877003055
               },
               "timing": {
-                "train_seconds": 17.438573332998203,
-                "predict_seconds": 0.005995750005240552,
-                "fit_predict_seconds": 17.444569083003444,
+                "train_seconds": 1.22703745799663,
+                "predict_seconds": 0.00040183300006901845,
+                "fit_predict_seconds": 1.2274392909966991,
                 "prediction_rows": 2608.0,
-                "predict_rows_per_second": 434974.7734179197
+                "predict_rows_per_second": 6490258.389808832
               },
               "backend": "rust",
               "config": {
@@ -570,11 +574,11 @@
                 "r2": 0.6918708877003055
               },
               "timing": {
-                "train_seconds": 20.968136499999673,
-                "predict_seconds": 0.4618347089999588,
-                "fit_predict_seconds": 21.429971208999632,
+                "train_seconds": 1.2019436249975115,
+                "predict_seconds": 0.00032583299616817385,
+                "fit_predict_seconds": 1.2022694579936797,
                 "prediction_rows": 2608.0,
-                "predict_rows_per_second": 5647.042002640456
+                "predict_rows_per_second": 8004100.354078074
               },
               "backend": "rust",
               "config": {
@@ -602,16 +606,16 @@
             "cartoboost_neural": {
               "status": "ok",
               "metrics": {
-                "rmse": 0.4239608856785711,
-                "mae": 0.3323858412497284,
-                "r2": 0.58621801371408
+                "rmse": 0.3719842614497725,
+                "mae": 0.28930628795832497,
+                "r2": 0.6814562199967801
               },
               "timing": {
-                "train_seconds": 0.7666706659947522,
-                "predict_seconds": 0.008576958003686741,
-                "fit_predict_seconds": 0.7752476239984389,
+                "train_seconds": 0.6838454589960747,
+                "predict_seconds": 0.016897749999770895,
+                "fit_predict_seconds": 0.7007432089958456,
                 "prediction_rows": 2608.0,
-                "predict_rows_per_second": 304070.51064945996
+                "predict_rows_per_second": 154340.07486413044
               },
               "config": {
                 "n_estimators": 20,
@@ -619,13 +623,17 @@
                 "max_depth": 3,
                 "min_samples_leaf": 1,
                 "neural_dim": 12,
-                "id_source": "PULocationID_DOLocationID",
+                "neural_key_count": 3,
+                "id_source": "multi_key_zone_context",
+                "oof_folds": 5,
+                "support_prior_strength": 2.0,
+                "fallback": "same_service_zone_same_borough_adjacent_zone_global",
                 "zone_treatment": "target_mean",
-                "feature_count": 26,
+                "feature_count": 50,
                 "fit_stages_ms": {
-                  "base_fit_ms": 82.32841599965468,
-                  "neural_fit_ms": 256.60979200620204,
-                  "final_fit_ms": 338.660917004745
+                  "base_fit_ms": 12.58945900190156,
+                  "neural_fit_ms": 548.4406250034226,
+                  "final_fit_ms": 26.987041004758794
                 }
               }
             },
@@ -637,11 +645,11 @@
                 "r2": 0.6918444440735115
               },
               "timing": {
-                "train_seconds": 23.794581875001313,
-                "predict_seconds": 0.007364584002061747,
-                "fit_predict_seconds": 23.801946459003375,
+                "train_seconds": 0.20349937499850057,
+                "predict_seconds": 0.0003761249972740188,
+                "fit_predict_seconds": 0.2038754999957746,
                 "prediction_rows": 2608.0,
-                "predict_rows_per_second": 354127.2662882084
+                "predict_rows_per_second": 6933865.121705778
               },
               "backend": "rust",
               "config": {
@@ -678,11 +686,11 @@
                 "r2": 0.6918444440735115
               },
               "timing": {
-                "train_seconds": 3.6767925000021933,
-                "predict_seconds": 0.007339249998040032,
-                "fit_predict_seconds": 3.6841317500002333,
+                "train_seconds": 0.2716562910063658,
+                "predict_seconds": 0.00043508399539859965,
+                "fit_predict_seconds": 0.2720913750017644,
                 "prediction_rows": 2608.0,
-                "predict_rows_per_second": 355349.6611638075
+                "predict_rows_per_second": 5994244.852906382
               },
               "backend": "rust",
               "config": {
@@ -719,11 +727,11 @@
                 "r2": 0.6918444440735115
               },
               "timing": {
-                "train_seconds": 4.531680125001003,
-                "predict_seconds": 0.02877512499981094,
-                "fit_predict_seconds": 4.560455250000814,
+                "train_seconds": 0.26040916700003436,
+                "predict_seconds": 0.00045029199827695265,
+                "fit_predict_seconds": 0.2608594589983113,
                 "prediction_rows": 2608.0,
-                "predict_rows_per_second": 90633.8373861846
+                "predict_rows_per_second": 5791797.344788584
               },
               "backend": "rust",
               "config": {
@@ -760,11 +768,11 @@
                 "r2": 0.6918444440735115
               },
               "timing": {
-                "train_seconds": 2.6719342920041527,
-                "predict_seconds": 0.0024209580005845055,
-                "fit_predict_seconds": 2.674355250004737,
+                "train_seconds": 0.15819804200145882,
+                "predict_seconds": 0.0004443750003702007,
+                "fit_predict_seconds": 0.15864241700182902,
                 "prediction_rows": 2608.0,
-                "predict_rows_per_second": 1077259.4978394238
+                "predict_rows_per_second": 5868917.013394819
               },
               "backend": "rust",
               "config": {
@@ -801,11 +809,11 @@
                 "r2": 0.6824926375263004
               },
               "timing": {
-                "train_seconds": 1.4857920409995131,
-                "predict_seconds": 0.0006065000052331015,
-                "fit_predict_seconds": 1.4863985410047462,
+                "train_seconds": 0.25111416700383415,
+                "predict_seconds": 0.0005141660003573634,
+                "fit_predict_seconds": 0.2516283330041915,
                 "prediction_rows": 2608.0,
-                "predict_rows_per_second": 4300082.403128165
+                "predict_rows_per_second": 5072291.824405637
               },
               "config": {
                 "n_estimators": 20,
@@ -824,11 +832,11 @@
                 "r2": 0.6815960320513916
               },
               "timing": {
-                "train_seconds": 0.02508720799960429,
-                "predict_seconds": 0.00026616700051818043,
-                "fit_predict_seconds": 0.02535337500012247,
+                "train_seconds": 0.2558015000031446,
+                "predict_seconds": 0.0002647080036695115,
+                "fit_predict_seconds": 0.2560662080068141,
                 "prediction_rows": 2608.0,
-                "predict_rows_per_second": 9798359.65736805
+                "predict_rows_per_second": 9852365.48894114
               },
               "config": {
                 "n_estimators": 20,
@@ -850,11 +858,11 @@
                 "r2": -0.024419668997073707
               },
               "timing": {
-                "train_seconds": 9.749994205776602e-06,
-                "predict_seconds": 6.750000466126949e-06,
-                "fit_predict_seconds": 1.649999467190355e-05,
+                "train_seconds": 1.3457996828947216e-05,
+                "predict_seconds": 8.167000487446785e-06,
+                "fit_predict_seconds": 2.1624997316394e-05,
                 "prediction_rows": 2608.0,
-                "predict_rows_per_second": 386370343.6892401
+                "predict_rows_per_second": 319333885.679163
               }
             }
           }
@@ -982,11 +990,11 @@
                 "r2": 0.8508286777491838
               },
               "timing": {
-                "train_seconds": 0.7026062500008265,
-                "predict_seconds": 0.0018217909964732826,
-                "fit_predict_seconds": 0.7044280409972998,
+                "train_seconds": 0.10215083400544245,
+                "predict_seconds": 0.0002684999999473803,
+                "fit_predict_seconds": 0.10241933400538983,
                 "prediction_rows": 2000.0,
-                "predict_rows_per_second": 1097820.7730039854
+                "predict_rows_per_second": 7448789.573154388
               },
               "backend": "rust",
               "config": {
@@ -1019,11 +1027,11 @@
                 "r2": 0.8508286777491838
               },
               "timing": {
-                "train_seconds": 0.6839013750068261,
-                "predict_seconds": 0.001649999998335261,
-                "fit_predict_seconds": 0.6855513750051614,
+                "train_seconds": 0.10157508400152437,
+                "predict_seconds": 0.00028662499971687794,
+                "fit_predict_seconds": 0.10186170900124125,
                 "prediction_rows": 2000.0,
-                "predict_rows_per_second": 1212121.213344161
+                "predict_rows_per_second": 6977758.40200805
               },
               "backend": "rust",
               "config": {
@@ -1051,16 +1059,16 @@
             "cartoboost_neural": {
               "status": "ok",
               "metrics": {
-                "rmse": 0.20791877939805725,
-                "mae": 0.15938558259962154,
-                "r2": 0.8391029857955397
+                "rmse": 0.20128953565924296,
+                "mae": 0.15506131890342756,
+                "r2": 0.8491994425178553
               },
               "timing": {
-                "train_seconds": 0.919598541004234,
-                "predict_seconds": 0.0320550420001382,
-                "fit_predict_seconds": 0.9516535830043722,
+                "train_seconds": 0.7218466249978519,
+                "predict_seconds": 0.0038598329992964864,
+                "fit_predict_seconds": 0.7257064579971484,
                 "prediction_rows": 2000.0,
-                "predict_rows_per_second": 62392.68068940222
+                "predict_rows_per_second": 518157.13279940624
               },
               "config": {
                 "n_estimators": 20,
@@ -1068,13 +1076,17 @@
                 "max_depth": 3,
                 "min_samples_leaf": 1,
                 "neural_dim": 12,
-                "id_source": "PULocationID_DOLocationID",
+                "neural_key_count": 3,
+                "id_source": "multi_key_zone_context",
+                "oof_folds": 5,
+                "support_prior_strength": 2.0,
+                "fallback": "same_service_zone_same_borough_adjacent_zone_global",
                 "zone_treatment": "target_mean",
-                "feature_count": 26,
+                "feature_count": 50,
                 "fit_stages_ms": {
-                  "base_fit_ms": 585.200707995682,
-                  "neural_fit_ms": 142.31858299899613,
-                  "final_fit_ms": 147.9534579993924
+                  "base_fit_ms": 6.494583998573944,
+                  "neural_fit_ms": 688.1564580035047,
+                  "final_fit_ms": 26.368000006186776
                 }
               }
             },
@@ -1086,11 +1098,11 @@
                 "r2": 0.851192757579613
               },
               "timing": {
-                "train_seconds": 1.775922000000719,
-                "predict_seconds": 0.008489332998578902,
-                "fit_predict_seconds": 1.7844113329992979,
+                "train_seconds": 0.2313862910013995,
+                "predict_seconds": 0.00021629200637107715,
+                "fit_predict_seconds": 0.2316025830077706,
                 "prediction_rows": 2000.0,
-                "predict_rows_per_second": 235589.7689883052
+                "predict_rows_per_second": 9246758.738594986
               },
               "backend": "rust",
               "config": {
@@ -1127,11 +1139,11 @@
                 "r2": 0.8510830222365159
               },
               "timing": {
-                "train_seconds": 2.155698750000738,
-                "predict_seconds": 0.0072785840020515025,
-                "fit_predict_seconds": 2.1629773340027896,
+                "train_seconds": 0.22708266699919477,
+                "predict_seconds": 0.00029466699925251305,
+                "fit_predict_seconds": 0.22737733399844728,
                 "prediction_rows": 2000.0,
-                "predict_rows_per_second": 274778.7206187757
+                "predict_rows_per_second": 6787322.655992816
               },
               "backend": "rust",
               "config": {
@@ -1168,11 +1180,11 @@
                 "r2": 0.8514325789485606
               },
               "timing": {
-                "train_seconds": 4.030600457997934,
-                "predict_seconds": 0.0060895420028828084,
-                "fit_predict_seconds": 4.036690000000817,
+                "train_seconds": 0.3306422500027111,
+                "predict_seconds": 0.0003071669998462312,
+                "fit_predict_seconds": 0.3309494170025573,
                 "prediction_rows": 2000.0,
-                "predict_rows_per_second": 328431.9246099614
+                "predict_rows_per_second": 6511116.106226276
               },
               "backend": "rust",
               "config": {
@@ -1209,11 +1221,11 @@
                 "r2": 0.851683423713665
               },
               "timing": {
-                "train_seconds": 5.549434250002378,
-                "predict_seconds": 0.006072707998100668,
-                "fit_predict_seconds": 5.555506958000478,
+                "train_seconds": 0.11938224999903468,
+                "predict_seconds": 0.00029237499984446913,
+                "fit_predict_seconds": 0.11967462499887915,
                 "prediction_rows": 2000.0,
-                "predict_rows_per_second": 329342.36268655275
+                "predict_rows_per_second": 6840530.1447248
               },
               "backend": "rust",
               "config": {
@@ -1250,11 +1262,11 @@
                 "r2": 0.8492998063014899
               },
               "timing": {
-                "train_seconds": 6.009284749998187,
-                "predict_seconds": 0.0031779589990037493,
-                "fit_predict_seconds": 6.012462708997191,
+                "train_seconds": 0.27452491700387327,
+                "predict_seconds": 0.0004910419957013801,
+                "fit_predict_seconds": 0.27501595899957465,
                 "prediction_rows": 2000.0,
-                "predict_rows_per_second": 629334.7398839869
+                "predict_rows_per_second": 4072971.3904475705
               },
               "config": {
                 "n_estimators": 20,
@@ -1273,11 +1285,11 @@
                 "r2": 0.8486302803808544
               },
               "timing": {
-                "train_seconds": 0.04726587500044843,
-                "predict_seconds": 0.0003984580034739338,
-                "fit_predict_seconds": 0.047664333003922366,
+                "train_seconds": 0.2678656249991036,
+                "predict_seconds": 0.00028616700001293793,
+                "fit_predict_seconds": 0.26815179199911654,
                 "prediction_rows": 2000.0,
-                "predict_rows_per_second": 5019349.548918862
+                "predict_rows_per_second": 6988926.046363059
               },
               "config": {
                 "n_estimators": 20,
@@ -1299,11 +1311,11 @@
                 "r2": -0.0002625503970468124
               },
               "timing": {
-                "train_seconds": 5.795800097985193e-05,
-                "predict_seconds": 2.0916995708830655e-05,
-                "fit_predict_seconds": 7.887499668868259e-05,
+                "train_seconds": 0.0001768750007613562,
+                "predict_seconds": 4.292000085115433e-06,
+                "fit_predict_seconds": 0.00018116700084647164,
                 "prediction_rows": 2000.0,
-                "predict_rows_per_second": 95616025.73526599
+                "predict_rows_per_second": 465983215.36291635
               }
             }
           }
@@ -1352,11 +1364,11 @@
                 "r2": 0.810902611637387
               },
               "timing": {
-                "train_seconds": 43.45588549999957,
-                "predict_seconds": 0.0021682499937014654,
-                "fit_predict_seconds": 43.45805374999327,
+                "train_seconds": 3.785751916002482,
+                "predict_seconds": 0.0003219999998691492,
+                "fit_predict_seconds": 3.7860739160023513,
                 "prediction_rows": 2608.0,
-                "predict_rows_per_second": 1202813.3322153632
+                "predict_rows_per_second": 8099378.885278914
               },
               "backend": "rust",
               "config": {
@@ -1389,11 +1401,11 @@
                 "r2": 0.810902611637387
               },
               "timing": {
-                "train_seconds": 43.2656474999967,
-                "predict_seconds": 0.007936499998322688,
-                "fit_predict_seconds": 43.273583999995026,
+                "train_seconds": 3.6595030829994357,
+                "predict_seconds": 0.001396207997458987,
+                "fit_predict_seconds": 3.6608992909968947,
                 "prediction_rows": 2608.0,
-                "predict_rows_per_second": 328608.3286777772
+                "predict_rows_per_second": 1867916.5315958655
               },
               "backend": "rust",
               "config": {
@@ -1421,16 +1433,16 @@
             "cartoboost_neural": {
               "status": "ok",
               "metrics": {
-                "rmse": 0.19392252143384642,
-                "mae": 0.14989259059092985,
-                "r2": 0.7929262291753258
+                "rmse": 0.18554541585226547,
+                "mae": 0.1448695604566174,
+                "r2": 0.8104302438651807
               },
               "timing": {
-                "train_seconds": 44.180185791999975,
-                "predict_seconds": 0.1859643749994575,
-                "fit_predict_seconds": 44.36615016699943,
+                "train_seconds": 1.2526044590049423,
+                "predict_seconds": 0.04842095800267998,
+                "fit_predict_seconds": 1.3010254170076223,
                 "prediction_rows": 2608.0,
-                "predict_rows_per_second": 14024.191461443128
+                "predict_rows_per_second": 53860.97482531539
               },
               "config": {
                 "n_estimators": 20,
@@ -1438,13 +1450,17 @@
                 "max_depth": 3,
                 "min_samples_leaf": 1,
                 "neural_dim": 12,
-                "id_source": "PULocationID_DOLocationID",
+                "neural_key_count": 3,
+                "id_source": "multi_key_zone_context",
+                "oof_folds": 5,
+                "support_prior_strength": 2.0,
+                "fallback": "same_service_zone_same_borough_adjacent_zone_global",
                 "zone_treatment": "target_mean",
-                "feature_count": 26,
+                "feature_count": 50,
                 "fit_stages_ms": {
-                  "base_fit_ms": 36.94945899769664,
-                  "neural_fit_ms": 43372.1279579986,
-                  "final_fit_ms": 666.8128330056788
+                  "base_fit_ms": 11.629000000539236,
+                  "neural_fit_ms": 1184.2010830005165,
+                  "final_fit_ms": 55.206500001077075
                 }
               }
             },
@@ -1456,11 +1472,11 @@
                 "r2": 0.8086971987728185
               },
               "timing": {
-                "train_seconds": 3.9801070829998935,
-                "predict_seconds": 0.010953375000099186,
-                "fit_predict_seconds": 3.9910604579999927,
+                "train_seconds": 7.586800915996719,
+                "predict_seconds": 0.00045595899428008124,
+                "fit_predict_seconds": 7.587256874990999,
                 "prediction_rows": 2608.0,
-                "predict_rows_per_second": 238100.12895353112
+                "predict_rows_per_second": 5719812.598757483
               },
               "backend": "rust",
               "config": {
@@ -1497,11 +1513,11 @@
                 "r2": 0.8047593227946563
               },
               "timing": {
-                "train_seconds": 7.066972874999919,
-                "predict_seconds": 0.008085333000053652,
-                "fit_predict_seconds": 7.075058207999973,
+                "train_seconds": 0.2540666249988135,
+                "predict_seconds": 0.0006562080016010441,
+                "fit_predict_seconds": 0.25472283300041454,
                 "prediction_rows": 2608.0,
-                "predict_rows_per_second": 322559.38005060446
+                "predict_rows_per_second": 3974349.586772626
               },
               "backend": "rust",
               "config": {
@@ -1538,11 +1554,11 @@
                 "r2": 0.8139825624471377
               },
               "timing": {
-                "train_seconds": 8.917916124999465,
-                "predict_seconds": 0.0020440410007722676,
-                "fit_predict_seconds": 8.919960166000237,
+                "train_seconds": 0.420317708994844,
+                "predict_seconds": 0.0007177919978857972,
+                "fit_predict_seconds": 0.4210355009927298,
                 "prediction_rows": 2608.0,
-                "predict_rows_per_second": 1275903.9564346608
+                "predict_rows_per_second": 3633364.550847139
               },
               "backend": "rust",
               "config": {
@@ -1579,11 +1595,11 @@
                 "r2": 0.809453005374825
               },
               "timing": {
-                "train_seconds": 6.439278166995791,
-                "predict_seconds": 0.002044291999482084,
-                "fit_predict_seconds": 6.441322458995273,
+                "train_seconds": 0.7437431250000373,
+                "predict_seconds": 0.0005896669972571544,
+                "fit_predict_seconds": 0.7443327919972944,
                 "prediction_rows": 2608.0,
-                "predict_rows_per_second": 1275747.300611033
+                "predict_rows_per_second": 4422835.281830515
               },
               "backend": "rust",
               "config": {
@@ -1620,11 +1636,11 @@
                 "r2": 0.8098035768068609
               },
               "timing": {
-                "train_seconds": 0.10614987499866402,
-                "predict_seconds": 0.0005067909951321781,
-                "fit_predict_seconds": 0.1066566659937962,
+                "train_seconds": 0.31680679200508166,
+                "predict_seconds": 0.0009877080010483041,
+                "fit_predict_seconds": 0.31779450000612997,
                 "prediction_rows": 2608.0,
-                "predict_rows_per_second": 5146105.6432539765
+                "predict_rows_per_second": 2640456.4883872545
               },
               "config": {
                 "n_estimators": 20,
@@ -1643,11 +1659,11 @@
                 "r2": 0.8095423750181722
               },
               "timing": {
-                "train_seconds": 0.02687583299848484,
-                "predict_seconds": 0.00023787499958416447,
-                "fit_predict_seconds": 0.027113707998069003,
+                "train_seconds": 0.2404117089972715,
+                "predict_seconds": 0.000509292003698647,
+                "fit_predict_seconds": 0.24092100100097014,
                 "prediction_rows": 2608.0,
-                "predict_rows_per_second": 10963741.480017291
+                "predict_rows_per_second": 5120834.37607471
               },
               "config": {
                 "n_estimators": 20,
@@ -1669,11 +1685,11 @@
                 "r2": -0.09049953484901763
               },
               "timing": {
-                "train_seconds": 1.612499909242615e-05,
-                "predict_seconds": 7.500006176996976e-06,
-                "fit_predict_seconds": 2.3625005269423127e-05,
+                "train_seconds": 3.5832999856211245e-05,
+                "predict_seconds": 1.3374999980442226e-05,
+                "fit_predict_seconds": 4.920799983665347e-05,
                 "prediction_rows": 2608.0,
-                "predict_rows_per_second": 347733046.9405361
+                "predict_rows_per_second": 194990654.4907352
               }
             }
           }
@@ -1944,11 +1960,11 @@
                 "r2": 0.873057684868927
               },
               "timing": {
-                "train_seconds": 54.9410741669999,
-                "predict_seconds": 0.009906416002195328,
-                "fit_predict_seconds": 54.95098058300209,
+                "train_seconds": 3.8288662499981,
+                "predict_seconds": 0.0063308329990832135,
+                "fit_predict_seconds": 3.8351970829971833,
                 "prediction_rows": 4930.0,
-                "predict_rows_per_second": 497657.2757400334
+                "predict_rows_per_second": 778728.4865536538
               },
               "backend": "rust",
               "config": {
@@ -1981,11 +1997,11 @@
                 "r2": 0.873057684868927
               },
               "timing": {
-                "train_seconds": 28.115108375001,
-                "predict_seconds": 0.010812874999828637,
-                "fit_predict_seconds": 28.12592125000083,
+                "train_seconds": 3.813791458000196,
+                "predict_seconds": 0.0010458329998073168,
+                "fit_predict_seconds": 3.8148372910000035,
                 "prediction_rows": 4930.0,
-                "predict_rows_per_second": 455937.94435597665
+                "predict_rows_per_second": 4713945.726428883
               },
               "backend": "rust",
               "config": {
@@ -2013,16 +2029,16 @@
             "cartoboost_neural": {
               "status": "ok",
               "metrics": {
-                "rmse": 0.7265277818376856,
-                "mae": 0.5904062427635588,
-                "r2": 0.8733339708564211
+                "rmse": 0.7028888727623089,
+                "mae": 0.5764618254256589,
+                "r2": 0.8814424979482742
               },
               "timing": {
-                "train_seconds": 32.81008437499986,
-                "predict_seconds": 0.017002833003061824,
-                "fit_predict_seconds": 32.82708720800292,
+                "train_seconds": 1.1293032920002588,
+                "predict_seconds": 0.005667750003340188,
+                "fit_predict_seconds": 1.134971042003599,
                 "prediction_rows": 4930.0,
-                "predict_rows_per_second": 289951.6803530458
+                "predict_rows_per_second": 869833.7077490347
               },
               "config": {
                 "n_estimators": 20,
@@ -2030,13 +2046,17 @@
                 "max_depth": 3,
                 "min_samples_leaf": 1,
                 "neural_dim": 12,
-                "id_source": "PULocationID",
+                "neural_key_count": 2,
+                "id_source": "multi_key_zone_context",
+                "oof_folds": 5,
+                "support_prior_strength": 2.0,
+                "fallback": "same_service_zone_same_borough_adjacent_zone_global",
                 "zone_treatment": "target_mean",
-                "feature_count": 19,
+                "feature_count": 31,
                 "fit_stages_ms": {
-                  "base_fit_ms": 122.38775000150781,
-                  "neural_fit_ms": 34.28945800260408,
-                  "final_fit_ms": 814.2835839971667
+                  "base_fit_ms": 9.70329199481057,
+                  "neural_fit_ms": 1071.1957499952405,
+                  "final_fit_ms": 31.45958299865015
                 }
               }
             },
@@ -2048,11 +2068,11 @@
                 "r2": 0.8757855901899535
               },
               "timing": {
-                "train_seconds": 7.74832095799502,
-                "predict_seconds": 0.01158058299915865,
-                "fit_predict_seconds": 7.7599015409941785,
+                "train_seconds": 0.9030501660017762,
+                "predict_seconds": 0.0005748330004280433,
+                "fit_predict_seconds": 0.9036249990022043,
                 "prediction_rows": 4930.0,
-                "predict_rows_per_second": 425712.5915299923
+                "predict_rows_per_second": 8576403.923102759
               },
               "backend": "rust",
               "config": {
@@ -2089,11 +2109,11 @@
                 "r2": 0.8757855901899535
               },
               "timing": {
-                "train_seconds": 6.673883374998695,
-                "predict_seconds": 0.009983166004531085,
-                "fit_predict_seconds": 6.683866541003226,
+                "train_seconds": 0.350738041997829,
+                "predict_seconds": 0.0006270830053836107,
+                "fit_predict_seconds": 0.3513651250032126,
                 "prediction_rows": 4930.0,
-                "predict_rows_per_second": 493831.3154126064
+                "predict_rows_per_second": 7861798.131467667
               },
               "backend": "rust",
               "config": {
@@ -2130,11 +2150,11 @@
                 "r2": 0.8757855901899535
               },
               "timing": {
-                "train_seconds": 9.85229637500015,
-                "predict_seconds": 0.01469912500033388,
-                "fit_predict_seconds": 9.866995500000485,
+                "train_seconds": 0.5059963750027237,
+                "predict_seconds": 0.0007092080049915239,
+                "fit_predict_seconds": 0.5067055830077152,
                 "prediction_rows": 4930.0,
-                "predict_rows_per_second": 335394.11358757876
+                "predict_rows_per_second": 6951416.178754103
               },
               "backend": "rust",
               "config": {
@@ -2171,11 +2191,11 @@
                 "r2": 0.8757855901899535
               },
               "timing": {
-                "train_seconds": 9.33232408400363,
-                "predict_seconds": 0.01036125000246102,
-                "fit_predict_seconds": 9.342685334006092,
+                "train_seconds": 0.7692737500037765,
+                "predict_seconds": 0.0006220829964149743,
+                "fit_predict_seconds": 0.7698958330001915,
                 "prediction_rows": 4930.0,
-                "predict_rows_per_second": 475811.31608918024
+                "predict_rows_per_second": 7924987.547338994
               },
               "backend": "rust",
               "config": {
@@ -2212,11 +2232,11 @@
                 "r2": 0.8684020510083328
               },
               "timing": {
-                "train_seconds": 6.381165458005853,
-                "predict_seconds": 0.0019263750000391155,
-                "fit_predict_seconds": 6.383091833005892,
+                "train_seconds": 0.11200145900511416,
+                "predict_seconds": 0.0005826669948874041,
+                "fit_predict_seconds": 0.11258412600000156,
                 "prediction_rows": 4930.0,
-                "predict_rows_per_second": 2559210.9531632704
+                "predict_rows_per_second": 8461093.631968435
               },
               "config": {
                 "n_estimators": 20,
@@ -2235,11 +2255,11 @@
                 "r2": 0.8682608312037167
               },
               "timing": {
-                "train_seconds": 0.2311489999992773,
-                "predict_seconds": 0.0004628329988918267,
-                "fit_predict_seconds": 0.23161183299816912,
+                "train_seconds": 0.10900770800071768,
+                "predict_seconds": 0.00043325000297045335,
+                "fit_predict_seconds": 0.10944095800368814,
                 "prediction_rows": 4930.0,
-                "predict_rows_per_second": 10651790.196040535
+                "predict_rows_per_second": 11379111.2895531
               },
               "config": {
                 "n_estimators": 20,
@@ -2261,11 +2281,11 @@
                 "r2": -0.0005603832964402589
               },
               "timing": {
-                "train_seconds": 7.02499964972958e-05,
-                "predict_seconds": 2.2499996703118086e-05,
-                "fit_predict_seconds": 9.274999320041388e-05,
+                "train_seconds": 3.737500082934275e-05,
+                "predict_seconds": 8.041999535635114e-06,
+                "fit_predict_seconds": 4.5417000364977866e-05,
                 "prediction_rows": 4930.0,
-                "predict_rows_per_second": 219111143.21704733
+                "predict_rows_per_second": 613031619.5809946
               }
             }
           }
@@ -2371,11 +2391,11 @@
                 "r2": -0.002957527133875537
               },
               "timing": {
-                "train_seconds": 1.654199877521023e-05,
-                "predict_seconds": 7.124996045604348e-06,
-                "fit_predict_seconds": 2.366699482081458e-05,
+                "train_seconds": 6.833004590589553e-06,
+                "predict_seconds": 5.49999822396785e-06,
+                "fit_predict_seconds": 1.2333002814557403e-05,
                 "prediction_rows": 5139.0,
-                "predict_rows_per_second": 721263558.1981022
+                "predict_rows_per_second": 934363938.0837079
               }
             }
           }

@@ -141,6 +141,70 @@ def test_neural_embedding_regressor_appends_feature_schema_for_final_fit():
     assert regressor.model.feature_schema_["names"][:2] == ["base_0", "base_1"]
 
 
+def test_neural_embedding_regressor_supports_oof_and_multi_key_ids():
+    rng = np.random.default_rng(23)
+    rows = 180
+    pickup = rng.integers(1, 30, size=rows, dtype=np.uint64)
+    dropoff = rng.integers(1, 40, size=rows, dtype=np.uint64)
+    ids = np.column_stack([pickup, dropoff])
+    x = rng.normal(size=(rows, 3))
+    y = (
+        0.7 * x[:, 0]
+        - 0.2 * x[:, 1]
+        + 0.25 * (pickup % 5).astype(float)
+        + 0.15 * (dropoff % 7).astype(float)
+    )
+
+    regressor = NeuralEmbeddingRegressor(
+        dim=2,
+        oof_folds=3,
+        random_state=5,
+        support_prior_strength=2.0,
+        final_model_kwargs={
+            "n_estimators": 16,
+            "learning_rate": 0.1,
+            "max_depth": 2,
+            "min_gain": 0.0,
+        },
+    )
+    regressor.fit(x, y, ids=ids)
+    transformed = regressor.transform(x, ids=ids)
+    pred = regressor.predict(x, ids=ids)
+
+    assert len(regressor.neural_transformers) == 2
+    assert transformed.shape == (rows, x.shape[1] + 4)
+    assert pred.shape == (rows,)
+
+
+def test_neural_embedding_regressor_predict_uses_fallback_context():
+    rng = np.random.default_rng(31)
+    rows = 120
+    ids = rng.integers(1, 20, size=rows, dtype=np.uint64)
+    x = rng.normal(size=(rows, 2))
+    y = x[:, 0] + 0.4 * (ids % 3).astype(float)
+
+    regressor = NeuralEmbeddingRegressor(
+        dim=2,
+        random_state=8,
+        final_model_kwargs={
+            "n_estimators": 12,
+            "learning_rate": 0.1,
+            "max_depth": 2,
+            "min_gain": 0.0,
+        },
+    ).fit(x, y, ids=ids)
+
+    cold_x = rng.normal(size=(3, 2))
+    pred = regressor.predict(
+        cold_x,
+        ids=np.array([100, 101, 102], dtype=np.uint64),
+        fallback_ids=np.array([[1, 2], [99, 3], [98, 97]], dtype=np.uint64),
+        neighbor_ids=[[4, 5], [], [6]],
+    )
+
+    assert pred.shape == (3,)
+
+
 def test_benchmark_neural_vs_cartoboost_smoke():
     rng = np.random.default_rng(12)
     rows = 256

@@ -36,9 +36,9 @@ validation rows can still reuse useful ID residual structure. The cold-origin
 case is the warning case: when the tested IDs have no training history, fallback
 embeddings can underperform the structured CartoBoost baseline.
 
-Neural embedding improvements should therefore be judged by split type. The main
-improvement paths are out-of-fold residual embeddings for final-model training,
-support-aware shrinkage for rare IDs, hierarchical fallback rather than only a
-global vector, richer task keys such as origin-destination or zone-hour IDs, and
-graph-aware fallback from adjacent or typed-neighbor IDs. Repeated-ID gains
-should not be described as cold-start generalization.
+Neural embedding improvements should therefore be judged by split type.
+`NeuralEmbeddingRegressor` supports out-of-fold residual embeddings through
+`oof_folds`, support-aware shrinkage through `support_prior_strength`, multi-key
+embeddings through 2D `ids`, hierarchical fallback through `fallback_ids`, and
+graph-aware fallback through `neighbor_ids`. Repeated-ID gains should not be
+described as cold-start generalization.

@@ -26,4 +26,4 @@ pub use graphsage::{
     HinSageEncoderArtifact, HinSageGraph, HomogeneousGraph,
 };
 pub use node2vec::{Node2VecConfig, Node2VecEncoder, Node2VecEncoderArtifact, Node2VecLoss};
-pub use trainer::fit_embedding_table;
+pub use trainer::{fit_embedding_table, fit_embedding_table_with_options};

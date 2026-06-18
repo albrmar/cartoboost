@@ -107,12 +107,11 @@ instead of making it CartoBoost-specific.
 Neural and graph-augmented CartoBoost rows should be interpreted against the
 same split boundary. Neural ID embeddings can help when pickup or dropoff zones
 repeat between train and validation, but a cold-zone spatial holdout requires
-fallback vectors for unseen zones. Useful neural improvements for this benchmark
-are out-of-fold residual embeddings, support-aware shrinkage for rare zones,
-hierarchical fallback from zone to borough/service-zone/global context,
-zone-hour or pickup-dropoff keys, and graph-aware fallback from adjacent zones.
-Repeated-zone gains should not be reported as evidence of cold-zone
-generalization.
+fallback vectors for unseen zones. The maintained neural row uses out-of-fold
+residual embeddings, support-aware shrinkage, multi-key zone embeddings, same
+service-zone and same-borough fallback representatives, and adjacent-zone
+neighbor fallback. Repeated-zone gains should not be reported as evidence of
+cold-zone generalization.
 
 To compare raw numeric zone IDs against target-mean treatment:
 

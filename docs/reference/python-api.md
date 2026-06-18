@@ -56,8 +56,10 @@ regressor = NeuralEmbeddingRegressor(
     random_state=None,
     neural_transformer=None,
     use_residual=True,
+    oof_folds=1,
     drop_id_column=True,
     id_column=None,
+    support_prior_strength=1.0,
     base_model_kwargs=None,
     final_model_kwargs=None,
 )
@@ -69,11 +71,14 @@ the expanded matrix.
 
 | Method | Returns | Notes |
 | --- | --- | --- |
-| `fit(X, y, sample_weight=None, sparse_sets=None, id_column=None, ids=None, **fit_kwargs)` | `self` | Pass `ids` or `id_column`. `fit_kwargs` are forwarded to `CartoBoostRegressor` for both base/final fits. |
-| `predict(X, sparse_sets=None, id_column=None, ids=None)` | `numpy.ndarray` | Requires the same ID source style used during fit. |
-| `transform(X, id_column=None, ids=None)` | `numpy.ndarray` | Returns dense matrix with neural columns appended. |
-| `score(X, y, sparse_sets=None, id_column=None, ids=None)` | `float` | Computes mean absolute error on predictions. |
+| `fit(X, y, sample_weight=None, sparse_sets=None, id_column=None, ids=None, fallback_ids=None, neighbor_ids=None, **fit_kwargs)` | `self` | Pass 1D IDs for one key or 2D IDs for multi-key embeddings. `fallback_ids` provides hierarchical fallback chains; `neighbor_ids` provides graph-aware fallback. |
+| `predict(X, sparse_sets=None, id_column=None, ids=None, fallback_ids=None, neighbor_ids=None)` | `numpy.ndarray` | Requires the same ID key count used during fit. |
+| `transform(X, id_column=None, ids=None, fallback_ids=None, neighbor_ids=None)` | `numpy.ndarray` | Returns dense matrix with neural columns appended. |
+| `score(X, y, sparse_sets=None, id_column=None, ids=None, fallback_ids=None, neighbor_ids=None)` | `float` | Computes mean absolute error on predictions. |
 | `timings` | `dict[str, float]` | Fit timing components in milliseconds: `base_fit_ms`, `neural_fit_ms`, `final_fit_ms`. |
+
+Set `oof_folds > 1` to train final-model embedding columns out of fold. Use
+`support_prior_strength` to shrink rare IDs more strongly toward their prior.
 
 ## Graph Encoders
 

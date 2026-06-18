@@ -324,6 +324,8 @@ def run_neural(
         drop_id_column=False,
         id_column=None,
         random_state=args.seed,
+        oof_folds=5,
+        support_prior_strength=2.0,
         base_model_kwargs={
             "n_estimators": max(10, args.n_estimators // 2),
             "learning_rate": args.learning_rate,
@@ -352,7 +354,12 @@ def run_neural(
     return (
         prediction,
         timing,
-        {"embedding_dim": int(args.neural_dim), "fit_stages_ms": model.timings},
+        {
+            "embedding_dim": int(args.neural_dim),
+            "oof_folds": 5,
+            "support_prior_strength": 2.0,
+            "fit_stages_ms": model.timings,
+        },
     )
 
 

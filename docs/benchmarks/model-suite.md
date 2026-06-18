@@ -59,13 +59,11 @@ recover unseen ID effects and the plain dense baselines are stronger. Treat this
 as a guardrail: neural ID features should be reported with the split protocol,
 not as a universal quality improvement.
 
-Neural embedding improvements should target the cold-start boundary directly:
-out-of-fold residual embeddings for final-model training, support-aware
-shrinkage for rare IDs, hierarchical fallback instead of a single global vector,
-richer task keys such as origin-destination or zone-hour IDs, and graph-aware
-fallback from adjacent or typed-neighbor IDs. Any claimed improvement should be
-validated separately on repeated-ID and cold-ID splits because those are
-different deployment promises.
+The maintained `cartoboost_neural` row uses out-of-fold residual embeddings and
+support-aware shrinkage, and the API also supports hierarchical `fallback_ids`,
+multi-key 2D `ids`, and graph-aware `neighbor_ids`. Any claimed improvement
+should still be validated separately on repeated-ID and cold-ID splits because
+those are different deployment promises.
 
 The graph workload fits node2vec, GraphSAGE, HeteroGraphSAGE, and HinSAGE
 features from train topology, then appends source and target embeddings to
