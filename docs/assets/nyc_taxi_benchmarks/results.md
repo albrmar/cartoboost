@@ -57,17 +57,7 @@ For each runnable learned-model split, this table compares LightGBM with the bes
 | fare | spatial_holdout | cartoboost | 0.148375 | 0.152686 | -0.004311 | 0.007854 | cartoboost |
 | pickup_demand | random | cartoboost_graph_node2vec | 0.403529 | 0.481552 | -0.078024 | 0.016572 | cartoboost |
 
-### What Each Comparison Row Models
-
-| task/split | prediction unit | target being modeled | validation question | why the winning row is plausible |
-| --- | --- | --- | --- | --- |
-| duration/random | one completed taxi trip | log trip duration in seconds | Can the model explain ordinary held-out trips drawn from the same month-wide trip distribution? | Base CartoBoost uses trip distance, passenger count, hour/weekday periodicity, pickup/dropoff zones, and route geometry. |
-| duration/spatial_holdout | one completed taxi trip from held-out pickup zones | log trip duration in seconds | Does the trip-duration structure transfer when pickup zones are held out? | The gain comes from spatial splitters and route geometry rather than memorizing the exact validation rows. |
-| fare/random | one completed taxi trip | log total fare amount | Can the model recover fare structure for ordinary held-out trips? | Distance, pickup/dropoff zones, hour/weekday effects, and cartometric route features align with how fares vary. |
-| fare/spatial_holdout | one completed taxi trip from held-out pickup zones | log total fare amount | Does fare modeling generalize to zones not present in the training pickup set? | Route and zone geometry carry transferable fare signal beyond target-mean zone encodings. |
-| pickup_demand/random | pickup zone x hour x weekday bucket | log pickup trip count | Can the model explain recurring zone-time demand for observed zones? | The node2vec row adds topology from observed pickup-zone relationships before modeling hour, weekday, and zone effects. |
-
-### Why CartoBoost Wins Here
+### Interpretation
 
 - Fare and duration are primarily geotemporal row tasks. The base CartoBoost candidate wins through native periodic hour/day splitters, diagonal and radial spatial splitters, and sparse-set taxi-zone membership. Those primitives let the model express pickup/dropoff geometry directly instead of asking an axis-only tabular baseline to approximate it through many rectangular cuts.
 - Pickup demand is a zone-time graph problem. The best row in the random split is graph-augmented CartoBoost, because node2vec adds topology learned from observed pickup-zone relationships before the booster models hour, weekday, and zone effects.
@@ -175,4 +165,3 @@ Predict log pickup trip count for a pickup zone, hour, and weekday bucket.
 | lightgbm | skipped |  |  |  |  |  |  | learned models are skipped for pickup_demand cold-zone spatial holdout; the split removes all zone demand history, so predictions collapse to priors |
 | xgboost | skipped |  |  |  |  |  |  | learned models are skipped for pickup_demand cold-zone spatial holdout; the split removes all zone demand history, so predictions collapse to priors |
 | mean | ok | 2.088607 | 1.807484 | -0.002958 | 0.000054 | 0.000014 | 376318572.84 |  |
-

@@ -1,4 +1,4 @@
-from .arima import AutoARIMAForecaster
+from .arima import ArimaForecaster, AutoARIMAForecaster
 from .ets import ETSForecaster
 from .kalman import KalmanForecaster
 from .kriging import KrigingForecaster
@@ -8,6 +8,7 @@ from .theta import OptimizedThetaForecaster, ThetaForecaster
 
 __all__ = [
     "AutoARIMAForecaster",
+    "ArimaForecaster",
     "ETSForecaster",
     "ForecastResult",
     "KalmanForecaster",

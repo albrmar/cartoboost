@@ -7,6 +7,19 @@ def test_theta_validates_parameters():
         ThetaForecaster(theta=0.0)
     with pytest.raises(ValueError, match="alpha"):
         ThetaForecaster(alpha=2.0)
+    with pytest.raises(ValueError, match="season_length is required"):
+        ThetaForecaster(seasonality="additive")
+    with pytest.raises(ValueError, match="prediction_interval_levels"):
+        ThetaForecaster(prediction_interval_levels=[1.2])
+
+
+def test_optimized_theta_validates_parameters():
+    with pytest.raises(ValueError, match="theta_grid"):
+        OptimizedThetaForecaster(theta_grid=(0.0,))
+    with pytest.raises(ValueError, match="alpha_grid"):
+        OptimizedThetaForecaster(alpha_grid=(1.2,))
+    with pytest.raises(ValueError, match="season_length is required"):
+        OptimizedThetaForecaster(seasonality="multiplicative")
 
 
 def test_theta_converts_series_and_delegates_to_native(install_fake_native):

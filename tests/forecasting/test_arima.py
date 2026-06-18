@@ -1,10 +1,33 @@
 import pytest
+from cartoboost.forecasting.local import ArimaForecaster
 from cartoboost.forecasting.local.arima import AutoARIMAForecaster
+
+
+def test_arima_validates_order_parameters():
+    with pytest.raises(ValueError, match="nonnegative"):
+        ArimaForecaster(p=-1)
+    with pytest.raises(ValueError, match="d must be <= 2"):
+        ArimaForecaster(d=3)
+
+
+def test_arima_converts_series_and_delegates_to_native(install_fake_native):
+    native = install_fake_native("ArimaForecaster")
+
+    result = ArimaForecaster(p=2, d=1, q=1).fit([10.0, 11.0, 13.0, 16.0]).predict(2)
+
+    assert result == {"args": (2,), "kwargs": {}}
+    assert native.calls[0] == ("init", {"p": 2, "d": 1, "q": 1})
+    assert native.calls[1][1].rows[-1] == ("__single__", "1970-01-04T00:00:00", 16.0)
+    assert native.calls[2] == ("predict", (2,), {})
 
 
 def test_auto_arima_rejects_python_fallback_policy():
     with pytest.raises(ValueError, match="error_policy='raise'"):
         AutoARIMAForecaster(error_policy="fallback")
+    with pytest.raises(ValueError, match="seasonal=False"):
+        AutoARIMAForecaster(seasonal=True)
+    with pytest.raises(ValueError, match="max_q"):
+        AutoARIMAForecaster(max_q=9)
 
 
 def test_auto_arima_fit_predict_uses_rust_binding():

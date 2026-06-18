@@ -31,19 +31,28 @@ class ETSForecaster(NativeForecastWrapper):
             raise ValueError("seasonal_periods must be greater than 1 when seasonal is set")
         if seasonal is None and gamma is not None:
             raise ValueError("gamma requires additive seasonality")
+        alpha = float(alpha)
+        beta = float(beta)
+        gamma = None if gamma is None else float(gamma)
+        if not 0 < alpha <= 1:
+            raise ValueError("alpha must be in (0, 1]")
+        if not 0 <= beta <= 1:
+            raise ValueError("beta must be in [0, 1]")
+        if gamma is not None and not 0 <= gamma <= 1:
+            raise ValueError("gamma must be in [0, 1]")
         super().__init__(
-            alpha=float(alpha),
-            beta=float(beta),
-            gamma=None if gamma is None else float(gamma),
+            alpha=alpha,
+            beta=beta,
+            gamma=gamma,
             season_length=None if seasonal_periods is None else int(seasonal_periods),
         )
         self.trend = trend
         self.seasonal = seasonal
         self.seasonal_periods = None if seasonal_periods is None else int(seasonal_periods)
         self.damped_trend = bool(damped_trend)
-        self.alpha = float(alpha)
-        self.beta = float(beta)
-        self.gamma = None if gamma is None else float(gamma)
+        self.alpha = alpha
+        self.beta = beta
+        self.gamma = gamma
 
 
 __all__ = ["ETSForecaster"]

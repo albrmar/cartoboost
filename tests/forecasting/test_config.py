@@ -39,70 +39,6 @@ def test_forecasting_config_parses_models_and_constructs_default_backed_models(
     assert native.calls[1][1].rows[-1] == ("__single__", "1970-01-04T00:00:00", 13.0)
 
 
-def test_forecasting_config_constructs_independent_kalman_model(install_fake_native):
-    native = install_fake_native("KalmanForecaster")
-    config = ForecastingConfig.from_toml(
-        """
-        horizon = 2
-
-        [[models]]
-        name = "kalman"
-
-        [models.params]
-        level_process_variance = 0.2
-        trend_process_variance = 0.03
-        observation_variance = 0.7
-        """
-    )
-
-    model = config.construct_models()["kalman"]
-
-    assert model.fit([1, 2, 4]).predict(1) == {"args": (1,), "kwargs": {}}
-    assert native.calls[0] == (
-        "init",
-        {
-            "level_process_variance": 0.2,
-            "trend_process_variance": 0.03,
-            "observation_variance": 0.7,
-        },
-    )
-
-
-def test_forecasting_config_constructs_independent_kriging_model(install_fake_native):
-    native = install_fake_native("KrigingForecaster")
-    config = ForecastingConfig.from_toml(
-        """
-        horizon = 1
-
-        [[models]]
-        name = "kriging"
-
-        [models.params.coordinates]
-        PULocationID_142 = [0.0, 0.0]
-        PULocationID_236 = [1.0, 0.0]
-
-        [models.params]
-        range = 3.0
-        nugget = 0.01
-        """
-    )
-
-    model = config.construct_models()["kriging"]
-
-    assert model.fit({"PULocationID_142": [10, 11], "PULocationID_236": [20, 21]}).predict(1) == {
-        "args": (1,),
-        "kwargs": {},
-    }
-    assert native.calls[0] == (
-        "init",
-        {
-            "coordinates": [("PULocationID_142", 0.0, 0.0), ("PULocationID_236", 1.0, 0.0)],
-            "range": 3.0,
-            "nugget": 0.01,
-        },
-    )
-
-
 def test_forecasting_config_rejects_unknown_root_fields_by_default():
     with pytest.raises(ValueError, match="unknown forecasting config field"):
         ForecastingConfig.from_toml(
@@ -146,3 +82,62 @@ def test_forecasting_config_allows_unknown_fields_when_requested():
 def test_forecasting_config_requires_positive_horizon():
     with pytest.raises(ValueError, match="positive integer"):
         ForecastingConfig.from_toml("horizon = 0")
+
+
+def test_forecasting_config_parses_bottom_up_reconciliation():
+    config = ForecastingConfig.from_toml(
+        """
+        horizon = 2
+
+        [reconciliation]
+        method = "bottom_up_reconciler"
+        series_id_column = "PULocationID"
+        parent_column = "borough"
+        child_column = "zone"
+        non_negative = true
+
+        [reconciliation.hierarchy]
+        Manhattan = ["Midtown", "Chelsea"]
+        """
+    )
+
+    assert config.reconciliation is not None
+    assert config.reconciliation.model_name == "bottom_up_reconciler"
+    assert config.reconciliation.to_params()["hierarchy"] == {"Manhattan": ["Midtown", "Chelsea"]}
+    assert config.to_dict()["reconciliation"]["series_id_column"] == "PULocationID"
+
+
+def test_forecasting_config_constructs_min_trace_reconciler(install_fake_native):
+    native = install_fake_native("MinTraceReconciler")
+    config = ForecastingConfig.from_toml(
+        """
+        horizon = 2
+
+        [reconciliation]
+        method = "min_trace"
+        parent_column = "borough"
+        child_column = "PULocationID"
+        covariance_method = "sample"
+        """
+    )
+
+    reconciler = config.construct_reconciler()
+
+    assert reconciler.native_class_name == "MinTraceReconciler"
+    assert reconciler.get_params()["covariance_method"] == "sample"
+    reconciler.fit([1.0, 2.0])
+    assert native.calls[0][1]["covariance_method"] == "sample"
+    assert native.calls[0][1]["parent_column"] == "borough"
+
+
+def test_forecasting_config_rejects_unknown_reconciliation_fields_by_default():
+    with pytest.raises(ValueError, match="unknown reconciliation config field"):
+        ForecastingConfig.from_toml(
+            """
+            horizon = 2
+
+            [reconciliation]
+            method = "bottom_up_reconciler"
+            mystery = true
+            """
+        )

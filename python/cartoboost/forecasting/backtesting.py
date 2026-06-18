@@ -158,19 +158,12 @@ class RollingOriginBacktester:
                 columns={frame.timestamp_col: "timestamp", frame.target_col: "actual"}
             )
             actual["horizon"] = _horizon_numbers(validation, frame.timestamp_col)
-            merged = actual[["series_id", "timestamp", "horizon", "actual"]].merge(
+            merged = _align_forecast_rows(
+                actual[["series_id", "timestamp", "horizon", "actual"]],
                 forecast_data[["series_id", "timestamp", "horizon", "prediction"]],
-                on=["series_id", "timestamp", "horizon"],
-                how="inner",
-                validate="one_to_one",
             )
-            if len(merged) != len(actual):
-                raise ValueError("forecast rows did not align to validation rows")
-            metrics = self.metric_set.evaluate(
-                merged["actual"],
-                merged["prediction"],
-                horizon=merged["horizon"],
-                series_id=merged["series_id"],
+            metrics = self.metric_set.evaluate_frame(
+                merged,
                 y_train=train[frame.target_col],
             )
             rows = []
@@ -225,14 +218,6 @@ class RollingOriginBacktester:
                 raise ValueError("model predictions must match the exact validation horizon shape")
 
             horizon = _horizon_numbers(validation, self.timestamp_col)
-            series = _optional_column(validation, self.series_id_col)
-            metrics = self.metric_set.evaluate(
-                y_validation,
-                predictions,
-                horizon=horizon,
-                series_id=series,
-                y_train=y_train,
-            )
             rows = _prediction_rows(
                 fold,
                 validation,
@@ -242,6 +227,7 @@ class RollingOriginBacktester:
                 self.timestamp_col,
                 self.series_id_col,
             )
+            metrics = _score_prediction_rows(self.metric_set, rows, y_train)
             folds.append(BacktestFoldResult(fold=fold, metrics=metrics, predictions=rows))
         return BacktestResult(folds=folds)
 
@@ -275,8 +261,6 @@ def _native_backtest_runner_name(model: Any) -> str:
         "ETSForecaster": "run_ets",
         "ArimaForecaster": "run_arima",
         "AutoARIMAForecaster": "run_auto_arima",
-        "KalmanForecaster": "run_kalman",
-        "KrigingForecaster": "run_kriging",
         "CartoBoostLagForecaster": "run_cartoboost_lag",
     }
     return mapping.get(name, "")
@@ -340,6 +324,55 @@ def _optional_column(data: Any, name: str | None) -> Any | None:
         return data[name]
     except Exception:
         return None
+
+
+def _align_forecast_rows(actual: Any, prediction: Any) -> Any:
+    try:
+        return actual.merge(
+            prediction,
+            on=["series_id", "timestamp", "horizon"],
+            how="inner",
+            validate="one_to_one",
+        ).pipe(
+            lambda merged: _require_complete_alignment(
+                merged,
+                actual_len=len(actual),
+                prediction_len=len(prediction),
+            )
+        )
+    except ValueError as exc:
+        raise ValueError("forecast rows did not align by series_id/timestamp/horizon") from exc
+
+
+def _require_complete_alignment(merged: Any, *, actual_len: int, prediction_len: int) -> Any:
+    if len(merged) != actual_len or len(merged) != prediction_len:
+        raise ValueError("incomplete forecast alignment")
+    return merged
+
+
+def _score_prediction_rows(
+    metric_set: ForecastMetricSet,
+    rows: list[dict[str, Any]],
+    y_train: Any,
+) -> dict[str, Any]:
+    _validate_prediction_row_keys(rows)
+    try:
+        import pandas as pd
+    except ImportError:
+        return metric_set.evaluate(
+            [row["actual"] for row in rows],
+            [row["prediction"] for row in rows],
+            horizon=[row["horizon"] for row in rows],
+            series_id=[row["series_id"] for row in rows],
+            y_train=y_train,
+        )
+    return metric_set.evaluate_frame(pd.DataFrame(rows), y_train=y_train)
+
+
+def _validate_prediction_row_keys(rows: list[dict[str, Any]]) -> None:
+    keys = [(row["series_id"], row["timestamp"], row["horizon"]) for row in rows]
+    if len(keys) != len(set(keys)):
+        raise ValueError("metric rows must be unique by series_id/timestamp/horizon")
 
 
 def _horizon_numbers(validation: Any, timestamp_col: str) -> np.ndarray:

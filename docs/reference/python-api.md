@@ -75,8 +75,6 @@ Forecasters:
 | `OptimizedThetaForecaster` | Deterministically selects theta/alpha from a validation grid. |
 | `ETSForecaster` | Rust-native additive ETS with optional additive seasonality. |
 | `AutoARIMAForecaster` | Rust-native AutoARIMA over bounded ARIMA(p,d,q) candidates. |
-| `KalmanForecaster` | Rust-native local-linear state-space forecaster with level, trend, and observation variances. |
-| `KrigingForecaster` | Rust-native ordinary-kriging panel forecaster requiring explicit coordinates by series id. |
 | `CartoBoostLagForecaster` | Global recursive forecaster using leakage-safe lag, rolling, calendar, static, and known-future features with `CartoBoostRegressor`. |
 | `WeightedEnsembleForecaster` | Combines aligned component forecasts with fixed weights. |
 | `BacktestWeightedEnsembleForecaster` | Reserved; raises clearly until Rust backtest-weight learning is implemented. |
@@ -123,6 +121,20 @@ features and trains a tabular model on the expanded matrix.
 
 Set `oof_folds > 1` to train final-model embedding columns out of fold. Use
 `support_prior_strength` to shrink rare IDs more strongly toward their prior.
+
+## General Utilities
+
+Rust-backed utilities independent of the regressor and forecasting model APIs:
+
+| Entry point | Purpose |
+| --- | --- |
+| `cartoboost.naive_forecast(values, horizon)` and related `seasonal_naive_forecast`, `theta_forecast`, `optimized_theta_forecast`, `ets_forecast`, `arima_forecast`, `auto_arima_forecast` | Rust-backed single-series forecasts for plain numeric sequences. |
+| `cartoboost.local_level_kalman_filter(values, ..., horizon=0)` | Local-level Kalman filtering for numeric sequences. Returns final level, per-step estimates, and optional flat forecast means. |
+| `cartoboost.local_level_kalman_forecast(values, horizon, ...)` | Local-level Kalman forecast utility. |
+| `cartoboost.kalman_filter(values, level_process_variance=..., trend_process_variance=..., observation_variance=..., horizon=0)` | Local-linear Kalman filtering for numeric sequences. Returns final state, per-step estimates, and optional forecast means. |
+| `cartoboost.local_linear_trend_kalman_forecast(values, horizon, ...)` | Local-linear trend Kalman forecast utility. |
+| `cartoboost.croston_forecast`, `cartoboost.sba_forecast`, `cartoboost.tsb_forecast` | Intermittent-demand utilities for non-negative numeric sequences. |
+| `cartoboost.ordinary_kriging_predict(observations, targets, range=..., nugget=...)` | Ordinary kriging for observed `(x, y, value)` triples and target `(x, y)` coordinates. Returns predicted means and weights. |
 
 ## Direct Graph Encoders
 

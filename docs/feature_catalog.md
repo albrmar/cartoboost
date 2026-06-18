@@ -66,6 +66,20 @@ and [Spatial Modeling](spatial_modeling.md).
 See [Installation](installation.md), [Sparse Features](sparse_features.md), and
 [SHAP Support](shap.md).
 
+## General Utilities
+
+These utilities are Rust-backed and independent of both `CartoBoostRegressor`
+and `cartoboost.forecasting`.
+
+| Feature | Public surface | Notes |
+| --- | --- | --- |
+| Single-series utility forecasts | `cartoboost.naive_forecast`, `seasonal_naive_forecast`, `theta_forecast`, `optimized_theta_forecast`, `ets_forecast`, `arima_forecast`, `auto_arima_forecast` | Rust-backed forecasts for plain numeric sequences without constructing a `ForecastFrame`. |
+| Local-level Kalman filter | `cartoboost.local_level_kalman_filter`, `local_level_kalman_forecast` | Filters and forecasts a numeric series with a one-state local-level Kalman model. |
+| Local-linear Kalman filter | `cartoboost.kalman_filter` | Filters a numeric series, returns per-step estimates, final level/trend state, and optional future mean forecast. |
+| Local-linear Kalman forecast | `cartoboost.local_linear_trend_kalman_forecast` | Forecasts a numeric sequence with the Rust local-linear trend Kalman model. |
+| Intermittent demand | `cartoboost.croston_forecast`, `sba_forecast`, `tsb_forecast`, `intermittent_demand_forecast` | Rust-backed Croston, SBA, and TSB utilities for non-negative intermittent demand sequences. |
+| Ordinary kriging | `cartoboost.ordinary_kriging_predict` | Interpolates target `(x, y)` coordinates from observed `(x, y, value)` triples and returns means plus kriging weights. |
+
 ## Evaluation And Metrics
 
 | Feature | Public surface | Notes |
@@ -164,7 +178,6 @@ See [CLI Reference](reference/cli.md), [CLI User Guide](user-guide/cli.md), and
 | Feature | Public surface | Notes |
 | --- | --- | --- |
 | NYC taxi benchmarks | `docs/benchmarks/nyc-taxi.md` and assets | Duration, fare, and pickup-demand reports with split descriptions. |
-| Forecasting benchmarks | `docs/benchmarks/forecasting.md` | Real taxi lane-demand comparisons and plots. |
 | Model-suite benchmarks | `docs/benchmarks/model-suite.md` | Synthetic dense, repeated-ID, and graph-signal workloads. |
 | Acceptance benchmarks | `docs/benchmarks/taxi-zone.md` | Taxi-zone behavior checks before broader claims. |
 | Validation scripts | `scripts/` and test suite | Commands should report exact settings, metrics, and data provenance. |
@@ -172,4 +185,3 @@ See [CLI Reference](reference/cli.md), [CLI User Guide](user-guide/cli.md), and
 Benchmark claims should name the dataset, target, split, feature set, metric,
 model settings, and whether data is synthetic, generated acceptance data, or
 real benchmark data.
-

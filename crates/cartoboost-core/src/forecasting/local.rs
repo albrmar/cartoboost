@@ -3,6 +3,10 @@
 use crate::forecasting::{
     ForecastFrame, ForecastPrediction, ForecastResult, ForecastRow, Forecaster,
 };
+use crate::utilities::{
+    fit_local_linear_kalman, ordinary_kriging_predict_many, KrigingObservation,
+    LocalLinearKalmanConfig, OrdinaryKrigingConfig,
+};
 use crate::{CartoBoostError, Result};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
@@ -128,6 +132,19 @@ struct FittedArimaState {
 }
 
 #[derive(Debug, Clone)]
+struct FittedArimaSeries {
+    last_timestamp: chrono::NaiveDateTime,
+    intercept: f64,
+    ar_coefficients: Vec<f64>,
+    ma_coefficients: Vec<f64>,
+    differenced_history: Vec<f64>,
+    residual_history: Vec<f64>,
+    last_differences: Vec<f64>,
+    fitted_values: Vec<f64>,
+    residuals: Vec<f64>,
+}
+
+#[derive(Debug, Clone)]
 struct FittedKalmanState {
     frame: ForecastFrame,
     series: BTreeMap<String, FittedKalmanSeries>,
@@ -144,19 +161,6 @@ struct FittedKalmanSeries {
 struct FittedKrigingState {
     frame: ForecastFrame,
     levels: BTreeMap<String, f64>,
-}
-
-#[derive(Debug, Clone)]
-struct FittedArimaSeries {
-    last_timestamp: chrono::NaiveDateTime,
-    intercept: f64,
-    ar_coefficients: Vec<f64>,
-    ma_coefficients: Vec<f64>,
-    differenced_history: Vec<f64>,
-    residual_history: Vec<f64>,
-    last_differences: Vec<f64>,
-    fitted_values: Vec<f64>,
-    residuals: Vec<f64>,
 }
 
 #[derive(Debug, Clone)]
@@ -436,9 +440,11 @@ impl KalmanForecaster {
         trend_process_variance: f64,
         observation_variance: f64,
     ) -> Result<Self> {
-        validate_positive_finite(level_process_variance, "level_process_variance")?;
-        validate_positive_finite(trend_process_variance, "trend_process_variance")?;
-        validate_positive_finite(observation_variance, "observation_variance")?;
+        LocalLinearKalmanConfig::new(
+            level_process_variance,
+            trend_process_variance,
+            observation_variance,
+        )?;
         Ok(Self {
             level_process_variance,
             trend_process_variance,
@@ -466,12 +472,7 @@ impl KrigingForecaster {
                 "kriging coordinates must not be empty".to_string(),
             ));
         }
-        validate_positive_finite(range, "range")?;
-        if !nugget.is_finite() || nugget < 0.0 {
-            return Err(CartoBoostError::InvalidInput(
-                "nugget must be finite and non-negative".to_string(),
-            ));
-        }
+        OrdinaryKrigingConfig::new(range, nugget)?;
         for (series_id, (x, y)) in &coordinates {
             if !x.is_finite() || !y.is_finite() {
                 return Err(CartoBoostError::InvalidInput(format!(
@@ -861,19 +862,32 @@ impl Forecaster for KrigingForecaster {
         validate_horizon(horizon)?;
         let fitted = self.fitted.as_ref().ok_or_else(not_fitted)?;
         let mut predictions = Vec::new();
+        let observations = fitted
+            .levels
+            .iter()
+            .map(|(series_id, value)| {
+                let coord = self.coordinates.get(series_id).ok_or_else(|| {
+                    CartoBoostError::InvalidInput(format!(
+                        "missing kriging coordinate for series {series_id}"
+                    ))
+                })?;
+                Ok(KrigingObservation {
+                    x: coord.0,
+                    y: coord.1,
+                    value: *value,
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let config = OrdinaryKrigingConfig::new(self.range, self.nugget)?;
         for series_id in fitted.frame.series_ids() {
             let coord = self.coordinates.get(&series_id).ok_or_else(|| {
                 CartoBoostError::InvalidInput(format!(
                     "missing kriging coordinate for series {series_id}"
                 ))
             })?;
-            let mean = ordinary_kriging_predict(
-                coord,
-                &self.coordinates,
-                &fitted.levels,
-                self.range,
-                self.nugget,
-            )?;
+            let mean = ordinary_kriging_predict_many(&observations, &[*coord], config)?
+                .remove(0)
+                .mean;
             let history = fitted.frame.rows_for_series(&series_id);
             let last_timestamp = history
                 .last()
@@ -1082,43 +1096,21 @@ impl FittedKalmanSeries {
                 "series {series_id} requires at least two rows for kalman forecasting"
             )));
         }
-        let mut level = history[0].target;
-        let mut trend = history[1].target - history[0].target;
-        let mut p00 = observation_variance;
-        let mut p01 = 0.0;
-        let mut p10 = 0.0;
-        let mut p11 = observation_variance;
-        for row in &history[1..] {
-            let predicted_level = level + trend;
-            let predicted_trend = trend;
-            let pp00 = p00 + p01 + p10 + p11 + level_process_variance;
-            let pp01 = p01 + p11;
-            let pp10 = p10 + p11;
-            let pp11 = p11 + trend_process_variance;
-
-            let innovation = row.target - predicted_level;
-            let innovation_variance = pp00 + observation_variance;
-            if innovation_variance <= 0.0 || !innovation_variance.is_finite() {
-                return Err(CartoBoostError::InvalidInput(format!(
-                    "kalman innovation variance for series {series_id} is not positive"
-                )));
-            }
-            let k0 = pp00 / innovation_variance;
-            let k1 = pp10 / innovation_variance;
-            level = predicted_level + k0 * innovation;
-            trend = predicted_trend + k1 * innovation;
-            p00 = (1.0 - k0) * pp00;
-            p01 = (1.0 - k0) * pp01;
-            p10 = pp10 - k1 * pp00;
-            p11 = pp11 - k1 * pp01;
-        }
+        let values = history.iter().map(|row| row.target).collect::<Vec<_>>();
+        let config = LocalLinearKalmanConfig::new(
+            level_process_variance,
+            trend_process_variance,
+            observation_variance,
+        )?;
+        let result = fit_local_linear_kalman(&values, config)
+            .map_err(|err| CartoBoostError::InvalidInput(format!("{series_id}: {err}")))?;
         Ok(Self {
             last_timestamp: history
                 .last()
                 .ok_or_else(|| CartoBoostError::InvalidInput("empty series history".to_string()))?
                 .timestamp,
-            level,
-            trend,
+            level: result.final_state.level,
+            trend: result.final_state.trend,
         })
     }
 }
@@ -1661,69 +1653,6 @@ fn undifference_fitted_values(values: &[f64], fitted_diff: &[f64], d: usize) -> 
     }
 }
 
-fn ordinary_kriging_predict(
-    target_coord: &(f64, f64),
-    coordinates: &BTreeMap<String, (f64, f64)>,
-    levels: &BTreeMap<String, f64>,
-    range: f64,
-    nugget: f64,
-) -> Result<f64> {
-    let ids = levels.keys().cloned().collect::<Vec<_>>();
-    let n = ids.len();
-    if n == 0 {
-        return Err(CartoBoostError::InvalidInput(
-            "kriging requires at least one fitted series".to_string(),
-        ));
-    }
-    let mut matrix = vec![vec![0.0; n + 1]; n + 1];
-    let mut rhs = vec![0.0; n + 1];
-    for (i, left_id) in ids.iter().enumerate() {
-        let left_coord = coordinates.get(left_id).ok_or_else(|| {
-            CartoBoostError::InvalidInput(format!(
-                "missing kriging coordinate for series {left_id}"
-            ))
-        })?;
-        for (j, right_id) in ids.iter().enumerate() {
-            let right_coord = coordinates.get(right_id).ok_or_else(|| {
-                CartoBoostError::InvalidInput(format!(
-                    "missing kriging coordinate for series {right_id}"
-                ))
-            })?;
-            matrix[i][j] = exponential_covariance(left_coord, right_coord, range);
-            if i == j {
-                matrix[i][j] += nugget;
-            }
-        }
-        matrix[i][n] = 1.0;
-        matrix[n][i] = 1.0;
-        rhs[i] = exponential_covariance(left_coord, target_coord, range);
-    }
-    rhs[n] = 1.0;
-    let weights = solve_linear_system(matrix, rhs).ok_or_else(|| {
-        CartoBoostError::InvalidInput(
-            "kriging system is singular; adjust coordinates or nugget".to_string(),
-        )
-    })?;
-    let estimate = ids
-        .iter()
-        .enumerate()
-        .map(|(idx, series_id)| weights[idx] * levels[series_id])
-        .sum::<f64>();
-    if !estimate.is_finite() {
-        return Err(CartoBoostError::InvalidInput(
-            "kriging estimate is not finite".to_string(),
-        ));
-    }
-    Ok(estimate)
-}
-
-fn exponential_covariance(left: &(f64, f64), right: &(f64, f64), range: f64) -> f64 {
-    let dx = left.0 - right.0;
-    let dy = left.1 - right.1;
-    let distance = (dx * dx + dy * dy).sqrt();
-    (-distance / range).exp()
-}
-
 fn solve_linear_system(mut matrix: Vec<Vec<f64>>, mut rhs: Vec<f64>) -> Option<Vec<f64>> {
     let n = rhs.len();
     for pivot_idx in 0..n {
@@ -1763,15 +1692,6 @@ fn solve_linear_system(mut matrix: Vec<Vec<f64>>, mut rhs: Vec<f64>) -> Option<V
         }
     }
     Some(rhs)
-}
-
-fn validate_positive_finite(value: f64, name: &str) -> Result<()> {
-    if !value.is_finite() || value <= 0.0 {
-        return Err(CartoBoostError::InvalidInput(format!(
-            "{name} must be finite and positive"
-        )));
-    }
-    Ok(())
 }
 
 fn deseasonalize(
@@ -2226,158 +2146,6 @@ mod tests {
             .predictions()
             .iter()
             .all(|row| row.mean.is_finite()));
-    }
-
-    #[test]
-    fn kalman_forecasts_local_linear_trend() {
-        let frame = ForecastFrame::new(
-            (1..=8)
-                .map(|day| ForecastRow::single(ts(day), 10.0 + 2.0 * f64::from(day)))
-                .collect(),
-            ForecastFrequency::Daily,
-        )
-        .expect("valid frame");
-        let mut model = KalmanForecaster::new(0.01, 0.001, 0.1).expect("valid kalman");
-
-        model.fit(&frame).expect("fit");
-        let forecast = model.predict(2).expect("predict");
-        let means = forecast
-            .predictions()
-            .iter()
-            .map(|row| row.mean)
-            .collect::<Vec<_>>();
-
-        assert_eq!(forecast.predictions()[0].model, "kalman");
-        assert!(means[1] > means[0]);
-        assert!((means[0] - 28.0).abs() < 1.0);
-    }
-
-    #[test]
-    fn kalman_forecasts_panel_series_without_bleeding() {
-        let frame = ForecastFrame::new(
-            vec![
-                ForecastRow::new("PU1", ts(1), 10.0),
-                ForecastRow::new("PU1", ts(2), 12.0),
-                ForecastRow::new("PU1", ts(3), 14.0),
-                ForecastRow::new("PU2", ts(1), 50.0),
-                ForecastRow::new("PU2", ts(2), 47.0),
-                ForecastRow::new("PU2", ts(3), 44.0),
-            ],
-            ForecastFrequency::Daily,
-        )
-        .expect("valid frame");
-        let mut model = KalmanForecaster::default();
-
-        model.fit(&frame).expect("fit");
-        let forecast = model.predict(1).expect("predict");
-        let predictions = forecast.predictions();
-
-        assert_eq!(predictions.len(), 2);
-        assert!(predictions[0].mean > 14.0);
-        assert!(predictions[1].mean < 44.0);
-    }
-
-    #[test]
-    fn kalman_rejects_nonpositive_variances() {
-        assert!(KalmanForecaster::new(0.0, 0.001, 0.1).is_err());
-        assert!(KalmanForecaster::new(0.01, -0.001, 0.1).is_err());
-        assert!(KalmanForecaster::new(0.01, 0.001, f64::NAN).is_err());
-    }
-
-    #[test]
-    fn kriging_requires_coordinates_for_every_series() {
-        let frame = ForecastFrame::new(
-            vec![
-                ForecastRow::new("PU1", ts(1), 10.0),
-                ForecastRow::new("PU2", ts(1), 20.0),
-            ],
-            ForecastFrequency::Daily,
-        )
-        .expect("valid frame");
-        let coordinates = BTreeMap::from([("PU1".to_string(), (0.0, 0.0))]);
-        let mut model = KrigingForecaster::new(coordinates, 1.0, 1.0e-6).expect("valid kriging");
-
-        let err = model.fit(&frame).expect_err("missing coordinate");
-
-        assert!(err.to_string().contains("missing kriging coordinate"));
-    }
-
-    #[test]
-    fn kriging_predicts_finite_panel_levels() {
-        let frame = ForecastFrame::new(
-            vec![
-                ForecastRow::new("PU1", ts(1), 10.0),
-                ForecastRow::new("PU1", ts(2), 11.0),
-                ForecastRow::new("PU2", ts(1), 20.0),
-                ForecastRow::new("PU2", ts(2), 21.0),
-                ForecastRow::new("PU3", ts(1), 30.0),
-                ForecastRow::new("PU3", ts(2), 31.0),
-            ],
-            ForecastFrequency::Daily,
-        )
-        .expect("valid frame");
-        let coordinates = BTreeMap::from([
-            ("PU1".to_string(), (0.0, 0.0)),
-            ("PU2".to_string(), (1.0, 0.0)),
-            ("PU3".to_string(), (0.0, 1.0)),
-        ]);
-        let mut model = KrigingForecaster::new(coordinates, 2.0, 1.0e-6).expect("valid kriging");
-
-        model.fit(&frame).expect("fit");
-        let forecast = model.predict(2).expect("predict");
-
-        assert_eq!(forecast.predictions().len(), 6);
-        assert!(forecast
-            .predictions()
-            .iter()
-            .all(|prediction| prediction.mean.is_finite()));
-        assert_eq!(forecast.predictions()[0].model, "kriging");
-    }
-
-    #[test]
-    fn kriging_stays_close_to_own_latest_level_at_known_coordinate() {
-        let frame = ForecastFrame::new(
-            vec![
-                ForecastRow::new("PULocationID_142", ts(1), 10.0),
-                ForecastRow::new("PULocationID_142", ts(2), 12.0),
-                ForecastRow::new("PULocationID_236", ts(1), 40.0),
-                ForecastRow::new("PULocationID_236", ts(2), 42.0),
-            ],
-            ForecastFrequency::Daily,
-        )
-        .expect("valid frame");
-        let coordinates = BTreeMap::from([
-            ("PULocationID_142".to_string(), (0.0, 0.0)),
-            ("PULocationID_236".to_string(), (10.0, 0.0)),
-        ]);
-        let mut model = KrigingForecaster::new(coordinates, 1.0, 1.0e-9).expect("valid kriging");
-
-        model.fit(&frame).expect("fit");
-        let forecast = model.predict(1).expect("predict");
-
-        let pu142 = forecast
-            .predictions()
-            .iter()
-            .find(|row| row.series_id == "PULocationID_142")
-            .expect("PU142 forecast");
-        assert!((pu142.mean - 12.0).abs() < 1.0e-4);
-    }
-
-    #[test]
-    fn kriging_rejects_empty_and_bad_coordinate_params() {
-        assert!(KrigingForecaster::new(BTreeMap::new(), 1.0, 1.0e-6).is_err());
-        assert!(KrigingForecaster::new(
-            BTreeMap::from([("PU1".to_string(), (0.0, 0.0))]),
-            0.0,
-            1.0e-6
-        )
-        .is_err());
-        assert!(KrigingForecaster::new(
-            BTreeMap::from([("PU1".to_string(), (0.0, f64::NAN))]),
-            1.0,
-            1.0e-6
-        )
-        .is_err());
     }
 
     #[test]

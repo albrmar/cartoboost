@@ -37,6 +37,7 @@ def test_validate_horizon_rejects_invalid_values(horizon):
 
 def test_validate_horizon_accepts_positive_integer():
     assert validate_horizon(3) == 3
+    assert validate_horizon(pd.Series([3]).to_numpy()[0]) == 3
 
 
 def test_next_timestamps_starts_after_last_observation():

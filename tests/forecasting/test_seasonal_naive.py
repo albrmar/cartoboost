@@ -5,6 +5,8 @@ from cartoboost.forecasting.local import SeasonalNaiveForecaster
 def test_seasonal_naive_validates_season_length():
     with pytest.raises(ValueError, match="positive integer"):
         SeasonalNaiveForecaster(season_length=0)
+    with pytest.raises(ValueError, match="prediction_interval_levels"):
+        SeasonalNaiveForecaster(season_length=2, prediction_interval_levels=[0.0])
 
 
 def test_seasonal_naive_converts_panel_and_delegates_to_native(install_fake_native):

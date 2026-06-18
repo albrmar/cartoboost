@@ -12,7 +12,6 @@ INPUT = ROOT / "examples" / "forecasting" / "forecast_cli_input.csv"
 def main() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         artifact_dir = Path(tmp) / "panel_artifact"
-        forecast_csv = Path(tmp) / "panel_forecast.csv"
         subprocess.run(
             [
                 sys.executable,
@@ -29,19 +28,18 @@ def main() -> None:
                 "--freq",
                 "D",
                 "--model",
-                "cartoboost",
+                "seasonal_naive",
                 "--horizon",
                 "2",
+                "--season-length",
+                "7",
                 "--artifact-dir",
                 str(artifact_dir),
-                "--output",
-                str(forecast_csv),
             ],
             cwd=ROOT,
             check=True,
         )
         print((artifact_dir / "resolved_config.json").read_text(encoding="utf-8"))
-        print(forecast_csv.read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

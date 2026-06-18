@@ -9,6 +9,7 @@ pub(crate) mod profile;
 pub mod serialize;
 pub mod splitters;
 pub mod tree;
+pub mod utilities;
 
 pub use booster::{Booster, BoosterConfig};
 pub use data::{Dataset, FeatureSchema};

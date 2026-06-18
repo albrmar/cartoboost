@@ -2,7 +2,7 @@
 
 Forecasting V1 writes portable artifacts as a directory with two files:
 
-- `manifest.json`: model, schema, feature, interval, ensemble, and backtest metadata.
+- `manifest.json`: model, schema, feature, interval, ensemble, reconciliation, and backtest metadata.
 - `forecast.csv` by default, or `forecast.parquet` when saved with Parquet support.
 
 The artifact is designed to avoid hidden process state. A loaded artifact contains forecast rows
@@ -18,7 +18,8 @@ and the manifest only; it does not restore live Python model objects or local cl
 - Optional `target_column`, `time_column`, and `panel_columns`.
 - Optional `lower_bound` and `upper_bound` used to clip forecasts and intervals.
 - `feature_config`, such as taxi demand lag settings for `PULocationID`.
-- `params`, `backtest_metrics`, `interval_metadata`, `ensemble_metadata`, and free-form `metadata`.
+- `params`, `backtest_metrics`, `interval_metadata`, `ensemble_metadata`,
+  `reconciliation_metadata`, and free-form `metadata`.
 
 For a taxi demand forecast, rows commonly include `PULocationID`, `pickup_hour`, `step`,
 `mean`, `lower`, and `upper`. The manifest `columns` field is authoritative: every saved row must
@@ -40,21 +41,41 @@ smoke tests and Parquet for larger forecast tables when the dependency is instal
 - `optimized_theta`
 - `ets`
 - `auto_arima`
-- `kalman`
-- `kriging`
 - `cartoboost_lag`
+- `local_level_kalman`
+- `local_linear_trend_kalman`
+- `unobserved_components`
+- `sarimax`
+- `dynamic_regression`
+- `croston`
+- `sba`
+- `tsb`
+- `mstl_ets`
+- `stl_arima`
+- `quantile_carto_boost_lag`
+- `conformal_forecaster`
+- `bottom_up_reconciler`
+- `min_trace_reconciler`
+- `foundation_model_adapter_optional`
 
 Forecasting model wrappers validate constructor parameters in Python where that
 does not require model execution. Fitting and prediction are delegated to Rust
 bindings for `naive`, `seasonal_naive`, `theta`, `optimized_theta`, `ets`,
-`auto_arima`, `kalman`, `kriging`, and `cartoboost_lag`.
-`KrigingForecaster` requires explicit coordinates keyed by series id, so
-artifact/config examples should include the coordinate mapping whenever kriging
-is constructed. `WeightedEnsembleForecaster` is available as a direct Python
-class when explicit native component models are supplied. Unsupported modes
-fail explicitly instead of running Python fallback forecasting algorithms.
-Duplicate registry entries are rejected unless `override=True` is passed.
+`auto_arima`, `cartoboost_lag`, and the registry-only Forecasting V1 names
+listed above. `WeightedEnsembleForecaster`, `BottomUpReconciler`, and
+`MinTraceReconciler` are available as direct Python classes when explicit
+native component models or hierarchy metadata are supplied.
+Unsupported modes fail explicitly instead of running Python fallback forecasting
+algorithms. Duplicate registry entries are rejected unless
+`override=True` is passed.
 
 `ForecastingConfig` parses TOML strictly. Unknown root or model fields raise by default. Set
 `allow_unknown = true` to retain unknown fields under manifest/config metadata instead of rejecting
 the file.
+
+Hierarchical reconciliation settings can be carried in a `[reconciliation]` table. Supported
+methods are `bottom_up_reconciler` and `min_trace_reconciler`, with short aliases `bottom_up`
+and `min_trace`. The table accepts hierarchy metadata such as `hierarchy`, `summing_matrix`,
+`series_id_column`, `parent_column`, `child_column`, `non_negative`, and MinT covariance settings.
+The Python config layer validates and passes these settings to native reconcilers; it does not
+perform reconciliation itself.

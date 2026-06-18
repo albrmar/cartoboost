@@ -60,3 +60,42 @@ def test_frame_evaluation_aligns_series_timestamp_horizon_columns() -> None:
     assert metrics["mae"] == pytest.approx(1.0)
     assert metrics["coverage"] == pytest.approx(1.0)
     assert set(metrics["per_horizon"]) == {"1", "2"}
+
+
+def test_frame_evaluation_aligns_separate_frames_by_keys_not_row_order() -> None:
+    actual = pd.DataFrame(
+        {
+            "series_id": ["pickup_1", "pickup_1", "pickup_2"],
+            "timestamp": [1, 2, 1],
+            "horizon": [1, 2, 1],
+            "actual": [10.0, 20.0, 30.0],
+        }
+    )
+    prediction = pd.DataFrame(
+        {
+            "series_id": ["pickup_2", "pickup_1", "pickup_1"],
+            "timestamp": [1, 2, 1],
+            "horizon": [1, 2, 1],
+            "prediction": [29.0, 19.0, 9.0],
+        }
+    )
+
+    metrics = ForecastMetricSet().evaluate_frame(actual, prediction_frame=prediction)
+
+    assert metrics["mae"] == pytest.approx(1.0)
+    assert set(metrics["per_series"]) == {"pickup_1", "pickup_2"}
+
+
+def test_frame_evaluation_rejects_duplicate_metric_keys() -> None:
+    frame = pd.DataFrame(
+        {
+            "series_id": ["pickup_1", "pickup_1"],
+            "timestamp": [1, 1],
+            "horizon": [1, 1],
+            "actual": [10.0, 11.0],
+            "prediction": [9.0, 12.0],
+        }
+    )
+
+    with pytest.raises(ValueError, match="unique by series_id/timestamp/horizon"):
+        ForecastMetricSet().evaluate_frame(frame)

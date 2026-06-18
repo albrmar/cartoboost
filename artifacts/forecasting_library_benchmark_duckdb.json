@@ -1,12 +1,11 @@
 {
   "benchmark": "geotemporal_lane_demand_forecasting_libraries",
-  "cartoboost_version": "0.1.23",
+  "cartoboost_version": "0.1.21",
   "comparison_libraries": [
     "functime",
-    "statsforecast",
-    "prophet"
+    "statsforecast"
   ],
-  "created_at": "2026-06-18T20:32:44.320604+00:00",
+  "created_at": "2026-06-18T18:51:58.010092+00:00",
   "dataset": {
     "days": 90,
     "domain": "daily NYC taxi-style pickup/dropoff lane demand",
@@ -27,9 +26,6 @@
       "functime_snaive",
       "functime_ridge",
       "functime_lightgbm"
-    ],
-    "prophet": [
-      "prophet_additive"
     ],
     "statsforecast": [
       "statsforecast_seasonal_naive",
@@ -54,12 +50,12 @@
       "wape": 0.13428061115661882
     },
     "functime_ridge": {
-      "bias": -0.06308214539553794,
-      "mae": 2.3095499009723413,
-      "mase": 3.1598635980167513,
-      "rmse": 2.6731500459318758,
-      "smape": 0.11340956167861851,
-      "wape": 0.11046217033751472
+      "bias": -0.06308211322795187,
+      "mae": 2.309549846098224,
+      "mase": 3.159863522939471,
+      "rmse": 2.6731499974875694,
+      "smape": 0.1134095591984913,
+      "wape": 0.11046216771297125
     },
     "functime_snaive": {
       "bias": -0.452222222222222,
@@ -68,14 +64,6 @@
       "rmse": 0.8410688588913666,
       "smape": 0.03263267654650405,
       "wape": 0.031422526317102156
-    },
-    "prophet_additive": {
-      "bias": 0.0054241372766972796,
-      "mae": 0.3771971489875187,
-      "mase": 0.5160709192122519,
-      "rmse": 0.49884249693701416,
-      "smape": 0.018239896885825356,
-      "wape": 0.018040751448904584
     },
     "statsforecast_autoets": {
       "bias": -0.022907045042930615,
@@ -99,7 +87,6 @@
     "functime_lightgbm": "functime",
     "functime_ridge": "functime",
     "functime_snaive": "functime",
-    "prophet_additive": "prophet",
     "statsforecast_autoets": "statsforecast",
     "statsforecast_seasonal_naive": "statsforecast"
   },
@@ -109,19 +96,16 @@
     "functime_ridge",
     "functime_lightgbm",
     "statsforecast_seasonal_naive",
-    "statsforecast_autoets",
-    "prophet_additive"
+    "statsforecast_autoets"
   ],
   "quality": {
-    "best_forecasting_library": "prophet",
-    "best_forecasting_library_mae": 0.3771971489875187,
-    "best_forecasting_library_model": "prophet_additive",
-    "best_forecasting_library_rmse": 0.49884249693701416,
-    "best_forecasting_library_wape": 0.018040751448904584,
+    "best_forecasting_library": "statsforecast",
+    "best_forecasting_library_mae": 0.39776875899197844,
+    "best_forecasting_library_model": "statsforecast_autoets",
+    "best_forecasting_library_rmse": 0.5507932003685023,
+    "best_forecasting_library_wape": 0.01902465947681637,
     "best_functime_method": "functime_snaive",
     "best_functime_rmse": 0.8410688588913666,
-    "best_prophet_method": "prophet_additive",
-    "best_prophet_rmse": 0.49884249693701416,
     "best_statsforecast_method": "statsforecast_autoets",
     "best_statsforecast_rmse": 0.5507932003685023,
     "cartoboost_mae": 0.2241779676321493,
@@ -129,8 +113,7 @@
     "cartoboost_wape": 0.010722082617082582,
     "comparison_libraries": [
       "functime",
-      "statsforecast",
-      "prophet"
+      "statsforecast"
     ],
     "forecasting_library_models": {
       "functime": [
@@ -138,99 +121,87 @@
         "functime_ridge",
         "functime_lightgbm"
       ],
-      "prophet": [
-        "prophet_additive"
-      ],
       "statsforecast": [
         "statsforecast_seasonal_naive",
         "statsforecast_autoets"
       ]
     },
-    "mae_delta_vs_best_forecasting_library": -0.1530191813553694,
+    "mae_delta_vs_best_forecasting_library": -0.17359079135982913,
     "mae_ranking": [
       "cartoboost_lag",
-      "prophet_additive",
       "statsforecast_autoets",
       "functime_snaive",
       "statsforecast_seasonal_naive",
       "functime_ridge",
       "functime_lightgbm"
     ],
-    "mae_reduction_vs_best_forecasting_library": 0.40567427873224127,
+    "mae_reduction_vs_best_forecasting_library": 0.4364113255142037,
     "model_libraries": {
       "cartoboost_lag": "cartoboost",
       "functime_lightgbm": "functime",
       "functime_ridge": "functime",
       "functime_snaive": "functime",
-      "prophet_additive": "prophet",
       "statsforecast_autoets": "statsforecast",
       "statsforecast_seasonal_naive": "statsforecast"
     },
-    "rmse_delta_vs_best_forecasting_library": -0.11907771450422638,
+    "rmse_delta_vs_best_forecasting_library": -0.17102841793571455,
     "rmse_ranking": [
       "cartoboost_lag",
-      "prophet_additive",
       "statsforecast_autoets",
       "functime_snaive",
       "statsforecast_seasonal_naive",
       "functime_ridge",
       "functime_lightgbm"
     ],
-    "rmse_ratio_vs_best_forecasting_library": 0.7612919604175953,
-    "rmse_reduction_vs_best_forecasting_library": 0.23870803958240472,
+    "rmse_ratio_vs_best_forecasting_library": 0.6894870564464307,
+    "rmse_reduction_vs_best_forecasting_library": 0.3105129435535693,
     "wape_ranking": [
       "cartoboost_lag",
-      "prophet_additive",
       "statsforecast_autoets",
       "functime_snaive",
       "statsforecast_seasonal_naive",
       "functime_ridge",
       "functime_lightgbm"
     ],
-    "wape_reduction_vs_best_forecasting_library": 0.40567427873224116,
+    "wape_reduction_vs_best_forecasting_library": 0.4364113255142037,
     "winner": "cartoboost_lag"
   },
   "timing": {
-    "load_seconds": 0.371371106011793,
+    "load_seconds": 0.3584334980114363,
     "models": {
       "cartoboost_lag": {
-        "feature_seconds": 0.0029052350437268615,
-        "fit_predict_seconds": 0.5573597439797595,
-        "fit_seconds": 0.2568613049807027,
-        "predict_seconds": 0.3004984389990568,
-        "total_seconds": 0.5602649790234864
+        "feature_seconds": 0.004796153982169926,
+        "fit_predict_seconds": 2.367175471968949,
+        "fit_seconds": 1.9617930429521948,
+        "predict_seconds": 0.40538242901675403,
+        "total_seconds": 2.3719716259511188
       },
       "functime_lightgbm": {
-        "fit_predict_seconds": 0.34730989794479683,
-        "fit_seconds": 0.17169341095723212,
-        "predict_seconds": 0.1756164869875647
+        "fit_predict_seconds": 77.60881206695922,
+        "fit_seconds": 77.19980732398108,
+        "predict_seconds": 0.4090047429781407
       },
       "functime_ridge": {
-        "fit_predict_seconds": 0.13945413596229628,
-        "fit_seconds": 0.02186115097720176,
-        "predict_seconds": 0.11759298498509452
+        "fit_predict_seconds": 0.17975707195000723,
+        "fit_seconds": 0.0539469649665989,
+        "predict_seconds": 0.12581010698340833
       },
       "functime_snaive": {
-        "fit_predict_seconds": 0.007971380022354424,
-        "fit_seconds": 0.004329736984800547,
-        "predict_seconds": 0.0036416430375538766
-      },
-      "prophet_additive": {
-        "fit_predict_seconds": 5.388503137102816,
-        "fit_seconds": 5.021354328084271,
-        "predict_seconds": 0.36714880901854485
+        "fit_predict_seconds": 0.05415874201571569,
+        "fit_seconds": 0.03945067303720862,
+        "predict_seconds": 0.014708068978507072
       },
       "statsforecast_autoets": {
-        "fit_predict_seconds": 0.5026846490218304,
-        "fit_seconds": 0.5026846490218304,
+        "fit_predict_seconds": 0.5014470110181719,
+        "fit_seconds": 0.5014470110181719,
         "predict_seconds": 0.0
       },
       "statsforecast_seasonal_naive": {
-        "fit_predict_seconds": 0.0061194669688120484,
-        "fit_seconds": 0.0061194669688120484,
+        "fit_predict_seconds": 0.0061109589878469706,
+        "fit_seconds": 0.0061109589878469706,
         "predict_seconds": 0.0
       }
     },
-    "total_seconds": 8.50815633405
+    "total_seconds": 82.55713310302235
   }
 }

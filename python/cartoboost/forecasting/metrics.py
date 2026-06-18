@@ -65,13 +65,31 @@ class ForecastMetricSet:
         self,
         frame: Any,
         *,
+        prediction_frame: Any | None = None,
         actual_col: str = "actual",
         prediction_col: str = "prediction",
         horizon_col: str = "horizon",
         series_id_col: str = "series_id",
+        timestamp_col: str = "timestamp",
         lower_col: str | None = "lower",
         upper_col: str | None = "upper",
+        y_train: Any | None = None,
     ) -> dict[str, Any]:
+        if prediction_frame is not None:
+            frame = _align_frames(
+                frame,
+                prediction_frame,
+                actual_col=actual_col,
+                prediction_col=prediction_col,
+                horizon_col=horizon_col,
+                series_id_col=series_id_col,
+                timestamp_col=timestamp_col,
+                lower_col=lower_col,
+                upper_col=upper_col,
+            )
+        else:
+            _validate_metric_keys(frame, series_id_col, timestamp_col, horizon_col)
+            frame = _sort_frame(frame, [series_id_col, timestamp_col, horizon_col])
         lower = _optional_column(frame, lower_col)
         upper = _optional_column(frame, upper_col)
         return self.evaluate(
@@ -81,6 +99,7 @@ class ForecastMetricSet:
             series_id=_optional_column(frame, series_id_col),
             lower=lower,
             upper=upper,
+            y_train=y_train,
         )
 
 
@@ -188,3 +207,68 @@ def _optional_column(frame: Any, name: str | None) -> Any | None:
         return frame[name]
     except Exception:
         return None
+
+
+def _align_frames(
+    actual_frame: Any,
+    prediction_frame: Any,
+    *,
+    actual_col: str,
+    prediction_col: str,
+    horizon_col: str,
+    series_id_col: str,
+    timestamp_col: str,
+    lower_col: str | None,
+    upper_col: str | None,
+) -> Any:
+    _validate_metric_keys(actual_frame, series_id_col, timestamp_col, horizon_col)
+    _validate_metric_keys(prediction_frame, series_id_col, timestamp_col, horizon_col)
+    _column(actual_frame, actual_col)
+    _column(prediction_frame, prediction_col)
+    if not hasattr(actual_frame, "merge") or not hasattr(prediction_frame, "merge"):
+        raise TypeError("prediction_frame alignment requires pandas-like frames")
+
+    key_cols = [series_id_col, timestamp_col, horizon_col]
+    prediction_cols = [*key_cols, prediction_col]
+    for bound_col in (lower_col, upper_col):
+        if bound_col is not None and _optional_column(prediction_frame, bound_col) is not None:
+            prediction_cols.append(bound_col)
+
+    merged = actual_frame[[*key_cols, actual_col]].merge(
+        prediction_frame[prediction_cols],
+        on=key_cols,
+        how="inner",
+        validate="one_to_one",
+    )
+    if len(merged) != len(actual_frame) or len(merged) != len(prediction_frame):
+        raise ValueError(
+            "actual and prediction rows must align exactly by series_id/timestamp/horizon"
+        )
+    return _sort_frame(merged, key_cols)
+
+
+def _validate_metric_keys(
+    frame: Any,
+    series_id_col: str,
+    timestamp_col: str,
+    horizon_col: str,
+) -> None:
+    key_cols = [series_id_col, timestamp_col, horizon_col]
+    for col in key_cols:
+        _column(frame, col)
+    if hasattr(frame, "duplicated"):
+        duplicated = frame.duplicated(subset=key_cols)
+        if bool(duplicated.any()):
+            raise ValueError("metric rows must be unique by series_id/timestamp/horizon")
+        return
+
+    key_arrays = [np.asarray(_column(frame, col), dtype=object) for col in key_cols]
+    keys = list(zip(*key_arrays, strict=True))
+    if len(keys) != len(set(keys)):
+        raise ValueError("metric rows must be unique by series_id/timestamp/horizon")
+
+
+def _sort_frame(frame: Any, key_cols: list[str]) -> Any:
+    if hasattr(frame, "sort_values"):
+        return frame.sort_values(key_cols, kind="mergesort").reset_index(drop=True)
+    return frame

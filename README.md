@@ -40,11 +40,14 @@ CartoBoost supports:
 - Standalone node2vec, GraphSAGE, heterogeneous GraphSAGE, and typed-schema
   HinSAGE graph regressors and link predictors, plus optional graph feature
   encoders.
+- General Rust-backed utilities outside the forecasting API, including
+  single-series forecast helpers, local-level/local-linear Kalman filters,
+  Croston/SBA/TSB intermittent demand, and ordinary kriging.
 - Rust-native forecasting APIs for geographic and temporal single-series or
   panel taxi demand, including rolling-origin backtests, naive/seasonal
-  naive/theta/optimized-theta/ETS/AutoARIMA/Kalman/kriging models, supervised
-  CartoBoost lag forecasting, Rust-core weighted ensembles, CLI runs, and
-  portable forecast artifacts.
+  naive/theta/optimized-theta/ETS/AutoARIMA models, supervised CartoBoost lag
+  forecasting, Rust-core weighted ensembles, CLI runs, and portable forecast
+  artifacts.
 
 ## Forecasting
 
@@ -83,7 +86,7 @@ meaning of the result.
 - Forecasting benchmarks measure daily pickup/dropoff lane demand with lagged
   demand, rolling summaries, calendar fields, zone IDs, airport-lane flags, and
   borough context. External forecasting comparisons name the exact libraries:
-  Prophet, StatsForecast, and functime.
+  StatsForecast and functime.
 - Synthetic model-suite benchmarks isolate dense numeric signal, repeated-ID
   residual signal, and source-target graph signal against LightGBM and XGBoost.
 - Taxi-zone acceptance benchmarks check whether lane membership, route
@@ -287,7 +290,6 @@ cartoboost eval --model model.json --data test_with_target.csv
 - [Documentation Home](docs/index.md)
 - [Installation](docs/installation.md)
 - [Getting Started](docs/getting-started.md)
-- [Feature Catalog](docs/feature_catalog.md)
 - [Python Estimator](docs/user-guide/python-estimator.md)
 - [Parameters](docs/user-guide/parameters.md)
 - [Spatial Modeling](docs/spatial_modeling.md)

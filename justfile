@@ -8,10 +8,7 @@ fmt:
     uv run --group dev ruff format python tests scripts
 
 lint:
-    cargo clippy --workspace --all-targets -- -D warnings
-    uv run --group dev ruff format --check python tests scripts
-    uv run --group dev ruff check python tests scripts
-    uv run --group dev ty check python tests scripts
+    uv run --group dev pre-commit run --all-files
 
 test:
     cargo test --workspace
@@ -37,12 +34,8 @@ wheel:
 
 validate:
     uv sync --group dev
-    cargo fmt --all --check
-    cargo clippy --workspace --all-targets -- -D warnings
+    uv run --group dev pre-commit run --all-files
     cargo test --workspace
-    uv run --group dev ruff format --check python tests scripts
-    uv run --group dev ruff check python tests scripts
-    uv run --group dev ty check python tests scripts
     uv run --group dev maturin develop
     uv run --group dev pytest
     uv run --group dev python scripts/run_full_validation.py

@@ -40,6 +40,30 @@ def _write_panel_csv(path: Path) -> None:
     )
 
 
+def test_help_lists_expanded_forecasting_v1_model_names() -> None:
+    result = _run_forecast("fit", "--help")
+
+    assert result.returncode == 0
+    for model_name in (
+        "local_level_kalman",
+        "local_linear_trend_kalman",
+        "unobserved_components",
+        "sarimax",
+        "dynamic_regression",
+        "croston",
+        "sba",
+        "tsb",
+        "mstl_ets",
+        "stl_arima",
+        "quantile_carto_boost_lag",
+        "conformal_forecaster",
+        "bottom_up_reconciler",
+        "min_trace_reconciler",
+        "foundation_model_adapter_optional",
+    ):
+        assert model_name in result.stdout
+
+
 def test_fit_writes_artifact_with_rust_theta_binding(tmp_path: Path) -> None:
     data = tmp_path / "pickup.csv"
     _write_panel_csv(data)
@@ -65,6 +89,32 @@ def test_fit_writes_artifact_with_rust_theta_binding(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr
     assert (tmp_path / "artifact" / "resolved_config.json").exists()
     assert (tmp_path / "artifact" / "model.json").exists()
+
+
+def test_fit_known_model_without_cli_wrapper_exits_nonzero_clearly(tmp_path: Path) -> None:
+    data = tmp_path / "pickup.csv"
+    _write_panel_csv(data)
+
+    result = _run_forecast(
+        "fit",
+        "--input",
+        str(data),
+        "--timestamp-col",
+        "timestamp",
+        "--target-col",
+        "pickup_demand",
+        "--series-id-col",
+        "PULocationID",
+        "--model",
+        "sarimax",
+        "--horizon",
+        "2",
+        "--artifact-dir",
+        str(tmp_path / "artifact"),
+    )
+
+    assert result.returncode != 0
+    assert "zero-argument CLI wrapper for forecast model 'sarimax'" in result.stderr
 
 
 def test_predict_exits_nonzero_until_rust_artifact_binding_exists(tmp_path: Path) -> None:
@@ -98,6 +148,32 @@ def test_compare_exposes_all_models_but_does_not_fake_metrics(tmp_path: Path) ->
         "PULocationID",
         "--model",
         "all",
+        "--horizon",
+        "2",
+        "--output",
+        str(tmp_path / "compare.json"),
+    )
+
+    assert result.returncode != 0
+    assert "Rust binding for forecasting model comparison is not available" in result.stderr
+
+
+def test_compare_accepts_expanded_model_list_but_does_not_fake_metrics(tmp_path: Path) -> None:
+    data = tmp_path / "pickup.csv"
+    _write_panel_csv(data)
+
+    result = _run_forecast(
+        "compare",
+        "--input",
+        str(data),
+        "--timestamp-col",
+        "timestamp",
+        "--target-col",
+        "pickup_demand",
+        "--series-id-col",
+        "PULocationID",
+        "--model",
+        "theta,sarimax,conformal_forecaster,min_trace_reconciler",
         "--horizon",
         "2",
         "--output",

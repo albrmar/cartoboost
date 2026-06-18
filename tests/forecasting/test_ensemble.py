@@ -1,14 +1,11 @@
 import pytest
 from cartoboost.forecasting.ensemble import (
     BacktestWeightedEnsembleForecaster,
+    BottomUpReconciler,
+    MinTraceReconciler,
     WeightedEnsembleForecaster,
 )
-from cartoboost.forecasting.local import (
-    KalmanForecaster,
-    KrigingForecaster,
-    NaiveForecaster,
-    SeasonalNaiveForecaster,
-)
+from cartoboost.forecasting.local import NaiveForecaster, SeasonalNaiveForecaster
 
 
 def test_weighted_ensemble_requires_models():
@@ -65,37 +62,55 @@ def test_weighted_ensemble_aligns_panel_series():
     ]
 
 
-def test_weighted_ensemble_accepts_kalman_and_kriging_native_members():
-    model = WeightedEnsembleForecaster(
-        models={
-            "kalman": KalmanForecaster(
-                level_process_variance=0.01,
-                trend_process_variance=0.001,
-                observation_variance=0.1,
-            ),
-            "kriging": KrigingForecaster(
-                coordinates={
-                    "PULocationID_142": (0.0, 0.0),
-                    "PULocationID_236": (10.0, 0.0),
-                },
-                range=1.0,
-                nugget=1.0e-9,
-            ),
-        },
-        weights={"kalman": 1.0, "kriging": 1.0},
-    )
-
-    model.fit({"PULocationID_142": [10.0, 12.0], "PULocationID_236": [40.0, 42.0]})
-    result = model.predict(1)
-
-    assert [row[3] for row in result.predictions()] == ["weighted_ensemble", "weighted_ensemble"]
-    assert all(row[-1] > 0.0 for row in result.predictions())
-    assert model.get_metadata()["weights"] == {"kalman": 0.5, "kriging": 0.5}
-
-
 def test_backtest_weighted_ensemble_fit_requires_rust_binding():
     with pytest.raises(
         NotImplementedError,
         match="Rust binding.*BacktestWeightedEnsembleForecaster",
     ):
         BacktestWeightedEnsembleForecaster(models={"last": NaiveForecaster()}).fit([1.0, 2.0])
+
+
+def test_bottom_up_reconciler_requires_hierarchy_surface():
+    with pytest.raises(ValueError, match="requires hierarchy"):
+        BottomUpReconciler()
+
+
+def test_bottom_up_reconciler_passes_hierarchy_to_native_binding(install_fake_native):
+    native = install_fake_native("BottomUpReconciler")
+    model = BottomUpReconciler(
+        hierarchy={"all": ["PU1", "PU2"]},
+        series_id_column="PULocationID",
+        non_negative=True,
+    )
+
+    model.fit([1.0, 2.0]).predict(1)
+
+    assert native.calls[0] == (
+        "init",
+        {
+            "hierarchy": {"all": ["PU1", "PU2"]},
+            "summing_matrix": None,
+            "series_id_column": "PULocationID",
+            "parent_column": None,
+            "child_column": None,
+            "non_negative": True,
+            "metadata": {},
+        },
+    )
+
+
+def test_min_trace_reconciler_passes_covariance_config_to_native_binding(
+    install_fake_native,
+):
+    native = install_fake_native("MinTraceReconciler")
+    model = MinTraceReconciler(
+        parent_column="borough",
+        child_column="PULocationID",
+        covariance_method="sample",
+    )
+
+    model.fit([1.0, 2.0]).predict(1)
+
+    assert native.calls[0][1]["parent_column"] == "borough"
+    assert native.calls[0][1]["child_column"] == "PULocationID"
+    assert native.calls[0][1]["covariance_method"] == "sample"

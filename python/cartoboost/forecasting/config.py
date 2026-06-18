@@ -20,6 +20,7 @@ ROOT_FIELDS = {
     "params",
     "backtest",
     "artifact",
+    "reconciliation",
     "models",
     "metadata",
 }
@@ -31,6 +32,96 @@ MODEL_FIELDS = {
     "optional_dependencies",
     "metadata",
 }
+RECONCILIATION_FIELDS = {
+    "method",
+    "hierarchy",
+    "summing_matrix",
+    "residual_covariance",
+    "covariance_method",
+    "series_id_column",
+    "parent_column",
+    "child_column",
+    "non_negative",
+    "params",
+    "metadata",
+}
+RECONCILIATION_METHODS = {
+    "bottom_up",
+    "bottom_up_reconciler",
+    "min_trace",
+    "min_trace_reconciler",
+}
+
+
+@dataclass(frozen=True)
+class ReconciliationConfig:
+    """Portable hierarchy reconciliation configuration for native reconcilers."""
+
+    method: str
+    hierarchy: Mapping[str, Any] = field(default_factory=dict)
+    summing_matrix: Any | None = None
+    residual_covariance: Any | None = None
+    covariance_method: str | None = None
+    series_id_column: str | None = None
+    parent_column: str | None = None
+    child_column: str | None = None
+    non_negative: bool = False
+    params: Mapping[str, Any] = field(default_factory=dict)
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        method = self.method.strip()
+        if method not in RECONCILIATION_METHODS:
+            known = ", ".join(sorted(RECONCILIATION_METHODS))
+            raise ValueError(f"unknown reconciliation method {self.method!r}; known: {known}")
+        if (self.parent_column is None) != (self.child_column is None):
+            raise ValueError("parent_column and child_column must be provided together")
+        object.__setattr__(self, "method", method)
+        object.__setattr__(self, "hierarchy", dict(self.hierarchy))
+        object.__setattr__(self, "params", dict(self.params))
+        object.__setattr__(self, "metadata", dict(self.metadata))
+
+    @property
+    def model_name(self) -> str:
+        if self.method == "bottom_up":
+            return "bottom_up_reconciler"
+        if self.method == "min_trace":
+            return "min_trace_reconciler"
+        return self.method
+
+    def to_params(self) -> dict[str, Any]:
+        params = dict(self.params)
+        params.update(
+            {
+                "hierarchy": dict(self.hierarchy),
+                "summing_matrix": self.summing_matrix,
+                "series_id_column": self.series_id_column,
+                "parent_column": self.parent_column,
+                "child_column": self.child_column,
+                "non_negative": self.non_negative,
+                "metadata": dict(self.metadata),
+            }
+        )
+        if self.model_name == "min_trace_reconciler":
+            params["residual_covariance"] = self.residual_covariance
+            if self.covariance_method is not None:
+                params["covariance_method"] = self.covariance_method
+        return {key: value for key, value in params.items() if value is not None}
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "method": self.method,
+            "hierarchy": dict(self.hierarchy),
+            "summing_matrix": self.summing_matrix,
+            "residual_covariance": self.residual_covariance,
+            "covariance_method": self.covariance_method,
+            "series_id_column": self.series_id_column,
+            "parent_column": self.parent_column,
+            "child_column": self.child_column,
+            "non_negative": self.non_negative,
+            "params": dict(self.params),
+            "metadata": dict(self.metadata),
+        }
 
 
 @dataclass
@@ -47,6 +138,7 @@ class ForecastingConfig:
     params: Mapping[str, Any] = field(default_factory=dict)
     backtest: Mapping[str, Any] = field(default_factory=dict)
     artifact: Mapping[str, Any] = field(default_factory=dict)
+    reconciliation: ReconciliationConfig | None = None
     metadata: Mapping[str, Any] = field(default_factory=dict)
     allow_unknown: bool = False
 
@@ -96,6 +188,11 @@ class ForecastingConfig:
             params=dict(data.get("params", {})),
             backtest=dict(data.get("backtest", {})),
             artifact=dict(data.get("artifact", {})),
+            reconciliation=_reconciliation_config_from_mapping(
+                data["reconciliation"], allow_unknown=allow_unknown
+            )
+            if "reconciliation" in data
+            else None,
             metadata=metadata,
             allow_unknown=allow_unknown,
         )
@@ -123,6 +220,15 @@ class ForecastingConfig:
             names = []
         return {name: active_registry.create(name) for name in names}
 
+    def construct_reconciler(self, registry: ForecastRegistry | None = None) -> Any | None:
+        if self.reconciliation is None:
+            return None
+        active_registry = registry or self.registry(include_defaults=True)
+        return active_registry.create(
+            self.reconciliation.model_name,
+            **self.reconciliation.to_params(),
+        )
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "allow_unknown": self.allow_unknown,
@@ -135,6 +241,9 @@ class ForecastingConfig:
             "params": dict(self.params),
             "backtest": dict(self.backtest),
             "artifact": dict(self.artifact),
+            "reconciliation": None
+            if self.reconciliation is None
+            else self.reconciliation.to_dict(),
             "metadata": dict(self.metadata),
             "models": [
                 {
@@ -165,6 +274,33 @@ def _model_spec_from_mapping(
         name=str(name),
         params=dict(data.get("params", {})),
         optional_dependencies=tuple(_string_sequence(data.get("optional_dependencies", ()))),
+        metadata=metadata,
+    )
+
+
+def _reconciliation_config_from_mapping(
+    values: Mapping[str, Any], *, allow_unknown: bool
+) -> ReconciliationConfig:
+    data = dict(values)
+    unknown = sorted(set(data).difference(RECONCILIATION_FIELDS))
+    metadata = dict(data.get("metadata", {}))
+    if unknown and not allow_unknown:
+        raise ValueError(f"unknown reconciliation config field(s): {', '.join(unknown)}")
+    if unknown:
+        metadata["unknown_fields"] = {key: data[key] for key in unknown}
+    if "method" not in data:
+        raise ValueError("reconciliation config requires 'method'")
+    return ReconciliationConfig(
+        method=str(data["method"]),
+        hierarchy=dict(data.get("hierarchy", {})),
+        summing_matrix=data.get("summing_matrix"),
+        residual_covariance=data.get("residual_covariance"),
+        covariance_method=data.get("covariance_method"),
+        series_id_column=data.get("series_id_column"),
+        parent_column=data.get("parent_column"),
+        child_column=data.get("child_column"),
+        non_negative=bool(data.get("non_negative", False)),
+        params=dict(data.get("params", {})),
         metadata=metadata,
     )
 

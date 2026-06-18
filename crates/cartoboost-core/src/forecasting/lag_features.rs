@@ -16,6 +16,10 @@ pub struct LagFeatureConfig {
     pub lags: Vec<usize>,
     pub rolling_mean_windows: Vec<usize>,
     pub calendar_features: Vec<CalendarFeature>,
+    #[serde(default)]
+    pub difference_lags: Vec<usize>,
+    #[serde(default)]
+    pub rolling_trend_windows: Vec<usize>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -38,6 +42,8 @@ impl Default for LagFeatureConfig {
             lags: vec![1],
             rolling_mean_windows: Vec::new(),
             calendar_features: Vec::new(),
+            difference_lags: Vec::new(),
+            rolling_trend_windows: Vec::new(),
         }
     }
 }
@@ -46,7 +52,11 @@ impl LagFeatureBuilder {
     pub fn new(config: LagFeatureConfig) -> Result<Self> {
         validate_config(&config)?;
         let mut feature_names = Vec::with_capacity(
-            config.lags.len() + config.rolling_mean_windows.len() + config.calendar_features.len(),
+            config.lags.len()
+                + config.rolling_mean_windows.len()
+                + config.difference_lags.len()
+                + config.rolling_trend_windows.len()
+                + config.calendar_features.len(),
         );
         feature_names.extend(config.lags.iter().map(|lag| format!("target_lag_{lag}")));
         feature_names.extend(
@@ -54,6 +64,18 @@ impl LagFeatureBuilder {
                 .rolling_mean_windows
                 .iter()
                 .map(|window| format!("target_roll_mean_{window}")),
+        );
+        feature_names.extend(
+            config
+                .difference_lags
+                .iter()
+                .map(|lag| format!("target_delta_lag_{lag}")),
+        );
+        feature_names.extend(
+            config
+                .rolling_trend_windows
+                .iter()
+                .map(|window| format!("target_roll_trend_{window}")),
         );
         feature_names.extend(config.calendar_features.iter().map(calendar_feature_name));
         Ok(Self {
@@ -165,6 +187,40 @@ impl LagFeatureBuilder {
             }
             features.push(mean);
         }
+        for lag in &self.config.difference_lags {
+            if prior.len() <= *lag {
+                return Ok(None);
+            }
+            let last = prior
+                .last()
+                .ok_or_else(|| CartoBoostError::InvalidInput("empty prior history".to_string()))?;
+            let row = &prior[prior.len() - 1 - *lag];
+            let delta = last.target - row.target;
+            if !delta.is_finite() {
+                return Err(CartoBoostError::InvalidInput(format!(
+                    "lag delta for series {series_id} is not finite"
+                )));
+            }
+            features.push(delta);
+        }
+        for window in &self.config.rolling_trend_windows {
+            if *window < 2 || prior.len() < *window {
+                return Ok(None);
+            }
+            let start = prior.len() - *window;
+            let first = prior[start].target;
+            let last = prior
+                .last()
+                .ok_or_else(|| CartoBoostError::InvalidInput("empty prior history".to_string()))?
+                .target;
+            let trend = (last - first) / (*window - 1) as f64;
+            if !trend.is_finite() {
+                return Err(CartoBoostError::InvalidInput(format!(
+                    "rolling trend for series {series_id} is not finite"
+                )));
+            }
+            features.push(trend);
+        }
         features.extend(
             self.config
                 .calendar_features
@@ -189,6 +245,8 @@ pub(crate) fn history_by_series(rows: &[ForecastRow]) -> BTreeMap<String, Vec<Fo
 fn validate_config(config: &LagFeatureConfig) -> Result<()> {
     if config.lags.is_empty()
         && config.rolling_mean_windows.is_empty()
+        && config.difference_lags.is_empty()
+        && config.rolling_trend_windows.is_empty()
         && config.calendar_features.is_empty()
     {
         return Err(CartoBoostError::InvalidInput(
@@ -203,6 +261,20 @@ fn validate_config(config: &LagFeatureConfig) -> Result<()> {
     if config.rolling_mean_windows.contains(&0) {
         return Err(CartoBoostError::InvalidInput(
             "rolling mean windows must be positive".to_string(),
+        ));
+    }
+    if config.difference_lags.contains(&0) {
+        return Err(CartoBoostError::InvalidInput(
+            "difference lags must be positive".to_string(),
+        ));
+    }
+    if config
+        .rolling_trend_windows
+        .iter()
+        .any(|window| *window < 2)
+    {
+        return Err(CartoBoostError::InvalidInput(
+            "rolling trend windows must be at least 2".to_string(),
         ));
     }
     Ok(())
@@ -221,5 +293,72 @@ fn calendar_feature_value(feature: &CalendarFeature, timestamp: NaiveDateTime) -
         CalendarFeature::DayOfWeek => f64::from(timestamp.weekday().num_days_from_monday()),
         CalendarFeature::Month => f64::from(timestamp.month()),
         CalendarFeature::Day => f64::from(timestamp.day()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::forecasting::parse_forecast_timestamp;
+
+    fn ts(day: u32) -> NaiveDateTime {
+        parse_forecast_timestamp(&format!("2026-01-{day:02}")).expect("timestamp")
+    }
+
+    #[test]
+    fn delta_and_trend_features_use_only_prior_history() {
+        let frame = ForecastFrame::new(
+            vec![
+                ForecastRow::single(ts(1), 10.0),
+                ForecastRow::single(ts(2), 12.0),
+                ForecastRow::single(ts(3), 15.0),
+                ForecastRow::single(ts(4), 19.0),
+            ],
+            crate::forecasting::ForecastFrequency::Daily,
+        )
+        .expect("frame");
+        let builder = LagFeatureBuilder::new(LagFeatureConfig {
+            lags: vec![1],
+            rolling_mean_windows: vec![2],
+            calendar_features: Vec::new(),
+            difference_lags: vec![2],
+            rolling_trend_windows: vec![3],
+        })
+        .expect("builder");
+
+        let rows = builder.transform_frame(&frame).expect("features");
+        let last = rows.last().expect("last row");
+
+        assert_eq!(
+            builder.feature_names(),
+            &[
+                "target_lag_1".to_string(),
+                "target_roll_mean_2".to_string(),
+                "target_delta_lag_2".to_string(),
+                "target_roll_trend_3".to_string(),
+            ]
+        );
+        assert_eq!(last.timestamp, ts(4));
+        assert_eq!(last.features, vec![15.0, 13.5, 5.0, 2.5]);
+    }
+
+    #[test]
+    fn trend_feature_windows_are_validated() {
+        assert!(LagFeatureBuilder::new(LagFeatureConfig {
+            lags: Vec::new(),
+            rolling_mean_windows: Vec::new(),
+            calendar_features: Vec::new(),
+            difference_lags: vec![0],
+            rolling_trend_windows: Vec::new(),
+        })
+        .is_err());
+        assert!(LagFeatureBuilder::new(LagFeatureConfig {
+            lags: Vec::new(),
+            rolling_mean_windows: Vec::new(),
+            calendar_features: Vec::new(),
+            difference_lags: Vec::new(),
+            rolling_trend_windows: vec![1],
+        })
+        .is_err());
     }
 }

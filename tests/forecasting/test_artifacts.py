@@ -25,6 +25,10 @@ def test_forecast_artifact_round_trips_manifest_and_csv(tmp_path):
         backtest_metrics={"mae": 1.25},
         interval_metadata={"level": 0.8},
         ensemble_metadata={"weights": {"naive": 0.4, "seasonal_naive": 0.6}},
+        reconciliation_metadata={
+            "method": "bottom_up_reconciler",
+            "hierarchy": {"Manhattan": ["Midtown"]},
+        },
         metadata={"split": "taxi_january_holdout"},
     )
     artifact = ForecastArtifact(
@@ -43,6 +47,7 @@ def test_forecast_artifact_round_trips_manifest_and_csv(tmp_path):
     assert loaded.manifest.model_name == "weighted_ensemble"
     assert loaded.manifest.feature_config == {"lags": [1, 24]}
     assert loaded.manifest.ensemble_metadata["weights"]["seasonal_naive"] == 0.6
+    assert loaded.manifest.reconciliation_metadata["method"] == "bottom_up_reconciler"
     assert json.loads(manifest_path.read_text())["forecast_path"] == "forecast.csv"
 
 

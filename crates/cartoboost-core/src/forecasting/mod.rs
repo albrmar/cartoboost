@@ -26,7 +26,7 @@ pub use backtesting::{BacktestFoldResult, BacktestResult, RollingOriginBackteste
 pub use config::{ForecastModelConfig, ForecastingConfig};
 pub use ensemble::WeightedEnsembleForecaster;
 pub use frequency::{parse_forecast_timestamp, ForecastFrequency};
-pub use global::CartoBoostLagForecaster;
+pub use global::{CartoBoostLagForecaster, GlobalForecastTargetMode};
 pub use lag_features::{CalendarFeature, LagFeatureBuilder, LagFeatureConfig, LagFeatureRow};
 pub use local::{
     ArimaForecaster, ArimaValidationScore, AutoARIMAForecaster, ETSForecaster, KalmanForecaster,

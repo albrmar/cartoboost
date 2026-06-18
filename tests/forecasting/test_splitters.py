@@ -79,6 +79,25 @@ def test_no_random_cv_or_overlapping_validation_boundary() -> None:
         )
 
 
+def test_splitters_preserve_strict_boundary_with_unsorted_panel_rows() -> None:
+    data = taxi_panel().sample(frac=1.0, random_state=7).reset_index(drop=True)
+    splitter = ExpandingWindowSplitter(
+        horizon=2,
+        step=1,
+        min_train_size=2,
+        timestamp_col="timestamp",
+        series_id_col="series_id",
+    )
+
+    folds = list(splitter.split(data))
+
+    assert folds
+    for fold in folds:
+        train_max = data.loc[fold.train_indices, "timestamp"].max()
+        validation_min = data.loc[fold.validation_indices, "timestamp"].min()
+        assert train_max < validation_min
+
+
 def test_sliding_requires_max_train_size() -> None:
     with pytest.raises(ValueError, match="max_train_size"):
         SlidingWindowSplitter(horizon=1, min_train_size=2, timestamp_col="timestamp")

@@ -68,7 +68,6 @@ dev = [
     "hypothesis>=6.100",
     "maturin>=1.7,<2",
     "matplotlib>=3.7",
-    "mypy>=1.10",
     "optuna>=4.0",
     "pandas>=2.0,<3",
     "polars>=1.0",
@@ -115,7 +114,3 @@ not-subscriptable = "ignore"
 unresolved-attribute = "ignore"
 unresolved-import = "ignore"
 unsupported-operator = "ignore"
-
-[tool.mypy]
-ignore_errors = true
-ignore_missing_imports = true

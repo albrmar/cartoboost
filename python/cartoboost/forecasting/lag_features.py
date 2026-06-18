@@ -21,6 +21,8 @@ class LagFeatureConfig:
     """Target lag configuration for leakage-safe forecasting features."""
 
     lags: Sequence[int] = (1,)
+    difference_lags: Sequence[int] = ()
+    rolling_trend_windows: Sequence[int] = ()
 
 
 @dataclass(frozen=True)
@@ -112,26 +114,8 @@ class LagFeatureBuilder:
         self._validate_future_row(row)
         panel_history = self._panel_history_before(history_frame, row)
 
-        values: dict[str, float] = {}
         shifted_target = panel_history[self.target_col]
-        for lag in self.lag_config.lags:
-            name = f"{self.target_col}_lag_{lag}"
-            values[name] = self._series_value(shifted_target, -lag)
-        if self.rolling_config is not None:
-            for window in self.rolling_config.windows:
-                window_values = shifted_target.tail(window)
-                min_periods = self.rolling_config.min_periods or window
-                for agg in self.rolling_config.aggregations:
-                    name = f"{self.target_col}_roll_{window}_{agg}"
-                    values[name] = (
-                        self._aggregate(window_values, agg)
-                        if len(window_values.dropna()) >= min_periods
-                        else float("nan")
-                    )
-            if self.rolling_config.include_expanding:
-                for agg in self.rolling_config.expanding_aggregations:
-                    name = f"{self.target_col}_expand_{agg}"
-                    values[name] = self._aggregate(shifted_target.dropna(), agg)
+        values: dict[str, float] = self._target_values_from_prior(shifted_target)
         values.update(self._calendar_values(row[self.time_col]))
         for col in self.static_cols:
             values[col] = self._row_or_history_value(row, panel_history, col)
@@ -142,43 +126,41 @@ class LagFeatureBuilder:
     def _build_history_features(self, frame: Any) -> Any:
         pd = _require_pandas()
         data = self._sorted(frame)
-        pieces = []
+        target_features = self._target_feature_names()
+        for name in target_features:
+            data[name] = float("nan")
         for _, group in data.groupby(self._panel_group_keys(), dropna=False, sort=False):
-            group = group.copy()
-            shifted = group[self.target_col].shift(1)
-            for lag in self.lag_config.lags:
-                group[f"{self.target_col}_lag_{lag}"] = group[self.target_col].shift(lag)
-            if self.rolling_config is not None:
-                for window in self.rolling_config.windows:
-                    min_periods = self.rolling_config.min_periods or window
-                    rolling = shifted.rolling(window=window, min_periods=min_periods)
-                    for agg in self.rolling_config.aggregations:
-                        group[f"{self.target_col}_roll_{window}_{agg}"] = self._rolling_agg(
-                            rolling,
-                            agg,
-                        )
-                if self.rolling_config.include_expanding:
-                    expanding = shifted.expanding(min_periods=1)
-                    for agg in self.rolling_config.expanding_aggregations:
-                        group[f"{self.target_col}_expand_{agg}"] = self._expanding_agg(
-                            expanding,
-                            agg,
-                        )
-            pieces.append(group)
-        if pieces:
-            data = pd.concat(pieces, axis=0).sort_index()
+            prior_targets = []
+            for _timestamp, timestamp_group in group.groupby(self.time_col, sort=False):
+                values = self._target_values_from_prior(pd.Series(prior_targets))
+                for name, value in values.items():
+                    data.loc[timestamp_group.index, name] = value
+                prior_targets.extend(timestamp_group[self.target_col].tolist())
         for name, values in self._calendar_frame(data[self.time_col]).items():
             data[name] = values
+        if not self.panel_cols:
+            data = data.drop(columns=[self._single_panel_col()], errors="ignore")
         return data
 
     def _validate_config(self) -> None:
         for lag in self.lag_config.lags:
             if int(lag) != lag or lag < 1:
                 raise ValueError("lags must be positive integers")
+        for lag in self.lag_config.difference_lags:
+            if int(lag) != lag or lag < 1:
+                raise ValueError("difference_lags must be positive integers")
+        for window in self.lag_config.rolling_trend_windows:
+            if int(window) != window or window < 2:
+                raise ValueError("rolling_trend_windows must be integers >= 2")
         if self.rolling_config is not None:
             for window in self.rolling_config.windows:
                 if int(window) != window or window < 1:
                     raise ValueError("rolling windows must be positive integers")
+            if self.rolling_config.min_periods is not None and (
+                int(self.rolling_config.min_periods) != self.rolling_config.min_periods
+                or self.rolling_config.min_periods < 1
+            ):
+                raise ValueError("rolling min_periods must be a positive integer or None")
             allowed = {"mean", "sum", "min", "max", "std"}
             for agg in list(self.rolling_config.aggregations) + list(
                 self.rolling_config.expanding_aggregations
@@ -226,6 +208,13 @@ class LagFeatureBuilder:
             if self.rolling_config.include_expanding:
                 for agg in self.rolling_config.expanding_aggregations:
                     names.append(f"{self.target_col}_expand_{agg}")
+        names.extend(
+            f"{self.target_col}_delta_lag_{lag}" for lag in self.lag_config.difference_lags
+        )
+        names.extend(
+            f"{self.target_col}_roll_trend_{window}"
+            for window in self.lag_config.rolling_trend_windows
+        )
         return names
 
     def _calendar_names(self) -> list[str]:
@@ -297,13 +286,54 @@ class LagFeatureBuilder:
         raise ValueError(f"missing static column {col!r} for future row")
 
     def _panel_group_keys(self) -> str | list[str]:
-        return self.panel_cols if self.panel_cols else "__cartoboost_single_panel__"
+        return self.panel_cols if self.panel_cols else self._single_panel_col()
 
     def _sorted(self, frame: Any) -> Any:
         data = frame.copy()
         if not self.panel_cols:
-            data["__cartoboost_single_panel__"] = 0
+            data[self._single_panel_col()] = 0
         return data.sort_values([*self.panel_cols, self.time_col], kind="mergesort")
+
+    @staticmethod
+    def _single_panel_col() -> str:
+        return "__cartoboost_single_panel__"
+
+    def _target_values_from_prior(self, prior_targets: Any) -> dict[str, float]:
+        values: dict[str, float] = {}
+        for lag in self.lag_config.lags:
+            name = f"{self.target_col}_lag_{lag}"
+            values[name] = self._series_value(prior_targets, -lag)
+        if self.rolling_config is not None:
+            for window in self.rolling_config.windows:
+                window_values = prior_targets.tail(window)
+                min_periods = self.rolling_config.min_periods or window
+                for agg in self.rolling_config.aggregations:
+                    name = f"{self.target_col}_roll_{window}_{agg}"
+                    values[name] = (
+                        self._aggregate(window_values, agg)
+                        if len(window_values.dropna()) >= min_periods
+                        else float("nan")
+                    )
+            if self.rolling_config.include_expanding:
+                for agg in self.rolling_config.expanding_aggregations:
+                    name = f"{self.target_col}_expand_{agg}"
+                    values[name] = self._aggregate(prior_targets.dropna(), agg)
+        for lag in self.lag_config.difference_lags:
+            name = f"{self.target_col}_delta_lag_{lag}"
+            if len(prior_targets) <= lag:
+                values[name] = float("nan")
+            else:
+                values[name] = float(prior_targets.iloc[-1] - prior_targets.iloc[-1 - lag])
+        for window in self.lag_config.rolling_trend_windows:
+            name = f"{self.target_col}_roll_trend_{window}"
+            window_values = prior_targets.tail(window).dropna()
+            if len(window_values) < window:
+                values[name] = float("nan")
+            else:
+                values[name] = float(
+                    (window_values.iloc[-1] - window_values.iloc[0]) / (window - 1)
+                )
+        return values
 
     def _as_frame(self, frame: Any) -> Any:
         pd = _require_pandas()

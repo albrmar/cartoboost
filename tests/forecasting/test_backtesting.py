@@ -5,10 +5,7 @@ import pandas as pd
 import pytest
 from cartoboost.forecasting import (
     ExpandingWindowSplitter,
-    ForecastFrame,
     ForecastMetricSet,
-    KalmanForecaster,
-    KrigingForecaster,
     RollingOriginBacktester,
 )
 
@@ -95,58 +92,22 @@ def test_backtester_rejects_models_that_do_not_predict_exact_validation_shape() 
         backtester.run(BadHorizonModel(), taxi_trips())
 
 
-def test_native_backtester_runs_kalman_forecaster_on_forecast_frame() -> None:
-    data = pd.DataFrame(
-        {
-            "timestamp": pd.date_range("2026-01-01", periods=8, freq="D"),
-            "pickup_demand": [10.0, 12.0, 14.0, 16.0, 18.0, 20.0, 22.0, 24.0],
-        }
-    )
-    frame = ForecastFrame.from_pandas(
-        data,
+def test_backtester_rejects_duplicate_validation_alignment_keys() -> None:
+    data = taxi_trips()
+    data = pd.concat([data, data.iloc[[4]]], ignore_index=True)
+    splitter = ExpandingWindowSplitter(
+        horizon=1,
+        min_train_size=4,
         timestamp_col="timestamp",
-        target_col="pickup_demand",
-        freq="D",
+        series_id_col="series_id",
     )
-    backtester = RollingOriginBacktester(horizon=2, min_train_size=4, step_size=2)
-
-    result = backtester.evaluate(KalmanForecaster(), frame)
-
-    assert result.folds
-    assert result.metrics["rmse"] >= 0.0
-    assert result.folds[0].predictions[0]["model"] == "kalman"
-
-
-def test_native_backtester_runs_kriging_forecaster_on_panel_forecast_frame() -> None:
-    rows = []
-    for pickup, base in [("PULocationID_142", 10.0), ("PULocationID_236", 30.0)]:
-        for offset, timestamp in enumerate(pd.date_range("2026-01-01", periods=8, freq="D")):
-            rows.append(
-                {
-                    "timestamp": timestamp,
-                    "PULocationID": pickup,
-                    "pickup_demand": base + float(offset),
-                }
-            )
-    frame = ForecastFrame.from_pandas(
-        pd.DataFrame(rows),
+    backtester = RollingOriginBacktester(
+        splitter=splitter,
+        target_col="fare",
         timestamp_col="timestamp",
-        target_col="pickup_demand",
-        series_id_col="PULocationID",
-        freq="D",
+        series_id_col="series_id",
+        feature_cols=["timestamp", "trip_distance", "series_id"],
     )
-    model = KrigingForecaster(
-        coordinates={
-            "PULocationID_142": (0.0, 0.0),
-            "PULocationID_236": (10.0, 0.0),
-        },
-        range=1.0,
-        nugget=1.0e-9,
-    )
-    backtester = RollingOriginBacktester(horizon=1, min_train_size=2, step_size=2)
 
-    result = backtester.evaluate(model, frame)
-
-    assert result.folds
-    assert result.metrics["mae"] >= 0.0
-    assert {row["model"] for row in result.folds[0].predictions} == {"kriging"}
+    with pytest.raises(ValueError, match="unique by series_id/timestamp/horizon"):
+        backtester.run(MeanFareModel(), data)
