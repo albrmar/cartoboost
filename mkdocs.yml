@@ -81,6 +81,7 @@ nav:
           - CLI: forecasting_cli.md
           - Examples: forecasting_examples.md
           - Pure Rust Plan: forecasting_pure_rust_plan.md
+          - Quality And Tests: forecasting_quality_tests.md
       - Feature Schema: feature_schema.md
       - Sparse Features: sparse_features.md
       - Graph Features: graph-features.md

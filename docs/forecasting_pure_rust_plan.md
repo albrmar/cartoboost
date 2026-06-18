@@ -5,6 +5,10 @@ pure Rust is required. Under this constraint, Rust is the forecasting engine.
 Python may expose bindings, examples, and ergonomic wrappers, but Python must
 not contain the core forecasting logic.
 
+Model quality and implementation tests are specified separately in
+[Forecasting Model Quality And Implementation Tests](forecasting_quality_tests.md).
+That page is part of the acceptance contract for this plan.
+
 This means:
 
 - no `statsmodels`
@@ -457,3 +461,5 @@ Docs must clearly state:
 - artifact format
 - backtesting methodology
 - leakage prevention
+
+The model quality page must also be satisfied before a public model is accepted.
