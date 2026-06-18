@@ -3,7 +3,7 @@
 ## Dev environment tips
 - This folder contains Python, integration, fixture contract, and parity tests.
 - Keep tests deterministic and prefer committed fixtures or synthetic data over external downloads.
-- Use taxi-style fixture names for public-facing examples and tests that may be copied into docs: pickup/dropoff, taxi trip, fare, duration, and taxi zones. Avoid freight/truck/carrier/shipper/brokerage/provider/lane terminology.
+- Use taxi-style fixture names for public-facing examples and tests that may be copied into docs: pickup/dropoff, taxi trip, fare, duration, and taxi zones.
 - Optional dependency tests should use `pytest.importorskip` when the package is not in the relevant dependency group, and should include at least one path that verifies hard-fail behavior when a required optional package is absent.
 
 ## Testing instructions
