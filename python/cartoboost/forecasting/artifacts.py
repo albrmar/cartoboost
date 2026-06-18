@@ -30,6 +30,7 @@ class ForecastArtifactManifest:
     backtest_metrics: Mapping[str, Any] = field(default_factory=dict)
     interval_metadata: Mapping[str, Any] = field(default_factory=dict)
     ensemble_metadata: Mapping[str, Any] = field(default_factory=dict)
+    reconciliation_metadata: Mapping[str, Any] = field(default_factory=dict)
     metadata: Mapping[str, Any] = field(default_factory=dict)
     schema_version: int = 1
 
@@ -51,6 +52,7 @@ class ForecastArtifactManifest:
         object.__setattr__(self, "backtest_metrics", dict(self.backtest_metrics))
         object.__setattr__(self, "interval_metadata", dict(self.interval_metadata))
         object.__setattr__(self, "ensemble_metadata", dict(self.ensemble_metadata))
+        object.__setattr__(self, "reconciliation_metadata", dict(self.reconciliation_metadata))
         object.__setattr__(self, "metadata", dict(self.metadata))
 
     def to_dict(self) -> dict[str, Any]:

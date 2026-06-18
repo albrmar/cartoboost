@@ -41,7 +41,7 @@ Use this guide as the first read before making changes. Start in the relevant co
 - For benchmark or acceptance behavior changes: edit `scripts`, benchmark sources in `benches`, and benchmark docs under `docs/benchmarks`.
 
 ## Validation and Runtime Checks
-- Run `uv run --group dev ruff format --check python tests scripts` and `uv run --group dev ruff check python tests scripts` after Python-facing edits.
+- Run `uv run --group dev pre-commit run --all-files` for lint and format checks after source edits.
 - Run `uv run --group dev pytest` after changing Python APIs or estimator behavior.
 - Use `just validate` for full local validation only when comprehensive smoke coverage is needed.
 

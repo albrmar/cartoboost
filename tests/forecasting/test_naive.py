@@ -7,6 +7,11 @@ def test_naive_requires_fit_before_predict():
         NaiveForecaster().predict(2)
 
 
+def test_naive_validates_prediction_interval_levels():
+    with pytest.raises(ValueError, match="prediction_interval_levels"):
+        NaiveForecaster(prediction_interval_levels=[1.0])
+
+
 def test_naive_converts_series_and_delegates_to_native(install_fake_native):
     native = install_fake_native("NaiveForecaster")
 

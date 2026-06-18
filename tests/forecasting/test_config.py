@@ -82,3 +82,62 @@ def test_forecasting_config_allows_unknown_fields_when_requested():
 def test_forecasting_config_requires_positive_horizon():
     with pytest.raises(ValueError, match="positive integer"):
         ForecastingConfig.from_toml("horizon = 0")
+
+
+def test_forecasting_config_parses_bottom_up_reconciliation():
+    config = ForecastingConfig.from_toml(
+        """
+        horizon = 2
+
+        [reconciliation]
+        method = "bottom_up_reconciler"
+        series_id_column = "PULocationID"
+        parent_column = "borough"
+        child_column = "zone"
+        non_negative = true
+
+        [reconciliation.hierarchy]
+        Manhattan = ["Midtown", "Chelsea"]
+        """
+    )
+
+    assert config.reconciliation is not None
+    assert config.reconciliation.model_name == "bottom_up_reconciler"
+    assert config.reconciliation.to_params()["hierarchy"] == {"Manhattan": ["Midtown", "Chelsea"]}
+    assert config.to_dict()["reconciliation"]["series_id_column"] == "PULocationID"
+
+
+def test_forecasting_config_constructs_min_trace_reconciler(install_fake_native):
+    native = install_fake_native("MinTraceReconciler")
+    config = ForecastingConfig.from_toml(
+        """
+        horizon = 2
+
+        [reconciliation]
+        method = "min_trace"
+        parent_column = "borough"
+        child_column = "PULocationID"
+        covariance_method = "sample"
+        """
+    )
+
+    reconciler = config.construct_reconciler()
+
+    assert reconciler.native_class_name == "MinTraceReconciler"
+    assert reconciler.get_params()["covariance_method"] == "sample"
+    reconciler.fit([1.0, 2.0])
+    assert native.calls[0][1]["covariance_method"] == "sample"
+    assert native.calls[0][1]["parent_column"] == "borough"
+
+
+def test_forecasting_config_rejects_unknown_reconciliation_fields_by_default():
+    with pytest.raises(ValueError, match="unknown reconciliation config field"):
+        ForecastingConfig.from_toml(
+            """
+            horizon = 2
+
+            [reconciliation]
+            method = "bottom_up_reconciler"
+            mystery = true
+            """
+        )

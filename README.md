@@ -40,6 +40,9 @@ CartoBoost supports:
 - Standalone node2vec, GraphSAGE, heterogeneous GraphSAGE, and typed-schema
   HinSAGE graph regressors and link predictors, plus optional graph feature
   encoders.
+- General Rust-backed utilities outside the forecasting API, including
+  single-series forecast helpers, local-level/local-linear Kalman filters,
+  Croston/SBA/TSB intermittent demand, and ordinary kriging.
 - Rust-native forecasting APIs for geographic and temporal single-series or
   panel taxi demand, including rolling-origin backtests, naive/seasonal
   naive/theta/optimized-theta/ETS/AutoARIMA models, supervised CartoBoost lag

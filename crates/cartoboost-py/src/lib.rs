@@ -6,8 +6,9 @@ use cartoboost_core::forecasting::{
     ETSForecaster as CoreETSForecaster, ForecastActual, ForecastFold as CoreForecastFold,
     ForecastFrame as CoreForecastFrame, ForecastFrameMetadata, ForecastFrequency,
     ForecastMetricSet as CoreForecastMetricSet, ForecastPrediction,
-    ForecastResult as CoreForecastResult, ForecastWindow, Forecaster, LagFeatureConfig,
-    NaiveForecaster as CoreNaiveForecaster,
+    ForecastResult as CoreForecastResult, ForecastRow as CoreForecastRow, ForecastWindow,
+    Forecaster, GlobalForecastTargetMode, KalmanForecaster as CoreKalmanForecaster,
+    LagFeatureConfig, NaiveForecaster as CoreNaiveForecaster,
     OptimizedThetaForecaster as CoreOptimizedThetaForecaster,
     RollingOriginBacktester as CoreRollingOriginBacktester,
     RollingOriginSplitter as CoreRollingOriginSplitter,
@@ -16,6 +17,12 @@ use cartoboost_core::forecasting::{
 };
 use cartoboost_core::loss::{HuberLossConfig, LogL2LossConfig, LossConfig, QuantileLossConfig};
 use cartoboost_core::tree::{FlatAxisPredictor, FuzzyKernel, LeafPredictorKind, SplitterKind};
+use cartoboost_core::utilities::{
+    fit_local_level_kalman, fit_local_linear_kalman, intermittent_demand_forecast,
+    local_level_kalman_forecast, local_linear_kalman_forecast, ordinary_kriging_predict_many,
+    IntermittentDemandMethod, KrigingObservation, LocalLevelKalmanConfig, LocalLinearKalmanConfig,
+    OrdinaryKrigingConfig,
+};
 use cartoboost_core::{Booster, BoosterConfig, CartoBoostError, Dataset, Model};
 use cartoboost_neural::{
     build_embedding_table_artifact, compute_directional_features, fit_embedding_table_with_options,
@@ -37,6 +44,7 @@ use std::cmp::Ordering;
 use std::path::PathBuf;
 
 type StringTypedEdges = Vec<(String, String, String)>;
+type PyKrigingPrediction = (f64, f64, f64, Vec<f64>);
 
 #[pyclass(name = "ForecastFrame")]
 #[derive(Clone, Debug)]
@@ -585,6 +593,300 @@ fn forecast_parse_frequency(value: &str) -> PyResult<String> {
         .to_string())
 }
 
+#[pyfunction]
+#[pyo3(signature = (values, level_process_variance=0.05, trend_process_variance=0.005, observation_variance=1.0, horizon=0))]
+fn utility_kalman_filter(
+    values: Vec<f64>,
+    level_process_variance: f64,
+    trend_process_variance: f64,
+    observation_variance: f64,
+    horizon: usize,
+) -> PyResult<String> {
+    let config = LocalLinearKalmanConfig::new(
+        level_process_variance,
+        trend_process_variance,
+        observation_variance,
+    )
+    .map_err(to_py_value_error)?;
+    let result = fit_local_linear_kalman(&values, config).map_err(to_py_value_error)?;
+    let forecast = if horizon == 0 {
+        Vec::new()
+    } else {
+        local_linear_kalman_forecast(result.final_state, horizon).map_err(to_py_value_error)?
+    };
+    let payload = json!({
+        "final_state": {
+            "level": result.final_state.level,
+            "trend": result.final_state.trend,
+        },
+        "estimates": result.estimates.iter().map(|estimate| {
+            json!({
+                "step": estimate.step,
+                "observed": estimate.observed,
+                "prior_level": estimate.prior_level,
+                "prior_trend": estimate.prior_trend,
+                "level": estimate.level,
+                "trend": estimate.trend,
+                "innovation": estimate.innovation,
+            })
+        }).collect::<Vec<_>>(),
+        "forecast": forecast,
+    });
+    serde_json::to_string(&payload).map_err(|err| PyRuntimeError::new_err(err.to_string()))
+}
+
+#[pyfunction]
+#[pyo3(signature = (values, level_process_variance=0.05, observation_variance=1.0, horizon=0))]
+fn utility_local_level_kalman_filter(
+    values: Vec<f64>,
+    level_process_variance: f64,
+    observation_variance: f64,
+    horizon: usize,
+) -> PyResult<String> {
+    let config = LocalLevelKalmanConfig::new(level_process_variance, observation_variance)
+        .map_err(to_py_value_error)?;
+    let result = fit_local_level_kalman(&values, config).map_err(to_py_value_error)?;
+    let forecast = if horizon == 0 {
+        Vec::new()
+    } else {
+        local_level_kalman_forecast(result.final_level, horizon).map_err(to_py_value_error)?
+    };
+    let payload = json!({
+        "final_state": {
+            "level": result.final_level,
+        },
+        "estimates": result.estimates.iter().map(|estimate| {
+            json!({
+                "step": estimate.step,
+                "observed": estimate.observed,
+                "prior_level": estimate.prior_level,
+                "level": estimate.level,
+                "innovation": estimate.innovation,
+            })
+        }).collect::<Vec<_>>(),
+        "forecast": forecast,
+    });
+    serde_json::to_string(&payload).map_err(|err| PyRuntimeError::new_err(err.to_string()))
+}
+
+#[pyfunction]
+#[pyo3(signature = (values, horizon, method="croston", alpha=0.1, beta=0.1))]
+fn utility_intermittent_demand_forecast(
+    values: Vec<f64>,
+    horizon: usize,
+    method: &str,
+    alpha: f64,
+    beta: f64,
+) -> PyResult<Vec<f64>> {
+    let method = match method {
+        "croston" => IntermittentDemandMethod::Croston,
+        "sba" => IntermittentDemandMethod::Sba,
+        "tsb" => IntermittentDemandMethod::Tsb,
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unsupported intermittent demand method {other:?}"
+            )));
+        }
+    };
+    intermittent_demand_forecast(&values, horizon, alpha, beta, method).map_err(to_py_value_error)
+}
+
+#[pyfunction]
+#[pyo3(signature = (observations, targets, range=1.0, nugget=1.0e-6))]
+fn utility_ordinary_kriging_predict(
+    observations: Vec<(f64, f64, f64)>,
+    targets: Vec<(f64, f64)>,
+    range: f64,
+    nugget: f64,
+) -> PyResult<Vec<PyKrigingPrediction>> {
+    let observations = observations
+        .into_iter()
+        .map(|(x, y, value)| KrigingObservation { x, y, value })
+        .collect::<Vec<_>>();
+    let config = OrdinaryKrigingConfig::new(range, nugget).map_err(to_py_value_error)?;
+    let predictions = ordinary_kriging_predict_many(&observations, &targets, config)
+        .map_err(to_py_value_error)?;
+    Ok(predictions
+        .into_iter()
+        .map(|prediction| {
+            (
+                prediction.x,
+                prediction.y,
+                prediction.mean,
+                prediction.weights,
+            )
+        })
+        .collect())
+}
+
+#[pyfunction]
+#[pyo3(signature = (model, values, horizon, params_json=None))]
+fn utility_series_forecast(
+    model: &str,
+    values: Vec<f64>,
+    horizon: usize,
+    params_json: Option<&str>,
+) -> PyResult<Vec<f64>> {
+    let params = match params_json {
+        Some(raw) => serde_json::from_str::<Value>(raw).map_err(|err| {
+            PyValueError::new_err(format!("params_json must be valid JSON: {err}"))
+        })?,
+        None => json!({}),
+    };
+    let frame = utility_frame_from_values(values).map_err(to_py_value_error)?;
+    let mut forecaster = utility_forecaster(model, &params).map_err(to_py_value_error)?;
+    forecaster.fit(&frame).map_err(to_py_value_error)?;
+    let result = forecaster.predict(horizon).map_err(to_py_value_error)?;
+    Ok(result
+        .predictions()
+        .iter()
+        .map(|prediction| prediction.mean)
+        .collect())
+}
+
+fn utility_frame_from_values(values: Vec<f64>) -> cartoboost_core::Result<CoreForecastFrame> {
+    let frequency = ForecastFrequency::Daily;
+    let start = cartoboost_core::forecasting::parse_forecast_timestamp("1970-01-01")?;
+    let rows = values
+        .into_iter()
+        .enumerate()
+        .map(|(index, value)| {
+            Ok(CoreForecastRow::single(
+                frequency.advance(start, index)?,
+                value,
+            ))
+        })
+        .collect::<cartoboost_core::Result<Vec<_>>>()?;
+    CoreForecastFrame::new(rows, frequency)
+}
+
+fn utility_forecaster(model: &str, params: &Value) -> cartoboost_core::Result<Box<dyn Forecaster>> {
+    match model {
+        "naive" => Ok(Box::new(CoreNaiveForecaster::new())),
+        "seasonal_naive" | "seasonal-naive" => {
+            let season_length = utility_usize_param(params, "season_length")?.unwrap_or(1);
+            Ok(Box::new(CoreSeasonalNaiveForecaster::new(season_length)?))
+        }
+        "theta" => {
+            let theta = utility_f64_param(params, "theta")?.unwrap_or(2.0);
+            let alpha = utility_f64_param(params, "alpha")?.unwrap_or(0.5);
+            Ok(Box::new(CoreThetaForecaster::new(theta, alpha)?))
+        }
+        "optimized_theta" | "optimized-theta" => {
+            let theta_grid =
+                utility_f64_vec_param(params, "theta_grid")?.unwrap_or_else(|| vec![1.0, 2.0]);
+            let alpha_grid =
+                utility_f64_vec_param(params, "alpha_grid")?.unwrap_or_else(|| vec![0.2, 0.5, 0.8]);
+            Ok(Box::new(CoreOptimizedThetaForecaster::new(
+                theta_grid, alpha_grid,
+            )?))
+        }
+        "ets" => {
+            let alpha = utility_f64_param(params, "alpha")?.unwrap_or(0.5);
+            let beta = utility_f64_param(params, "beta")?.unwrap_or(0.1);
+            let gamma = utility_f64_param(params, "gamma")?;
+            let season_length = utility_usize_param(params, "season_length")?;
+            Ok(Box::new(CoreETSForecaster::with_additive_seasonality(
+                alpha,
+                beta,
+                gamma,
+                season_length,
+            )?))
+        }
+        "arima" => {
+            let p = utility_usize_param(params, "p")?.unwrap_or(1);
+            let d = utility_usize_param(params, "d")?.unwrap_or(0);
+            let q = utility_usize_param(params, "q")?.unwrap_or(0);
+            Ok(Box::new(CoreArimaForecaster::new(p, d, q)?))
+        }
+        "auto_arima" | "auto-arima" => {
+            let max_p = utility_usize_param(params, "max_p")?.unwrap_or(3);
+            let max_d = utility_usize_param(params, "max_d")?.unwrap_or(1);
+            let max_q = utility_usize_param(params, "max_q")?.unwrap_or(2);
+            Ok(Box::new(CoreAutoARIMAForecaster::with_max_order(
+                max_p, max_d, max_q,
+            )?))
+        }
+        "kalman" | "local_linear_trend_kalman" | "local-linear-trend-kalman" => {
+            let level_process_variance =
+                utility_f64_param(params, "level_process_variance")?.unwrap_or(0.05);
+            let trend_process_variance =
+                utility_f64_param(params, "trend_process_variance")?.unwrap_or(0.005);
+            let observation_variance =
+                utility_f64_param(params, "observation_variance")?.unwrap_or(1.0);
+            Ok(Box::new(CoreKalmanForecaster::new(
+                level_process_variance,
+                trend_process_variance,
+                observation_variance,
+            )?))
+        }
+        "local_level_kalman" | "local-level-kalman" => {
+            let level_process_variance =
+                utility_f64_param(params, "level_process_variance")?.unwrap_or(0.05);
+            let observation_variance =
+                utility_f64_param(params, "observation_variance")?.unwrap_or(1.0);
+            Ok(Box::new(CoreKalmanForecaster::new(
+                level_process_variance,
+                1.0e-12,
+                observation_variance,
+            )?))
+        }
+        other => Err(CartoBoostError::InvalidInput(format!(
+            "unknown utility series forecast model {other:?}"
+        ))),
+    }
+}
+
+fn utility_f64_param(params: &Value, name: &str) -> cartoboost_core::Result<Option<f64>> {
+    match params.get(name) {
+        Some(Value::Null) | None => Ok(None),
+        Some(value) => value
+            .as_f64()
+            .ok_or_else(|| {
+                CartoBoostError::InvalidInput(format!("parameter {name} must be numeric"))
+            })
+            .map(Some),
+    }
+}
+
+fn utility_usize_param(params: &Value, name: &str) -> cartoboost_core::Result<Option<usize>> {
+    match params.get(name) {
+        Some(Value::Null) | None => Ok(None),
+        Some(value) => {
+            let raw = value.as_u64().ok_or_else(|| {
+                CartoBoostError::InvalidInput(format!(
+                    "parameter {name} must be a nonnegative integer"
+                ))
+            })?;
+            usize::try_from(raw)
+                .map_err(|_| {
+                    CartoBoostError::InvalidInput(format!("parameter {name} is too large"))
+                })
+                .map(Some)
+        }
+    }
+}
+
+fn utility_f64_vec_param(params: &Value, name: &str) -> cartoboost_core::Result<Option<Vec<f64>>> {
+    match params.get(name) {
+        Some(Value::Null) | None => Ok(None),
+        Some(Value::Array(values)) => values
+            .iter()
+            .map(|value| {
+                value.as_f64().ok_or_else(|| {
+                    CartoBoostError::InvalidInput(format!(
+                        "parameter {name} must contain only numbers"
+                    ))
+                })
+            })
+            .collect::<cartoboost_core::Result<Vec<_>>>()
+            .map(Some),
+        Some(_) => Err(CartoBoostError::InvalidInput(format!(
+            "parameter {name} must be a numeric array"
+        ))),
+    }
+}
+
 #[pyclass(name = "NaiveForecaster")]
 #[derive(Clone, Debug)]
 struct NativeNaiveForecaster {
@@ -830,13 +1132,22 @@ struct NativeCartoBoostLagForecaster {
 #[pymethods]
 impl NativeCartoBoostLagForecaster {
     #[new]
-    #[pyo3(signature = (lags=None, rolling_windows=None, calendar_features=true, recursive=true, prediction_interval_levels=None))]
+    #[pyo3(signature = (lags=None, rolling_windows=None, calendar_features=true, recursive=true, prediction_interval_levels=None, n_estimators=None, learning_rate=None, max_depth=None, min_samples_leaf=None, min_gain=None, splitters=None, trend_features=true, target_mode="level"))]
+    #[allow(clippy::too_many_arguments)]
     fn new(
         lags: Option<Vec<usize>>,
         rolling_windows: Option<Vec<usize>>,
         calendar_features: bool,
         recursive: bool,
         prediction_interval_levels: Option<Vec<f64>>,
+        n_estimators: Option<usize>,
+        learning_rate: Option<f64>,
+        max_depth: Option<usize>,
+        min_samples_leaf: Option<usize>,
+        min_gain: Option<f64>,
+        splitters: Option<Vec<String>>,
+        trend_features: bool,
+        target_mode: &str,
     ) -> PyResult<Self> {
         if !recursive {
             return Err(PyValueError::new_err(
@@ -844,9 +1155,25 @@ impl NativeCartoBoostLagForecaster {
             ));
         }
         validate_interval_levels(prediction_interval_levels.as_deref())?;
+        let lags = lags.unwrap_or_else(|| vec![1, 7, 14]);
+        let rolling_mean_windows = rolling_windows.unwrap_or_else(|| vec![7, 28]);
         let config = LagFeatureConfig {
-            lags: lags.unwrap_or_else(|| vec![1, 7, 14]),
-            rolling_mean_windows: rolling_windows.unwrap_or_else(|| vec![7, 28]),
+            difference_lags: if trend_features {
+                lags.iter().copied().filter(|lag| *lag > 1).collect()
+            } else {
+                Vec::new()
+            },
+            rolling_trend_windows: if trend_features {
+                rolling_mean_windows
+                    .iter()
+                    .copied()
+                    .filter(|window| *window > 1)
+                    .collect()
+            } else {
+                Vec::new()
+            },
+            lags,
+            rolling_mean_windows,
             calendar_features: if calendar_features {
                 vec![
                     CalendarFeature::DayOfWeek,
@@ -857,9 +1184,46 @@ impl NativeCartoBoostLagForecaster {
                 Vec::new()
             },
         };
+        let mut booster_config = BoosterConfig::default();
+        if let Some(value) = n_estimators {
+            booster_config.n_estimators = value;
+        }
+        if let Some(value) = learning_rate {
+            booster_config.learning_rate = value;
+        }
+        if let Some(value) = max_depth {
+            booster_config.max_depth = value;
+        }
+        if let Some(value) = min_samples_leaf {
+            booster_config.min_samples_leaf = value;
+        }
+        if let Some(value) = min_gain {
+            booster_config.min_gain = value;
+        }
+        if let Some(values) = splitters {
+            booster_config.splitters = parse_splitters(&values)?;
+        }
+        validate_params(
+            booster_config.n_estimators,
+            booster_config.learning_rate,
+            booster_config.max_depth,
+            booster_config.min_samples_leaf,
+            booster_config.min_gain,
+            booster_config.linear_lambda_l2,
+            booster_config.constant_lambda_l2,
+            booster_config.fuzzy_bandwidth,
+            0.5,
+            1.0,
+            1.0,
+        )?;
+        let target_mode = parse_global_target_mode(target_mode)?;
         Ok(Self {
-            model: CoreCartoBoostLagForecaster::new(config, BoosterConfig::default())
-                .map_err(to_py_value_error)?,
+            model: CoreCartoBoostLagForecaster::new_with_target_mode(
+                config,
+                booster_config,
+                target_mode,
+            )
+            .map_err(to_py_value_error)?,
         })
     }
 
@@ -1646,6 +2010,17 @@ fn parse_splitters(names: &[String]) -> PyResult<Vec<SplitterKind>> {
         Ok(vec![SplitterKind::Auto])
     } else {
         Ok(splitters)
+    }
+}
+
+fn parse_global_target_mode(name: &str) -> PyResult<GlobalForecastTargetMode> {
+    match name {
+        "level" => Ok(GlobalForecastTargetMode::Level),
+        "delta_from_last" | "delta" => Ok(GlobalForecastTargetMode::DeltaFromLast),
+        _ => Err(PyValueError::new_err(format!(
+            "unknown CartoBoostLagForecaster target_mode {name:?}; expected 'level' or \
+             'delta_from_last'"
+        ))),
     }
 }
 
@@ -4167,6 +4542,11 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<NativeStandaloneHinSageLinkPredictor>()?;
     m.add_class::<NativeHeteroGraphSageEncoder>()?;
     m.add_class::<NativeHinSageEncoder>()?;
+    m.add_function(wrap_pyfunction!(utility_kalman_filter, m)?)?;
+    m.add_function(wrap_pyfunction!(utility_local_level_kalman_filter, m)?)?;
+    m.add_function(wrap_pyfunction!(utility_intermittent_demand_forecast, m)?)?;
+    m.add_function(wrap_pyfunction!(utility_ordinary_kriging_predict, m)?)?;
+    m.add_function(wrap_pyfunction!(utility_series_forecast, m)?)?;
     m.add_function(wrap_pyfunction!(graph_compute_directional_features, m)?)?;
     m.add_function(wrap_pyfunction!(graph_validate_directed_metapath, m)?)?;
     m.add_function(wrap_pyfunction!(

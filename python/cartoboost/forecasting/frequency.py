@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from numbers import Integral
 from typing import Any
 
 _PANDAS_INSTALL_HINT = (
@@ -26,7 +27,7 @@ def normalize_frequency(freq: str | None) -> str | None:
     pd = require_pandas()
     try:
         return pd.tseries.frequencies.to_offset(freq).freqstr
-    except ValueError as exc:
+    except (TypeError, ValueError) as exc:
         raise ValueError(f"invalid frequency {freq!r}") from exc
 
 
@@ -87,7 +88,7 @@ def next_timestamps(last_timestamp: Any, horizon: int, freq: str) -> list[Any]:
 def validate_horizon(horizon: int) -> int:
     if isinstance(horizon, bool):
         raise ValueError("horizon must be a positive integer")
-    if not isinstance(horizon, int):
+    if not isinstance(horizon, Integral):
         raise ValueError("horizon must be a positive integer")
     try:
         value = int(horizon)

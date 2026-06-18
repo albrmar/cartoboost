@@ -49,9 +49,12 @@ frequency.
     "series_id_col": "PULocationID",
     "freq": "h",
     "is_panel": True,
+    "n_rows": 5000,
+    "series_ids": ["132", "138"],
     "static_covariates": ["DOLocationID"],
     "known_future_covariates": ["hour", "day_of_week"],
     "historical_covariates": ["trip_distance"],
+    "allow_irregular": False,
 }
 ```
 
@@ -73,11 +76,15 @@ result = ForecastResult.from_predictions(
 ```
 
 Panel outputs are sorted by series id and timestamp. Columns are stable:
-`series_id`, `timestamp`, `horizon`, `model`, `mean`, then interval lower/upper
-pairs sorted by interval level, such as `lower_90` and `upper_90`.
+`series_id`, `timestamp`, `prediction`, then interval lower/upper pairs sorted
+by interval level, such as `prediction_lower_90` and `prediction_upper_90`.
 
 Use `to_json()` and `ForecastResult.from_json(...)` for deterministic roundtrips
 through API boundaries.
+
+`PredictionInterval` validates that levels are unique and between 0 and 1, that
+lower and upper bounds have the same length as the predictions, and that all
+bounds are finite with `lower <= upper`.
 
 ## Base Classes
 

@@ -13,6 +13,7 @@ for these model names:
 - `theta`
 - `optimized_theta`
 - `ets`
+- `arima`
 - `auto_arima`
 - `cartoboost_lag`
 - `weighted_ensemble`
@@ -20,6 +21,7 @@ for these model names:
 Implemented scope:
 
 - `ets` is Rust additive ETS with optional additive seasonality.
+- `arima` is Rust ARIMA(p,d,q) over bounded non-seasonal orders.
 - `auto_arima` is Rust AutoARIMA over bounded ARIMA(p,d,q) candidates.
 - `weighted_ensemble` is a native PyO3 class that requires explicit native
   component models; it is not a zero-argument CLI/default-registry model.
@@ -27,6 +29,26 @@ Implemented scope:
 Python does not provide fallback forecasting algorithms for unsupported modes.
 Unsupported multiplicative ETS, damped ETS, and seasonal AutoARIMA fail
 explicitly.
+
+General utilities now exposed outside `cartoboost.forecasting`:
+
+- `local_level_kalman`: use `cartoboost.local_level_kalman_filter` or
+  `cartoboost.local_level_kalman_forecast`.
+- `local_linear_trend_kalman`: use `cartoboost.kalman_filter` or
+  `cartoboost.local_linear_trend_kalman_forecast`.
+- `croston`, `sba`, `tsb`: use `cartoboost.croston_forecast`,
+  `cartoboost.sba_forecast`, or `cartoboost.tsb_forecast`.
+
+Native forecasting-class surface still required before frame-based Python
+wrappers can be exposed:
+
+- `unobserved_components`: no Rust/PyO3 forecasting class is exposed.
+- `sarimax`: no Rust/PyO3 forecasting class is exposed.
+- `dynamic_regression`: no Rust/PyO3 forecasting class is exposed.
+- `mstl_ets`, `stl_arima`: no Rust/PyO3 decomposition-hybrid forecasting
+  classes are exposed.
+- `kriging`: core Rust has `KrigingForecaster`, but PyO3 does not currently
+  expose a `KrigingForecaster` class for wrapper delegation.
 
 Example:
 

@@ -115,7 +115,90 @@ class BacktestWeightedEnsembleForecaster(WeightedEnsembleForecaster):
         )
 
 
-__all__ = ["BacktestWeightedEnsembleForecaster", "WeightedEnsembleForecaster"]
+class BottomUpReconciler(NativeForecastWrapper):
+    """Thin wrapper for the Rust bottom-up hierarchical reconciliation binding."""
+
+    native_class_name = "BottomUpReconciler"
+
+    def __init__(
+        self,
+        *,
+        hierarchy: Mapping[str, Any] | None = None,
+        summing_matrix: Any | None = None,
+        series_id_column: str | None = None,
+        parent_column: str | None = None,
+        child_column: str | None = None,
+        non_negative: bool = False,
+        metadata: Mapping[str, Any] | None = None,
+        **params: Any,
+    ) -> None:
+        _validate_reconciliation_inputs(
+            hierarchy=hierarchy,
+            summing_matrix=summing_matrix,
+            series_id_column=series_id_column,
+            parent_column=parent_column,
+            child_column=child_column,
+        )
+        super().__init__(
+            hierarchy={} if hierarchy is None else dict(hierarchy),
+            summing_matrix=summing_matrix,
+            series_id_column=series_id_column,
+            parent_column=parent_column,
+            child_column=child_column,
+            non_negative=bool(non_negative),
+            metadata={} if metadata is None else dict(metadata),
+            **params,
+        )
+
+
+class MinTraceReconciler(NativeForecastWrapper):
+    """Thin wrapper for the Rust MinT hierarchical reconciliation binding."""
+
+    native_class_name = "MinTraceReconciler"
+
+    def __init__(
+        self,
+        *,
+        hierarchy: Mapping[str, Any] | None = None,
+        summing_matrix: Any | None = None,
+        residual_covariance: Any | None = None,
+        covariance_method: str = "shrunk",
+        series_id_column: str | None = None,
+        parent_column: str | None = None,
+        child_column: str | None = None,
+        non_negative: bool = False,
+        metadata: Mapping[str, Any] | None = None,
+        **params: Any,
+    ) -> None:
+        if not covariance_method:
+            raise ValueError("covariance_method must be non-empty")
+        _validate_reconciliation_inputs(
+            hierarchy=hierarchy,
+            summing_matrix=summing_matrix,
+            series_id_column=series_id_column,
+            parent_column=parent_column,
+            child_column=child_column,
+        )
+        super().__init__(
+            hierarchy={} if hierarchy is None else dict(hierarchy),
+            summing_matrix=summing_matrix,
+            residual_covariance=residual_covariance,
+            covariance_method=str(covariance_method),
+            series_id_column=series_id_column,
+            parent_column=parent_column,
+            child_column=child_column,
+            non_negative=bool(non_negative),
+            metadata={} if metadata is None else dict(metadata),
+            **params,
+        )
+
+
+__all__ = [
+    "BacktestWeightedEnsembleForecaster",
+    "BottomUpReconciler",
+    "MinTraceReconciler",
+    "WeightedEnsembleForecaster",
+]
 
 
 def _normalize_weights(
@@ -145,3 +228,26 @@ def _native_model_from_wrapper(model: Any) -> Any:
             "WeightedEnsembleForecaster only supports native CartoBoost forecasting wrappers"
         )
     return new_native_model()
+
+
+def _validate_reconciliation_inputs(
+    *,
+    hierarchy: Mapping[str, Any] | None,
+    summing_matrix: Any | None,
+    series_id_column: str | None,
+    parent_column: str | None,
+    child_column: str | None,
+) -> None:
+    has_edges = parent_column is not None or child_column is not None
+    if (parent_column is None) != (child_column is None):
+        raise ValueError("parent_column and child_column must be provided together")
+    if hierarchy is None and summing_matrix is None and not has_edges:
+        raise ValueError(
+            "reconciliation requires hierarchy, summing_matrix, or parent/child columns"
+        )
+    if series_id_column is not None and not series_id_column:
+        raise ValueError("series_id_column must be non-empty")
+    if parent_column is not None and not parent_column:
+        raise ValueError("parent_column must be non-empty")
+    if child_column is not None and not child_column:
+        raise ValueError("child_column must be non-empty")

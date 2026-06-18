@@ -5,6 +5,13 @@ from .backtesting import BacktestFoldResult, BacktestResult, RollingOriginBackte
 from .base import BaseForecaster, PanelForecasterMixin, SingleSeriesForecasterMixin
 from .config import ForecastingConfig
 from .ensemble import WeightedEnsembleForecaster
+from .frequency import (
+    infer_frequency,
+    next_timestamps,
+    normalize_frequency,
+    validate_horizon,
+    validate_regular_frequency,
+)
 from .global_models import CartoBoostLagForecaster
 from .lag_features import (
     CalendarFeatureConfig,
@@ -48,9 +55,12 @@ __all__ = [
     "ForecastRegistry",
     "ForecastResult",
     "ForecastingConfig",
+    "infer_frequency",
     "LagFeatureBuilder",
     "LagFeatureConfig",
     "NaiveForecaster",
+    "next_timestamps",
+    "normalize_frequency",
     "OptimizedThetaForecaster",
     "PanelForecasterMixin",
     "PredictionInterval",
@@ -61,5 +71,7 @@ __all__ = [
     "SingleSeriesForecasterMixin",
     "SlidingWindowSplitter",
     "ThetaForecaster",
+    "validate_horizon",
+    "validate_regular_frequency",
     "WeightedEnsembleForecaster",
 ]

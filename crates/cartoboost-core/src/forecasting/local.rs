@@ -3,6 +3,10 @@
 use crate::forecasting::{
     ForecastFrame, ForecastPrediction, ForecastResult, ForecastRow, Forecaster,
 };
+use crate::utilities::{
+    fit_local_linear_kalman, ordinary_kriging_predict_many, KrigingObservation,
+    LocalLinearKalmanConfig, OrdinaryKrigingConfig,
+};
 use crate::{CartoBoostError, Result};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
@@ -64,6 +68,22 @@ pub struct AutoARIMAForecaster {
     fitted: Option<ArimaForecaster>,
 }
 
+#[derive(Debug, Clone)]
+pub struct KalmanForecaster {
+    level_process_variance: f64,
+    trend_process_variance: f64,
+    observation_variance: f64,
+    fitted: Option<FittedKalmanState>,
+}
+
+#[derive(Debug, Clone)]
+pub struct KrigingForecaster {
+    coordinates: BTreeMap<String, (f64, f64)>,
+    range: f64,
+    nugget: f64,
+    fitted: Option<FittedKrigingState>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ThetaSeasonalityKind {
     Additive,
@@ -122,6 +142,25 @@ struct FittedArimaSeries {
     last_differences: Vec<f64>,
     fitted_values: Vec<f64>,
     residuals: Vec<f64>,
+}
+
+#[derive(Debug, Clone)]
+struct FittedKalmanState {
+    frame: ForecastFrame,
+    series: BTreeMap<String, FittedKalmanSeries>,
+}
+
+#[derive(Debug, Clone)]
+struct FittedKalmanSeries {
+    last_timestamp: chrono::NaiveDateTime,
+    level: f64,
+    trend: f64,
+}
+
+#[derive(Debug, Clone)]
+struct FittedKrigingState {
+    frame: ForecastFrame,
+    levels: BTreeMap<String, f64>,
 }
 
 #[derive(Debug, Clone)]
@@ -392,6 +431,61 @@ impl AutoARIMAForecaster {
 
     pub fn validation_scores(&self) -> &[ArimaValidationScore] {
         &self.validation_scores
+    }
+}
+
+impl KalmanForecaster {
+    pub fn new(
+        level_process_variance: f64,
+        trend_process_variance: f64,
+        observation_variance: f64,
+    ) -> Result<Self> {
+        LocalLinearKalmanConfig::new(
+            level_process_variance,
+            trend_process_variance,
+            observation_variance,
+        )?;
+        Ok(Self {
+            level_process_variance,
+            trend_process_variance,
+            observation_variance,
+            fitted: None,
+        })
+    }
+}
+
+impl Default for KalmanForecaster {
+    fn default() -> Self {
+        Self {
+            level_process_variance: 0.05,
+            trend_process_variance: 0.005,
+            observation_variance: 1.0,
+            fitted: None,
+        }
+    }
+}
+
+impl KrigingForecaster {
+    pub fn new(coordinates: BTreeMap<String, (f64, f64)>, range: f64, nugget: f64) -> Result<Self> {
+        if coordinates.is_empty() {
+            return Err(CartoBoostError::InvalidInput(
+                "kriging coordinates must not be empty".to_string(),
+            ));
+        }
+        OrdinaryKrigingConfig::new(range, nugget)?;
+        for (series_id, (x, y)) in &coordinates {
+            if !x.is_finite() || !y.is_finite() {
+                return Err(CartoBoostError::InvalidInput(format!(
+                    "kriging coordinate for series {series_id} must be finite"
+                )));
+            }
+        }
+        Ok(Self {
+            coordinates,
+            range,
+            nugget,
+            fitted: None,
+        })
     }
 }
 
@@ -712,6 +806,120 @@ impl Forecaster for AutoARIMAForecaster {
     }
 }
 
+impl Forecaster for KalmanForecaster {
+    fn fit(&mut self, frame: &ForecastFrame) -> Result<()> {
+        self.fitted = Some(FittedKalmanState::from_frame(
+            frame,
+            self.level_process_variance,
+            self.trend_process_variance,
+            self.observation_variance,
+        )?);
+        Ok(())
+    }
+
+    fn predict(&self, horizon: usize) -> Result<ForecastResult> {
+        validate_horizon(horizon)?;
+        let fitted = self.fitted.as_ref().ok_or_else(not_fitted)?;
+        let mut predictions = Vec::new();
+        for (series_id, series) in &fitted.series {
+            for step in 1..=horizon {
+                predictions.push(ForecastPrediction {
+                    series_id: series_id.clone(),
+                    timestamp: fitted
+                        .frame
+                        .frequency()
+                        .advance(series.last_timestamp, step)?,
+                    horizon: step,
+                    model: self.model_name().to_string(),
+                    mean: series.level + step as f64 * series.trend,
+                });
+            }
+        }
+        ForecastResult::new(predictions)
+    }
+
+    fn model_name(&self) -> &'static str {
+        "kalman"
+    }
+
+    fn metadata(&self) -> Value {
+        json!({
+            "model": self.model_name(),
+            "level_process_variance": self.level_process_variance,
+            "trend_process_variance": self.trend_process_variance,
+            "observation_variance": self.observation_variance,
+        })
+    }
+}
+
+impl Forecaster for KrigingForecaster {
+    fn fit(&mut self, frame: &ForecastFrame) -> Result<()> {
+        self.fitted = Some(FittedKrigingState::from_frame(frame, &self.coordinates)?);
+        Ok(())
+    }
+
+    fn predict(&self, horizon: usize) -> Result<ForecastResult> {
+        validate_horizon(horizon)?;
+        let fitted = self.fitted.as_ref().ok_or_else(not_fitted)?;
+        let mut predictions = Vec::new();
+        let observations = fitted
+            .levels
+            .iter()
+            .map(|(series_id, value)| {
+                let coord = self.coordinates.get(series_id).ok_or_else(|| {
+                    CartoBoostError::InvalidInput(format!(
+                        "missing kriging coordinate for series {series_id}"
+                    ))
+                })?;
+                Ok(KrigingObservation {
+                    x: coord.0,
+                    y: coord.1,
+                    value: *value,
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let config = OrdinaryKrigingConfig::new(self.range, self.nugget)?;
+        for series_id in fitted.frame.series_ids() {
+            let coord = self.coordinates.get(&series_id).ok_or_else(|| {
+                CartoBoostError::InvalidInput(format!(
+                    "missing kriging coordinate for series {series_id}"
+                ))
+            })?;
+            let mean = ordinary_kriging_predict_many(&observations, &[*coord], config)?
+                .remove(0)
+                .mean;
+            let history = fitted.frame.rows_for_series(&series_id);
+            let last_timestamp = history
+                .last()
+                .ok_or_else(|| CartoBoostError::InvalidInput("empty series history".to_string()))?
+                .timestamp;
+            for step in 1..=horizon {
+                predictions.push(ForecastPrediction {
+                    series_id: series_id.clone(),
+                    timestamp: fitted.frame.frequency().advance(last_timestamp, step)?,
+                    horizon: step,
+                    model: self.model_name().to_string(),
+                    mean,
+                });
+            }
+        }
+        ForecastResult::new(predictions)
+    }
+
+    fn model_name(&self) -> &'static str {
+        "kriging"
+    }
+
+    fn metadata(&self) -> Value {
+        json!({
+            "model": self.model_name(),
+            "range": self.range,
+            "nugget": self.nugget,
+            "series_count": self.coordinates.len(),
+        })
+    }
+}
+
 impl ThetaForecaster {
     fn predict_with_model_name(
         &self,
@@ -844,6 +1052,91 @@ impl FittedArimaState {
         } else {
             sum / count as f64
         }
+    }
+}
+
+impl FittedKalmanState {
+    fn from_frame(
+        frame: &ForecastFrame,
+        level_process_variance: f64,
+        trend_process_variance: f64,
+        observation_variance: f64,
+    ) -> Result<Self> {
+        let local = FittedLocalState::from_frame(frame);
+        let mut series = BTreeMap::new();
+        for (series_id, history) in &local.history_by_series {
+            series.insert(
+                series_id.clone(),
+                FittedKalmanSeries::fit(
+                    series_id,
+                    history,
+                    level_process_variance,
+                    trend_process_variance,
+                    observation_variance,
+                )?,
+            );
+        }
+        Ok(Self {
+            frame: frame.clone(),
+            series,
+        })
+    }
+}
+
+impl FittedKalmanSeries {
+    fn fit(
+        series_id: &str,
+        history: &[ForecastRow],
+        level_process_variance: f64,
+        trend_process_variance: f64,
+        observation_variance: f64,
+    ) -> Result<Self> {
+        if history.len() < 2 {
+            return Err(CartoBoostError::InvalidInput(format!(
+                "series {series_id} requires at least two rows for kalman forecasting"
+            )));
+        }
+        let values = history.iter().map(|row| row.target).collect::<Vec<_>>();
+        let config = LocalLinearKalmanConfig::new(
+            level_process_variance,
+            trend_process_variance,
+            observation_variance,
+        )?;
+        let result = fit_local_linear_kalman(&values, config)
+            .map_err(|err| CartoBoostError::InvalidInput(format!("{series_id}: {err}")))?;
+        Ok(Self {
+            last_timestamp: history
+                .last()
+                .ok_or_else(|| CartoBoostError::InvalidInput("empty series history".to_string()))?
+                .timestamp,
+            level: result.final_state.level,
+            trend: result.final_state.trend,
+        })
+    }
+}
+
+impl FittedKrigingState {
+    fn from_frame(
+        frame: &ForecastFrame,
+        coordinates: &BTreeMap<String, (f64, f64)>,
+    ) -> Result<Self> {
+        let local = FittedLocalState::from_frame(frame);
+        let mut levels = BTreeMap::new();
+        for (series_id, history) in &local.history_by_series {
+            if !coordinates.contains_key(series_id) {
+                return Err(CartoBoostError::InvalidInput(format!(
+                    "missing kriging coordinate for series {series_id}"
+                )));
+            }
+            let last = history
+                .last()
+                .ok_or_else(|| CartoBoostError::InvalidInput("empty series history".to_string()))?;
+            levels.insert(series_id.clone(), last.target);
+        }
+        Ok(Self {
+            frame: frame.clone(),
+            levels,
+        })
     }
 }
 

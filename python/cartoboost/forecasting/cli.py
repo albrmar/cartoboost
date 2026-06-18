@@ -14,7 +14,32 @@ from typing import Any
 
 from .registry import ForecastRegistry
 
-MODEL_NAMES = (
+CLI_MODEL_NAMES = (
+    "naive",
+    "seasonal_naive",
+    "theta",
+    "optimized_theta",
+    "ets",
+    "auto_arima",
+    "cartoboost_lag",
+    "local_level_kalman",
+    "local_linear_trend_kalman",
+    "unobserved_components",
+    "sarimax",
+    "dynamic_regression",
+    "croston",
+    "sba",
+    "tsb",
+    "mstl_ets",
+    "stl_arima",
+    "quantile_carto_boost_lag",
+    "conformal_forecaster",
+    "bottom_up_reconciler",
+    "min_trace_reconciler",
+    "foundation_model_adapter_optional",
+)
+
+ZERO_ARG_FIT_MODEL_NAMES = (
     "naive",
     "seasonal_naive",
     "theta",
@@ -85,7 +110,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="cartoboost forecast",
         description=(
-            f"Forecast taxi pickup demand or trip metrics. Models: {', '.join(MODEL_NAMES)}."
+            f"Forecast taxi pickup demand or trip metrics. Models: {', '.join(CLI_MODEL_NAMES)}."
         ),
     )
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -96,7 +121,7 @@ def _build_parser() -> argparse.ArgumentParser:
         sub.add_argument("--target-col", default=None)
         sub.add_argument("--series-id-col", default=None)
         sub.add_argument("--freq", default=None)
-        sub.add_argument("--model", default=None, help=f"one of: {', '.join(MODEL_NAMES)}")
+        sub.add_argument("--model", default=None, help=f"one of: {', '.join(CLI_MODEL_NAMES)}")
         sub.add_argument("--horizon", type=int, default=None)
         sub.add_argument("--season-length", type=int, default=None)
         sub.add_argument("--output")
@@ -115,8 +140,13 @@ def _resolve_config(args: argparse.Namespace) -> ForecastConfig:
         return file_config.get(name.replace("_", "-"), file_config.get(name, default))
 
     model = str(option("model", "theta")).strip().lower()
-    if model not in MODEL_NAMES and model != "all":
-        raise ForecastCliError(f"unknown model {model!r}; expected one of {', '.join(MODEL_NAMES)}")
+    if args.command == "compare":
+        if model != "all":
+            _split_models(model)
+    elif model not in CLI_MODEL_NAMES:
+        raise ForecastCliError(
+            f"unknown model {model!r}; expected one of {', '.join(CLI_MODEL_NAMES)}"
+        )
     if model == "all" and args.command != "compare":
         raise ForecastCliError("--model all is only valid for compare")
     horizon = _positive_int(option("horizon", 7), "horizon")
@@ -281,16 +311,16 @@ def _backtest(config: ForecastConfig) -> None:
 def _compare(config: ForecastConfig) -> None:
     _read_series(config)
     _require_output(config)
-    _split_models(config.model if config.model != "all" else ",".join(MODEL_NAMES))
+    _split_models(config.model if config.model != "all" else ",".join(CLI_MODEL_NAMES))
     raise NotImplementedError("Rust binding for forecasting model comparison is not available.")
 
 
 def _split_models(value: str) -> list[str]:
     models = [part.strip().lower() for part in value.split(",") if part.strip()]
     for model in models:
-        if model not in MODEL_NAMES:
+        if model not in CLI_MODEL_NAMES:
             raise ForecastCliError(
-                f"unknown model {model!r}; expected one of {', '.join(MODEL_NAMES)}"
+                f"unknown model {model!r}; expected one of {', '.join(CLI_MODEL_NAMES)}"
             )
     return models
 
@@ -349,6 +379,11 @@ def _parse_float(value: str | None, row_number: int, column: str) -> float:
 
 
 def _new_model(config: ForecastConfig) -> Any:
+    if config.model not in ZERO_ARG_FIT_MODEL_NAMES:
+        raise NotImplementedError(
+            f"Rust/Python zero-argument CLI wrapper for forecast model {config.model!r} "
+            "is not available."
+        )
     if config.model == "seasonal_naive":
         return ForecastRegistry.defaults().create(config.model, season_length=config.season_length)
     return ForecastRegistry.defaults().create(config.model)

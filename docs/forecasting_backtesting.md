@@ -37,10 +37,16 @@ Use `SlidingWindowSplitter` when old taxi trips should age out of training. Set
 training.
 
 `ForecastMetricSet` reports MAE, RMSE, zero-safe MAPE, sMAPE, MASE, WAPE, and
-bias. When horizon or series identifiers are available, it also returns
-per-horizon and per-series metric dictionaries. Quantile forecasts can be scored
-with pinball loss, and interval forecasts report empirical coverage and mean
-interval width.
+bias. Dataframe metric evaluation is keyed, not positional: rows must be unique
+by `series_id`, `timestamp`, and `horizon`, and separate actual/prediction frames
+are inner-aligned on those three columns before scoring. When horizon or series
+identifiers are available, it also returns per-horizon and per-series metric
+dictionaries. Quantile forecasts can be scored with pinball loss, and interval
+forecasts report empirical coverage and mean interval width.
+
+Backtesting uses the same keyed metric contract for row-level predictions. A
+model output must cover exactly the validation rows for the fold, with no
+missing, extra, or duplicate `series_id`/`timestamp`/`horizon` targets.
 
 Rolling-origin validation rules and metric definitions are Rust-core behavior.
 The Python `RollingOriginBacktester` exposes the contract and dataframe

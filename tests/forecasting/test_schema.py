@@ -70,6 +70,13 @@ def test_forecast_frame_rejects_unparseable_timestamps():
         ForecastFrame.from_pandas(raw, timestamp_col="pickup_hour", target_col="fare", freq="D")
 
 
+def test_forecast_frame_rejects_empty_data():
+    raw = pd.DataFrame({"pickup_hour": [], "fare": []})
+
+    with pytest.raises(ValueError, match="at least one row"):
+        ForecastFrame.from_pandas(raw, timestamp_col="pickup_hour", target_col="fare", freq="D")
+
+
 @pytest.mark.parametrize("bad_target", [np.nan, np.inf, -np.inf])
 def test_forecast_frame_rejects_non_finite_targets(bad_target):
     raw = pd.DataFrame({"pickup_hour": ["2025-01-01"], "fare": [bad_target]})
@@ -129,6 +136,25 @@ def test_panel_forecast_frame_detects_duplicates_per_series_and_keeps_series_iso
     with pytest.raises(ValueError, match="duplicate timestamp"):
         ForecastFrame.from_pandas(
             duplicate,
+            timestamp_col="pickup_hour",
+            target_col="fare",
+            series_id_col="zone_pair",
+            freq="D",
+        )
+
+
+def test_panel_forecast_frame_rejects_null_series_ids():
+    raw = pd.DataFrame(
+        {
+            "zone_pair": ["A", None],
+            "pickup_hour": ["2025-01-01", "2025-01-01"],
+            "fare": [10.0, 11.0],
+        }
+    )
+
+    with pytest.raises(ValueError, match="series id column"):
+        ForecastFrame.from_pandas(
+            raw,
             timestamp_col="pickup_hour",
             target_col="fare",
             series_id_col="zone_pair",
@@ -227,6 +253,45 @@ def test_forecast_result_has_deterministic_columns_and_json_roundtrip():
     restored = ForecastResult.from_json(result.to_json())
 
     pd.testing.assert_frame_equal(restored.to_pandas(), data)
+
+
+def test_forecast_result_direct_construction_validates_and_sorts():
+    result = ForecastResult(
+        pd.DataFrame(
+            {
+                "series_id": ["B", "A"],
+                "timestamp": ["2025-01-02", "2025-01-01"],
+                "prediction": [12, 10],
+                "prediction_lower_90": [11, 9],
+                "prediction_upper_90": [13, 11],
+            }
+        ),
+        series_id_col="series_id",
+    )
+
+    data = result.to_pandas()
+    assert list(data["series_id"]) == ["A", "B"]
+    assert list(data["prediction"]) == [10.0, 12.0]
+
+
+def test_forecast_result_rejects_empty_predictions_duplicate_intervals_and_null_series():
+    with pytest.raises(ValueError, match="at least one row"):
+        ForecastResult.from_predictions(timestamps=[], predictions=[])
+
+    interval = PredictionInterval(level=0.9, lower=[1.0], upper=[2.0])
+    with pytest.raises(ValueError, match="unique"):
+        ForecastResult.from_predictions(
+            timestamps=["2025-01-01"],
+            predictions=[1.5],
+            intervals=[interval, interval],
+        )
+
+    with pytest.raises(ValueError, match="series_id values"):
+        ForecastResult.from_predictions(
+            timestamps=["2025-01-01"],
+            predictions=[1.5],
+            series_id=[None],
+        )
 
 
 def test_prediction_interval_validates_bounds_and_level():

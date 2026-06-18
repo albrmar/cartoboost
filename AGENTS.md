@@ -12,14 +12,15 @@
 - Keep examples, docs, and public benchmark narratives aligned with the NYC taxi domain: pickup/dropoff zones, `PULocationID`, `DOLocationID`, taxi trips, fare, duration, trip distance, and hour/day features. Avoid non-taxi-domain examples unless explicitly requested.
 - Optional integrations must stay optional. Add dependencies under extras such as `polars`, `duckdb`, `h3`, or `s2`; do not make them core dependencies. Helpers that require an optional package should hard-fail with a clear install hint rather than silently degrading.
 - Benchmark and validation code should hard-fail when required real inputs are missing or invalid. Avoid silent fallback behavior for geo assets, graph/neural inputs, or benchmark data when that would weaken the claim being tested.
-- Quality claims must come from real runs with exact commands, fixed comparable settings, and recorded metrics. Do not p-hack, hyperopt one side, or tune benchmark settings until a preferred result appears. Compare against serious baselines such as LightGBM/XGBoost with the same train/test split and comparable estimator settings.
+- Quality claims must come from real runs with exact commands, fixed comparable settings, and recorded metrics. Compare against serious baselines such as LightGBM/XGBoost with the same train/test split and comparable estimator settings.
+- Benchmark-driven model improvements belong in reusable implementation: shared feature generation, validation, training behavior, and native model code. Keep benchmark datasets, split boundaries, model lists, metrics, and acceptance gates stable across reruns.
 - Benchmark refreshes must include the writeup. When committing benchmark artifacts or changed benchmark behavior, update the maintained docs/report narrative in the same commit so readers understand the command, data source, metrics, winner, and why the result is structurally meaningful.
 
 ## Testing instructions
 - Run `just validate` for full local validation.
-- Always run lint/format checks before pushing. For any pushed change, run the relevant Rust and/or Python lint commands below and report them in the handoff.
-- For targeted Rust checks, run `cargo fmt --all --check`, `cargo clippy --workspace --all-targets -- -D warnings`, and `cargo test --workspace`.
-- For targeted Python checks, run `uv run --group dev ruff format --check python tests scripts`, `uv run --group dev ruff check python tests scripts`, and `uv run --group dev pytest`.
+- Always run lint/format checks before pushing. All linting and format checks must go through `uv run --group dev pre-commit run --all-files`; report that command in the handoff.
+- For targeted Rust behavior checks, run `cargo test --workspace` or the narrower relevant `cargo test` command.
+- For targeted Python behavior checks, run `uv run --group dev pytest` or the narrower relevant pytest command.
 - For Python support matrix changes, do not commit claims for versions you have not validated end-to-end through CI/build logs.
   If an interpreter fails native build checks (for example PyO3 compatibility limits), revert the version claim and CI matrix entries until support is real.
 - Add or update tests for behavioral changes, especially when changing splitters, serialization, CLI output, Python estimator behavior, or native bindings.

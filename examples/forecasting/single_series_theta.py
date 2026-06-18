@@ -11,7 +11,7 @@ INPUT = ROOT / "examples" / "forecasting" / "forecast_cli_input.csv"
 
 def main() -> None:
     with tempfile.TemporaryDirectory() as tmp:
-        output = Path(tmp) / "theta_forecast.csv"
+        artifact_dir = Path(tmp) / "artifact"
         subprocess.run(
             [
                 sys.executable,
@@ -32,14 +32,12 @@ def main() -> None:
                 "--season-length",
                 "7",
                 "--artifact-dir",
-                str(Path(tmp) / "artifact"),
-                "--output",
-                str(output),
+                str(artifact_dir),
             ],
             cwd=ROOT,
             check=True,
         )
-        print(output.read_text(encoding="utf-8"))
+        print((artifact_dir / "model.json").read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

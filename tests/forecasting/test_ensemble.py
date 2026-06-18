@@ -1,6 +1,8 @@
 import pytest
 from cartoboost.forecasting.ensemble import (
     BacktestWeightedEnsembleForecaster,
+    BottomUpReconciler,
+    MinTraceReconciler,
     WeightedEnsembleForecaster,
 )
 from cartoboost.forecasting.local import NaiveForecaster, SeasonalNaiveForecaster
@@ -66,3 +68,49 @@ def test_backtest_weighted_ensemble_fit_requires_rust_binding():
         match="Rust binding.*BacktestWeightedEnsembleForecaster",
     ):
         BacktestWeightedEnsembleForecaster(models={"last": NaiveForecaster()}).fit([1.0, 2.0])
+
+
+def test_bottom_up_reconciler_requires_hierarchy_surface():
+    with pytest.raises(ValueError, match="requires hierarchy"):
+        BottomUpReconciler()
+
+
+def test_bottom_up_reconciler_passes_hierarchy_to_native_binding(install_fake_native):
+    native = install_fake_native("BottomUpReconciler")
+    model = BottomUpReconciler(
+        hierarchy={"all": ["PU1", "PU2"]},
+        series_id_column="PULocationID",
+        non_negative=True,
+    )
+
+    model.fit([1.0, 2.0]).predict(1)
+
+    assert native.calls[0] == (
+        "init",
+        {
+            "hierarchy": {"all": ["PU1", "PU2"]},
+            "summing_matrix": None,
+            "series_id_column": "PULocationID",
+            "parent_column": None,
+            "child_column": None,
+            "non_negative": True,
+            "metadata": {},
+        },
+    )
+
+
+def test_min_trace_reconciler_passes_covariance_config_to_native_binding(
+    install_fake_native,
+):
+    native = install_fake_native("MinTraceReconciler")
+    model = MinTraceReconciler(
+        parent_column="borough",
+        child_column="PULocationID",
+        covariance_method="sample",
+    )
+
+    model.fit([1.0, 2.0]).predict(1)
+
+    assert native.calls[0][1]["parent_column"] == "borough"
+    assert native.calls[0][1]["child_column"] == "PULocationID"
+    assert native.calls[0][1]["covariance_method"] == "sample"

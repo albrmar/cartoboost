@@ -90,3 +90,24 @@ def test_backtester_rejects_models_that_do_not_predict_exact_validation_shape() 
 
     with pytest.raises(ValueError, match="exact validation horizon"):
         backtester.run(BadHorizonModel(), taxi_trips())
+
+
+def test_backtester_rejects_duplicate_validation_alignment_keys() -> None:
+    data = taxi_trips()
+    data = pd.concat([data, data.iloc[[4]]], ignore_index=True)
+    splitter = ExpandingWindowSplitter(
+        horizon=1,
+        min_train_size=4,
+        timestamp_col="timestamp",
+        series_id_col="series_id",
+    )
+    backtester = RollingOriginBacktester(
+        splitter=splitter,
+        target_col="fare",
+        timestamp_col="timestamp",
+        series_id_col="series_id",
+        feature_cols=["timestamp", "trip_distance", "series_id"],
+    )
+
+    with pytest.raises(ValueError, match="unique by series_id/timestamp/horizon"):
+        backtester.run(MeanFareModel(), data)

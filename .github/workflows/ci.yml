@@ -25,12 +25,6 @@ jobs:
       - name: Cache cargo
         uses: Swatinem/rust-cache@v2
 
-      - name: Format
-        run: cargo fmt --all --check
-
-      - name: Lint
-        run: cargo clippy --workspace --all-targets -- -D warnings
-
       - name: Test
         run: cargo test --workspace
 
@@ -64,6 +58,8 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt,clippy
 
       - name: Set up Python
         id: setup-python
@@ -84,8 +80,8 @@ jobs:
       - name: Sync Python environment
         run: uv sync --group dev --python ${{ matrix.python-version }}
 
-      - name: Lint Python
-        if: matrix.os == 'ubuntu-latest'
+      - name: Lint and format
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
         run: uv run --group dev pre-commit run --all-files
 
       - name: Install native extension

@@ -1,7 +1,7 @@
 use cartoboost_core::booster::BoosterConfig;
 use cartoboost_core::forecasting::{
     CalendarFeature, CartoBoostLagForecaster, ForecastFrame, ForecastFrequency, ForecastRow,
-    Forecaster, LagFeatureBuilder, LagFeatureConfig,
+    Forecaster, GlobalForecastTargetMode, LagFeatureBuilder, LagFeatureConfig,
 };
 use chrono::{NaiveDate, NaiveDateTime};
 
@@ -39,6 +39,8 @@ fn lag_builder_is_leakage_safe_and_panel_isolated() {
     let builder = LagFeatureBuilder::new(LagFeatureConfig {
         lags: vec![1, 2],
         rolling_mean_windows: vec![2],
+        difference_lags: Vec::new(),
+        rolling_trend_windows: Vec::new(),
         calendar_features: vec![CalendarFeature::DayOfWeek, CalendarFeature::Month],
     })
     .expect("valid config");
@@ -86,6 +88,8 @@ fn lag_builder_drops_rows_without_complete_lag_history() {
     let builder = LagFeatureBuilder::new(LagFeatureConfig {
         lags: vec![2],
         rolling_mean_windows: Vec::new(),
+        difference_lags: Vec::new(),
+        rolling_trend_windows: Vec::new(),
         calendar_features: Vec::new(),
     })
     .expect("valid config");
@@ -117,6 +121,8 @@ fn cartoboost_lag_forecaster_predicts_recursively_per_panel() {
         LagFeatureConfig {
             lags: vec![1],
             rolling_mean_windows: vec![2],
+            difference_lags: Vec::new(),
+            rolling_trend_windows: Vec::new(),
             calendar_features: vec![CalendarFeature::Day],
         },
         small_booster_config(),
@@ -141,4 +147,48 @@ fn cartoboost_lag_forecaster_predicts_recursively_per_panel() {
         .iter()
         .all(|prediction| prediction.mean.is_finite()));
     assert!(predictions[2].mean > predictions[0].mean);
+}
+
+#[test]
+fn cartoboost_lag_forecaster_can_model_delta_from_last_target() {
+    let frame = ForecastFrame::new(
+        vec![
+            ForecastRow::new("PU1", ts(1), 10.0),
+            ForecastRow::new("PU1", ts(2), 12.0),
+            ForecastRow::new("PU1", ts(3), 14.0),
+            ForecastRow::new("PU1", ts(4), 16.0),
+            ForecastRow::new("PU1", ts(5), 18.0),
+            ForecastRow::new("PU1", ts(6), 20.0),
+        ],
+        ForecastFrequency::Daily,
+    )
+    .expect("valid frame");
+    let mut forecaster = CartoBoostLagForecaster::new_with_target_mode(
+        LagFeatureConfig {
+            lags: vec![1],
+            rolling_mean_windows: Vec::new(),
+            difference_lags: vec![1],
+            rolling_trend_windows: vec![3],
+            calendar_features: Vec::new(),
+        },
+        small_booster_config(),
+        GlobalForecastTargetMode::DeltaFromLast,
+    )
+    .expect("forecaster");
+
+    forecaster.fit(&frame).expect("fit");
+    let forecast = forecaster.predict(2).expect("predict");
+    let predictions = forecast.predictions();
+
+    assert_eq!(
+        forecaster.target_mode(),
+        GlobalForecastTargetMode::DeltaFromLast
+    );
+    assert_eq!(predictions.len(), 2);
+    assert!(predictions[0].mean > 20.0);
+    assert!(predictions[1].mean >= predictions[0].mean);
+    assert_eq!(
+        forecaster.metadata()["target_mode"],
+        serde_json::json!("delta_from_last")
+    );
 }

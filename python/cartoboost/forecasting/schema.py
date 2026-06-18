@@ -43,6 +43,14 @@ class ForecastFrame:
     allow_irregular: bool = False
     _native_frame: Any | None = field(default=None, repr=False, compare=False)
 
+    def __post_init__(self) -> None:
+        if self.n_rows == 0:
+            raise ValueError("forecast data must contain at least one row")
+        if self.series_id_col is not None and self.data[self.series_id_col].isna().any():
+            raise ValueError(
+                f"series id column {self.series_id_col!r} must not contain null values"
+            )
+
     @classmethod
     def from_pandas(
         cls,
@@ -184,7 +192,8 @@ class PredictionInterval:
     upper: Sequence[float]
 
     def __post_init__(self) -> None:
-        if not math.isfinite(float(self.level)) or not 0.0 < float(self.level) < 1.0:
+        level = float(self.level)
+        if not math.isfinite(level) or not 0.0 < level < 1.0:
             raise ValueError("prediction interval level must be between 0 and 1")
         if len(self.lower) != len(self.upper):
             raise ValueError("prediction interval lower and upper lengths must match")
@@ -194,6 +203,9 @@ class PredictionInterval:
             raise ValueError("prediction interval bounds must be finite")
         if (lower > upper).any():
             raise ValueError("prediction interval lower bounds must not exceed upper bounds")
+        object.__setattr__(self, "level", level)
+        object.__setattr__(self, "lower", tuple(float(value) for value in lower))
+        object.__setattr__(self, "upper", tuple(float(value) for value in upper))
 
     @property
     def suffix(self) -> str:
@@ -212,6 +224,15 @@ class ForecastResult:
     prediction_col: str = "prediction"
     series_id_col: str | None = None
 
+    def __post_init__(self) -> None:
+        validated = _validate_result_data(
+            self.data,
+            timestamp_col=self.timestamp_col,
+            prediction_col=self.prediction_col,
+            series_id_col=self.series_id_col,
+        )
+        object.__setattr__(self, "data", validated)
+
     @classmethod
     def from_predictions(
         cls,
@@ -228,6 +249,8 @@ class ForecastResult:
         if len(timestamps) != len(predictions):
             raise ValueError("timestamps and predictions lengths must match")
         rows = len(predictions)
+        if rows == 0:
+            raise ValueError("predictions must contain at least one row")
         prediction_values = np.asarray(predictions, dtype=float)
         if not np.isfinite(prediction_values).all():
             raise ValueError("predictions must be finite")
@@ -239,13 +262,21 @@ class ForecastResult:
         if series_id is not None:
             result_series_col = series_id_col
             if isinstance(series_id, str) or not isinstance(series_id, Iterable):
+                if pd.isna(series_id):
+                    raise ValueError("series_id values must not contain null values")
                 payload[series_id_col] = [series_id] * rows
             else:
                 series_values = list(series_id)
                 if len(series_values) != rows:
                     raise ValueError("series_id length must match predictions")
+                if pd.Series(series_values).isna().any():
+                    raise ValueError("series_id values must not contain null values")
                 payload[series_id_col] = series_values
+        interval_levels: set[float] = set()
         for interval in sorted(intervals or [], key=lambda item: item.level):
+            if interval.level in interval_levels:
+                raise ValueError("prediction interval levels must be unique")
+            interval_levels.add(interval.level)
             if len(interval.lower) != rows:
                 raise ValueError("prediction interval length must match predictions")
             payload[f"prediction_lower_{interval.suffix}"] = np.asarray(interval.lower, dtype=float)
@@ -299,15 +330,80 @@ class ForecastResult:
     def from_json(cls, payload: str) -> ForecastResult:
         pd = require_pandas()
         decoded = json.loads(payload)
+        required_keys = {"timestamp_col", "prediction_col", "series_id_col", "columns", "records"}
+        missing = sorted(required_keys - set(decoded))
+        if missing:
+            raise ValueError(f"forecast result JSON is missing required keys: {missing}")
         data = pd.DataFrame(decoded["records"], columns=decoded["columns"])
         timestamp_col = decoded["timestamp_col"]
-        data[timestamp_col] = pd.to_datetime(data[timestamp_col], errors="raise")
         return cls(
             data=data,
             timestamp_col=timestamp_col,
             prediction_col=decoded["prediction_col"],
             series_id_col=decoded["series_id_col"],
         )
+
+
+def _validate_result_data(
+    data: Any,
+    *,
+    timestamp_col: str,
+    prediction_col: str,
+    series_id_col: str | None,
+) -> Any:
+    pd = require_pandas()
+    if not isinstance(data, pd.DataFrame):
+        raise TypeError("ForecastResult data must be a pandas DataFrame")
+    required = [timestamp_col, prediction_col]
+    if series_id_col is not None:
+        required.append(series_id_col)
+    _validate_columns(data, required)
+    if len(data) == 0:
+        raise ValueError("forecast result data must contain at least one row")
+
+    result = data.copy()
+    result[timestamp_col] = pd.to_datetime(result[timestamp_col], errors="raise")
+    if result[timestamp_col].isna().any():
+        raise ValueError(f"timestamp column {timestamp_col!r} must not contain null values")
+    try:
+        predictions = result[prediction_col].to_numpy(dtype=float, copy=False)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(
+            f"prediction column {prediction_col!r} must contain numeric values"
+        ) from exc
+    if not np.isfinite(predictions).all():
+        raise ValueError(f"prediction column {prediction_col!r} must contain only finite values")
+    result[prediction_col] = predictions
+
+    if series_id_col is not None and result[series_id_col].isna().any():
+        raise ValueError(f"series id column {series_id_col!r} must not contain null values")
+
+    for lower_col in [
+        column for column in result.columns if column.startswith("prediction_lower_")
+    ]:
+        suffix = lower_col.removeprefix("prediction_lower_")
+        upper_col = f"prediction_upper_{suffix}"
+        if upper_col not in result.columns:
+            raise ValueError(f"missing prediction interval upper column {upper_col!r}")
+        lower = result[lower_col].to_numpy(dtype=float, copy=False)
+        upper = result[upper_col].to_numpy(dtype=float, copy=False)
+        if not np.isfinite(lower).all() or not np.isfinite(upper).all():
+            raise ValueError("prediction interval columns must contain only finite values")
+        if (lower > upper).any():
+            raise ValueError("prediction interval lower bounds must not exceed upper bounds")
+        result[lower_col] = lower
+        result[upper_col] = upper
+
+    for upper_col in [
+        column for column in result.columns if column.startswith("prediction_upper_")
+    ]:
+        suffix = upper_col.removeprefix("prediction_upper_")
+        lower_col = f"prediction_lower_{suffix}"
+        if lower_col not in result.columns:
+            raise ValueError(f"missing prediction interval lower column {lower_col!r}")
+
+    sort_cols = [timestamp_col] if series_id_col is None else [series_id_col, timestamp_col]
+    return result.sort_values(sort_cols, kind="mergesort").reset_index(drop=True)
 
 
 def _validate_columns(frame: Any, required: Sequence[str]) -> None:
@@ -402,13 +498,16 @@ def _build_native_frame(frame: ForecastFrame) -> Any:
         timestamp = values[frame.timestamp_col].isoformat()
         target = float(values[frame.target_col])
         rows.append((series_id, timestamp, target))
-    return _native.ForecastFrame(
-        rows,
-        frame.freq,
-        timestamp_col=frame.timestamp_col,
-        target_col=frame.target_col,
-        series_id_col=frame.series_id_col,
-        static_covariates=list(frame.static_covariates),
-        known_future_covariates=list(frame.known_future_covariates),
-        historical_covariates=list(frame.historical_covariates),
-    )
+    try:
+        return _native.ForecastFrame(
+            rows,
+            frame.freq,
+            timestamp_col=frame.timestamp_col,
+            target_col=frame.target_col,
+            series_id_col=frame.series_id_col,
+            static_covariates=list(frame.static_covariates),
+            known_future_covariates=list(frame.known_future_covariates),
+            historical_covariates=list(frame.historical_covariates),
+        )
+    except TypeError:
+        return _native.ForecastFrame(rows, frame.freq)

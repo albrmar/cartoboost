@@ -248,8 +248,7 @@ just validate
 For a faster Python-focused loop:
 
 ```sh
-uv run --group dev ruff format --check python tests scripts
-uv run --group dev ruff check python tests scripts
+uv run --group dev pre-commit run --all-files
 uv run --group dev pytest
 ```
 
