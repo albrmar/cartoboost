@@ -102,8 +102,6 @@ be transformed trip duration, fare amount, or future pickup-zone demand.
 - [Choose A Model](user-guide/model-types.md): task-first router for the
   tabular regressor, local forecasting models, CartoBoost lag forecasting,
   kriging, neural embedding models, graph models, and utilities.
-- [Evaluation Protocol](evaluation_protocol.md): out-of-time, spatial-blocked,
-  grouped, leakage-aware validation, and public benchmark claim rules.
 - [Spatial Modeling](spatial_modeling.md): coordinate features, taxi-zone
   sparse sets, fuzzy routing, and blocked evaluation.
 - [Forecasting Wrapper](forecasting.md): `ForecastFrame`, rolling-origin

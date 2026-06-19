@@ -4,10 +4,9 @@ This page lists the public Python entry points used to fit, evaluate, explain,
 and save CartoBoost regression, forecasting, standalone graph, and standalone
 neural models.
 
-Use it with the [Evaluation Protocol](../evaluation_protocol.md). The API is
-organized around scientific model choice: fit the same train split as the
-baselines, predict the same validation rows, compute the same metrics, and keep
-artifacts that make the comparison reproducible.
+The API is organized around scientific model choice: fit the same train split
+as the baselines, predict the same validation rows, compute the same metrics,
+and keep artifacts that make the comparison reproducible.
 
 ## Model-Choice Map
 

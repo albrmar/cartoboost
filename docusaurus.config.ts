@@ -124,7 +124,6 @@ const config: Config = {
           title: 'Evidence',
           items: [
             { label: 'Benchmarks', to: '/docs/benchmarks' },
-            { label: 'Evaluation Protocol', to: '/docs/evaluation_protocol' },
             { label: 'Feature Catalog', to: '/docs/feature_catalog' },
           ],
         },

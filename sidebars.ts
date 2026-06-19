@@ -65,7 +65,6 @@ const sidebars: SidebarsConfig = {
         },
         'graph-features',
         'neural-features',
-        'evaluation_protocol',
         'general_utilities',
         'user-guide/cli',
       ],

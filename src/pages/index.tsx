@@ -120,7 +120,7 @@ model = CartoBoostRegressor(
 model.fit(X_train, y_train)
 predictions = model.predict(X_validation)`}</code>
         </pre>
-        <Link to="/docs/evaluation_protocol">Read the evaluation protocol</Link>
+        <Link to="/docs/benchmarks">Read the benchmark reports</Link>
       </div>
       <div className={styles.benchmarkPanel}>
         <img

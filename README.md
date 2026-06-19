@@ -282,7 +282,6 @@ cartoboost eval --model model.json --data test_with_target.csv
 - [Spatial Modeling](docs/spatial_modeling.md)
 - [Graph Models And Features](docs/graph-features.md)
 - [Neural Embedding Models And Features](docs/neural-features.md)
-- [Evaluation Protocol](docs/evaluation_protocol.md)
 - [Feature Schema](docs/feature_schema.md)
 - [Sparse Features](docs/sparse_features.md)
 - [Model Artifacts](docs/model_artifact.md)

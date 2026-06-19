@@ -138,8 +138,7 @@ face in use:
 
 - Use random holdouts to measure general regression quality.
 - Use spatial holdouts to test new zones, cells, routes, or corridors.
-- Use [out-of-time validation](evaluation_protocol.md#out-of-time-example)
-  to test later periods.
+- Use out-of-time validation to test later periods.
 - Report residuals by pickup zone, dropoff zone, route, or hour to find
   localized failure modes.
 - Compare against axis-only CartoBoost, XGBoost, or LightGBM baselines with the

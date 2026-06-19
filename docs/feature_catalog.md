@@ -136,8 +136,8 @@ Forecasting is Rust-native. Python classes validate data and delegate model
 training, prediction, rolling-origin backtesting, metrics, and artifact behavior
 to `cartoboost._native`.
 
-See [General Utilities](general_utilities.md), [Evaluation Protocol](evaluation_protocol.md),
-[Forecasting](forecasting.md), and [Forecasting API](forecasting_api.md).
+See [General Utilities](general_utilities.md), [Forecasting](forecasting.md),
+and [Forecasting API](forecasting_api.md).
 
 ## Command Line Interfaces
 

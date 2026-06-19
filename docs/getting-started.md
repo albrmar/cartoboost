@@ -186,8 +186,8 @@ the same train/validation rows, such as LightGBM or XGBoost for tabular
 regression and appropriate local or external forecasting models for demand
 forecasting.
 
-See [Evaluation Protocol](evaluation_protocol.md) for out-of-time,
-spatial-blocked, grouped, and leakage-aware validation.
+For benchmark claims, document out-of-time, spatial-blocked, grouped, and
+leakage-aware validation details in the benchmark writeup.
 
 ## 8. Add Neural Or Graph Structure When Justified
 

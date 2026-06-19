@@ -18,7 +18,6 @@ neural-embedding workflows.
 - [Objectives](objectives.md)
 - [Constraints](constraints.md)
 - [Spatial Modeling](spatial_modeling.md)
-- [Evaluation Protocol](evaluation_protocol.md)
 - [Feature Schema](feature_schema.md)
 - [Sparse Features](sparse_features.md)
 - [Graph Features](graph-features.md)
