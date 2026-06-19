@@ -47,15 +47,24 @@ benchmark artifacts.
 
 ## Bottom Line
 
-The forecasting benchmark has five maintained views:
+The forecasting benchmark has maintained views for real taxi demand, synthetic
+taxi-shaped diagnostics, committed M4/M5/M6 samples, and larger M5/M6
+competition-style proxy runs:
 
 - Real NYC taxi lane demand: `cartoboost_lag` ties seasonal-naive baselines on
   the January 2024 24-lane, 7-day holdout.
-- Synthetic taxi-shaped suite: `cartoboost_lag` ranks first in the maintained
-  committed artifact, with mean RMSE ratio 1.021 to each problem winner.
-- M4 24-series-per-group sample: `cartoboost_lag` ranks first by mean RMSE
-  ratio in the refreshed committed sample, but this is still a sample, not a
+- Synthetic taxi-shaped committed suite: `cartoboost_auto_forecast` is the best
+  CartoBoost method in the refreshed CartoBoost-only artifact, with mean RMSE
+  ratio 1.006163 versus `cartoboost_lag` at 1.008250. In the full external
+  roster artifact, `lightgbm_lag` wins and `cartoboost_auto_forecast` ranks
+  ahead of `cartoboost_lag`.
+- M4 24-series-per-group committed sample: `cartoboost_auto_forecast` and
+  `cartoboost_lag` tie by mean RMSE ratio, but this is still a sample, not a
   full M4 corpus claim.
+- M5 committed sample: `cartoboost_auto_forecast` is present in the committed
+  artifact and ties `cartoboost_lag` on the current point-metric harness.
+- M6 committed sample: `cartoboost_auto_forecast` is present in the committed
+  artifact and ties `cartoboost_lag` on the current point-metric proxy harness.
 - M5 comparison sample: Kaggle M5 Accuracy files are now a first-class source
   with a full 14-model roster sample over 100 item-store daily unit-sales
   series, the official 28-day holdout shape, and the same model-family table
@@ -275,6 +284,15 @@ The table below reports every model present in the committed M5 full-roster
 sample artifact, ranked by RMSE. It is the M5 counterpart to the M4 sample
 table: same shared harness, same full model family, and explicit sample scope.
 
+The newer committed CartoBoost-only M5 overhaul artifact also contains the
+auto route. That run is separate from the older full external-roster sample
+below:
+
+| Committed CartoBoost model | Artifact | RMSE | MAE | WAPE | Read |
+| --- | --- | ---: | ---: | ---: | --- |
+| `cartoboost_auto_forecast` | `forecasting_overhaul_m5_committed.json` | 2.455906 | 1.149696 | 0.918936 | Tied `cartoboost_lag` on the current point-metric harness. |
+| `cartoboost_lag` | `forecasting_overhaul_m5_committed.json` | 2.455906 | 1.149696 | 0.918936 | Baseline direct lag route. |
+
 | Model | RMSE | MAE | WAPE |
 | --- | ---: | ---: | ---: |
 | `statsforecast_autoets` | 2.525734 | 1.141999 | 0.921232 |
@@ -382,6 +400,14 @@ uv run --group bench python scripts/forecasting_library_benchmark.py \
 
 The table below reports every model present in the committed M6 artifact,
 ranked by RMSE.
+
+The newer committed CartoBoost-only M6 overhaul artifact contains the auto route
+on the point-forecast proxy harness:
+
+| Committed CartoBoost model | Artifact | RMSE | MAE | WAPE | Read |
+| --- | --- | ---: | ---: | ---: | --- |
+| `cartoboost_auto_forecast` | `forecasting_overhaul_m6_committed.json` | 0.014440 | 0.009290 | 1.265338 | Tied `cartoboost_lag` on the current point-metric proxy harness. |
+| `cartoboost_lag` | `forecasting_overhaul_m6_committed.json` | 0.014440 | 0.009290 | 1.265338 | Baseline direct lag route. |
 
 | Model | RMSE | MAE | WAPE |
 | --- | ---: | ---: | ---: |
