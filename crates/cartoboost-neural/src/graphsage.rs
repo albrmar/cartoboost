@@ -1,4 +1,5 @@
 use crate::error::{NeuralError, Result};
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs;
@@ -1190,39 +1191,43 @@ fn forward_homogeneous(
         let current = representations
             .last()
             .expect("layer activation should exist before running forward");
-        let mut means = vec![vec![0.0_f32; layer.in_dim]; node_features.len()];
-        for (node, neighbor_ids) in neighbors.iter().enumerate() {
-            if neighbor_ids.is_empty() {
-                continue;
-            }
-            let inv = 1.0 / (neighbor_ids.len() as f32);
-            let mut accumulator = vec![0.0_f32; layer.in_dim];
-            for &neighbor in neighbor_ids {
-                for (index, value) in current[neighbor].iter().enumerate() {
-                    accumulator[index] += *value;
+        let means = neighbors
+            .par_iter()
+            .map(|neighbor_ids| {
+                let mut mean = vec![0.0_f32; layer.in_dim];
+                if neighbor_ids.is_empty() {
+                    return mean;
                 }
-            }
-            for index in 0..layer.in_dim {
-                means[node][index] = accumulator[index] * inv;
-            }
-        }
+                let inv = 1.0 / (neighbor_ids.len() as f32);
+                for &neighbor in neighbor_ids {
+                    for (slot, value) in mean.iter_mut().zip(current[neighbor].iter()) {
+                        *slot += *value * inv;
+                    }
+                }
+                mean
+            })
+            .collect::<Vec<_>>();
 
         let mut preactivations = vec![vec![0.0_f32; layer.out_dim]; node_features.len()];
         let mut next = vec![vec![0.0_f32; layer.out_dim]; node_features.len()];
-        for node in 0..node_features.len() {
-            for out in 0..layer.out_dim {
-                let mut value = layer.bias[out];
-                for input_index in 0..layer.in_dim {
-                    let self_value = current[node][input_index];
-                    let neigh_value = means[node][input_index];
-                    let self_pos = input_index * layer.out_dim + out;
-                    value += self_value * layer.self_weight[self_pos];
-                    value += neigh_value * layer.neigh_weight[self_pos];
+        preactivations
+            .par_iter_mut()
+            .zip(next.par_iter_mut())
+            .enumerate()
+            .for_each(|(node, (pre_row, next_row))| {
+                for out in 0..layer.out_dim {
+                    let mut value = layer.bias[out];
+                    for input_index in 0..layer.in_dim {
+                        let self_value = current[node][input_index];
+                        let neigh_value = means[node][input_index];
+                        let self_pos = input_index * layer.out_dim + out;
+                        value += self_value * layer.self_weight[self_pos];
+                        value += neigh_value * layer.neigh_weight[self_pos];
+                    }
+                    pre_row[out] = value;
+                    next_row[out] = if value > 0.0 { value } else { 0.0 };
                 }
-                preactivations[node][out] = value;
-                next[node][out] = if value > 0.0 { value } else { 0.0 };
-            }
-        }
+            });
 
         let current = current.to_vec();
         representations.push(next);
@@ -1271,48 +1276,53 @@ fn forward_hetero(
         let mut relation_means =
             vec![vec![vec![0.0_f32; layer.in_dim]; relation_count]; node_features.len()];
 
-        for (node_neighbors, relation_slots) in neighbors
-            .iter()
-            .zip(relation_means.iter_mut())
+        relation_means
+            .par_iter_mut()
+            .zip(neighbors.par_iter())
             .take(current.len())
-        {
-            for (relation_means_row, neighbor_ids) in relation_slots
-                .iter_mut()
-                .zip(node_neighbors.iter().take(relation_count))
-            {
-                if neighbor_ids.is_empty() {
-                    continue;
-                }
-                let inv = 1.0 / (neighbor_ids.len() as f32);
-                for &neighbor in neighbor_ids {
-                    for (relation_mean, input_value) in
-                        relation_means_row.iter_mut().zip(current[neighbor].iter())
-                    {
-                        *relation_mean += *input_value * inv;
+            .for_each(|(relation_slots, node_neighbors)| {
+                for (relation_means_row, neighbor_ids) in relation_slots
+                    .iter_mut()
+                    .zip(node_neighbors.iter().take(relation_count))
+                {
+                    if neighbor_ids.is_empty() {
+                        continue;
+                    }
+                    let inv = 1.0 / (neighbor_ids.len() as f32);
+                    for &neighbor in neighbor_ids {
+                        for (relation_mean, input_value) in
+                            relation_means_row.iter_mut().zip(current[neighbor].iter())
+                        {
+                            *relation_mean += *input_value * inv;
+                        }
                     }
                 }
-            }
-        }
+            });
 
         let mut preactivations = vec![vec![0.0_f32; layer.out_dim]; node_features.len()];
         let mut next = vec![vec![0.0_f32; layer.out_dim]; node_features.len()];
 
-        for node in 0..node_features.len() {
-            for out in 0..layer.out_dim {
-                let mut value = layer.bias[out];
-                for index in 0..layer.in_dim {
-                    value += current[node][index] * layer.self_weight[index * layer.out_dim + out];
-                    for (relation, means_by_relation) in
-                        relation_means[node].iter().enumerate().take(relation_count)
-                    {
-                        value += means_by_relation[index]
-                            * layer.relation_weights[relation][index * layer.out_dim + out];
+        preactivations
+            .par_iter_mut()
+            .zip(next.par_iter_mut())
+            .enumerate()
+            .for_each(|(node, (pre_row, next_row))| {
+                for out in 0..layer.out_dim {
+                    let mut value = layer.bias[out];
+                    for index in 0..layer.in_dim {
+                        value +=
+                            current[node][index] * layer.self_weight[index * layer.out_dim + out];
+                        for (relation, means_by_relation) in
+                            relation_means[node].iter().enumerate().take(relation_count)
+                        {
+                            value += means_by_relation[index]
+                                * layer.relation_weights[relation][index * layer.out_dim + out];
+                        }
                     }
+                    pre_row[out] = value;
+                    next_row[out] = if value > 0.0 { value } else { 0.0 };
                 }
-                preactivations[node][out] = value;
-                next[node][out] = if value > 0.0 { value } else { 0.0 };
-            }
-        }
+            });
 
         let current = current.to_vec();
         representations.push(next);
@@ -1830,20 +1840,21 @@ fn build_link_embeddings(
             "embedding rows must have consistent width".to_string(),
         ));
     }
-    let mut rows = Vec::with_capacity(pairs.len());
-    for &(source, target) in pairs {
-        validate_node_index(source, embeddings.len())?;
-        validate_node_index(target, embeddings.len())?;
-        let left = &embeddings[source];
-        let right = &embeddings[target];
-        let mut row = Vec::with_capacity(width * 4);
-        row.extend(left);
-        row.extend(right);
-        row.extend(left.iter().zip(right).map(|(l, r)| (l - r).abs()));
-        row.extend(left.iter().zip(right).map(|(l, r)| l * r));
-        rows.push(row);
-    }
-    Ok(rows)
+    pairs
+        .par_iter()
+        .map(|&(source, target)| {
+            validate_node_index(source, embeddings.len())?;
+            validate_node_index(target, embeddings.len())?;
+            let left = &embeddings[source];
+            let right = &embeddings[target];
+            let mut row = Vec::with_capacity(width * 4);
+            row.extend(left);
+            row.extend(right);
+            row.extend(left.iter().zip(right).map(|(l, r)| (l - r).abs()));
+            row.extend(left.iter().zip(right).map(|(l, r)| l * r));
+            Ok(row)
+        })
+        .collect()
 }
 
 fn validate_graphsage_artifact(artifact: &GraphSageEncoderArtifact) -> Result<()> {

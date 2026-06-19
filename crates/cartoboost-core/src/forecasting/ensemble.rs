@@ -1,5 +1,6 @@
 use crate::forecasting::{ForecastFrame, ForecastPrediction, ForecastResult, Forecaster};
 use crate::{CartoBoostError, Result};
+use rayon::prelude::*;
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 
@@ -93,10 +94,10 @@ impl WeightedEnsembleForecaster {
 
 impl Forecaster for WeightedEnsembleForecaster {
     fn fit(&mut self, frame: &ForecastFrame) -> Result<()> {
-        for member in &mut self.members {
-            member.forecaster.fit(frame)?;
-        }
-        Ok(())
+        self.members
+            .par_iter_mut()
+            .map(|member| member.forecaster.fit(frame))
+            .collect()
     }
 
     fn predict(&self, horizon: usize) -> Result<ForecastResult> {
@@ -107,8 +108,12 @@ impl Forecaster for WeightedEnsembleForecaster {
         }
         let mut weighted: BTreeMap<ForecastKey, f64> = BTreeMap::new();
         let mut expected_keys: Option<Vec<ForecastKey>> = None;
-        for member in &self.members {
-            let result = member.forecaster.predict(horizon)?;
+        let member_results = self
+            .members
+            .par_iter()
+            .map(|member| member.forecaster.predict(horizon))
+            .collect::<Result<Vec<_>>>()?;
+        for (member, result) in self.members.iter().zip(member_results) {
             let mut current_keys = Vec::with_capacity(result.predictions().len());
             for prediction in result.predictions() {
                 let key = ForecastKey {

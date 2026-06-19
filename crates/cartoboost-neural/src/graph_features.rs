@@ -1,4 +1,5 @@
 use crate::error::{NeuralError, Result};
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
@@ -149,65 +150,63 @@ pub fn compute_directional_features(
     }
 
     let names = directional_feature_names(feature_prefix);
-    let mut columns = vec![vec![0.0_f32; node_count]; names.len()];
-    for node in 0..node_count {
-        let total = out_degree[node] + in_degree[node];
-        let source_affinity = safe_divide(out_degree[node], total);
-        let target_affinity = safe_divide(in_degree[node], total);
-        let flow_asymmetry = safe_divide((out_degree[node] - in_degree[node]).abs(), total);
-        let flow_imbalance = if total == 0.0 {
-            0.0
-        } else {
-            (out_degree[node] - in_degree[node]) / total
-        };
-        let source_target_embedding =
-            neighbor_similarity(node, true, edges, embeddings, node_count)?;
-        let target_source_embedding =
-            neighbor_similarity(node, false, edges, embeddings, node_count)?;
-        let forward_reverse_similarity_delta = source_target_embedding - target_source_embedding;
-        let directed_temporal_drift = if out_degree[node] == 0.0 || in_degree[node] == 0.0 {
-            0.0
-        } else {
-            safe_divide(out_time_weighted[node], out_degree[node])
-                - safe_divide(in_time_weighted[node], in_degree[node])
-        };
-
-        columns[0][node] = source_target_embedding;
-        columns[1][node] = target_source_embedding;
-        columns[2][node] = forward_reverse_similarity_delta;
-        columns[3][node] = out_degree[node];
-        columns[4][node] = in_degree[node];
-        columns[5][node] = flow_imbalance;
-        columns[6][node] = directed_temporal_drift;
-        columns[7][node] = source_affinity;
-        columns[8][node] = target_affinity;
-        columns[9][node] = out_degree[node];
-        columns[10][node] = in_degree[node];
-        columns[11][node] = flow_asymmetry;
-        columns[12][node] = out_degree[node];
-        columns[13][node] = in_degree[node];
-        columns[14][node] = source_target_embedding;
-        columns[15][node] = target_source_embedding;
-        columns[16][node] = out_degree[node];
-        columns[17][node] = in_degree[node];
-        columns[18][node] = out_degree[node];
-        columns[19][node] = in_degree[node];
-        columns[20][node] = directed_temporal_drift;
-        columns[21][node] = source_affinity;
-        columns[22][node] = flow_imbalance;
-    }
-
     let selected = selected_indices(&names, requested_features)?;
     let feature_names = selected
         .iter()
         .map(|&index| names[index].clone())
         .collect::<Vec<_>>();
-    let mut values = vec![vec![0.0_f32; selected.len()]; node_count];
-    for (output_col, &source_col) in selected.iter().enumerate() {
-        for node in 0..node_count {
-            values[node][output_col] = columns[source_col][node];
-        }
-    }
+    let values = (0..node_count)
+        .into_par_iter()
+        .map(|node| {
+            let total = out_degree[node] + in_degree[node];
+            let source_affinity = safe_divide(out_degree[node], total);
+            let target_affinity = safe_divide(in_degree[node], total);
+            let flow_asymmetry = safe_divide((out_degree[node] - in_degree[node]).abs(), total);
+            let flow_imbalance = if total == 0.0 {
+                0.0
+            } else {
+                (out_degree[node] - in_degree[node]) / total
+            };
+            let source_target_embedding =
+                neighbor_similarity(node, true, edges, embeddings, node_count)?;
+            let target_source_embedding =
+                neighbor_similarity(node, false, edges, embeddings, node_count)?;
+            let forward_reverse_similarity_delta =
+                source_target_embedding - target_source_embedding;
+            let directed_temporal_drift = if out_degree[node] == 0.0 || in_degree[node] == 0.0 {
+                0.0
+            } else {
+                safe_divide(out_time_weighted[node], out_degree[node])
+                    - safe_divide(in_time_weighted[node], in_degree[node])
+            };
+            let row = [
+                source_target_embedding,
+                target_source_embedding,
+                forward_reverse_similarity_delta,
+                out_degree[node],
+                in_degree[node],
+                flow_imbalance,
+                directed_temporal_drift,
+                source_affinity,
+                target_affinity,
+                out_degree[node],
+                in_degree[node],
+                flow_asymmetry,
+                out_degree[node],
+                in_degree[node],
+                source_target_embedding,
+                target_source_embedding,
+                out_degree[node],
+                in_degree[node],
+                out_degree[node],
+                in_degree[node],
+                directed_temporal_drift,
+                source_affinity,
+                flow_imbalance,
+            ];
+            Ok(selected.iter().map(|&index| row[index]).collect::<Vec<_>>())
+        })
+        .collect::<Result<Vec<_>>>()?;
 
     Ok(DirectionalFeatureBlock {
         values,

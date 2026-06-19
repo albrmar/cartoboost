@@ -40,6 +40,7 @@ use numpy::{IntoPyArray, PyArray1, PyReadonlyArray1, PyReadonlyArray2, PyUntyped
 use pyo3::exceptions::{PyIOError, PyRuntimeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::{PyAny, PyModule, PyType};
+use rayon::ThreadPoolBuilder;
 use serde_json::{json, Value};
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
@@ -1497,6 +1498,7 @@ struct NativeCartoBoostRegressor {
     fuzzy: bool,
     fuzzy_bandwidth: f64,
     fuzzy_kernel: String,
+    n_threads: Option<usize>,
     monotonic_constraints: Vec<i8>,
     model: Option<Model>,
     flat_axis_predictor: Option<FlatAxisPredictor>,
@@ -1505,7 +1507,7 @@ struct NativeCartoBoostRegressor {
 #[pymethods]
 impl NativeCartoBoostRegressor {
     #[new]
-    #[pyo3(signature = (n_estimators=100, learning_rate=0.05, max_depth=4, min_samples_leaf=20, min_gain=1e-8, loss="l2", quantile_alpha=0.5, huber_delta=1.0, log_offset=1.0, splitters=None, leaf_predictor="constant", linear_leaf_features=None, l2_regularization=1.0, constant_l2_regularization=0.0, fuzzy=false, fuzzy_bandwidth=0.0, fuzzy_kernel="linear", monotonic_constraints=None))]
+    #[pyo3(signature = (n_estimators=100, learning_rate=0.05, max_depth=4, min_samples_leaf=20, min_gain=1e-8, loss="l2", quantile_alpha=0.5, huber_delta=1.0, log_offset=1.0, splitters=None, leaf_predictor="constant", linear_leaf_features=None, l2_regularization=1.0, constant_l2_regularization=0.0, fuzzy=false, fuzzy_bandwidth=0.0, fuzzy_kernel="linear", n_threads=None, monotonic_constraints=None))]
     #[allow(clippy::too_many_arguments)]
     fn new(
         n_estimators: usize,
@@ -1525,8 +1527,10 @@ impl NativeCartoBoostRegressor {
         fuzzy: bool,
         fuzzy_bandwidth: f64,
         fuzzy_kernel: &str,
+        n_threads: Option<usize>,
         monotonic_constraints: Option<Vec<i8>>,
     ) -> PyResult<Self> {
+        validate_n_threads(n_threads)?;
         validate_params(
             n_estimators,
             learning_rate,
@@ -1564,6 +1568,7 @@ impl NativeCartoBoostRegressor {
             fuzzy,
             fuzzy_bandwidth,
             fuzzy_kernel: fuzzy_kernel.to_string(),
+            n_threads,
             monotonic_constraints: monotonic_constraints.unwrap_or_default(),
             model: None,
             flat_axis_predictor: None,
@@ -1573,6 +1578,7 @@ impl NativeCartoBoostRegressor {
     #[pyo3(signature = (x, y, sample_weight=None, sparse_sets=None, feature_schema_json=None))]
     fn fit(
         &mut self,
+        py: Python<'_>,
         x: Vec<Vec<f64>>,
         y: Vec<f64>,
         sample_weight: Option<Vec<f64>>,
@@ -1582,39 +1588,24 @@ impl NativeCartoBoostRegressor {
         let dataset = dataset_from_parts(x, sparse_sets, feature_schema_json)?;
         let splitters = parse_splitters(&self.splitters)?;
         let leaf_predictor = parse_leaf_predictor(&self.leaf_predictor)?;
-        let config = BoosterConfig {
-            n_estimators: self.n_estimators,
-            learning_rate: self.learning_rate,
-            max_depth: self.max_depth,
-            min_samples_leaf: self.min_samples_leaf,
-            min_gain: self.min_gain,
-            loss: parse_loss(
-                &self.loss,
-                self.quantile_alpha,
-                self.huber_delta,
-                self.log_offset,
-            )?,
-            splitters,
-            leaf_predictor,
-            linear_leaf_features: self.linear_leaf_features.clone(),
-            linear_lambda_l2: self.l2_regularization,
-            constant_lambda_l2: self.constant_l2_regularization,
-            fuzzy: self.fuzzy,
-            fuzzy_bandwidth: self.fuzzy_bandwidth,
-            fuzzy_kernel: parse_fuzzy_kernel(&self.fuzzy_kernel)?,
-            monotonic_constraints: self.monotonic_constraints.clone(),
-        };
-        self.set_model(
-            Booster::new(config)
-                .fit(&dataset, &y, sample_weight.as_deref())
-                .map_err(to_py_value_error)?,
-        );
+        let config = self.booster_config(splitters, leaf_predictor)?;
+        let n_threads = self.n_threads;
+        let model = py
+            .allow_threads(move || {
+                run_with_optional_threads(n_threads, || {
+                    Booster::new(config).fit(&dataset, &y, sample_weight.as_deref())
+                })
+            })
+            .map_err(to_py_value_error)?;
+        self.set_model(model);
         Ok(())
     }
 
     #[pyo3(signature = (x, y, sample_weight=None, sparse_offsets=None, sparse_ids=None, feature_schema_json=None))]
+    #[allow(clippy::too_many_arguments)]
     fn fit_arrays(
         &mut self,
+        py: Python<'_>,
         x: PyReadonlyArray2<'_, f64>,
         y: PyReadonlyArray1<'_, f64>,
         sample_weight: Option<PyReadonlyArray1<'_, f64>>,
@@ -1627,24 +1618,45 @@ impl NativeCartoBoostRegressor {
         let weights = sample_weight
             .map(|array| array.as_slice().map(|slice| slice.to_vec()))
             .transpose()?;
-        self.fit_dataset(dataset, targets, weights)
+        let splitters = parse_splitters(&self.splitters)?;
+        let leaf_predictor = parse_leaf_predictor(&self.leaf_predictor)?;
+        let config = self.booster_config(splitters, leaf_predictor)?;
+        let n_threads = self.n_threads;
+        let model = py
+            .allow_threads(move || {
+                run_with_optional_threads(n_threads, || {
+                    Booster::new(config).fit(&dataset, &targets, weights.as_deref())
+                })
+            })
+            .map_err(to_py_value_error)?;
+        self.set_model(model);
+        Ok(())
     }
 
     #[pyo3(signature = (x, y, sparse_sets, feature_schema_json=None, sample_weight=None))]
     fn fit_mixed(
         &mut self,
+        py: Python<'_>,
         x: Vec<Vec<f64>>,
         y: Vec<f64>,
         sparse_sets: Vec<Vec<Vec<u64>>>,
         feature_schema_json: Option<String>,
         sample_weight: Option<Vec<f64>>,
     ) -> PyResult<()> {
-        self.fit(x, y, sample_weight, Some(sparse_sets), feature_schema_json)
+        self.fit(
+            py,
+            x,
+            y,
+            sample_weight,
+            Some(sparse_sets),
+            feature_schema_json,
+        )
     }
 
     #[pyo3(signature = (x, sparse_sets=None))]
     fn predict(
         &self,
+        py: Python<'_>,
         x: Vec<Vec<f64>>,
         sparse_sets: Option<Vec<Vec<Vec<u64>>>>,
     ) -> PyResult<Vec<f64>> {
@@ -1653,7 +1665,9 @@ impl NativeCartoBoostRegressor {
             .as_ref()
             .ok_or_else(|| PyRuntimeError::new_err("CartoBoostRegressor is not fitted"))?;
         let dataset = dataset_from_parts(x, sparse_sets, None)?;
-        model.try_predict(&dataset).map_err(to_py_value_error)
+        let n_threads = self.n_threads;
+        py.allow_threads(|| run_with_optional_threads(n_threads, || model.try_predict(&dataset)))
+            .map_err(to_py_value_error)
     }
 
     #[pyo3(signature = (x, sparse_offsets=None, sparse_ids=None))]
@@ -1674,37 +1688,40 @@ impl NativeCartoBoostRegressor {
         let values = x.as_slice()?;
         let offsets = sparse_offsets.unwrap_or_default();
         let ids = sparse_ids.unwrap_or_default();
-        let predictions = if offsets.is_empty() && ids.is_empty() {
-            if let Some(predictor) = &self.flat_axis_predictor {
-                model
-                    .validate_dense_flat_prediction_inputs(rows, cols, values)
-                    .map_err(to_py_value_error)?;
-                predictor.predict_flat(rows, cols, values)
-            } else {
-                model
-                    .try_predict_flat(rows, cols, values, &offsets, &ids)
-                    .map_err(to_py_value_error)?
-            }
-        } else {
-            model
-                .try_predict_flat(rows, cols, values, &offsets, &ids)
-                .map_err(to_py_value_error)?
-        };
+        let n_threads = self.n_threads;
+        let predictions = py
+            .allow_threads(|| {
+                run_with_optional_threads(n_threads, || {
+                    if offsets.is_empty() && ids.is_empty() {
+                        if let Some(predictor) = &self.flat_axis_predictor {
+                            model.validate_dense_flat_prediction_inputs(rows, cols, values)?;
+                            Ok(predictor.predict_flat(rows, cols, values))
+                        } else {
+                            model.try_predict_flat(rows, cols, values, &offsets, &ids)
+                        }
+                    } else {
+                        model.try_predict_flat(rows, cols, values, &offsets, &ids)
+                    }
+                })
+            })
+            .map_err(to_py_value_error)?;
         Ok(predictions.into_pyarray(py))
     }
 
     #[pyo3(signature = (x, sparse_sets))]
     fn predict_mixed(
         &self,
+        py: Python<'_>,
         x: Vec<Vec<f64>>,
         sparse_sets: Vec<Vec<Vec<u64>>>,
     ) -> PyResult<Vec<f64>> {
-        self.predict(x, Some(sparse_sets))
+        self.predict(py, x, Some(sparse_sets))
     }
 
     #[pyo3(signature = (x, sparse_sets=None))]
     fn predict_additive(
         &self,
+        py: Python<'_>,
         x: Vec<Vec<f64>>,
         sparse_sets: Option<Vec<Vec<Vec<u64>>>>,
     ) -> PyResult<Vec<Vec<f64>>> {
@@ -1713,14 +1730,17 @@ impl NativeCartoBoostRegressor {
             .as_ref()
             .ok_or_else(|| PyRuntimeError::new_err("CartoBoostRegressor is not fitted"))?;
         let dataset = dataset_from_parts(x, sparse_sets, None)?;
-        model
-            .try_predict_additive(&dataset)
-            .map_err(to_py_value_error)
+        let n_threads = self.n_threads;
+        py.allow_threads(|| {
+            run_with_optional_threads(n_threads, || model.try_predict_additive(&dataset))
+        })
+        .map_err(to_py_value_error)
     }
 
     #[pyo3(signature = (x, sparse_offsets=None, sparse_ids=None))]
     fn predict_additive_arrays(
         &self,
+        py: Python<'_>,
         x: PyReadonlyArray2<'_, f64>,
         sparse_offsets: Option<Vec<Vec<usize>>>,
         sparse_ids: Option<Vec<Vec<u64>>>,
@@ -1735,9 +1755,13 @@ impl NativeCartoBoostRegressor {
         let values = x.as_slice()?;
         let offsets = sparse_offsets.unwrap_or_default();
         let ids = sparse_ids.unwrap_or_default();
-        model
-            .try_predict_additive_flat(rows, cols, values, &offsets, &ids)
-            .map_err(to_py_value_error)
+        let n_threads = self.n_threads;
+        py.allow_threads(|| {
+            run_with_optional_threads(n_threads, || {
+                model.try_predict_additive_flat(rows, cols, values, &offsets, &ids)
+            })
+        })
+        .map_err(to_py_value_error)
     }
 
     fn save(&self, path: PathBuf) -> PyResult<()> {
@@ -1851,6 +1875,11 @@ impl NativeCartoBoostRegressor {
     #[getter]
     fn fuzzy_kernel(&self) -> String {
         self.fuzzy_kernel.clone()
+    }
+
+    #[getter]
+    fn n_threads(&self) -> Option<usize> {
+        self.n_threads
     }
 
     #[getter]
@@ -1987,6 +2016,7 @@ impl NativeCartoBoostRegressor {
             fuzzy,
             fuzzy_bandwidth,
             fuzzy_kernel,
+            n_threads: None,
             monotonic_constraints,
             model: Some(model),
             flat_axis_predictor: None,
@@ -1997,15 +2027,12 @@ impl NativeCartoBoostRegressor {
         })
     }
 
-    fn fit_dataset(
-        &mut self,
-        dataset: Dataset,
-        y: Vec<f64>,
-        sample_weight: Option<Vec<f64>>,
-    ) -> PyResult<()> {
-        let splitters = parse_splitters(&self.splitters)?;
-        let leaf_predictor = parse_leaf_predictor(&self.leaf_predictor)?;
-        let config = BoosterConfig {
+    fn booster_config(
+        &self,
+        splitters: Vec<SplitterKind>,
+        leaf_predictor: LeafPredictorKind,
+    ) -> PyResult<BoosterConfig> {
+        Ok(BoosterConfig {
             n_estimators: self.n_estimators,
             learning_rate: self.learning_rate,
             max_depth: self.max_depth,
@@ -2026,13 +2053,7 @@ impl NativeCartoBoostRegressor {
             fuzzy_bandwidth: self.fuzzy_bandwidth,
             fuzzy_kernel: parse_fuzzy_kernel(&self.fuzzy_kernel)?,
             monotonic_constraints: self.monotonic_constraints.clone(),
-        };
-        self.set_model(
-            Booster::new(config)
-                .fit(&dataset, &y, sample_weight.as_deref())
-                .map_err(to_py_value_error)?,
-        );
-        Ok(())
+        })
     }
 
     fn set_model(&mut self, model: Model) {
@@ -3941,6 +3962,29 @@ fn leaf_predictor_name(leaf_predictor: &LeafPredictorKind) -> &'static str {
     match leaf_predictor {
         LeafPredictorKind::Constant => "constant",
         LeafPredictorKind::Linear => "linear",
+    }
+}
+
+fn validate_n_threads(n_threads: Option<usize>) -> PyResult<()> {
+    if n_threads == Some(0) {
+        return Err(PyValueError::new_err("n_threads must be positive"));
+    }
+    Ok(())
+}
+
+fn run_with_optional_threads<T, F>(n_threads: Option<usize>, f: F) -> Result<T, CartoBoostError>
+where
+    T: Send,
+    F: FnOnce() -> Result<T, CartoBoostError> + Send,
+{
+    if let Some(n_threads) = n_threads {
+        ThreadPoolBuilder::new()
+            .num_threads(n_threads)
+            .build()
+            .map_err(|err| CartoBoostError::InvalidInput(err.to_string()))?
+            .install(f)
+    } else {
+        f()
     }
 }
 

@@ -3,6 +3,7 @@ use crate::forecasting::{
     ForecastMetricSet, ForecastPrediction, Forecaster, RollingOriginSplitter,
 };
 use crate::{CartoBoostError, Result};
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -45,37 +46,41 @@ impl RollingOriginBacktester {
 
     pub fn run<M>(&self, model: M, frame: &ForecastFrame) -> Result<BacktestResult>
     where
-        M: Forecaster + Clone,
+        M: Forecaster + Clone + Send + Sync,
     {
-        let mut folds = Vec::new();
-        for fold in self.splitter.split(frame)? {
-            let train =
-                crate::forecasting::splitters::frame_from_indices(frame, &fold.train_indices)?;
-            let validation_actuals = actuals_for_indices(frame, &fold.validation_indices);
-            let training_actuals = training_actuals_for_indices(frame, &fold.train_indices);
-            let mut candidate = model.clone();
-            candidate.fit(&train)?;
-            let forecast = candidate.predict(fold.horizon)?;
-            if forecast.predictions().len() != validation_actuals.len() {
-                return Err(CartoBoostError::InvalidInput(format!(
-                    "fold {} produced {} predictions for {} validation rows",
-                    fold.fold_id,
-                    forecast.predictions().len(),
-                    validation_actuals.len()
-                )));
-            }
-            let metrics = evaluate_forecast_with_training(
-                &forecast,
-                &validation_actuals,
-                &training_actuals,
-                self.mase_seasonality,
-            )?;
-            folds.push(BacktestFoldResult {
-                fold,
-                metrics,
-                predictions: forecast.predictions().to_vec(),
-            });
-        }
+        let folds = self
+            .splitter
+            .split(frame)?
+            .into_par_iter()
+            .map(|fold| {
+                let train =
+                    crate::forecasting::splitters::frame_from_indices(frame, &fold.train_indices)?;
+                let validation_actuals = actuals_for_indices(frame, &fold.validation_indices);
+                let training_actuals = training_actuals_for_indices(frame, &fold.train_indices);
+                let mut candidate = model.clone();
+                candidate.fit(&train)?;
+                let forecast = candidate.predict(fold.horizon)?;
+                if forecast.predictions().len() != validation_actuals.len() {
+                    return Err(CartoBoostError::InvalidInput(format!(
+                        "fold {} produced {} predictions for {} validation rows",
+                        fold.fold_id,
+                        forecast.predictions().len(),
+                        validation_actuals.len()
+                    )));
+                }
+                let metrics = evaluate_forecast_with_training(
+                    &forecast,
+                    &validation_actuals,
+                    &training_actuals,
+                    self.mase_seasonality,
+                )?;
+                Ok(BacktestFoldResult {
+                    fold,
+                    metrics,
+                    predictions: forecast.predictions().to_vec(),
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
         let metrics = aggregate_metrics(&folds);
         Ok(BacktestResult { folds, metrics })
     }

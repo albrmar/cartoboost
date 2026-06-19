@@ -56,6 +56,7 @@ polars = [
 
 [dependency-groups]
 bench = [
+    "datasetsforecast>=1.0",
     "functime>=0.9",
     "lightgbm>=4.0",
     "prophet>=1.1",

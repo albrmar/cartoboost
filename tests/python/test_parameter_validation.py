@@ -103,3 +103,10 @@ def test_fuzzy_kernel_validation_rejects_unknown_name():
 
     with pytest.raises(ValueError, match="fuzzy_kernel"):
         model.fit([[0.0], [1.0]], [0.0, 1.0])
+
+
+def test_n_threads_must_be_positive():
+    model = CartoBoostRegressor(n_threads=0)
+
+    with pytest.raises(ValueError, match="n_threads must be positive"):
+        model.fit([[0.0], [1.0]], [0.0, 1.0])

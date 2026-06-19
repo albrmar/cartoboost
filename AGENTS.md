@@ -25,6 +25,7 @@
   If an interpreter fails native build checks (for example PyO3 compatibility limits), revert the version claim and CI matrix entries until support is real.
 - Add or update tests for behavioral changes, especially when changing splitters, serialization, CLI output, Python estimator behavior, or native bindings.
 - For benchmark work, capture RMSE, MAE, R2, training time, prediction time, model settings, sample size, task names, and split names. Preserve output artifacts only when they are intentionally committed evidence; otherwise write generated runs under `target/` or `/tmp`.
+- Be sure to update documentation and llms.txt for navigation
 
 ## PR instructions
 - Summarize which surface changed: core Rust, CLI, PyO3 bindings, Python API, docs, tests, fixtures, benchmarks, or scripts.

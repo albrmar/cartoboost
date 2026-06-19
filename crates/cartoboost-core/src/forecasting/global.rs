@@ -6,6 +6,7 @@ use crate::forecasting::{
 };
 use crate::tree::Model;
 use crate::{CartoBoostError, Result};
+use rayon::prelude::*;
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 
@@ -126,40 +127,52 @@ impl Forecaster for CartoBoostLagForecaster {
     fn predict(&self, horizon: usize) -> Result<ForecastResult> {
         validate_horizon(horizon)?;
         let fitted = self.fitted.as_ref().ok_or_else(not_fitted)?;
-        let mut predictions = Vec::new();
-        for (series_id, fitted_history) in &fitted.history_by_series {
-            let mut history = fitted_history.clone();
-            let last = history
-                .last()
-                .ok_or_else(|| CartoBoostError::InvalidInput("empty series history".to_string()))?
-                .clone();
-            for step in 1..=horizon {
-                let timestamp = fitted.frame.frequency().advance(last.timestamp, step)?;
-                let features = self
-                    .lag_builder
-                    .transform_next(series_id, &history, timestamp)?;
-                let raw_prediction = fitted.model.predict_one(&features);
-                let mean = match self.target_mode {
-                    GlobalForecastTargetMode::Level => raw_prediction,
-                    GlobalForecastTargetMode::DeltaFromLast => {
-                        let previous = history.last().ok_or_else(|| {
-                            CartoBoostError::InvalidInput(format!(
-                                "series {series_id} has no previous target for delta forecast"
-                            ))
-                        })?;
-                        previous.target + raw_prediction
-                    }
-                };
-                predictions.push(ForecastPrediction {
-                    series_id: series_id.clone(),
-                    timestamp,
-                    horizon: step,
-                    model: self.model_name().to_string(),
-                    mean,
-                });
-                history.push(ForecastRow::new(series_id.clone(), timestamp, mean));
-            }
-        }
+        let predictions = fitted
+            .history_by_series
+            .iter()
+            .collect::<Vec<_>>()
+            .into_par_iter()
+            .map(|(series_id, fitted_history)| {
+                let mut history = fitted_history.clone();
+                let last = history
+                    .last()
+                    .ok_or_else(|| {
+                        CartoBoostError::InvalidInput("empty series history".to_string())
+                    })?
+                    .clone();
+                let mut predictions = Vec::with_capacity(horizon);
+                for step in 1..=horizon {
+                    let timestamp = fitted.frame.frequency().advance(last.timestamp, step)?;
+                    let features = self
+                        .lag_builder
+                        .transform_next(series_id, &history, timestamp)?;
+                    let raw_prediction = fitted.model.predict_one(&features);
+                    let mean = match self.target_mode {
+                        GlobalForecastTargetMode::Level => raw_prediction,
+                        GlobalForecastTargetMode::DeltaFromLast => {
+                            let previous = history.last().ok_or_else(|| {
+                                CartoBoostError::InvalidInput(format!(
+                                    "series {series_id} has no previous target for delta forecast"
+                                ))
+                            })?;
+                            previous.target + raw_prediction
+                        }
+                    };
+                    predictions.push(ForecastPrediction {
+                        series_id: series_id.clone(),
+                        timestamp,
+                        horizon: step,
+                        model: self.model_name().to_string(),
+                        mean,
+                    });
+                    history.push(ForecastRow::new(series_id.clone(), timestamp, mean));
+                }
+                Ok(predictions)
+            })
+            .collect::<Result<Vec<_>>>()?
+            .into_iter()
+            .flatten()
+            .collect();
         ForecastResult::new(predictions)
     }
 

@@ -23,6 +23,9 @@ context.
   forecasting, graph, neural, sparse, artifact, CLI, and benchmark features.
 - [Python Estimator](user-guide/python-estimator.md): sklearn-style fit,
   predict, save, load, and explanation workflow.
+- [Model Types](user-guide/model-types.md): choose between the tabular
+  regressor, local forecasting models, CartoBoost lag forecasting, kriging,
+  neural embedding models, graph models, and ensembles.
 - [Parameters](user-guide/parameters.md): estimator controls and supported
   splitters.
 - [Spatial Modeling](spatial_modeling.md): coordinate features, taxi-zone
@@ -39,6 +42,9 @@ context.
   pickup zones, dropoff zones, and lane-level demand with `ForecastFrame`,
   theta/local baselines, CartoBoost lag forecasting, rolling-origin backtests,
   ensembles, CLI runs, and portable forecast artifacts.
+- [Forecasting Model Guides](user-guide/forecasting-models/index.md):
+  per-model examples for naive, seasonal naive, theta, ETS, ARIMA, AutoARIMA,
+  Kalman, kriging, CartoBoost lag, and weighted ensembles.
 - [Benchmarks](benchmarks/index.md): reproducible comparison reports and
   acceptance metrics.
 

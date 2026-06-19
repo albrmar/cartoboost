@@ -41,3 +41,62 @@ Taxi-domain lag feature contracts should use columns such as `pickup_hour`,
 `pickup_trips`, `PULocationID`, `DOLocationID`, pickup/dropoff lane identifiers,
 known-future calendar or dispatch plans, and historical-only observed queue or
 trip-distance features.
+
+## How The Lag Forecaster Works
+
+`CartoBoostLagForecaster` turns each taxi pickup/dropoff lane into supervised
+training rows, then trains one global CartoBoost model across all lanes. The
+native feature builder groups rows by `series_id`, sorts each lane by timestamp,
+and only uses target values with timestamps earlier than the row being built.
+
+```mermaid
+flowchart TD
+    A["ForecastFrame rows<br/>series_id, timestamp, target"] --> B["Group by pickup/dropoff lane"]
+    B --> C["Sort each lane by timestamp"]
+    C --> D{"Enough prior history?"}
+    D -- no --> E["Skip early row"]
+    D -- yes --> F["Build leakage-safe features"]
+    F --> G["target_lag_k"]
+    F --> H["target_roll_mean_w"]
+    F --> I["target_delta_lag_k"]
+    F --> J["target_roll_trend_w"]
+    F --> K["calendar_day_of_week / month / day"]
+    G --> L["Supervised matrix X"]
+    H --> L
+    I --> L
+    J --> L
+    K --> L
+    L --> M["CartoBoost booster fit"]
+    A --> N["Training target y"]
+    N --> M
+    M --> O["Native cartoboost_lag model"]
+```
+
+At fit time, the target can be trained as the observed level or, when
+`target_mode="delta_from_last"` is selected, as the change from the lane's most
+recent prior target. In both modes, the feature row never sees the row target or
+any later taxi demand value.
+
+Prediction is recursive. For each lane, the model predicts the next timestamp,
+appends that prediction to an in-memory copy of the lane history, and then uses
+that expanded history to build features for the next horizon step.
+
+```mermaid
+flowchart LR
+    A["Fitted lane history"] --> B["Build next-step lag features"]
+    B --> C["CartoBoost model predict"]
+    C --> D{"Target mode"}
+    D -- level --> E["Use raw prediction as mean"]
+    D -- delta_from_last --> F["Add raw prediction to previous target"]
+    E --> G["Forecast row<br/>horizon h"]
+    F --> G
+    G --> H["Append predicted mean to lane history"]
+    H --> I{"More horizon steps?"}
+    I -- yes --> B
+    I -- no --> J["ForecastResult"]
+```
+
+This recursive loop is why lag forecasts for horizon 2 and beyond can depend on
+earlier forecasted values. The first step uses only observed taxi lane history;
+later steps use observed history plus the model's own prior predictions for the
+same lane.

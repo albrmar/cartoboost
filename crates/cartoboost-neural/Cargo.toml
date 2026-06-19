@@ -6,6 +6,7 @@ license.workspace = true
 
 [dependencies]
 cartoboost-core = { path = "../cartoboost-core" }
+rayon = "1.11"
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = "0.10"

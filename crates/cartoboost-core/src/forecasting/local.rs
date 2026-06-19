@@ -8,6 +8,7 @@ use crate::utilities::{
     LocalLinearKalmanConfig, OrdinaryKrigingConfig,
 };
 use crate::{CartoBoostError, Result};
+use rayon::prelude::*;
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 
@@ -498,21 +499,31 @@ impl Forecaster for NaiveForecaster {
     fn predict(&self, horizon: usize) -> Result<ForecastResult> {
         validate_horizon(horizon)?;
         let fitted = self.fitted.as_ref().ok_or_else(not_fitted)?;
-        let mut predictions = Vec::new();
-        for (series_id, history) in &fitted.history_by_series {
-            let last = history
-                .last()
-                .ok_or_else(|| CartoBoostError::InvalidInput("empty series history".to_string()))?;
-            for step in 1..=horizon {
-                predictions.push(ForecastPrediction {
-                    series_id: series_id.clone(),
-                    timestamp: fitted.frame.frequency().advance(last.timestamp, step)?,
-                    horizon: step,
-                    model: self.model_name().to_string(),
-                    mean: last.target,
-                });
-            }
-        }
+        let predictions = fitted
+            .history_by_series
+            .iter()
+            .collect::<Vec<_>>()
+            .into_par_iter()
+            .map(|(series_id, history)| {
+                let last = history.last().ok_or_else(|| {
+                    CartoBoostError::InvalidInput("empty series history".to_string())
+                })?;
+                (1..=horizon)
+                    .map(|step| {
+                        Ok(ForecastPrediction {
+                            series_id: series_id.clone(),
+                            timestamp: fitted.frame.frequency().advance(last.timestamp, step)?,
+                            horizon: step,
+                            model: self.model_name().to_string(),
+                            mean: last.target,
+                        })
+                    })
+                    .collect::<Result<Vec<_>>>()
+            })
+            .collect::<Result<Vec<_>>>()?
+            .into_iter()
+            .flatten()
+            .collect();
         ForecastResult::new(predictions)
     }
 
@@ -544,23 +555,33 @@ impl Forecaster for SeasonalNaiveForecaster {
     fn predict(&self, horizon: usize) -> Result<ForecastResult> {
         validate_horizon(horizon)?;
         let fitted = self.fitted.as_ref().ok_or_else(not_fitted)?;
-        let mut predictions = Vec::new();
-        for (series_id, history) in &fitted.history_by_series {
-            let last = history
-                .last()
-                .ok_or_else(|| CartoBoostError::InvalidInput("empty series history".to_string()))?;
-            let base = history.len() - self.season_length;
-            for step in 1..=horizon {
-                let seasonal_index = base + ((step - 1) % self.season_length);
-                predictions.push(ForecastPrediction {
-                    series_id: series_id.clone(),
-                    timestamp: fitted.frame.frequency().advance(last.timestamp, step)?,
-                    horizon: step,
-                    model: self.model_name().to_string(),
-                    mean: history[seasonal_index].target,
-                });
-            }
-        }
+        let predictions = fitted
+            .history_by_series
+            .iter()
+            .collect::<Vec<_>>()
+            .into_par_iter()
+            .map(|(series_id, history)| {
+                let last = history.last().ok_or_else(|| {
+                    CartoBoostError::InvalidInput("empty series history".to_string())
+                })?;
+                let base = history.len() - self.season_length;
+                (1..=horizon)
+                    .map(|step| {
+                        let seasonal_index = base + ((step - 1) % self.season_length);
+                        Ok(ForecastPrediction {
+                            series_id: series_id.clone(),
+                            timestamp: fitted.frame.frequency().advance(last.timestamp, step)?,
+                            horizon: step,
+                            model: self.model_name().to_string(),
+                            mean: history[seasonal_index].target,
+                        })
+                    })
+                    .collect::<Result<Vec<_>>>()
+            })
+            .collect::<Result<Vec<_>>>()?
+            .into_iter()
+            .flatten()
+            .collect();
         ForecastResult::new(predictions)
     }
 
@@ -585,31 +606,7 @@ impl Forecaster for ThetaForecaster {
     }
 
     fn predict(&self, horizon: usize) -> Result<ForecastResult> {
-        validate_horizon(horizon)?;
-        let fitted = self.fitted.as_ref().ok_or_else(not_fitted)?;
-        let mut predictions = Vec::new();
-        for (series_id, series) in &fitted.series {
-            for step in 1..=horizon {
-                let adjusted = forecast_theta_component(&series.component, step);
-                let mean = reseasonalize_value(
-                    adjusted,
-                    series.n_obs + step - 1,
-                    self.seasonality,
-                    series.seasonal_pattern.as_deref(),
-                )?;
-                predictions.push(ForecastPrediction {
-                    series_id: series_id.clone(),
-                    timestamp: fitted
-                        .frame
-                        .frequency()
-                        .advance(series.last_timestamp, step)?,
-                    horizon: step,
-                    model: self.model_name().to_string(),
-                    mean,
-                });
-            }
-        }
-        ForecastResult::new(predictions)
+        self.predict_with_model_name(horizon, self.model_name())
     }
 
     fn model_name(&self) -> &'static str {
@@ -629,22 +626,47 @@ impl Forecaster for ThetaForecaster {
 
 impl Forecaster for OptimizedThetaForecaster {
     fn fit(&mut self, frame: &ForecastFrame) -> Result<()> {
-        let mut best: Option<(OrderedF64, OrderedF64, OrderedF64)> = None;
-        let mut scores = Vec::new();
-        for &theta in &self.theta_grid {
-            for &alpha in &self.alpha_grid {
+        let candidates = self
+            .theta_grid
+            .iter()
+            .copied()
+            .enumerate()
+            .flat_map(|(theta_idx, theta)| {
+                self.alpha_grid
+                    .iter()
+                    .copied()
+                    .enumerate()
+                    .map(move |(alpha_idx, alpha)| (theta_idx, alpha_idx, theta, alpha))
+            })
+            .collect::<Vec<_>>();
+        let scored = candidates
+            .into_par_iter()
+            .map(|(theta_idx, alpha_idx, theta, alpha)| {
                 let fitted = FittedThetaState::from_frame(frame, theta, alpha, self.seasonality)?;
                 let mse = fitted.mean_squared_residual();
-                scores.push(ThetaValidationScore { theta, alpha, mse });
-                let candidate = (OrderedF64(mse), OrderedF64(theta), OrderedF64(alpha));
-                if match best {
-                    Some(current) => candidate < current,
-                    None => true,
-                } {
-                    best = Some(candidate);
-                }
-            }
-        }
+                Ok((
+                    theta_idx,
+                    alpha_idx,
+                    ThetaValidationScore { theta, alpha, mse },
+                ))
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let mut scored = scored;
+        scored.sort_by_key(|(theta_idx, alpha_idx, _)| (*theta_idx, *alpha_idx));
+        let scores = scored
+            .into_iter()
+            .map(|(_, _, score)| score)
+            .collect::<Vec<_>>();
+        let best = scores
+            .iter()
+            .map(|score| {
+                (
+                    OrderedF64(score.mse),
+                    OrderedF64(score.theta),
+                    OrderedF64(score.alpha),
+                )
+            })
+            .min();
         let (_, theta, alpha) = best.ok_or_else(|| {
             CartoBoostError::InvalidInput("theta validation grid must not be empty".to_string())
         })?;
@@ -695,26 +717,36 @@ impl Forecaster for ETSForecaster {
     fn predict(&self, horizon: usize) -> Result<ForecastResult> {
         validate_horizon(horizon)?;
         let fitted = self.fitted.as_ref().ok_or_else(not_fitted)?;
-        let mut predictions = Vec::new();
-        for (series_id, series) in &fitted.series {
-            for step in 1..=horizon {
-                let seasonal = series
-                    .seasonals
-                    .as_ref()
-                    .map(|seasonals| seasonals[(series.n_obs + step - 1) % seasonals.len()])
-                    .unwrap_or(0.0);
-                predictions.push(ForecastPrediction {
-                    series_id: series_id.clone(),
-                    timestamp: fitted
-                        .frame
-                        .frequency()
-                        .advance(series.last_timestamp, step)?,
-                    horizon: step,
-                    model: self.model_name().to_string(),
-                    mean: series.level + step as f64 * series.trend + seasonal,
-                });
-            }
-        }
+        let predictions = fitted
+            .series
+            .iter()
+            .collect::<Vec<_>>()
+            .into_par_iter()
+            .map(|(series_id, series)| {
+                (1..=horizon)
+                    .map(|step| {
+                        let seasonal = series
+                            .seasonals
+                            .as_ref()
+                            .map(|seasonals| seasonals[(series.n_obs + step - 1) % seasonals.len()])
+                            .unwrap_or(0.0);
+                        Ok(ForecastPrediction {
+                            series_id: series_id.clone(),
+                            timestamp: fitted
+                                .frame
+                                .frequency()
+                                .advance(series.last_timestamp, step)?,
+                            horizon: step,
+                            model: self.model_name().to_string(),
+                            mean: series.level + step as f64 * series.trend + seasonal,
+                        })
+                    })
+                    .collect::<Result<Vec<_>>>()
+            })
+            .collect::<Result<Vec<_>>>()?
+            .into_iter()
+            .flatten()
+            .collect();
         ForecastResult::new(predictions)
     }
 
@@ -754,24 +786,23 @@ impl Forecaster for ArimaForecaster {
 
 impl Forecaster for AutoARIMAForecaster {
     fn fit(&mut self, frame: &ForecastFrame) -> Result<()> {
-        let mut best: Option<(OrderedF64, usize, usize, usize)> = None;
-        let mut scores = Vec::new();
-        for d in 0..=self.max_d {
-            for p in 0..=self.max_p {
-                for q in 0..=self.max_q {
-                    let fitted = FittedArimaState::from_frame(frame, p, d, q)?;
-                    let mse = fitted.mean_squared_residual();
-                    scores.push(ArimaValidationScore { p, d, q, mse });
-                    let candidate = (OrderedF64(mse), p, d, q);
-                    if match best {
-                        Some(current) => candidate < current,
-                        None => true,
-                    } {
-                        best = Some(candidate);
-                    }
-                }
-            }
-        }
+        let max_p = self.max_p;
+        let max_d = self.max_d;
+        let max_q = self.max_q;
+        let mut scores = (0..=max_d)
+            .into_par_iter()
+            .flat_map_iter(|d| (0..=max_p).flat_map(move |p| (0..=max_q).map(move |q| (p, d, q))))
+            .map(|(p, d, q)| {
+                let fitted = FittedArimaState::from_frame(frame, p, d, q)?;
+                let mse = fitted.mean_squared_residual();
+                Ok(ArimaValidationScore { p, d, q, mse })
+            })
+            .collect::<Result<Vec<_>>>()?;
+        scores.sort_by_key(|score| (score.d, score.p, score.q));
+        let best = scores
+            .iter()
+            .map(|score| (OrderedF64(score.mse), score.p, score.d, score.q))
+            .min();
         let (_, p, d, q) = best.ok_or_else(|| {
             CartoBoostError::InvalidInput("auto_arima candidate grid must not be empty".to_string())
         })?;
@@ -820,21 +851,31 @@ impl Forecaster for KalmanForecaster {
     fn predict(&self, horizon: usize) -> Result<ForecastResult> {
         validate_horizon(horizon)?;
         let fitted = self.fitted.as_ref().ok_or_else(not_fitted)?;
-        let mut predictions = Vec::new();
-        for (series_id, series) in &fitted.series {
-            for step in 1..=horizon {
-                predictions.push(ForecastPrediction {
-                    series_id: series_id.clone(),
-                    timestamp: fitted
-                        .frame
-                        .frequency()
-                        .advance(series.last_timestamp, step)?,
-                    horizon: step,
-                    model: self.model_name().to_string(),
-                    mean: series.level + step as f64 * series.trend,
-                });
-            }
-        }
+        let predictions = fitted
+            .series
+            .iter()
+            .collect::<Vec<_>>()
+            .into_par_iter()
+            .map(|(series_id, series)| {
+                (1..=horizon)
+                    .map(|step| {
+                        Ok(ForecastPrediction {
+                            series_id: series_id.clone(),
+                            timestamp: fitted
+                                .frame
+                                .frequency()
+                                .advance(series.last_timestamp, step)?,
+                            horizon: step,
+                            model: self.model_name().to_string(),
+                            mean: series.level + step as f64 * series.trend,
+                        })
+                    })
+                    .collect::<Result<Vec<_>>>()
+            })
+            .collect::<Result<Vec<_>>>()?
+            .into_iter()
+            .flatten()
+            .collect();
         ForecastResult::new(predictions)
     }
 
@@ -861,7 +902,6 @@ impl Forecaster for KrigingForecaster {
     fn predict(&self, horizon: usize) -> Result<ForecastResult> {
         validate_horizon(horizon)?;
         let fitted = self.fitted.as_ref().ok_or_else(not_fitted)?;
-        let mut predictions = Vec::new();
         let observations = fitted
             .levels
             .iter()
@@ -879,30 +919,48 @@ impl Forecaster for KrigingForecaster {
             })
             .collect::<Result<Vec<_>>>()?;
         let config = OrdinaryKrigingConfig::new(self.range, self.nugget)?;
-        for series_id in fitted.frame.series_ids() {
-            let coord = self.coordinates.get(&series_id).ok_or_else(|| {
-                CartoBoostError::InvalidInput(format!(
-                    "missing kriging coordinate for series {series_id}"
-                ))
-            })?;
-            let mean = ordinary_kriging_predict_many(&observations, &[*coord], config)?
-                .remove(0)
-                .mean;
-            let history = fitted.frame.rows_for_series(&series_id);
-            let last_timestamp = history
-                .last()
-                .ok_or_else(|| CartoBoostError::InvalidInput("empty series history".to_string()))?
-                .timestamp;
-            for step in 1..=horizon {
-                predictions.push(ForecastPrediction {
-                    series_id: series_id.clone(),
-                    timestamp: fitted.frame.frequency().advance(last_timestamp, step)?,
-                    horizon: step,
-                    model: self.model_name().to_string(),
-                    mean,
-                });
-            }
-        }
+        let series_ids = fitted.frame.series_ids();
+        let targets = series_ids
+            .iter()
+            .map(|series_id| {
+                self.coordinates.get(series_id).copied().ok_or_else(|| {
+                    CartoBoostError::InvalidInput(format!(
+                        "missing kriging coordinate for series {series_id}"
+                    ))
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let means = ordinary_kriging_predict_many(&observations, &targets, config)?
+            .into_iter()
+            .map(|prediction| prediction.mean)
+            .collect::<Vec<_>>();
+        let predictions = series_ids
+            .into_par_iter()
+            .zip(means)
+            .map(|(series_id, mean)| {
+                let history = fitted.frame.rows_for_series(&series_id);
+                let last_timestamp = history
+                    .last()
+                    .ok_or_else(|| {
+                        CartoBoostError::InvalidInput("empty series history".to_string())
+                    })?
+                    .timestamp;
+                (1..=horizon)
+                    .map(|step| {
+                        Ok(ForecastPrediction {
+                            series_id: series_id.clone(),
+                            timestamp: fitted.frame.frequency().advance(last_timestamp, step)?,
+                            horizon: step,
+                            model: self.model_name().to_string(),
+                            mean,
+                        })
+                    })
+                    .collect::<Result<Vec<_>>>()
+            })
+            .collect::<Result<Vec<_>>>()?
+            .into_iter()
+            .flatten()
+            .collect();
         ForecastResult::new(predictions)
     }
 
@@ -928,28 +986,38 @@ impl ThetaForecaster {
     ) -> Result<ForecastResult> {
         validate_horizon(horizon)?;
         let fitted = self.fitted.as_ref().ok_or_else(not_fitted)?;
-        let mut predictions = Vec::new();
-        for (series_id, series) in &fitted.series {
-            for step in 1..=horizon {
-                let adjusted = forecast_theta_component(&series.component, step);
-                let mean = reseasonalize_value(
-                    adjusted,
-                    series.n_obs + step - 1,
-                    self.seasonality,
-                    series.seasonal_pattern.as_deref(),
-                )?;
-                predictions.push(ForecastPrediction {
-                    series_id: series_id.clone(),
-                    timestamp: fitted
-                        .frame
-                        .frequency()
-                        .advance(series.last_timestamp, step)?,
-                    horizon: step,
-                    model: model_name.to_string(),
-                    mean,
-                });
-            }
-        }
+        let predictions = fitted
+            .series
+            .iter()
+            .collect::<Vec<_>>()
+            .into_par_iter()
+            .map(|(series_id, series)| {
+                (1..=horizon)
+                    .map(|step| {
+                        let adjusted = forecast_theta_component(&series.component, step);
+                        let mean = reseasonalize_value(
+                            adjusted,
+                            series.n_obs + step - 1,
+                            self.seasonality,
+                            series.seasonal_pattern.as_deref(),
+                        )?;
+                        Ok(ForecastPrediction {
+                            series_id: series_id.clone(),
+                            timestamp: fitted
+                                .frame
+                                .frequency()
+                                .advance(series.last_timestamp, step)?,
+                            horizon: step,
+                            model: model_name.to_string(),
+                            mean,
+                        })
+                    })
+                    .collect::<Result<Vec<_>>>()
+            })
+            .collect::<Result<Vec<_>>>()?
+            .into_iter()
+            .flatten()
+            .collect();
         ForecastResult::new(predictions)
     }
 }
@@ -962,23 +1030,35 @@ impl ArimaForecaster {
     ) -> Result<ForecastResult> {
         validate_horizon(horizon)?;
         let fitted = self.fitted.as_ref().ok_or_else(not_fitted)?;
-        let mut predictions = Vec::new();
-        for (series_id, series) in &fitted.series {
-            let means = series.forecast_values(horizon);
-            for (idx, mean) in means.into_iter().enumerate() {
-                let step = idx + 1;
-                predictions.push(ForecastPrediction {
-                    series_id: series_id.clone(),
-                    timestamp: fitted
-                        .frame
-                        .frequency()
-                        .advance(series.last_timestamp, step)?,
-                    horizon: step,
-                    model: model_name.to_string(),
-                    mean,
-                });
-            }
-        }
+        let predictions = fitted
+            .series
+            .iter()
+            .collect::<Vec<_>>()
+            .into_par_iter()
+            .map(|(series_id, series)| {
+                series
+                    .forecast_values(horizon)
+                    .into_iter()
+                    .enumerate()
+                    .map(|(idx, mean)| {
+                        let step = idx + 1;
+                        Ok(ForecastPrediction {
+                            series_id: series_id.clone(),
+                            timestamp: fitted
+                                .frame
+                                .frequency()
+                                .advance(series.last_timestamp, step)?,
+                            horizon: step,
+                            model: model_name.to_string(),
+                            mean,
+                        })
+                    })
+                    .collect::<Result<Vec<_>>>()
+            })
+            .collect::<Result<Vec<_>>>()?
+            .into_iter()
+            .flatten()
+            .collect();
         ForecastResult::new(predictions)
     }
 }
@@ -1008,13 +1088,18 @@ impl FittedETSState {
         season_length: Option<usize>,
     ) -> Result<Self> {
         let local = FittedLocalState::from_frame(frame);
-        let mut series = BTreeMap::new();
-        for (series_id, history) in &local.history_by_series {
-            series.insert(
-                series_id.clone(),
-                FittedETSSeries::fit(series_id, history, alpha, beta, gamma, season_length)?,
-            );
-        }
+        let series = local
+            .history_by_series
+            .iter()
+            .collect::<Vec<_>>()
+            .into_par_iter()
+            .map(|(series_id, history)| {
+                Ok((
+                    series_id.clone(),
+                    FittedETSSeries::fit(series_id, history, alpha, beta, gamma, season_length)?,
+                ))
+            })
+            .collect::<Result<BTreeMap<_, _>>>()?;
         Ok(Self {
             frame: frame.clone(),
             series,
@@ -1025,13 +1110,18 @@ impl FittedETSState {
 impl FittedArimaState {
     fn from_frame(frame: &ForecastFrame, p: usize, d: usize, q: usize) -> Result<Self> {
         let local = FittedLocalState::from_frame(frame);
-        let mut series = BTreeMap::new();
-        for (series_id, history) in &local.history_by_series {
-            series.insert(
-                series_id.clone(),
-                FittedArimaSeries::fit(series_id, history, p, d, q)?,
-            );
-        }
+        let series = local
+            .history_by_series
+            .iter()
+            .collect::<Vec<_>>()
+            .into_par_iter()
+            .map(|(series_id, history)| {
+                Ok((
+                    series_id.clone(),
+                    FittedArimaSeries::fit(series_id, history, p, d, q)?,
+                ))
+            })
+            .collect::<Result<BTreeMap<_, _>>>()?;
         Ok(Self {
             frame: frame.clone(),
             series,
@@ -1039,14 +1129,23 @@ impl FittedArimaState {
     }
 
     fn mean_squared_residual(&self) -> f64 {
-        let mut sum = 0.0;
-        let mut count = 0usize;
-        for series in self.series.values() {
-            for residual in &series.residuals {
-                sum += residual * residual;
-                count += 1;
-            }
-        }
+        let (sum, count) = self
+            .series
+            .values()
+            .collect::<Vec<_>>()
+            .into_par_iter()
+            .map(|series| {
+                series
+                    .residuals
+                    .iter()
+                    .fold((0.0, 0usize), |(sum, count), residual| {
+                        (sum + residual * residual, count + 1)
+                    })
+            })
+            .reduce(
+                || (0.0, 0usize),
+                |left, right| (left.0 + right.0, left.1 + right.1),
+            );
         if count == 0 {
             0.0
         } else {
@@ -1063,19 +1162,24 @@ impl FittedKalmanState {
         observation_variance: f64,
     ) -> Result<Self> {
         let local = FittedLocalState::from_frame(frame);
-        let mut series = BTreeMap::new();
-        for (series_id, history) in &local.history_by_series {
-            series.insert(
-                series_id.clone(),
-                FittedKalmanSeries::fit(
-                    series_id,
-                    history,
-                    level_process_variance,
-                    trend_process_variance,
-                    observation_variance,
-                )?,
-            );
-        }
+        let series = local
+            .history_by_series
+            .iter()
+            .collect::<Vec<_>>()
+            .into_par_iter()
+            .map(|(series_id, history)| {
+                Ok((
+                    series_id.clone(),
+                    FittedKalmanSeries::fit(
+                        series_id,
+                        history,
+                        level_process_variance,
+                        trend_process_variance,
+                        observation_variance,
+                    )?,
+                ))
+            })
+            .collect::<Result<BTreeMap<_, _>>>()?;
         Ok(Self {
             frame: frame.clone(),
             series,
@@ -1275,13 +1379,18 @@ impl FittedThetaState {
         seasonality: Option<ThetaSeasonality>,
     ) -> Result<Self> {
         let local = FittedLocalState::from_frame(frame);
-        let mut series = BTreeMap::new();
-        for (series_id, history) in &local.history_by_series {
-            series.insert(
-                series_id.clone(),
-                FittedThetaSeries::fit(series_id, history, theta, alpha, seasonality)?,
-            );
-        }
+        let series = local
+            .history_by_series
+            .iter()
+            .collect::<Vec<_>>()
+            .into_par_iter()
+            .map(|(series_id, history)| {
+                Ok((
+                    series_id.clone(),
+                    FittedThetaSeries::fit(series_id, history, theta, alpha, seasonality)?,
+                ))
+            })
+            .collect::<Result<BTreeMap<_, _>>>()?;
         Ok(Self {
             frame: frame.clone(),
             series,
@@ -1289,14 +1398,24 @@ impl FittedThetaState {
     }
 
     fn mean_squared_residual(&self) -> f64 {
-        let mut sum = 0.0;
-        let mut count = 0usize;
-        for series in self.series.values() {
-            for residual in series.residuals.iter().skip(1) {
-                sum += residual * residual;
-                count += 1;
-            }
-        }
+        let (sum, count) = self
+            .series
+            .values()
+            .collect::<Vec<_>>()
+            .into_par_iter()
+            .map(|series| {
+                series
+                    .residuals
+                    .iter()
+                    .skip(1)
+                    .fold((0.0, 0usize), |(sum, count), residual| {
+                        (sum + residual * residual, count + 1)
+                    })
+            })
+            .reduce(
+                || (0.0, 0usize),
+                |left, right| (left.0 + right.0, left.1 + right.1),
+            );
         if count == 0 {
             0.0
         } else {

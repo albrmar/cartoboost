@@ -15,4 +15,5 @@ cartoboost-neural = { path = "../cartoboost-neural" }
 chrono.workspace = true
 numpy = "0.23"
 pyo3.workspace = true
+rayon = "1.11"
 serde_json.workspace = true

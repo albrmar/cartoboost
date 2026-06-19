@@ -185,6 +185,7 @@ class CartoBoostRegressor(RegressorMixin, BaseEstimator):
             fuzzy=bool(self.fuzzy),
             fuzzy_bandwidth=float(self.fuzzy_bandwidth),
             fuzzy_kernel=str(self.fuzzy_kernel),
+            n_threads=None if self.n_threads is None else int(self.n_threads),
             monotonic_constraints=(
                 None
                 if self.monotonic_constraints is None
@@ -610,6 +611,8 @@ class CartoBoostRegressor(RegressorMixin, BaseEstimator):
                 "fuzzy_kernel must be 'linear', 'gaussian', 'exponential', "
                 "'bisquare', 'epanechnikov', or 'tricube'"
             )
+        if self.n_threads is not None and int(self.n_threads) <= 0:
+            raise ValueError("n_threads must be positive")
         if self.monotonic_constraints is not None:
             constraints = list(self.monotonic_constraints)
             if any(int(value) not in {-1, 0, 1} for value in constraints):

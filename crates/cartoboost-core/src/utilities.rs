@@ -1,4 +1,5 @@
 use crate::{CartoBoostError, Result};
+use rayon::prelude::*;
 
 #[derive(Debug, Clone, Copy)]
 pub struct LocalLinearKalmanConfig {
@@ -299,8 +300,8 @@ pub fn ordinary_kriging_predict_many(
         ));
     }
     targets
-        .iter()
-        .map(|target| ordinary_kriging_predict(observations, *target, config))
+        .par_iter()
+        .map(|target| ordinary_kriging_predict_unchecked(observations, *target, config))
         .collect()
 }
 
@@ -310,6 +311,19 @@ pub fn ordinary_kriging_predict(
     config: OrdinaryKrigingConfig,
 ) -> Result<KrigingPrediction> {
     validate_kriging_observations(observations)?;
+    if !target.0.is_finite() || !target.1.is_finite() {
+        return Err(CartoBoostError::InvalidInput(
+            "kriging target coordinates must be finite".to_string(),
+        ));
+    }
+    ordinary_kriging_predict_unchecked(observations, target, config)
+}
+
+fn ordinary_kriging_predict_unchecked(
+    observations: &[KrigingObservation],
+    target: (f64, f64),
+    config: OrdinaryKrigingConfig,
+) -> Result<KrigingPrediction> {
     if !target.0.is_finite() || !target.1.is_finite() {
         return Err(CartoBoostError::InvalidInput(
             "kriging target coordinates must be finite".to_string(),

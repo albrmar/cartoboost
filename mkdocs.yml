@@ -73,10 +73,21 @@ nav:
       - Spatial Modeling: spatial_modeling.md
       - Evaluation Protocol: evaluation_protocol.md
       - General Utilities: general_utilities.md
+      - Model Types: user-guide/model-types.md
       - Forecasting:
           - Overview: forecasting.md
           - API: forecasting_api.md
           - Models: forecasting_models.md
+          - Model Guides:
+              - Overview: user-guide/forecasting-models/index.md
+              - Naive And Seasonal Naive: user-guide/forecasting-models/naive-seasonal.md
+              - Theta: user-guide/forecasting-models/theta.md
+              - ETS: user-guide/forecasting-models/ets.md
+              - ARIMA And AutoARIMA: user-guide/forecasting-models/arima.md
+              - Kalman: user-guide/forecasting-models/kalman.md
+              - Kriging: user-guide/forecasting-models/kriging.md
+              - CartoBoost Lag: user-guide/forecasting-models/cartoboost-lag.md
+              - Weighted Ensembles: user-guide/forecasting-models/ensembles.md
           - Backtesting: forecasting_backtesting.md
           - Lag Features: forecasting_lag_features.md
           - Artifacts And Config: forecasting_artifacts.md
