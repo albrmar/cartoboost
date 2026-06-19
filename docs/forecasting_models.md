@@ -27,6 +27,7 @@ for these model names:
 - `auto_kalman`
 - `kriging`
 - `cartoboost_lag`
+- `cartoboost_auto_forecast`
 - `weighted_ensemble`
 - `stl_cartoboost`
 - `mstl_cartoboost`
@@ -50,6 +51,7 @@ for these model names:
 | `auto_kalman` | [Kalman](user-guide/forecasting-models/kalman.md) | Deterministic native grid search over local-linear variance candidates. | A small reproducible variance grid should replace manual level/trend/noise settings. |
 | `kriging` | [Kriging](user-guide/forecasting-models/kriging.md) | Ordinary-kriging panel forecaster over explicit series coordinates. | Nearby zones or route coordinates should borrow spatial signal. |
 | `cartoboost_lag` | [CartoBoost Lag](user-guide/forecasting-models/cartoboost-lag.md) | Supervised native lag, rolling, calendar, trend, and CartoBoost regressor workflow. | Many related panels should share one leakage-safe lag model. |
+| `cartoboost_auto_forecast` | [Forecasting Overhaul](forecasting_overhaul.md) | Deterministic benchmark alias for the hybrid AutoForecaster: AutoStats, direct CartoBoost, decomposition, intermittent, probabilistic, reconciliation, neural, and ensemble branches are rule-routed when inputs support them. | You want the default no-hyperopt CartoBoost forecasting contender for committed M4/M5/M6-style benchmarks. |
 | `weighted_ensemble` | [Weighted Ensembles](user-guide/forecasting-models/ensembles.md) | Native PyO3 class requiring explicit native component models and weights. | Validated components make complementary errors under the same split. |
 | `stl_cartoboost` | [Forecasting Decomposition](forecasting_decomposition.md) | Native additive STL decomposition with a native remainder forecaster and deterministic recomposition. | One dominant taxi seasonality should be separated before modeling residual autocorrelation. |
 | `mstl_cartoboost` | [Forecasting Decomposition](forecasting_decomposition.md) | Native additive MSTL decomposition over multiple season lengths with a native remainder forecaster and deterministic recomposition. | Hour-of-day and day-of-week taxi patterns should be separated before residual modeling. |

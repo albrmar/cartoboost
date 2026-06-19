@@ -77,11 +77,20 @@ The public Python names with native PyO3 training and prediction bindings are:
 - `ETSForecaster`
 - `AutoARIMAForecaster`
 - `CartoBoostLagForecaster`
+- `AutoForecaster`
 - `WeightedEnsembleForecaster`
 
 Additional Rust-core forecasting behavior includes rolling-origin splitters,
 forecast metrics, result serialization, artifact manifests, reconciliation
 metadata, and leakage-safe lag features.
+
+Benchmark scripts also expose stable roster aliases for reproducible committed
+runs:
+
+| Benchmark alias | Python surface | Purpose |
+| --- | --- | --- |
+| `cartoboost_lag` | `CartoBoostLagForecaster` | Existing supervised lag baseline used for continuity with prior forecasting evidence. |
+| `cartoboost_auto_forecast` | `AutoForecaster` | Deterministic hybrid default that routes through AutoStats, direct CartoBoost, decomposition, intermittent, probabilistic, reconciliation, neural, and ensemble branches when their inputs are available. |
 
 Rust ETS is additive-only in this version. Rust AutoARIMA searches bounded
 ARIMA(p,d,q) candidates with residual-lag moving-average terms; seasonal
