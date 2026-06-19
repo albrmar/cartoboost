@@ -25,9 +25,6 @@ temporal, spatial, geotemporal, graph, and neural-embedding modeling.
 - Benchmarks: ./docs/benchmarks/index.md
 - Forecasting benchmarks and M4 evidence: ./docs/benchmarks/forecasting.md
 - Forecasting overhaul: ./docs/forecasting_overhaul.md
-- M4-style forecasting command boundary: ./docs/benchmarks/m4.md
-- M5-style WRMSSE metric notes: ./docs/benchmarks/m5.md
-- M6-style metric notes: ./docs/benchmarks/m6.md
 
 ## Public Python Entry Points
 

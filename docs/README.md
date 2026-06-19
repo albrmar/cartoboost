@@ -28,7 +28,11 @@ neural-embedding workflows.
 - [Python API Reference](reference/python-api.md)
 - [CLI Reference](reference/cli.md)
 - [Benchmarks](benchmarks/index.md)
-  - [Neural Embedding Strategy Assessment](benchmarks/neural-embedding-strategy.md)
+  - [NYC Taxi Benchmarks](benchmarks/nyc-taxi.md)
+  - [Forecasting Tool Benchmark](benchmarks/forecasting.md)
+  - [Model Benchmark Suite](benchmarks/model-suite.md)
+  - [Taxi Zone Acceptance](benchmarks/taxi-zone.md)
+  - [Neural Embedding Benchmark](benchmarks/neural-embedding-benchmark-latest.md)
 
 CartoBoost is most useful when time, place, route membership, and directed
 relationships are part of the scientific question instead of incidental columns.

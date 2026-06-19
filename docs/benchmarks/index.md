@@ -22,12 +22,8 @@ separate real NYC TLC evidence from synthetic mechanism checks.
 | --- | --- | --- |
 | [NYC Taxi Benchmarks](nyc-taxi.md) | Real TLC fare, duration, and pickup-demand regression. | Metric summary, predicted-vs-actual plots, throughput plots. |
 | [Forecasting Tool Benchmark](forecasting.md) | Real taxi lane demand, synthetic taxi-shaped forecasting, M4 sample, M5 full-roster sample, and M5/M6 full-run protocols. | RMSE/WAPE tables, M5/M6 model rosters, run commands, horizon plot, forecast-line plot. |
-| [M4-Style Forecasting](m4.md) | Command and claim boundary for the committed M4 sample wrapper. | No-hyperopt command and sample-vs-corpus distinction. |
-| [M5-Style WRMSSE](m5.md) | Metric definition for M5-like hierarchical validation; not a benchmark result. | Scale definition, weight normalization, and claim boundary. |
-| [M6-Style Metrics](m6.md) | RPS, pinball, and portfolio-style metric contract; not an RMSE-only result. | Rank-probability scoring and proxy warning. |
 | [Model Benchmark Suite](model-suite.md) | Synthetic dense, repeated-ID, and graph diagnostics. | MAE-by-model plot and workload table. |
 | [Taxi Zone Acceptance](taxi-zone.md) | Deterministic taxi-lane feature acceptance. | Lane heatmap, hour profile, route midpoint geometry. |
-| [Neural Embedding Strategy](neural-embedding-strategy.md) | Method rules for neural residual rows. | Safeguards and split-specific claim boundary. |
 | [Neural Embedding Benchmark](neural-embedding-benchmark-latest.md) | Synthetic repeated-ID/cold-ID diagnostic. | Scenario table showing random/tail wins and cold-origin failure. |
 
 ## Current Maintained Artifacts
