@@ -116,6 +116,29 @@ included to check non-taxi behavior and library interoperability.
 | `statsforecast_autoets` | 1.328 | 2 | 2 |
 | `statsforecast_dynamic_optimized_theta` | 1.344 | 2 | 1 |
 
+### M4 Model RMSE
+
+M4 groups have different scales, so the ratio table above is the better
+cross-group comparison. The table below reports the arithmetic mean of each
+model's group RMSE from the same committed artifact.
+
+| Model | Mean RMSE | Mean RMSE ratio to group best |
+| --- | ---: | ---: |
+| `cartoboost_lag` | 557.361552 | 1.027257 |
+| `xgboost_lag` | 630.136135 | 1.185291 |
+| `lightgbm_lag` | 713.181000 | 1.250493 |
+| `statsforecast_autoarima` | 781.134754 | 1.291109 |
+| `statsforecast_autoets` | 830.310579 | 1.328236 |
+| `statsforecast_dynamic_optimized_theta` | 837.602838 | 1.343737 |
+| `statsforecast_autotheta` | 841.111899 | 1.349802 |
+| `statsforecast_autotbats` | 864.728804 | 1.395882 |
+| `statsforecast_autoces` | 872.457851 | 1.399044 |
+| `functime_snaive` | 868.033528 | 1.400568 |
+| `functime_lightgbm` | 868.033528 | 1.400568 |
+| `statsforecast_seasonal_naive` | 868.033528 | 1.400568 |
+| `functime_ridge` | 874.441228 | 1.414405 |
+| `prophet_additive` | 913.373419 | 1.454984 |
+
 This is not a full M4 claim. Use `--m4-series-limit 0` before making
 full-corpus statements.
 
@@ -193,6 +216,16 @@ uv run --group bench python scripts/forecasting_library_benchmark.py \
 | CartoBoost MAE | 1.332997 |
 | CartoBoost WAPE | 0.923884 |
 
+### M5 Model RMSE
+
+The committed M5 artifact used the `cartoboost` roster. That means the only
+scientifically measured model in this full-corpus run is `cartoboost_lag`.
+Unrun external-library rows are not fabricated here.
+
+| Model | RMSE | MAE | WAPE |
+| --- | ---: | ---: | ---: |
+| `cartoboost_lag` | 2.634879 | 1.332997 | 0.923884 |
+
 The full external-library comparison was not used for M5 because recursive
 external tree prediction and per-series heavyweight models are not practical on
 30,490 series in the current benchmark harness. The maintained M5 artifact is
@@ -266,6 +299,28 @@ uv run --group bench python scripts/forecasting_library_benchmark.py \
 | 3 | `functime_ridge` | Best non-StatsForecast model by RMSE. |
 | 4 | `statsforecast_autotbats` | Strong but slower than simpler baselines. |
 | 14 | `cartoboost_lag` | 7.1% higher RMSE than the best forecasting-library model. |
+
+### M6 Model RMSE
+
+The table below reports every model present in the committed M6 artifact,
+ranked by RMSE.
+
+| Model | RMSE | MAE | WAPE |
+| --- | ---: | ---: | ---: |
+| `statsforecast_autoarima` | 0.013402 | 0.007400 | 1.005844 |
+| `statsforecast_autoets` | 0.013408 | 0.007456 | 1.013524 |
+| `functime_ridge` | 0.013474 | 0.007670 | 1.042553 |
+| `statsforecast_autotbats` | 0.013477 | 0.007663 | 1.041580 |
+| `statsforecast_autoces` | 0.013522 | 0.007617 | 1.035289 |
+| `statsforecast_dynamic_optimized_theta` | 0.013669 | 0.008204 | 1.115187 |
+| `functime_snaive` | 0.013674 | 0.007500 | 1.019396 |
+| `functime_lightgbm` | 0.013674 | 0.007500 | 1.019396 |
+| `statsforecast_seasonal_naive` | 0.013674 | 0.007500 | 1.019396 |
+| `prophet_additive` | 0.013674 | 0.007500 | 1.019396 |
+| `lightgbm_lag` | 0.013674 | 0.007500 | 1.019396 |
+| `statsforecast_autotheta` | 0.013683 | 0.008228 | 1.118462 |
+| `xgboost_lag` | 0.014246 | 0.008896 | 1.209160 |
+| `cartoboost_lag` | 0.014348 | 0.009357 | 1.271868 |
 
 This is intentionally named a proxy run. The official M6 competition combined
 rank-probability forecasts and investment decisions, with RPS and investment
