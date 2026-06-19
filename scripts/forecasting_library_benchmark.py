@@ -10,8 +10,14 @@ NYC TLC trip records into the same lane-demand shape.
 from __future__ import annotations
 
 import argparse
+import hashlib
+import io
 import json
 import math
+import os
+import platform
+import resource
+import subprocess
 import sys
 import urllib.request
 import warnings
@@ -262,6 +268,8 @@ def main() -> int:
 
     load_start = perf_counter()
     table, dataset = load_dataset(args)
+    dataset["dataset_hash"] = canonical_dataset_hash(table)
+    dataset_source_hashes = source_file_hashes(dataset)
     load_seconds = perf_counter() - load_start
     benchmark_horizon = int(dataset.get("horizon", args.horizon))
     season_length = int(dataset.get("season_length", 7))
@@ -292,6 +300,10 @@ def main() -> int:
     payload = {
         "created_at": datetime.now(timezone.utc).isoformat(),
         "cartoboost_version": __version__,
+        "git_commit": read_git_commit(),
+        "dataset_hash": dataset["dataset_hash"],
+        "source_file_hashes": dataset_source_hashes,
+        "benchmark_integrity": benchmark_integrity(args),
         "benchmark": "geotemporal_lane_demand_forecasting_libraries",
         "fixture_source": args.source,
         "comparison_libraries": list(FORECASTING_LIBRARY_MODELS),
@@ -311,6 +323,7 @@ def main() -> int:
             season_length=season_length,
         ),
         "timing": timing,
+        "resource_usage": resource_usage_snapshot(),
         "plots": plots,
     }
     output = Path(args.output)
@@ -371,6 +384,92 @@ def validate_args(args: argparse.Namespace) -> None:
         raise ValueError("--suite requires enough days for rolling origins and 60 training days")
 
 
+def canonical_dataset_hash(table: Any) -> str:
+    frame = table
+    columns = sorted(str(column) for column in frame.columns)
+    sort_columns = [
+        column
+        for column in ["lane_id", "series_id", "date", "timestamp", "horizon"]
+        if column in frame.columns
+    ]
+    if sort_columns and hasattr(frame, "sort"):
+        frame = frame.sort(sort_columns)
+    frame = frame.select(columns)
+    buffer = io.StringIO()
+    frame.write_csv(buffer)
+    return hashlib.sha256(buffer.getvalue().encode("utf-8")).hexdigest()
+
+
+def aggregate_hash(values: Any) -> str:
+    digest = hashlib.sha256()
+    for value in sorted(str(value) for value in values):
+        digest.update(value.encode("utf-8"))
+        digest.update(b"\n")
+    return digest.hexdigest()
+
+
+def source_file_hashes(dataset: dict[str, Any]) -> dict[str, str]:
+    hashes: dict[str, str] = {}
+    for key in ["sales_file", "calendar_file", "assets_file"]:
+        value = dataset.get(key)
+        if not value:
+            continue
+        path = Path(value)
+        if path.exists():
+            hashes[key] = file_sha256(path)
+    return hashes
+
+
+def file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def read_git_commit() -> str | None:
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    return result.stdout.strip() or None
+
+
+def benchmark_integrity(args: argparse.Namespace) -> dict[str, Any]:
+    return {
+        "no_hyperopt": bool(args.no_hyperopt),
+        "seed": int(args.seed),
+        "model_roster": args.model_roster,
+        "candidate_selection": not args.no_candidate_selection,
+        "threading": {
+            "rayon_num_threads_env": os.environ.get("RAYON_NUM_THREADS"),
+            "omp_num_threads_env": os.environ.get("OMP_NUM_THREADS"),
+            "python_hash_seed": os.environ.get("PYTHONHASHSEED"),
+        },
+    }
+
+
+def resource_usage_snapshot() -> dict[str, Any]:
+    usage = resource.getrusage(resource.RUSAGE_SELF)
+    return {
+        "process_cpu_seconds": float(usage.ru_utime + usage.ru_stime),
+        "peak_rss_mb": peak_rss_mb(usage.ru_maxrss),
+    }
+
+
+def peak_rss_mb(raw_maxrss: int) -> float:
+    if platform.system() == "Darwin":
+        return float(raw_maxrss) / (1024.0 * 1024.0)
+    return float(raw_maxrss) / 1024.0
+
+
 def benchmark_model_names(roster: str) -> list[str]:
     if roster == "cartoboost":
         return ["cartoboost_lag", "cartoboost_auto_forecast"]
@@ -406,6 +505,7 @@ def run_synthetic_suite(
         problem_args.problem = problem
         load_start = perf_counter()
         table, dataset = load_synthetic_fixture(problem_args)
+        dataset["dataset_hash"] = canonical_dataset_hash(table)
         load_seconds = perf_counter() - load_start
         split_results, metrics, quality, timing = score_rolling_origin_problem(
             table,
@@ -429,6 +529,12 @@ def run_synthetic_suite(
     payload = {
         "created_at": datetime.now(timezone.utc).isoformat(),
         "cartoboost_version": __version__,
+        "git_commit": read_git_commit(),
+        "dataset_hash": aggregate_hash(
+            result["dataset"]["dataset_hash"] for result in results.values()
+        ),
+        "source_file_hashes": {},
+        "benchmark_integrity": benchmark_integrity(args),
         "benchmark": "geotemporal_lane_demand_forecasting_library_suite",
         "fixture_source": args.source,
         "comparison_libraries": list(FORECASTING_LIBRARY_MODELS),
@@ -454,6 +560,7 @@ def run_synthetic_suite(
             "total_seconds": perf_counter() - benchmark_start,
             "problems": timings,
         },
+        "resource_usage": resource_usage_snapshot(),
     }
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -474,6 +581,7 @@ def run_m4_suite(
         group_args.m4_group = group
         load_start = perf_counter()
         table, dataset = load_m4_fixture(group_args)
+        dataset["dataset_hash"] = canonical_dataset_hash(table)
         load_seconds = perf_counter() - load_start
         metrics, quality, timing, _scored = score_models(
             table,
@@ -496,6 +604,12 @@ def run_m4_suite(
     payload = {
         "created_at": datetime.now(timezone.utc).isoformat(),
         "cartoboost_version": __version__,
+        "git_commit": read_git_commit(),
+        "dataset_hash": aggregate_hash(
+            result["dataset"]["dataset_hash"] for result in results.values()
+        ),
+        "source_file_hashes": {},
+        "benchmark_integrity": benchmark_integrity(args),
         "benchmark": "m4_forecasting_library_group_suite",
         "fixture_source": args.source,
         "comparison_libraries": list(FORECASTING_LIBRARY_MODELS),
@@ -517,6 +631,7 @@ def run_m4_suite(
             "total_seconds": perf_counter() - benchmark_start,
             "groups": timings,
         },
+        "resource_usage": resource_usage_snapshot(),
     }
     output = Path(args.output)
     output.parent.mkdir(parents=True, exist_ok=True)

@@ -1,17 +1,29 @@
 {
   "benchmark": "geotemporal_lane_demand_forecasting_libraries",
-  "cartoboost_version": "0.1.51",
+  "benchmark_integrity": {
+    "candidate_selection": true,
+    "model_roster": "cartoboost",
+    "no_hyperopt": true,
+    "seed": 42,
+    "threading": {
+      "omp_num_threads_env": null,
+      "python_hash_seed": null,
+      "rayon_num_threads_env": null
+    }
+  },
+  "cartoboost_version": "0.1.53",
   "comparison_libraries": [
     "functime",
     "statsforecast",
     "prophet",
     "external_trees"
   ],
-  "created_at": "2026-06-19T19:45:04.489951+00:00",
+  "created_at": "2026-06-19T20:42:24.401229+00:00",
   "dataset": {
     "available_days": 1941,
     "available_series": 30490,
     "calendar_file": "/Users/ryanculligan/Documents/GitHub/cartoboost/data/forecasting_benchmarks/m5/datasets/calendar.csv",
+    "dataset_hash": "554e46fe8371a36fe21f03cf3bf2574aa679533d6df23d83daa41f04e48d79d7",
     "days": 365,
     "domain": "M5 Forecasting Accuracy Walmart item-store unit sales",
     "history_days": 365,
@@ -33,8 +45,10 @@
       "pickup_borough_code"
     ]
   },
+  "dataset_hash": "554e46fe8371a36fe21f03cf3bf2574aa679533d6df23d83daa41f04e48d79d7",
   "fixture_source": "m5",
   "forecasting_library_models": {},
+  "git_commit": "68c241ddf10b258e5bb9fc10386dd673f1d68284",
   "metrics": {
     "cartoboost_auto_forecast": {
       "bias": 0.1471308812335249,
@@ -3376,9 +3390,17 @@
     ],
     "winner": "cartoboost_lag"
   },
+  "resource_usage": {
+    "peak_rss_mb": 375.34375,
+    "process_cpu_seconds": 321.74823100000003
+  },
+  "source_file_hashes": {
+    "calendar_file": "568d0fe5f41790142379698732908e4e57432c1c6396f3f59fb880a9c2b54231",
+    "sales_file": "c21a519596680feb86f27a9e62f6c8b583f8be60c2c195f080ae8ca2990af2b7"
+  },
   "timing": {
     "candidate_selection": {
-      "calibration_seconds": 30.378776083001867,
+      "calibration_seconds": 31.778754917002516,
       "inner_origin_count": 1.0,
       "inner_rmse": {
         "cartoboost_auto_forecast": {
@@ -3395,7 +3417,7 @@
         "cartoboost_lag": "shared_calendar_phase14"
       }
     },
-    "load_seconds": 0.09693658299511299,
+    "load_seconds": 0.15401399999973364,
     "models": {
       "cartoboost_auto_forecast": {
         "auto_config": {
@@ -3408,14 +3430,14 @@
             "periodic:7"
           ]
         },
-        "calibration_seconds": 8.025011375022586,
+        "calibration_seconds": 8.387824667006498,
         "ensemble_weights": {
           "cartoboost_raw": 1.0
         },
         "feature_count": 22.0,
-        "feature_seconds": 0.0012945409980602562,
-        "fit_predict_seconds": 1.4031519579875749,
-        "fit_seconds": 1.3918078750139102,
+        "feature_seconds": 0.0012246670085005462,
+        "fit_predict_seconds": 1.415312042023288,
+        "fit_seconds": 1.402300167013891,
         "inner_base_rmse": 3.611221762651474,
         "inner_blended_relative_rmse_gain": 0.0,
         "inner_blended_rmse": 2.680310273308337,
@@ -3431,20 +3453,20 @@
         "inner_seasonal_drift_rmse": 3.5999443434678264,
         "inner_selected_relative_rmse_gain": 0.022892831722811646,
         "inner_validation_ensemble_rmse": 2.6189503812565658,
-        "predict_seconds": 0.011344082973664626,
+        "predict_seconds": 0.013011875009397045,
         "residual_alpha": 1.0,
         "selected_candidate": "cartoboost_raw",
-        "total_seconds": 9.429457874008222
+        "total_seconds": 9.804361376038287
       },
       "cartoboost_lag": {
         "feature_count": 22.0,
-        "feature_seconds": 0.0019535410101525486,
-        "fit_predict_seconds": 0.5583546670095529,
-        "fit_seconds": 0.5490914169931784,
-        "predict_seconds": 0.009263250016374514,
-        "total_seconds": 0.5603082080197055
+        "feature_seconds": 0.002013250021263957,
+        "fit_predict_seconds": 0.5646479589631781,
+        "fit_seconds": 0.5557061669824179,
+        "predict_seconds": 0.008941791980760172,
+        "total_seconds": 0.566661208984442
       }
     },
-    "total_seconds": 47.29856241698144
+    "total_seconds": 49.378724875015905
   }
 }

@@ -198,6 +198,110 @@ def test_forecasting_benchmark_loads_m5_local_competition_files(tmp_path):
     assert {"lane_id", "date", "loads", *benchmark.STATIC_COVARIATES} <= set(table.columns)
 
 
+def test_forecasting_benchmark_provenance_helpers_are_stable(tmp_path):
+    pl = pytest.importorskip("polars")
+    repo_root = Path(__file__).resolve().parents[2]
+    module_path = repo_root / "scripts" / "forecasting_library_benchmark.py"
+    spec = importlib.util.spec_from_file_location(
+        "forecasting_library_benchmark_provenance",
+        module_path,
+    )
+    assert spec is not None
+    assert spec.loader is not None
+    benchmark = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = benchmark
+    spec.loader.exec_module(benchmark)
+
+    first = pl.DataFrame(
+        [
+            {"lane_id": "PU2->DO2", "date": date(2026, 1, 2), "loads": 2.0},
+            {"lane_id": "PU1->DO1", "date": date(2026, 1, 1), "loads": 1.0},
+        ]
+    )
+    second = pl.DataFrame(
+        [
+            {"loads": 1.0, "date": date(2026, 1, 1), "lane_id": "PU1->DO1"},
+            {"loads": 2.0, "date": date(2026, 1, 2), "lane_id": "PU2->DO2"},
+        ]
+    )
+
+    assert benchmark.canonical_dataset_hash(first) == benchmark.canonical_dataset_hash(second)
+
+    source = tmp_path / "assets_m6.csv"
+    source.write_text("symbol,date,price\nAAA,2026-01-01,10.0\n", encoding="utf-8")
+    hashes = benchmark.source_file_hashes({"assets_file": str(source)})
+    assert hashes["assets_file"] == benchmark.file_sha256(source)
+
+    resources = benchmark.resource_usage_snapshot()
+    assert resources["process_cpu_seconds"] >= 0.0
+    assert resources["peak_rss_mb"] > 0.0
+
+
+def test_forecasting_benchmark_docs_match_committed_artifacts():
+    repo_root = Path(__file__).resolve().parents[2]
+    docs = (repo_root / "docs" / "benchmarks" / "forecasting.md").read_text(encoding="utf-8")
+    artifacts = repo_root / "docs" / "assets" / "nyc_taxi_benchmarks"
+
+    synthetic = json.loads((artifacts / "forecasting_overhaul_committed_suite.json").read_text())
+    synthetic_quality = synthetic["aggregate_quality"]
+    synthetic_lag = synthetic_quality["mean_rmse_ratio_to_problem_best"]["cartoboost_lag"]
+    synthetic_auto = synthetic_quality["mean_rmse_ratio_to_problem_best"][
+        "cartoboost_auto_forecast"
+    ]
+    assert f"{synthetic_lag:.6f} vs `cartoboost_auto_forecast` {synthetic_auto:.6f}" in docs
+
+    m4 = json.loads((artifacts / "forecasting_overhaul_m4_committed.json").read_text())
+    m4_quality = m4["aggregate_quality"]
+    m4_lag = m4_quality["mean_rmse_ratio_to_problem_best"]["cartoboost_lag"]
+    m4_auto = m4_quality["mean_rmse_ratio_to_problem_best"]["cartoboost_auto_forecast"]
+    assert (
+        f"`cartoboost_lag` ranked first with mean RMSE ratio {m4_lag:.6f} "
+        f"and {m4_quality['wins_or_ties']['cartoboost_lag']}/6 wins-or-ties"
+    ) in docs
+    assert f"`cartoboost_auto_forecast` mean ratio {m4_auto:.6f}" in docs
+
+    m5 = json.loads((artifacts / "forecasting_overhaul_m5_committed.json").read_text())
+    m5_lag = m5["metrics"]["cartoboost_lag"]
+    m5_wrmsse = m5["official_metrics"]["m5"]["model_scores"]["cartoboost_lag"]
+    m5_auto_wrmsse = m5["official_metrics"]["m5"]["model_scores"]["cartoboost_auto_forecast"]
+    assert (
+        f"RMSE {m5_lag['rmse']:.6f}, MAE {m5_lag['mae']:.6f}, "
+        f"WAPE {m5_lag['wape']:.6f}, WRMSSE {m5_wrmsse:.6f}"
+    ) in docs
+    assert f"`cartoboost_auto_forecast` WRMSSE was {m5_auto_wrmsse:.6f}" in docs
+
+    m6 = json.loads((artifacts / "forecasting_overhaul_m6_committed.json").read_text())
+    m6_auto = m6["metrics"]["cartoboost_auto_forecast"]
+    m6_rps = m6["official_metrics"]["m6"]["models"]
+    assert (
+        f"RMSE {m6_auto['rmse']:.6f}, MAE {m6_auto['mae']:.6f}, WAPE {m6_auto['wape']:.6f}"
+    ) in docs
+    assert (
+        f"`cartoboost_lag` won RPS: {m6_rps['cartoboost_lag']['mean_rps']:.6f} "
+        f"vs auto {m6_rps['cartoboost_auto_forecast']['mean_rps']:.6f}"
+    ) in docs
+
+
+def test_committed_forecasting_artifacts_include_provenance_fields():
+    repo_root = Path(__file__).resolve().parents[2]
+    artifacts = repo_root / "docs" / "assets" / "nyc_taxi_benchmarks"
+    names = [
+        "forecasting_overhaul_committed_suite.json",
+        "forecasting_overhaul_m4_committed.json",
+        "forecasting_overhaul_m5_committed.json",
+        "forecasting_overhaul_m6_committed.json",
+    ]
+    for name in names:
+        artifact = json.loads((artifacts / name).read_text())
+        assert artifact["git_commit"]
+        assert artifact["dataset_hash"]
+        assert "source_file_hashes" in artifact
+        assert artifact["benchmark_integrity"]["no_hyperopt"] is True
+        assert artifact["benchmark_integrity"]["seed"] == 42
+        assert artifact["resource_usage"]["peak_rss_mb"] > 0.0
+        assert artifact["resource_usage"]["process_cpu_seconds"] >= 0.0
+
+
 def test_forecasting_benchmark_m5_requires_real_local_files(tmp_path):
     repo_root = Path(__file__).resolve().parents[2]
     module_path = repo_root / "scripts" / "forecasting_library_benchmark.py"

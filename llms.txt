@@ -90,6 +90,9 @@ temporal, spatial, geotemporal, graph, and neural-embedding modeling.
 - Use `cartoboost.metrics.wrmsse`, `cartoboost.metrics.m6`, and the benchmark
   artifact `official_metrics` section for M5/M6-style checks instead of
   treating all forecasting benchmarks as RMSE-only.
+- New forecasting benchmark artifacts expose `git_commit`, `dataset_hash`,
+  `source_file_hashes`, `benchmark_integrity`, and `resource_usage` for
+  provenance checks.
 - Use `uv sync --group dev` for local development and
   `uv run --group dev maturin develop` after native binding changes.
 - Use `npm run typecheck` and `npm run build` for the Docusaurus docs site.

@@ -17,9 +17,10 @@ M6 claims, cite `official_metrics` in addition to the shared point metrics.
 
 ## Artifact Metric Contract
 
-Every benchmark artifact keeps shared point metrics under `metrics`: RMSE, MAE,
-MASE, WAPE, SMAPE, and bias. M5 and M6 artifacts also include
-`official_metrics`:
+New benchmark artifacts written by the harness keep provenance fields at the top level:
+`git_commit`, `dataset_hash`, `source_file_hashes`, `benchmark_integrity`, and
+`resource_usage`. Shared point metrics live under `metrics`: RMSE, MAE, MASE,
+WAPE, SMAPE, and bias. M5 and M6 artifacts also include `official_metrics`:
 
 | Source | Primary field | Contents | Claim boundary |
 | --- | --- | --- | --- |

@@ -1,16 +1,28 @@
 {
   "benchmark": "geotemporal_lane_demand_forecasting_libraries",
-  "cartoboost_version": "0.1.51",
+  "benchmark_integrity": {
+    "candidate_selection": true,
+    "model_roster": "cartoboost",
+    "no_hyperopt": true,
+    "seed": 42,
+    "threading": {
+      "omp_num_threads_env": null,
+      "python_hash_seed": null,
+      "rayon_num_threads_env": null
+    }
+  },
+  "cartoboost_version": "0.1.53",
   "comparison_libraries": [
     "functime",
     "statsforecast",
     "prophet",
     "external_trees"
   ],
-  "created_at": "2026-06-19T19:45:58.891095+00:00",
+  "created_at": "2026-06-19T20:43:20.065477+00:00",
   "dataset": {
     "assets_file": "/Users/ryanculligan/Documents/GitHub/cartoboost/data/forecasting_benchmarks/m6/assets_m6.csv",
     "available_series": 100,
+    "dataset_hash": "1b853601915c450255c3381502260bb7a47907888a9b54416600d549a6c9a7d9",
     "days": 383,
     "domain": "M6 financial competition assets daily return point-forecast proxy",
     "horizon": 28,
@@ -30,8 +42,10 @@
       "pickup_borough_code"
     ]
   },
+  "dataset_hash": "1b853601915c450255c3381502260bb7a47907888a9b54416600d549a6c9a7d9",
   "fixture_source": "m6",
   "forecasting_library_models": {},
+  "git_commit": "68c241ddf10b258e5bb9fc10386dd673f1d68284",
   "metrics": {
     "cartoboost_auto_forecast": {
       "bias": 0.0014135274426189852,
@@ -3547,9 +3561,16 @@
     ],
     "winner": "cartoboost_auto_forecast"
   },
+  "resource_usage": {
+    "peak_rss_mb": 361.9375,
+    "process_cpu_seconds": 326.233782
+  },
+  "source_file_hashes": {
+    "assets_file": "48c67aa0976ae63de3a6d7a42228ef374d39221734a433c9391572d01e85b20a"
+  },
   "timing": {
     "candidate_selection": {
-      "calibration_seconds": 31.30691170800128,
+      "calibration_seconds": 31.922890540998196,
       "inner_origin_count": 1.0,
       "inner_rmse": {
         "cartoboost_auto_forecast": {
@@ -3566,7 +3587,7 @@
         "cartoboost_lag": "cartoboost_lag"
       }
     },
-    "load_seconds": 0.14673112498712726,
+    "load_seconds": 0.15489983299630694,
     "models": {
       "cartoboost_auto_forecast": {
         "auto_config": {
@@ -3579,7 +3600,7 @@
             "periodic:7"
           ]
         },
-        "calibration_seconds": 8.33573091699509,
+        "calibration_seconds": 8.483582499990007,
         "ensemble_weights": {
           "cartoboost_calendar_dom": 0.24805945476665806,
           "cartoboost_calendar_phase14": 0.26592297223063627,
@@ -3587,9 +3608,9 @@
           "cartoboost_residual_blend": 0.24300878650135282
         },
         "feature_count": 22.0,
-        "feature_seconds": 0.0012191669957246631,
-        "fit_predict_seconds": 1.8198013750079554,
-        "fit_seconds": 1.8065632919897325,
+        "feature_seconds": 0.0012749169836752117,
+        "fit_predict_seconds": 1.828779333998682,
+        "fit_seconds": 1.8141820419987198,
         "inner_base_rmse": 0.01624456983110332,
         "inner_blended_relative_rmse_gain": 0.011998532527778605,
         "inner_blended_rmse": 0.013365852505576911,
@@ -3605,20 +3626,20 @@
         "inner_seasonal_drift_rmse": 0.014157547013283311,
         "inner_selected_relative_rmse_gain": 0.04504527062904162,
         "inner_validation_ensemble_rmse": 0.012763784062275345,
-        "predict_seconds": 0.013238083018222824,
+        "predict_seconds": 0.01459729199996218,
         "residual_alpha": 1.0,
         "selected_candidate": "cartoboost_validation_weighted_ensemble",
-        "total_seconds": 10.15675145899877
+        "total_seconds": 10.313636750972364
       },
       "cartoboost_lag": {
         "feature_count": 22.0,
-        "feature_seconds": 0.0018025000172201544,
-        "fit_predict_seconds": 0.685729207994882,
-        "fit_seconds": 0.6770354580075946,
-        "predict_seconds": 0.008693749987287447,
-        "total_seconds": 0.6875317080121022
+        "feature_seconds": 0.0019577920029405504,
+        "fit_predict_seconds": 0.6853541250166018,
+        "fit_seconds": 0.6760316250147298,
+        "predict_seconds": 0.009322500001871958,
+        "total_seconds": 0.6873119170195423
       }
     },
-    "total_seconds": 48.962230792007176
+    "total_seconds": 49.93313879199559
   }
 }

@@ -33,6 +33,7 @@ def main() -> int:
         "96",
         "--model-roster",
         "cartoboost",
+        "--no-hyperopt",
         "--output",
         args.output,
     ]
