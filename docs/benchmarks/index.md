@@ -26,7 +26,6 @@ separate real NYC TLC evidence from synthetic mechanism checks.
 | [Taxi Zone Acceptance](taxi-zone.md) | Deterministic taxi-lane feature acceptance. | Lane heatmap, hour profile, route midpoint geometry. |
 | [Neural Embedding Strategy](neural-embedding-strategy.md) | Method rules for neural residual rows. | Safeguards and split-specific claim boundary. |
 | [Neural Embedding Benchmark](neural-embedding-benchmark-latest.md) | Synthetic repeated-ID/cold-ID diagnostic. | Scenario table showing random/tail wins and cold-origin failure. |
-| [Fair Benchmarking Program](fair-benchmarking.md) | Governance contract. | Equal-budget, split, baseline, and uncertainty rules. |
 
 ## Current Maintained Artifacts
 
@@ -47,10 +46,9 @@ separate real NYC TLC evidence from synthetic mechanism checks.
 
 A result is usable as benchmark evidence when it names the dataset, command,
 split, feature policy, models, metrics, and artifact path. It is only a public
-quality claim when the comparison also satisfies the fairness rules in the
-[Fair Benchmarking Program](fair-benchmarking.md): complete required baselines,
-same rows, comparable feature access, no test-set peeking, equal tuning budget,
-and uncertainty or repeatability evidence.
+quality claim when the comparison uses complete required baselines, same rows,
+comparable feature access, no test-set peeking, equal tuning budget, and
+uncertainty or repeatability evidence.
 
 Random splits show interpolation. Spatial, grouped, cold-ID, or out-of-time
 splits are the evidence for deployment risk. Synthetic fixtures are useful for

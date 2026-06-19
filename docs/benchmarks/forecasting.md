@@ -1,5 +1,12 @@
 # Forecasting Tool Benchmark
 
+## Competition Results Snapshot
+
+| Competition | Artifact | Scope | Result |
+| --- | --- | --- | --- |
+| M5 Forecasting Accuracy | `docs/assets/nyc_taxi_benchmarks/forecasting_m5_full.json` | 30,490 item-store series, 90 recent days, 28-day holdout | CartoBoost-only fast run: RMSE 2.634879, MAE 1.332997, WAPE 0.923884. |
+| M6 financial assets | `docs/assets/nyc_taxi_benchmarks/forecasting_m6_full.json` | 100 symbols, 38,219 daily-return rows, 28-day holdout | `statsforecast_autoarima` won RMSE at 0.013402; CartoBoost RMSE was 0.014348. |
+
 ## Bottom Line
 
 The forecasting benchmark has five maintained views:
