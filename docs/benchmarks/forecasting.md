@@ -48,7 +48,7 @@ while `cartoboost_lag` wins the deterministic M6 RPS proxy.
 
 ## Competition Results Snapshot
 
-| Competition | Artifact | Scope | Result |
+| Competition | Artifact | Details | Result |
 | --- | --- | --- | --- |
 | M5 committed CartoBoost sample | `docs/assets/nyc_taxi_benchmarks/forecasting_overhaul_m5_committed.json` | Committed M5-style sample, CartoBoost-only roster with auto and lag | `cartoboost_lag` won: RMSE 2.455906, MAE 1.149696, WAPE 0.918936, WRMSSE 0.564643. |
 | M5 Forecasting Accuracy comparison sample | `docs/assets/nyc_taxi_benchmarks/forecasting_m5_full_roster_sample.json` | 100 item-store sample, 90 recent days, 28-day holdout, full 14-model roster without the auto alias | `statsforecast_autoets` won RMSE at 2.525734; CartoBoost lag RMSE was 2.678097. |
@@ -273,24 +273,24 @@ uv run --group bench python scripts/forecasting_library_benchmark.py \
 Use `official_metrics.m5` for WRMSSE. The table keeps the committed
 CartoBoost-only rows and the full-roster sample rows in one place.
 
-| Scope | Model | RMSE | MAE | WAPE | Read |
-| --- | --- | ---: | ---: | ---: | --- |
-| Committed CartoBoost | `cartoboost_lag` | 2.455906 | 1.149696 | 0.918936 | Best point metrics and best WRMSSE, 0.564643. |
-| Committed CartoBoost | `cartoboost_auto_forecast` | 2.530322 | 1.210252 | 0.967338 | WRMSSE 0.706687. |
-| Full-roster sample | `statsforecast_autoets` | 2.525734 | 1.141999 | 0.921232 | Best RMSE in the full-roster sample. |
-| Full-roster sample | `statsforecast_dynamic_optimized_theta` | 2.556517 | 1.163750 | 0.938779 | Second by RMSE. |
-| Full-roster sample | `statsforecast_autotbats` | 2.602055 | 1.156588 | 0.933001 | Third by RMSE. |
-| Full-roster sample | `functime_ridge` | 2.606775 | 1.207878 | 0.974376 | Best Functime model. |
-| Full-roster sample | `statsforecast_autotheta` | 2.607077 | 1.196042 | 0.964828 | StatsForecast theta baseline. |
-| Full-roster sample | `statsforecast_autoarima` | 2.655754 | 1.194312 | 0.963433 | StatsForecast ARIMA baseline. |
-| Full-roster sample | `cartoboost_lag` | 2.678097 | 1.187821 | 0.958196 | CartoBoost lag in the full-roster sample. |
-| Full-roster sample | `functime_snaive` | 2.678097 | 1.187821 | 0.958196 | Seasonal naive style baseline. |
-| Full-roster sample | `functime_lightgbm` | 2.678097 | 1.187821 | 0.958196 | Functime LightGBM baseline. |
-| Full-roster sample | `statsforecast_seasonal_naive` | 2.678097 | 1.187821 | 0.958196 | StatsForecast seasonal naive. |
-| Full-roster sample | `statsforecast_autoces` | 2.678097 | 1.187821 | 0.958196 | StatsForecast CES baseline. |
-| Full-roster sample | `prophet_additive` | 2.678097 | 1.187821 | 0.958196 | Prophet additive baseline. |
-| Full-roster sample | `xgboost_lag` | 2.793477 | 1.500446 | 1.210386 | External tree baseline. |
-| Full-roster sample | `lightgbm_lag` | 2.825295 | 1.253991 | 1.011575 | External tree baseline. |
+| Model | RMSE | MAE | WAPE | Read |
+| --- | ---: | ---: | ---: | --- |
+| `cartoboost_lag` | 2.455906 | 1.149696 | 0.918936 | Committed CartoBoost: best point metrics and best WRMSSE, 0.564643. |
+| `cartoboost_auto_forecast` | 2.530322 | 1.210252 | 0.967338 | Committed CartoBoost: WRMSSE 0.706687. |
+| `statsforecast_autoets` | 2.525734 | 1.141999 | 0.921232 | Best RMSE in the full-roster sample. |
+| `statsforecast_dynamic_optimized_theta` | 2.556517 | 1.163750 | 0.938779 | Second by RMSE. |
+| `statsforecast_autotbats` | 2.602055 | 1.156588 | 0.933001 | Third by RMSE. |
+| `functime_ridge` | 2.606775 | 1.207878 | 0.974376 | Best Functime model. |
+| `statsforecast_autotheta` | 2.607077 | 1.196042 | 0.964828 | StatsForecast theta baseline. |
+| `statsforecast_autoarima` | 2.655754 | 1.194312 | 0.963433 | StatsForecast ARIMA baseline. |
+| `cartoboost_lag` | 2.678097 | 1.187821 | 0.958196 | CartoBoost lag in the full-roster sample. |
+| `functime_snaive` | 2.678097 | 1.187821 | 0.958196 | Seasonal naive style baseline. |
+| `functime_lightgbm` | 2.678097 | 1.187821 | 0.958196 | Functime LightGBM baseline. |
+| `statsforecast_seasonal_naive` | 2.678097 | 1.187821 | 0.958196 | StatsForecast seasonal naive. |
+| `statsforecast_autoces` | 2.678097 | 1.187821 | 0.958196 | StatsForecast CES baseline. |
+| `prophet_additive` | 2.678097 | 1.187821 | 0.958196 | Prophet additive baseline. |
+| `xgboost_lag` | 2.793477 | 1.500446 | 1.210386 | External tree baseline. |
+| `lightgbm_lag` | 2.825295 | 1.253991 | 1.011575 | External tree baseline. |
 
 This sample does not support a claim that CartoBoost beats the M5 model
 families; `cartoboost_lag` ranks seventh by RMSE. The all-series M5 artifact is
@@ -299,7 +299,7 @@ a lag-only CartoBoost full-corpus check:
 | Field | Value |
 | --- | --- |
 | Artifact | `docs/assets/nyc_taxi_benchmarks/forecasting_m5_full.json` |
-| Scope | 30,490 item-store series, 2,744,100 rows, 90 recent days, 28-day holdout |
+| Run | 30,490 item-store series, 2,744,100 rows, 90 recent days, 28-day holdout |
 | Roster | Legacy lag-only CartoBoost fast run |
 | Candidate selection | Disabled |
 | CartoBoost settings | 1 estimator, learning rate 0.06, max depth 3, min samples leaf 20 |
@@ -383,24 +383,24 @@ uv run --group bench python scripts/forecasting_library_benchmark.py \
 Use `official_metrics.m6` for RPS. The table keeps the committed CartoBoost-only
 rows and the full-roster proxy rows in one place.
 
-| Scope | Model | RMSE | MAE | WAPE | Read |
-| --- | --- | ---: | ---: | ---: | --- |
-| Committed CartoBoost | `cartoboost_auto_forecast` | 0.013865 | 0.008398 | 1.143823 | Best point metrics; RPS 0.267355. |
-| Committed CartoBoost | `cartoboost_lag` | 0.014440 | 0.009290 | 1.265338 | Best RPS, 0.257276. |
-| Full-roster proxy | `statsforecast_autoarima` | 0.013402 | 0.007400 | 1.005844 | Best RMSE in the full-roster proxy. |
-| Full-roster proxy | `statsforecast_autoets` | 0.013408 | 0.007456 | 1.013524 | Second by RMSE. |
-| Full-roster proxy | `functime_ridge` | 0.013474 | 0.007670 | 1.042553 | Best Functime model. |
-| Full-roster proxy | `statsforecast_autotbats` | 0.013477 | 0.007663 | 1.041580 | StatsForecast TBATS baseline. |
-| Full-roster proxy | `statsforecast_autoces` | 0.013522 | 0.007617 | 1.035289 | StatsForecast CES baseline. |
-| Full-roster proxy | `statsforecast_dynamic_optimized_theta` | 0.013669 | 0.008204 | 1.115187 | Dynamic theta baseline. |
-| Full-roster proxy | `functime_snaive` | 0.013674 | 0.007500 | 1.019396 | Seasonal naive style baseline. |
-| Full-roster proxy | `functime_lightgbm` | 0.013674 | 0.007500 | 1.019396 | Functime LightGBM baseline. |
-| Full-roster proxy | `statsforecast_seasonal_naive` | 0.013674 | 0.007500 | 1.019396 | StatsForecast seasonal naive. |
-| Full-roster proxy | `prophet_additive` | 0.013674 | 0.007500 | 1.019396 | Prophet additive baseline. |
-| Full-roster proxy | `lightgbm_lag` | 0.013674 | 0.007500 | 1.019396 | External tree baseline. |
-| Full-roster proxy | `statsforecast_autotheta` | 0.013683 | 0.008228 | 1.118462 | StatsForecast theta baseline. |
-| Full-roster proxy | `xgboost_lag` | 0.014246 | 0.008896 | 1.209160 | External tree baseline. |
-| Full-roster proxy | `cartoboost_lag` | 0.014348 | 0.009357 | 1.271868 | CartoBoost lag in the full-roster proxy. |
+| Model | RMSE | MAE | WAPE | Read |
+| --- | ---: | ---: | ---: | --- |
+| `cartoboost_auto_forecast` | 0.013865 | 0.008398 | 1.143823 | Committed CartoBoost: best point metrics; RPS 0.267355. |
+| `cartoboost_lag` | 0.014440 | 0.009290 | 1.265338 | Committed CartoBoost: best RPS, 0.257276. |
+| `statsforecast_autoarima` | 0.013402 | 0.007400 | 1.005844 | Best RMSE in the full-roster proxy. |
+| `statsforecast_autoets` | 0.013408 | 0.007456 | 1.013524 | Second by RMSE. |
+| `functime_ridge` | 0.013474 | 0.007670 | 1.042553 | Best Functime model. |
+| `statsforecast_autotbats` | 0.013477 | 0.007663 | 1.041580 | StatsForecast TBATS baseline. |
+| `statsforecast_autoces` | 0.013522 | 0.007617 | 1.035289 | StatsForecast CES baseline. |
+| `statsforecast_dynamic_optimized_theta` | 0.013669 | 0.008204 | 1.115187 | Dynamic theta baseline. |
+| `functime_snaive` | 0.013674 | 0.007500 | 1.019396 | Seasonal naive style baseline. |
+| `functime_lightgbm` | 0.013674 | 0.007500 | 1.019396 | Functime LightGBM baseline. |
+| `statsforecast_seasonal_naive` | 0.013674 | 0.007500 | 1.019396 | StatsForecast seasonal naive. |
+| `prophet_additive` | 0.013674 | 0.007500 | 1.019396 | Prophet additive baseline. |
+| `lightgbm_lag` | 0.013674 | 0.007500 | 1.019396 | External tree baseline. |
+| `statsforecast_autotheta` | 0.013683 | 0.008228 | 1.118462 | StatsForecast theta baseline. |
+| `xgboost_lag` | 0.014246 | 0.008896 | 1.209160 | External tree baseline. |
+| `cartoboost_lag` | 0.014348 | 0.009357 | 1.271868 | CartoBoost lag in the full-roster proxy. |
 
 This is intentionally named a proxy run. The official M6 competition combined
 rank-probability forecasts and investment decisions, with RPS and investment
