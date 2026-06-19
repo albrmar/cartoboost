@@ -16,6 +16,10 @@
 - Benchmark-driven model improvements belong in reusable implementation: shared feature generation, validation, training behavior, and native model code. Keep benchmark datasets, split boundaries, model lists, metrics, and acceptance gates stable across reruns.
 - Benchmark refreshes must include a real writeup, not just protocol notes. When committing benchmark artifacts or changed benchmark behavior, update the maintained docs/report narrative in the same commit with the exact command, data source, sample size, task/split definitions, model roster, comparable settings, metric breakdown tables, timing breakdown, artifact paths, relevant plots/images, winner or tie interpretation, limitations, and why the result is structurally meaningful.
 - Keep evaluation protocol instructions in this agent guide, not public docs. Public docs should show benchmark evidence, commands, data, plots, metric breakdowns, and interpretations; agent-only protocol details belong here.
+- When asked to commit and push, work directly on `main` and push directly to `origin/main` unless the user explicitly asks for a branch or PR. Do not create `codex/*` or feature branches for routine requested commits.
+- Forecast benchmark docs should keep committed CartoBoost result tables simple. For committed M4/M5/M6 model result tables, include only the committed CartoBoost rows that are relevant to that artifact, sorted by RMSE, and do not mix in full-roster comparison rows or duplicate CartoBoost rows from other artifacts. Use one model table per section.
+- Avoid vague table headers such as `Scope` in public benchmark docs. Prefer concrete labels such as `Model`, `RMSE`, `MAE`, `WAPE`, `Read`, `Artifact`, `Details`, and `Result`.
+- If benchmark code affecting reported metrics changes, rerun the affected maintained forecast benchmarks before updating public benchmark claims. Do not rely on stale artifact values when the user expects current benchmark evidence.
 
 ## Testing instructions
 - Run `just validate` for full local validation.
