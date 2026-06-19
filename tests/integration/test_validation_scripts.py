@@ -8,6 +8,8 @@ import types
 from datetime import date, timedelta
 from pathlib import Path
 
+import pytest
+
 
 def test_full_validation_script_uses_native_estimator_without_backend_toggle():
     repo_root = Path(__file__).resolve().parents[2]
@@ -285,6 +287,64 @@ def test_forecasting_benchmark_allows_bounded_m5_full_roster():
         assert "requires a positive --m5-series-limit" in str(exc)
     else:
         raise AssertionError("unbounded M5 full-roster runs should require explicit opt-in")
+
+
+def test_forecasting_benchmark_auto_config_is_fixed_stronger_policy():
+    repo_root = Path(__file__).resolve().parents[2]
+    module_path = repo_root / "scripts" / "forecasting_library_benchmark.py"
+    spec = importlib.util.spec_from_file_location(
+        "forecasting_library_benchmark_auto_policy",
+        module_path,
+    )
+    assert spec is not None
+    assert spec.loader is not None
+    benchmark = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = benchmark
+    spec.loader.exec_module(benchmark)
+
+    config = {
+        "n_estimators": 180,
+        "learning_rate": 0.06,
+        "max_depth": 4,
+        "min_samples_leaf": 8,
+    }
+    auto = benchmark.cartoboost_auto_config(config, season_length=7, horizon=28)
+
+    assert auto["n_estimators"] == 360
+    assert auto["learning_rate"] == 0.06
+    assert auto["max_depth"] == 6
+    assert auto["min_samples_leaf"] == 4
+    assert config["n_estimators"] == 180
+
+
+def test_forecasting_benchmark_auto_ensemble_weights_are_stable_and_normalized():
+    repo_root = Path(__file__).resolve().parents[2]
+    module_path = repo_root / "scripts" / "forecasting_library_benchmark.py"
+    spec = importlib.util.spec_from_file_location(
+        "forecasting_library_benchmark_auto_weights",
+        module_path,
+    )
+    assert spec is not None
+    assert spec.loader is not None
+    benchmark = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = benchmark
+    spec.loader.exec_module(benchmark)
+
+    weights = benchmark.validation_ensemble_weights(
+        {
+            "worse": 4.0,
+            "best": 1.0,
+            "nan": float("nan"),
+            "second": 2.0,
+            "third": 3.0,
+            "fourth": 3.5,
+            "fifth": 3.6,
+        }
+    )
+
+    assert list(weights) == ["best", "second", "third", "fourth"]
+    assert sum(weights.values()) == pytest.approx(1.0)
+    assert weights["best"] > weights["second"] > weights["third"] > weights["fourth"]
 
 
 def test_forecasting_benchmark_loads_m6_assets_file(tmp_path):

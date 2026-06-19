@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 import urllib.request
 import warnings
@@ -93,6 +94,8 @@ SCALABLE_FORECASTING_LIBRARY_BASELINES = [
 AIRPORT_ZONE_IDS = {1, 132, 138}
 M4_GROUPS = ["Hourly", "Daily", "Weekly", "Monthly", "Quarterly", "Yearly"]
 M6_ASSETS_URL = "https://raw.githubusercontent.com/Mcompetitions/M6-methods/main/assets_m6.csv"
+AUTO_ENSEMBLE_CANDIDATE = "cartoboost_validation_weighted_ensemble"
+AUTO_SELECTION_MIN_RELATIVE_GAIN = 0.03
 SYNTHETIC_PROBLEMS = [
     "taxi_weekly",
     "airport_calendar_events",
@@ -1708,11 +1711,12 @@ def cartoboost_forecast(
     prediction_col: str = "cartoboost_auto_forecast",
 ) -> tuple[Any, dict[str, float]]:
     pl = require_polars()
+    auto_config = cartoboost_auto_config(config, season_length=season_length, horizon=horizon)
     raw_forecast, timing = cartoboost_raw_forecast(
         train,
         horizon,
         season_length=season_length,
-        config=config,
+        config=auto_config,
         prediction_col="cartoboost_raw",
     )
     seasonal_base = seasonal_naive_forecast_frame(
@@ -1721,11 +1725,16 @@ def cartoboost_forecast(
         season_length=season_length,
         prediction_col="cartoboost_seasonal_base",
     )
-    selected_candidate, residual_alpha, calibration_timing = calibrate_cartoboost_candidate(
+    (
+        selected_candidate,
+        residual_alpha,
+        ensemble_weights,
+        calibration_timing,
+    ) = calibrate_cartoboost_candidate(
         train,
         horizon,
         season_length=season_length,
-        config=config,
+        config=auto_config,
     )
     calendar_dom = calendar_profile_forecast_frame(
         train,
@@ -1796,6 +1805,7 @@ def cartoboost_forecast(
                 + 0.5 * pl.col("cartoboost_calendar_phase14")
             ).alias("cartoboost_calendar_phase14_blend"),
         )
+        .with_columns(weighted_candidate_expr(ensemble_weights).alias(AUTO_ENSEMBLE_CANDIDATE))
     )
     blended = candidates.select(
         "series_id",
@@ -1808,10 +1818,28 @@ def cartoboost_forecast(
         **calibration_timing,
         "selected_candidate": selected_candidate,
         "residual_alpha": residual_alpha,
+        "ensemble_weights": ensemble_weights,
+        "auto_config": auto_config,
         "total_seconds": timing["total_seconds"] + calibration_timing["calibration_seconds"],
     }
     timing["fit_predict_seconds"] = timing["fit_seconds"] + timing["predict_seconds"]
     return blended, timing
+
+
+def cartoboost_auto_config(
+    config: dict[str, Any],
+    *,
+    season_length: int,
+    horizon: int,
+) -> dict[str, Any]:
+    auto = dict(config)
+    auto["n_estimators"] = max(int(config["n_estimators"]), 360)
+    auto["max_depth"] = max(int(config["max_depth"]), 5)
+    auto["min_samples_leaf"] = min(int(config["min_samples_leaf"]), 6)
+    if horizon >= 24 or season_length in {4, 7, 12}:
+        auto["max_depth"] = max(auto["max_depth"], 6)
+        auto["min_samples_leaf"] = min(auto["min_samples_leaf"], 4)
+    return auto
 
 
 def calibrate_cartoboost_candidate(
@@ -1820,7 +1848,7 @@ def calibrate_cartoboost_candidate(
     *,
     season_length: int,
     config: dict[str, Any],
-) -> tuple[str, float, dict[str, float]]:
+) -> tuple[str, float, dict[str, float], dict[str, Any]]:
     pl = require_polars()
     started = perf_counter()
     timestamps = train.select(pl.col("date").unique().sort()).to_series().to_list()
@@ -1828,6 +1856,7 @@ def calibrate_cartoboost_candidate(
         return (
             "cartoboost_raw",
             1.0,
+            {"cartoboost_raw": 1.0},
             {
                 "calibration_seconds": perf_counter() - started,
                 "inner_origin_count": 0.0,
@@ -1905,6 +1934,7 @@ def calibrate_cartoboost_candidate(
         return (
             "cartoboost_raw",
             1.0,
+            {"cartoboost_raw": 1.0},
             {
                 "calibration_seconds": perf_counter() - started,
                 "inner_origin_count": 1.0,
@@ -1962,6 +1992,7 @@ def calibrate_cartoboost_candidate(
         return (
             "cartoboost_raw",
             1.0,
+            {"cartoboost_raw": 1.0},
             {
                 "calibration_seconds": perf_counter() - started,
                 "inner_origin_count": 1.0,
@@ -1988,9 +2019,15 @@ def calibrate_cartoboost_candidate(
             best_alpha = alpha
     raw_gain = 1.0 - raw_rmse / base_rmse if base_rmse > 0.0 else 0.0
     blended_gain = 1.0 - best_rmse / raw_rmse if raw_rmse > 0.0 else 0.0
-    if blended_gain < 0.01:
+    if blended_gain < AUTO_SELECTION_MIN_RELATIVE_GAIN:
         best_alpha = 1.0
         best_rmse = raw_rmse
+    scored = scored.with_columns(
+        (
+            pl.col("cartoboost_seasonal_base")
+            + best_alpha * (pl.col("cartoboost_raw") - pl.col("cartoboost_seasonal_base"))
+        ).alias("cartoboost_residual_blend")
+    )
     candidate_scores = {
         "cartoboost_raw": raw_rmse,
         "cartoboost_seasonal_base": base_rmse,
@@ -2014,13 +2051,20 @@ def calibrate_cartoboost_candidate(
             "cartoboost_seasonal_cycle_drift_075",
         ),
     }
+    ensemble_weights = validation_ensemble_weights(candidate_scores)
+    scored = scored.with_columns(
+        weighted_candidate_expr(ensemble_weights).alias(AUTO_ENSEMBLE_CANDIDATE)
+    )
+    candidate_scores[AUTO_ENSEMBLE_CANDIDATE] = rmse_expr(scored, AUTO_ENSEMBLE_CANDIDATE)
     selected_candidate = min(candidate_scores, key=candidate_scores.__getitem__)
     selected_gain = 1.0 - candidate_scores[selected_candidate] / raw_rmse if raw_rmse > 0.0 else 0.0
-    if selected_candidate != "cartoboost_raw" and selected_gain < 0.01:
+    if selected_candidate != "cartoboost_raw" and selected_gain < AUTO_SELECTION_MIN_RELATIVE_GAIN:
         selected_candidate = "cartoboost_raw"
+        ensemble_weights = {"cartoboost_raw": 1.0}
     return (
         selected_candidate,
         best_alpha,
+        ensemble_weights,
         {
             "calibration_seconds": perf_counter() - started,
             "inner_origin_count": 1.0,
@@ -2030,6 +2074,7 @@ def calibrate_cartoboost_candidate(
             "inner_raw_relative_rmse_gain": raw_gain,
             "inner_blended_relative_rmse_gain": blended_gain,
             "inner_selected_relative_rmse_gain": selected_gain,
+            "inner_validation_ensemble_rmse": candidate_scores[AUTO_ENSEMBLE_CANDIDATE],
             "inner_calendar_dom_rmse": candidate_scores["cartoboost_calendar_dom"],
             "inner_calendar_phase14_rmse": candidate_scores["cartoboost_calendar_phase14"],
             "inner_drift_rmse": candidate_scores["cartoboost_drift"],
@@ -2043,6 +2088,31 @@ def calibrate_cartoboost_candidate(
             ],
         },
     )
+
+
+def validation_ensemble_weights(candidate_scores: dict[str, float]) -> dict[str, float]:
+    finite_scores = [
+        (name, score)
+        for name, score in candidate_scores.items()
+        if math.isfinite(score) and score > 0.0
+    ]
+    if not finite_scores:
+        return {"cartoboost_raw": 1.0}
+    ranked = sorted(finite_scores, key=lambda item: (item[1], item[0]))[:4]
+    inv = [(name, 1.0 / max(score * score, 1.0e-12)) for name, score in ranked]
+    total = sum(weight for _name, weight in inv)
+    if total <= 0.0 or not math.isfinite(total):
+        return {ranked[0][0]: 1.0}
+    return {name: weight / total for name, weight in inv}
+
+
+def weighted_candidate_expr(weights: dict[str, float]) -> Any:
+    pl = require_polars()
+    expr = None
+    for name, weight in sorted(weights.items()):
+        term = float(weight) * pl.col(name)
+        expr = term if expr is None else expr + term
+    return expr if expr is not None else pl.col("cartoboost_raw")
 
 
 def rmse_expr(frame: Any, prediction_col: str) -> float:
