@@ -1,5 +1,6 @@
 use crate::error::{NeuralError, Result};
 use crate::features::NeuralFeatureBlock;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
@@ -175,20 +176,16 @@ impl EmbeddingTable {
     }
 
     pub fn encode_ids(&self, ids: &[u64], name: impl Into<String>) -> Result<NeuralFeatureBlock> {
-        let mut values = Vec::with_capacity(ids.len() * self.dim());
-
-        for &id in ids {
-            let fallback = if let Some(known) = self.lookup(id) {
-                Some(known)
-            } else {
-                self.fallback_embedding(id)
-            };
-
-            if let Some(values_ref) = fallback {
-                values.extend_from_slice(values_ref);
-            }
-        }
-
+        let values = ids
+            .par_iter()
+            .flat_map_iter(|&id| {
+                self.lookup(id)
+                    .or_else(|| self.fallback_embedding(id))
+                    .unwrap_or(&[])
+                    .iter()
+                    .copied()
+            })
+            .collect::<Vec<_>>();
         NeuralFeatureBlock::new(name, self.dim(), values)
     }
 

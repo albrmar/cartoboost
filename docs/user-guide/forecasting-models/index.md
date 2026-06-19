@@ -12,8 +12,9 @@ Start with a baseline, then move to the model that matches the series structure:
 | [Theta](theta.md) | A lightweight trend extrapolator is appropriate. |
 | [ETS](ets.md) | Level, trend, and additive seasonality explain the series. |
 | [ARIMA And AutoARIMA](arima.md) | Autocorrelation and differencing are important. |
+| [ARIMA Examples](arima-examples.md) | You want a runnable synthetic taxi-lane visualization and ARIMA smoke check. |
 | [Kalman](kalman.md) | A noisy local level and local trend should update over time. |
-| [Kriging](kriging.md) | Nearby pickup zones or route midpoints should borrow spatial signal. |
+| [Kriging](kriging.md) | Nearby pickup zones or route midpoints should borrow spatial signal, with visual example plots and variogram diagnostics. |
 | [CartoBoost Lag](cartoboost-lag.md) | Many related series should share one supervised lag model. |
 | [Weighted Ensembles](ensembles.md) | Several native forecasters should be combined with explicit weights. |
 

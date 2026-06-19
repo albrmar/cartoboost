@@ -31,8 +31,8 @@ def test_ci_installs_native_extension_before_validation_artifacts():
     repo_root = Path(__file__).resolve().parents[2]
     workflow = (repo_root / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
 
-    install_step = workflow.index("uv run --group dev maturin develop")
-    validation_step = workflow.index("uv run --group dev python scripts/run_full_validation.py")
+    install_step = workflow.index("uv run maturin develop")
+    validation_step = workflow.index("uv run python scripts/run_full_validation.py")
 
     assert install_step < validation_step
 

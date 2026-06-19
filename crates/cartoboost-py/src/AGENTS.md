@@ -5,7 +5,7 @@
 - Keep conversion between NumPy arrays, Python lists, sparse offsets, sparse IDs, feature schemas, and Rust datasets explicit and validated.
 
 ## Testing instructions
-- Rebuild with `uv run --group dev maturin develop`.
+- From the repository root, rebuild with `uv run maturin develop`.
 - Run relevant tests under `tests/python` after method signature or conversion changes.
 
 ## PR instructions

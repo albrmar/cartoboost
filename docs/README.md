@@ -23,7 +23,6 @@ spatial, geotemporal, and graph-derived regression workflows.
 - [Model Artifacts](model_artifact.md)
 - [Python API Reference](reference/python-api.md)
 - [CLI Reference](reference/cli.md)
-- [Limitations](limitations.md)
 - [Benchmarks](benchmarks/index.md)
   - [Neural Embedding Strategy Assessment](benchmarks/neural-embedding-strategy.md)
 

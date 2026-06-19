@@ -29,6 +29,55 @@ print(model.get_metadata())
 print(forecast.predictions())
 ```
 
+## Examples
+
+Use these small examples to choose the right Kalman surface before moving to a
+full taxi-zone panel.
+
+| Example | Use | Why |
+| --- | --- | --- |
+| A JFK pickup sensor is noisy but the true demand level is stable. | `cartoboost.local_level_kalman_filter` | One latent level is enough; there is no explicit slope. |
+| Airport pickup demand is drifting upward through the evening rush. | `cartoboost.kalman_filter` | The local-linear model estimates both a level and a trend. |
+| You need a normal forecast band for a dashboard. | `forecast_distribution` from either utility | It returns mean, variance, lower, and upper for each horizon. |
+| You need to explain why a point looked unusual. | Per-step estimates and `diagnostics` | Innovations, standardized innovations, gains, and log likelihood show how surprising the observation was. |
+
+Local-level example:
+
+```python
+import cartoboost as cb
+
+zone_236_readings = [184.0, 187.0, 183.0, 186.0, 185.0, 188.0, 186.0]
+
+state = cb.local_level_kalman_filter(
+    zone_236_readings,
+    level_process_variance=0.04,
+    observation_variance=1.5,
+    horizon=3,
+)
+
+print(state["final_state"])
+print(state["forecast_distribution"])
+```
+
+Local-linear example:
+
+```python
+import cartoboost as cb
+
+jfk_evening_pickups = [74.0, 76.0, 79.0, 78.0, 83.0, 86.0, 84.0, 90.0, 92.0]
+
+state = cb.kalman_filter(
+    jfk_evening_pickups,
+    level_process_variance=0.08,
+    trend_process_variance=0.01,
+    observation_variance=2.0,
+    horizon=4,
+)
+
+print(state["final_state"]["level"], state["final_state"]["trend"])
+print(state["diagnostics"]["rmse"], state["diagnostics"]["mae"])
+```
+
 ## ForecastFrame Example
 
 ```python
@@ -77,3 +126,154 @@ Select settings with rolling-origin validation, not in-sample fit.
 Kalman models do not encode hour-of-day wraparound or zone geography. If those
 effects matter, compare Kalman against seasonal naive and a lag model with
 calendar features.
+
+## Filtering Diagnostics
+
+Use the plain utility when you need state diagnostics instead of only a
+forecasting API result:
+
+```python
+import cartoboost as cb
+
+state = cb.kalman_filter(
+    airport_pickups,
+    level_process_variance=0.05,
+    trend_process_variance=0.005,
+    observation_variance=1.0,
+    horizon=6,
+)
+
+print(state["final_state"]["covariance"])
+print(state["diagnostics"]["log_likelihood"])
+print(state["smoothed_states"][-1])
+print(state["forecast_distribution"][0])
+```
+
+`forecast_distribution` contains mean, variance, and normal-approximation bounds
+for each future taxi pickup horizon. Per-step estimates include innovations,
+standardized innovations, fitted values, residuals, innovation variance,
+level/trend Kalman gains, covariance matrices, and Gaussian log likelihoods.
+`smoothed_states` are fixed-interval backward-smoothed states over the observed
+history, and `diagnostics` includes AIC, BIC, RMSE, MAE, and standardized
+innovation summaries.
+
+## Visual Diagnostics
+
+The most useful Kalman plots show four things together:
+
+- observed taxi counts,
+- one-step fitted values,
+- filtered and smoothed latent levels,
+- forecast intervals for future horizons.
+
+Run the committed example:
+
+```bash
+uv run python examples/forecasting/kalman_diagnostics_visualization.py
+```
+
+It writes `target/examples/kalman_diagnostics_visualization.png` and prints a
+small JSON summary. The example uses synthetic JFK-style pickup counts and does
+not download data.
+
+The core plotting pattern is:
+
+```python
+from pathlib import Path
+
+import matplotlib.pyplot as plt
+import cartoboost as cb
+
+pickup_hours = list(range(18))
+pickups = [
+    74.0, 76.0, 79.0, 78.0, 83.0, 86.0,
+    84.0, 90.0, 92.0, 91.0, 97.0, 101.0,
+    99.0, 104.0, 108.0, 109.0, 114.0, 117.0,
+]
+
+state = cb.kalman_filter(
+    pickups,
+    level_process_variance=0.08,
+    trend_process_variance=0.01,
+    observation_variance=2.0,
+    horizon=6,
+)
+
+estimate_hours = [row["step"] for row in state["estimates"]]
+filtered = [row["level"] for row in state["estimates"]]
+fitted = [row["fitted"] for row in state["estimates"]]
+smoothed_hours = [row["step"] for row in state["smoothed_states"]]
+smoothed = [row["level"] for row in state["smoothed_states"]]
+
+future_hours = [pickup_hours[-1] + row["step"] for row in state["forecast_distribution"]]
+forecast_mean = [row["mean"] for row in state["forecast_distribution"]]
+forecast_lower = [row["lower"] for row in state["forecast_distribution"]]
+forecast_upper = [row["upper"] for row in state["forecast_distribution"]]
+
+plt.plot(pickup_hours, pickups, marker="o", label="observed")
+plt.plot(estimate_hours, fitted, linestyle="--", label="one-step fitted")
+plt.plot(estimate_hours, filtered, label="filtered level")
+plt.plot(smoothed_hours, smoothed, label="smoothed level")
+plt.plot(future_hours, forecast_mean, marker="o", label="forecast")
+plt.fill_between(future_hours, forecast_lower, forecast_upper, alpha=0.18, label="95% interval")
+plt.xlabel("hour index")
+plt.ylabel("pickup count")
+plt.legend()
+
+Path("target/examples").mkdir(parents=True, exist_ok=True)
+plt.savefig("target/examples/kalman_forecast_band.png", dpi=160)
+```
+
+Plot standardized innovations when you want to spot unusual observations:
+
+```python
+standardized = [row["standardized_innovation"] for row in state["estimates"]]
+
+plt.figure()
+plt.axhline(0.0, color="black", linewidth=1)
+plt.axhline(1.96, color="gray", linestyle="--", linewidth=1)
+plt.axhline(-1.96, color="gray", linestyle="--", linewidth=1)
+plt.bar(estimate_hours, standardized)
+plt.xlabel("hour index")
+plt.ylabel("standardized innovation")
+plt.savefig("target/examples/kalman_standardized_innovations.png", dpi=160)
+```
+
+Interpretation:
+
+| Visual pattern | Meaning | Typical next step |
+| --- | --- | --- |
+| Filtered level chases every observation. | The model trusts observations too much. | Increase `observation_variance` or reduce process variances. |
+| Smoothed level lags a real shift. | The latent state is too stiff. | Increase `level_process_variance`. |
+| Forecast band is too narrow for recent errors. | Observation/process variance is too low. | Compare RMSE/MAE and raise variance settings. |
+| Many standardized innovations cross +/-1.96. | Recent observations are surprising under the model. | Check missing calendar/zone effects or tune variances with backtesting. |
+
+## Tuning With An Example Grid
+
+For a real taxi workflow, score a small grid on a rolling split before choosing
+parameters. Keep the split fixed across candidates.
+
+```python
+import cartoboost as cb
+
+train = [74.0, 76.0, 79.0, 78.0, 83.0, 86.0, 84.0, 90.0, 92.0, 91.0, 97.0, 101.0]
+validation = [99.0, 104.0, 108.0]
+
+candidates = [
+    {"level_process_variance": 0.03, "trend_process_variance": 0.003, "observation_variance": 1.0},
+    {"level_process_variance": 0.08, "trend_process_variance": 0.010, "observation_variance": 2.0},
+    {"level_process_variance": 0.15, "trend_process_variance": 0.020, "observation_variance": 3.0},
+]
+
+scores = []
+for params in candidates:
+    state = cb.kalman_filter(train, horizon=len(validation), **params)
+    errors = [forecast - actual for forecast, actual in zip(state["forecast"], validation)]
+    rmse = (sum(error * error for error in errors) / len(errors)) ** 0.5
+    scores.append((rmse, params))
+
+print(sorted(scores, key=lambda item: item[0])[0])
+```
+
+Use the diagnostic plots after picking the best validation candidate; do not
+choose variance settings by making the in-sample line look smooth.

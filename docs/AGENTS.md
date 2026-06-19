@@ -11,7 +11,7 @@
 ## Testing instructions
 - Cross-check examples against current Python, CLI, and Rust contracts.
 - Update the specific contract page when implementation behavior changes, not only the README.
-- Run `uv run --group dev --group docs mkdocs build --strict` after navigation changes, renamed pages, or public API docs changes.
+- Run `uv run --group docs mkdocs build --strict` after navigation changes, renamed pages, or public API docs changes.
 - Search docs before finishing terminology cleanup for old non-taxi terminology in `docs`, `README.md`, and `mkdocs.yml`.
 
 ## PR instructions

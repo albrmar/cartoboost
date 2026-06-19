@@ -35,3 +35,8 @@ harness = false
 name = "data_loading"
 path = "../../benches/data_loading.rs"
 harness = false
+
+[[bench]]
+name = "forecasting"
+path = "../../benches/forecasting.rs"
+harness = false

@@ -1656,6 +1656,8 @@ where
 
     observed
         .into_iter()
+        .collect::<Vec<_>>()
+        .into_par_iter()
         .map(|targets| {
             (0..node_count)
                 .filter(|candidate| !targets.contains(candidate))
@@ -1691,7 +1693,7 @@ fn add_self_neighbors(neighbors: &[Vec<usize>]) -> Vec<Vec<usize>> {
     let mut with_self = Vec::with_capacity(neighbors.len());
     for (node, source_neighbors) in neighbors.iter().enumerate() {
         let mut neighbors = source_neighbors.clone();
-        if !neighbors.contains(&node) {
+        if neighbors.binary_search(&node).is_err() {
             neighbors.push(node);
             neighbors.sort_unstable();
         }

@@ -30,3 +30,9 @@ def test_seasonal_naive_converts_panel_and_delegates_to_native(install_fake_nati
         ("pickup_2", "1970-01-02T00:00:00", 40.0),
     ]
     assert native.calls[2] == ("predict", (4,), {})
+
+
+def test_seasonal_naive_native_metadata_round_trips_after_fit():
+    metadata = SeasonalNaiveForecaster(season_length=3).fit([1.0, 2.0, 3.0]).get_metadata()
+
+    assert metadata == {"model": "seasonal_naive", "season_length": 3}

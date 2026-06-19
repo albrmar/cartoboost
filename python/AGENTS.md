@@ -12,9 +12,9 @@
 - Do not add silent fallback paths for missing optional geo encoders or required model inputs. If an operation cannot be performed correctly, raise a clear error.
 
 ## Testing instructions
-- Run `uv run --group dev ruff format --check python`.
+- Run `uv run ruff format --check python`.
 - Run relevant pytest files after Python package changes.
-- For optional dependency adapters, run both targeted tests and a smoke command with the extra enabled, for example `uv run --group dev --extra duckdb python ...`, `--extra h3`, or `--extra s2`.
+- For optional dependency adapters, run both targeted tests and a smoke command with the extra enabled, for example `uv run --extra duckdb python ...`, `--extra h3`, or `--extra s2`.
 
 ## PR instructions
 - Summarize changed Python API surface.

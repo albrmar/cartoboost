@@ -11,7 +11,7 @@ Use this guide as the first read before making changes. Start in the relevant co
 - [Python environment lockfile](https://github.com/TheCulliganMan/CartoBoost/blob/main/uv.lock): pinned dependency state for reproducible Python builds.
 - [Docs home](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/index.md): documentation index and user-facing map.
 - [Feature catalog](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/feature_catalog.md): complete public feature map across regression, forecasting, graph, neural, sparse, artifact, CLI, and benchmark surfaces.
-- [General utilities](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/general_utilities.md): toy examples for Kalman filters, ordinary kriging, intermittent-demand methods, and single-series forecast helpers.
+- [General utilities](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/general_utilities.md): examples and plotting snippets for Kalman filters with smoothing, residual metrics, variance/gain/likelihood diagnostics, and interval distributions, plus ordinary kriging, intermittent-demand methods, and single-series forecast helpers.
 
 ## Core Components
 - [Python package API](https://github.com/TheCulliganMan/CartoBoost/blob/main/python/cartoboost): user-facing estimator, graph helpers, neural feature workflows, and utility functions.
@@ -33,20 +33,23 @@ Use this guide as the first read before making changes. Start in the relevant co
 - [Naive and seasonal naive guide](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/user-guide/forecasting-models/naive-seasonal.md): baseline last-value and seasonal-repeat forecasting examples.
 - [Theta guide](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/user-guide/forecasting-models/theta.md): manual theta, optimized theta, seasonal theta, and validation notes.
 - [ETS guide](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/user-guide/forecasting-models/ets.md): additive ETS examples, parameters, and unsupported modes.
-- [ARIMA and AutoARIMA guide](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/user-guide/forecasting-models/arima.md): fixed-order ARIMA and bounded non-seasonal AutoARIMA examples.
-- [Kalman guide](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/user-guide/forecasting-models/kalman.md): local-linear-trend state-space forecasting examples and tuning notes.
-- [Kriging guide](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/user-guide/forecasting-models/kriging.md): coordinate-aware panel forecasting examples and data requirements.
+- [ARIMA and AutoARIMA guide](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/user-guide/forecasting-models/arima.md): fixed-order ARIMA, bounded non-seasonal AutoARIMA, native GIL-release notes, and benchmark guidance.
+- [ARIMA examples](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/user-guide/forecasting-models/arima-examples.md): deterministic taxi-lane ARIMA visualization workflow, GIL smoke pattern, and native Criterion benchmark command.
+- [Kalman guide](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/user-guide/forecasting-models/kalman.md): local-linear-trend state-space forecasting examples, Matplotlib visual diagnostics, smoothing/filtering diagnostics, and tuning notes.
+- [Kriging guide](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/user-guide/forecasting-models/kriging.md): coordinate-aware panel forecasting examples, empirical/fitted variograms, drift/neighbor controls, cached all-neighbor scoring, and leave-one-out residual diagnostics.
 - [CartoBoost lag guide](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/user-guide/forecasting-models/cartoboost-lag.md): global supervised lag forecasting examples and native feature support.
 - [Weighted ensembles guide](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/user-guide/forecasting-models/ensembles.md): explicit fixed-weight native forecasting ensembles.
 - [CLI guide](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/user-guide/cli.md): workflow-oriented CLI usage patterns.
 - [Feature schema](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/feature_schema.md): data schema and validation contract.
+- [Sparse features](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/sparse_features.md): sparse-set, H3, and S2 helper contracts; H3/S2 deterministic validation and row assembly are Rust-backed.
 - [Model artifact format](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/model_artifact.md): serialization and compatibility assumptions.
 - [Constraints](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/constraints.md): legal/algorithmic domain constraints.
 - [Spatial modeling](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/spatial_modeling.md): modeling assumptions for route/time/geographic features.
 - [Graph features](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/graph-features.md): node2vec, GraphSAGE, HeteroGraphSAGE, HinSAGE, directionality, and metapath contracts.
 - [Evaluation protocol](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/evaluation_protocol.md): protocol for trustworthy evaluations.
 - [General utilities](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/general_utilities.md): reusable Rust-backed utilities independent of the regressor and forecasting frame APIs.
-- [Benchmarks overview](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/benchmarks/index.md), [NYC Taxi](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/benchmarks/nyc-taxi.md), [Taxi zone acceptance](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/benchmarks/taxi-zone.md): expected evidence format.
+- [Forecasting examples](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/forecasting_examples.md): runnable taxi-domain examples with visual diagnostics for naive, seasonal naive, theta, optimized theta, ETS, ARIMA, AutoARIMA, Kalman, kriging, CartoBoost lag, and weighted ensembles.
+- [Benchmarks overview](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/benchmarks/index.md), [Forecasting benchmarks](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/benchmarks/forecasting.md), [NYC Taxi](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/benchmarks/nyc-taxi.md), [Taxi zone acceptance](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/benchmarks/taxi-zone.md): expected evidence format and maintained M4/forecasting artifacts.
 
 ## Where to Edit by Change Type
 - For model behavior changes: update [feature schema](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/feature_schema.md) + [tests](https://github.com/TheCulliganMan/CartoBoost/blob/main/tests) as needed.
@@ -57,8 +60,8 @@ Use this guide as the first read before making changes. Start in the relevant co
 - For benchmark or acceptance behavior changes: edit `scripts`, benchmark sources in `benches`, and benchmark docs under `docs/benchmarks`.
 
 ## Validation and Runtime Checks
-- Run `uv run --group dev pre-commit run --all-files` for lint and format checks after source edits.
-- Run `uv run --group dev pytest` after changing Python APIs or estimator behavior.
+- Run `uv run pre-commit run --all-files` for lint and format checks after source edits.
+- Run `uv run pytest` after changing Python APIs or estimator behavior.
 - Use `just validate` for full local validation only when comprehensive smoke coverage is needed.
 
 ## Optional

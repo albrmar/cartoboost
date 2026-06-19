@@ -7,7 +7,7 @@
 - Optional dependency tests should use `pytest.importorskip` when the package is not in the relevant dependency group, and should include at least one path that verifies hard-fail behavior when a required optional package is absent.
 
 ## Testing instructions
-- Run `uv run --group dev pytest` for the full Python test suite.
+- Run `uv run pytest` for the full Python test suite.
 - For focused work, run the relevant test file first.
 - Update tests for public behavior changes.
 - For input adapter work, compare optional input objects against a NumPy or dict baseline with the same model configuration.

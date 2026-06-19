@@ -126,17 +126,21 @@ Set `oof_folds > 1` to train final-model embedding columns out of fold. Use
 
 Rust-backed utilities independent of the regressor and forecasting model APIs:
 
-See [General Utilities](../general_utilities.md) for complete toy examples.
+See [General Utilities](../general_utilities.md) for complete examples.
 
 | Entry point | Purpose |
 | --- | --- |
 | `cartoboost.naive_forecast(values, horizon)` and related `seasonal_naive_forecast`, `theta_forecast`, `optimized_theta_forecast`, `ets_forecast`, `arima_forecast`, `auto_arima_forecast` | Rust-backed single-series forecasts for plain numeric sequences. |
-| `cartoboost.local_level_kalman_filter(values, ..., horizon=0)` | Local-level Kalman filtering for numeric sequences. Returns final level, per-step estimates, and optional flat forecast means. |
+| `cartoboost.local_level_kalman_filter(values, ..., horizon=0, interval_z=...)` | Local-level Kalman filtering for numeric sequences. Returns final level and variance, fixed-interval smoothed states, per-step estimates with fitted/residual/gain/likelihood diagnostics, residual summary metrics, optional flat forecast means, and optional forecast distributions with normal bounds. |
 | `cartoboost.local_level_kalman_forecast(values, horizon, ...)` | Local-level Kalman forecast utility. |
-| `cartoboost.kalman_filter(values, level_process_variance=..., trend_process_variance=..., observation_variance=..., horizon=0)` | Local-linear Kalman filtering for numeric sequences. Returns final state, per-step estimates, and optional forecast means. |
+| `cartoboost.kalman_filter(values, level_process_variance=..., trend_process_variance=..., observation_variance=..., horizon=0, interval_z=...)` | Local-linear Kalman filtering for numeric sequences. Returns final state/covariance, fixed-interval smoothed states, per-step estimates with fitted/residual/covariance/gain/likelihood diagnostics, residual summary metrics, optional forecast means, and optional forecast distributions with normal bounds. |
 | `cartoboost.local_linear_trend_kalman_forecast(values, horizon, ...)` | Local-linear trend Kalman forecast utility. |
 | `cartoboost.croston_forecast`, `cartoboost.sba_forecast`, `cartoboost.tsb_forecast` | Intermittent-demand utilities for non-negative numeric sequences. |
-| `cartoboost.ordinary_kriging_predict(observations, targets, range=..., nugget=...)` | Ordinary kriging for observed `(x, y, value)` triples and target `(x, y)` coordinates. Returns predicted means and weights. |
+| `cartoboost.ordinary_kriging_predict(observations, targets, range=..., nugget=..., detailed=False)` | Ordinary kriging for observed `(x, y, value)` triples and target `(x, y)` coordinates. Supports variogram, anisotropy, drift, and neighbor controls; detailed rows include variance and selected neighbor indices. |
+| `cartoboost.ordinary_kriging_leave_one_out(observations, ...)` | Leave-one-out kriging diagnostics for observed coordinates. |
+| `cartoboost.empirical_variogram(observations, ...)` | Binned empirical semivariogram with lag ranges, mean lag distances, semivariances, and pair counts. |
+| `cartoboost.fit_ordinary_kriging_variogram(observations, ...)` | Weighted least-squares variogram fitting over model/range/nugget/sill candidate grids. |
+| `cartoboost.ordinary_kriging_leave_one_out_diagnostics(observations, ...)` | Leave-one-out predictions plus residual metrics such as bias, MAE, RMSE, standardized residuals, interval coverage, and average kriging variance. |
 
 ## Direct Graph Encoders
 
@@ -308,4 +312,6 @@ cartoboost.build_s2_sparse_sets(
 
 These helpers return `sparse_sets` dictionaries suitable for
 `CartoBoostRegressor.fit(..., sparse_sets=...)`. H3 auto-encoding requires the
-optional `h3` package; S2 auto-encoding requires `s2sphere`.
+optional `h3` package; S2 auto-encoding requires `s2sphere`. Deterministic
+normalization, coordinate/level validation, scaffold expansion, and sparse-row
+assembly are delegated to the Rust native extension.

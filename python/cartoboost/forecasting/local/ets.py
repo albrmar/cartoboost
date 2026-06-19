@@ -54,5 +54,25 @@ class ETSForecaster(NativeForecastWrapper):
         self.beta = beta
         self.gamma = gamma
 
+    def fitted_values(self, series_id: str = "__single__") -> list[float]:
+        self._check_is_fitted()
+        return list(self._native_model.fitted_values(series_id))
+
+    def residuals(self, series_id: str = "__single__") -> list[float]:
+        self._check_is_fitted()
+        return list(self._native_model.residuals(series_id))
+
+    def levels(self, series_id: str = "__single__") -> list[float]:
+        self._check_is_fitted()
+        return list(self._native_model.level_values(series_id))
+
+    def trends(self, series_id: str = "__single__") -> list[float]:
+        self._check_is_fitted()
+        return list(self._native_model.trend_values(series_id))
+
+    def seasonal_components(self, series_id: str = "__single__") -> list[float]:
+        self._check_is_fitted()
+        return list(self._native_model.seasonal_values(series_id))
+
 
 __all__ = ["ETSForecaster"]

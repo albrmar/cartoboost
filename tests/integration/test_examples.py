@@ -67,3 +67,184 @@ def test_neural_embedding_example_runs_and_guards_cold_ids() -> None:
     assert payload["random"]["guarded"]["selected"] == "neural_embedding"
     assert payload["cold_id_holdout"]["guarded"]["selected"] == "dense"
     assert np.isfinite(payload["cold_id_holdout"]["guarded"]["rmse"])
+
+
+def test_arima_example_visualization_runs_without_plot() -> None:
+    payload = run_example(
+        "examples/forecasting/arima_example_visualization.py",
+        "--hours",
+        "48",
+        "--train-hours",
+        "36",
+        "--horizon",
+        "6",
+    )
+
+    assert payload["task"] == "example_taxi_lane_arima_forecast"
+    assert payload["rows"] == 96
+    assert payload["lanes"] == 2
+    assert np.isfinite(payload["arima_2_1_1"]["rmse"])
+    assert np.isfinite(payload["arima_2_1_1"]["bias"])
+    assert np.isfinite(payload["auto_arima"]["mae"])
+    assert payload["auto_arima_selected_label"].startswith("ARIMA(")
+    assert len(payload["auto_arima_top_candidates"]) > 0
+    assert payload["auto_arima_metadata"]["selected_order"] is not None
+    assert payload["heldout_winner_by_rmse"] in {"arima_2_1_1", "auto_arima"}
+    assert len(payload["residuals"]["arima_2_1_1"]) == 6
+    assert len(payload["residuals"]["auto_arima"]) == 6
+
+
+def test_kalman_diagnostics_visualization_example_runs_and_writes_plot() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    payload = run_example("examples/forecasting/kalman_diagnostics_visualization.py")
+    plot_path = repo_root / str(payload["plot"])
+
+    assert plot_path.exists()
+    assert plot_path.stat().st_size > 0
+    assert np.isfinite(float(payload["final_level"]))
+    assert np.isfinite(float(payload["final_trend"]))
+    assert np.isfinite(float(payload["rmse"]))
+    assert np.isfinite(float(payload["mae"]))
+
+
+def test_cartoboost_lag_visualization_example_runs_and_writes_plot() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    payload = run_example(
+        "examples/forecasting/cartoboost_lag_visualization.py",
+        "--hours",
+        "60",
+        "--train-hours",
+        "48",
+        "--horizon",
+        "6",
+    )
+    plot_path = repo_root / str(payload["plot"])
+
+    assert payload["task"] == "example_taxi_zone_cartoboost_lag_forecast"
+    assert payload["rows"] == 180
+    assert payload["zones"] == 3
+    assert plot_path.exists()
+    assert plot_path.stat().st_size > 0
+    assert np.isfinite(payload["lag_model"]["rmse"])
+    assert np.isfinite(payload["lag_model"]["mae"])
+
+
+def test_weighted_ensemble_visualization_example_runs_and_writes_plot() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    payload = run_example(
+        "examples/forecasting/weighted_ensemble_visualization.py",
+        "--hours",
+        "60",
+        "--train-hours",
+        "48",
+        "--horizon",
+        "6",
+    )
+    plot_path = repo_root / str(payload["plot"])
+
+    assert payload["task"] == "example_taxi_lane_weighted_ensemble_forecast"
+    assert payload["rows"] == 120
+    assert payload["lanes"] == 2
+    assert payload["weights"] == {"kalman": 0.15, "seasonal": 0.55, "theta": 0.3}
+    assert plot_path.exists()
+    assert plot_path.stat().st_size > 0
+    assert np.isfinite(payload["ensemble"]["rmse"])
+    assert np.isfinite(payload["seasonal"]["mae"])
+
+
+def test_ets_component_visualization_example_runs_and_writes_plot() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    payload = run_example(
+        "examples/forecasting/ets_component_visualization.py",
+        "--hours",
+        "72",
+        "--train-hours",
+        "56",
+        "--horizon",
+        "8",
+    )
+    plot_path = repo_root / str(payload["plot"])
+
+    assert payload["task"] == "example_taxi_zone_ets_components"
+    assert payload["PULocationID"] == "132"
+    assert plot_path.exists()
+    assert plot_path.stat().st_size > 0
+    assert np.isfinite(float(payload["metrics"]["rmse"]))
+    assert np.isfinite(float(payload["metrics"]["mae"]))
+    assert np.isfinite(float(payload["final_level"]))
+    assert np.isfinite(float(payload["final_trend"]))
+    assert float(payload["seasonal_range"]) > 0.0
+
+
+def test_theta_optimized_visualization_example_runs_and_writes_plot() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    payload = run_example(
+        "examples/forecasting/theta_optimized_visualization.py",
+        "--hours",
+        "72",
+        "--train-hours",
+        "48",
+        "--horizon",
+        "12",
+    )
+    plot_path = repo_root / str(payload["plot"])
+
+    assert payload["task"] == "example_taxi_zone_theta_forecast"
+    assert payload["rows"] == 144
+    assert payload["zones"] == 2
+    assert plot_path.exists()
+    assert plot_path.stat().st_size > 0
+    assert np.isfinite(float(payload["manual_theta"]["rmse"]))
+    assert np.isfinite(float(payload["optimized_theta"]["rmse"]))
+    assert np.isfinite(float(payload["best_holdout_grid_candidate"]["rmse"]))
+
+
+def test_kriging_example_visualization_runs_and_writes_assets(tmp_path: Path) -> None:
+    payload = run_example(
+        "examples/forecasting/kriging_example_visualization.py",
+        "--output-dir",
+        str(tmp_path),
+    )
+
+    assert payload["task"] == "example_taxi_zone_kriging"
+    assert payload["zones"] == 8
+    assert payload["selected_config"]["variogram_model"] in {
+        "exponential",
+        "spherical",
+        "gaussian",
+    }
+    assert np.isfinite(float(payload["diagnostics"]["rmse"]))
+    assert np.isfinite(float(payload["diagnostics"]["mae"]))
+    assert np.isfinite(float(payload["diagnostics"]["average_variance"]))
+
+    for asset_path in payload["assets"].values():
+        path = Path(asset_path)
+        assert path.exists()
+        assert path.stat().st_size > 0
+
+    summary_path = tmp_path / "kriging_example_summary.json"
+    assert summary_path.exists()
+    assert json.loads(summary_path.read_text())["task"] == payload["task"]
+
+
+def test_naive_seasonal_visualization_example_runs_and_writes_plot() -> None:
+    repo_root = Path(__file__).resolve().parents[2]
+    payload = run_example(
+        "examples/forecasting/naive_seasonal_visualization.py",
+        "--hours",
+        "96",
+        "--train-hours",
+        "72",
+        "--horizon",
+        "24",
+    )
+    plot_path = repo_root / str(payload["plot"])
+
+    assert payload["task"] == "example_taxi_zone_naive_seasonal_forecast"
+    assert payload["rows"] == 192
+    assert payload["zones"] == 2
+    assert plot_path.exists()
+    assert plot_path.stat().st_size > 0
+    assert np.isfinite(float(payload["naive"]["rmse"]))
+    assert np.isfinite(float(payload["seasonal_naive"]["rmse"]))
+    assert payload["seasonal_naive"]["rmse"] < payload["naive"]["rmse"]

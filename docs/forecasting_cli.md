@@ -3,7 +3,7 @@
 The Forecasting V1 CLI is available through:
 
 ```bash
-PYTHONPATH=python uv run --group dev python -m cartoboost.forecasting.cli fit \
+PYTHONPATH=python uv run python -m cartoboost.forecasting.cli fit \
   --input examples/forecasting/forecast_cli_input.csv \
   --timestamp-col timestamp \
   --target-col pickup_demand \

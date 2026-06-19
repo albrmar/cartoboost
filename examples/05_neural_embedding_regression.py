@@ -4,7 +4,7 @@ This example models repeated categorical location/customer IDs with
 NeuralEmbeddingRegressor, then uses a fixed train-only guard to avoid neural
 embeddings on cold-ID holdouts.
 
-    uv run --group dev python examples/05_neural_embedding_regression.py
+    uv run python examples/05_neural_embedding_regression.py
 """
 
 from __future__ import annotations

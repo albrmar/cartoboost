@@ -84,6 +84,7 @@ nav:
               - Theta: user-guide/forecasting-models/theta.md
               - ETS: user-guide/forecasting-models/ets.md
               - ARIMA And AutoARIMA: user-guide/forecasting-models/arima.md
+              - ARIMA Examples: user-guide/forecasting-models/arima-examples.md
               - Kalman: user-guide/forecasting-models/kalman.md
               - Kriging: user-guide/forecasting-models/kriging.md
               - CartoBoost Lag: user-guide/forecasting-models/cartoboost-lag.md
@@ -100,7 +101,6 @@ nav:
       - SHAP Support: shap.md
       - CLI: user-guide/cli.md
       - Model Artifacts: model_artifact.md
-      - Limitations: limitations.md
   - Reference:
       - Python API: reference/python-api.md
       - CLI Reference: reference/cli.md

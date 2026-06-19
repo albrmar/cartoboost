@@ -180,8 +180,14 @@ def local_level_kalman_filter(
     level_process_variance: float = 0.05,
     observation_variance: float = 1.0,
     horizon: int = 0,
+    interval_z: float = 1.959963984540054,
 ) -> dict[str, Any]:
-    """Run the Rust local-level Kalman filter on a numeric series."""
+    """Run the Rust local-level Kalman filter on a numeric series.
+
+    When `horizon` is positive, the result includes `forecast_distribution`
+    rows with mean, variance, and normal-approximation bounds using
+    `interval_z`.
+    """
 
     native = _native()
     payload = native.utility_local_level_kalman_filter(
@@ -189,6 +195,7 @@ def local_level_kalman_filter(
         float(level_process_variance),
         float(observation_variance),
         int(horizon),
+        float(interval_z),
     )
     return json.loads(payload)
 
@@ -262,10 +269,14 @@ def kalman_filter(
     trend_process_variance: float = 0.005,
     observation_variance: float = 1.0,
     horizon: int = 0,
+    interval_z: float = 1.959963984540054,
 ) -> dict[str, Any]:
     """Run the Rust local-linear Kalman filter on a numeric series.
 
     This is a general utility, independent of `cartoboost.forecasting`.
+    When `horizon` is positive, the result includes `forecast_distribution`
+    rows with mean, variance, and normal-approximation bounds using
+    `interval_z`.
     """
 
     native = _native()
@@ -275,6 +286,7 @@ def kalman_filter(
         float(trend_process_variance),
         float(observation_variance),
         int(horizon),
+        float(interval_z),
     )
     return json.loads(payload)
 
@@ -285,6 +297,15 @@ def ordinary_kriging_predict(
     *,
     range: float = 1.0,
     nugget: float = 1.0e-6,
+    sill: float = 1.0,
+    variogram_model: str = "exponential",
+    drift: str = "ordinary",
+    anisotropy_angle_degrees: float = 0.0,
+    anisotropy_scaling: float = 1.0,
+    max_neighbors: int | None = None,
+    min_neighbors: int = 1,
+    max_distance: float | None = None,
+    detailed: bool = False,
 ) -> list[dict[str, Any]]:
     """Predict target coordinates with Rust ordinary kriging.
 
@@ -293,15 +314,183 @@ def ordinary_kriging_predict(
     """
 
     native = _native()
+    obs = [(float(x), float(y), float(value)) for x, y, value in observations]
+    target_rows = [(float(x), float(y)) for x, y in targets]
+    uses_advanced_config = (
+        float(sill) != 1.0
+        or str(variogram_model) != "exponential"
+        or str(drift) != "ordinary"
+        or float(anisotropy_angle_degrees) != 0.0
+        or float(anisotropy_scaling) != 1.0
+        or max_neighbors is not None
+        or int(min_neighbors) != 1
+        or max_distance is not None
+    )
+    if detailed or uses_advanced_config:
+        rows = native.utility_ordinary_kriging_predict_detailed(
+            obs,
+            target_rows,
+            float(range),
+            float(nugget),
+            float(sill),
+            str(variogram_model),
+            str(drift),
+            float(anisotropy_angle_degrees),
+            float(anisotropy_scaling),
+            None if max_neighbors is None else int(max_neighbors),
+            int(min_neighbors),
+            None if max_distance is None else float(max_distance),
+        )
+        detailed_rows = [
+            {
+                "x": x,
+                "y": y,
+                "mean": mean,
+                "variance": variance,
+                "weights": list(weights),
+                "neighbor_indices": list(neighbor_indices),
+            }
+            for x, y, mean, variance, weights, neighbor_indices in rows
+        ]
+        if detailed:
+            return detailed_rows
+        return [
+            {"x": row["x"], "y": row["y"], "mean": row["mean"], "weights": row["weights"]}
+            for row in detailed_rows
+        ]
     rows = native.utility_ordinary_kriging_predict(
-        [(float(x), float(y), float(value)) for x, y, value in observations],
-        [(float(x), float(y)) for x, y in targets],
+        obs,
+        target_rows,
         float(range),
         float(nugget),
     )
     return [
         {"x": x, "y": y, "mean": mean, "weights": list(weights)} for x, y, mean, weights in rows
     ]
+
+
+def ordinary_kriging_leave_one_out(
+    observations: Sequence[tuple[float, float, float]],
+    *,
+    range: float = 1.0,
+    nugget: float = 1.0e-6,
+    sill: float = 1.0,
+    variogram_model: str = "exponential",
+    drift: str = "ordinary",
+    anisotropy_angle_degrees: float = 0.0,
+    anisotropy_scaling: float = 1.0,
+    max_neighbors: int | None = None,
+    min_neighbors: int = 1,
+    max_distance: float | None = None,
+) -> list[dict[str, Any]]:
+    """Run Rust leave-one-out kriging diagnostics for observed coordinates."""
+
+    native = _native()
+    rows = native.utility_ordinary_kriging_leave_one_out(
+        [(float(x), float(y), float(value)) for x, y, value in observations],
+        float(range),
+        float(nugget),
+        float(sill),
+        str(variogram_model),
+        str(drift),
+        float(anisotropy_angle_degrees),
+        float(anisotropy_scaling),
+        None if max_neighbors is None else int(max_neighbors),
+        int(min_neighbors),
+        None if max_distance is None else float(max_distance),
+    )
+    return [
+        {
+            "x": x,
+            "y": y,
+            "mean": mean,
+            "variance": variance,
+            "weights": list(weights),
+            "neighbor_indices": list(neighbor_indices),
+        }
+        for x, y, mean, variance, weights, neighbor_indices in rows
+    ]
+
+
+def empirical_variogram(
+    observations: Sequence[tuple[float, float, float]],
+    *,
+    bin_count: int = 10,
+    max_distance: float | None = None,
+    anisotropy_angle_degrees: float = 0.0,
+    anisotropy_scaling: float = 1.0,
+) -> list[dict[str, Any]]:
+    """Compute a Rust binned empirical semivariogram."""
+
+    native = _native()
+    payload = native.utility_empirical_variogram(
+        [(float(x), float(y), float(value)) for x, y, value in observations],
+        int(bin_count),
+        None if max_distance is None else float(max_distance),
+        float(anisotropy_angle_degrees),
+        float(anisotropy_scaling),
+    )
+    return list(json.loads(payload)["bins"])
+
+
+def fit_ordinary_kriging_variogram(
+    observations: Sequence[tuple[float, float, float]],
+    *,
+    variogram_models: Sequence[str] | None = None,
+    range_candidates: Sequence[float] | None = None,
+    nugget_candidates: Sequence[float] | None = None,
+    sill_candidates: Sequence[float] | None = None,
+    bin_count: int = 10,
+    anisotropy_angle_degrees: float = 0.0,
+    anisotropy_scaling: float = 1.0,
+) -> dict[str, Any]:
+    """Fit a kriging variogram by weighted least squares over candidate grids."""
+
+    native = _native()
+    payload = native.utility_fit_ordinary_kriging_variogram(
+        [(float(x), float(y), float(value)) for x, y, value in observations],
+        None if variogram_models is None else [str(model) for model in variogram_models],
+        None if range_candidates is None else [float(value) for value in range_candidates],
+        None if nugget_candidates is None else [float(value) for value in nugget_candidates],
+        None if sill_candidates is None else [float(value) for value in sill_candidates],
+        int(bin_count),
+        float(anisotropy_angle_degrees),
+        float(anisotropy_scaling),
+    )
+    return dict(json.loads(payload))
+
+
+def ordinary_kriging_leave_one_out_diagnostics(
+    observations: Sequence[tuple[float, float, float]],
+    *,
+    range: float = 1.0,
+    nugget: float = 1.0e-6,
+    sill: float = 1.0,
+    variogram_model: str = "exponential",
+    drift: str = "ordinary",
+    anisotropy_angle_degrees: float = 0.0,
+    anisotropy_scaling: float = 1.0,
+    max_neighbors: int | None = None,
+    min_neighbors: int = 1,
+    max_distance: float | None = None,
+) -> dict[str, Any]:
+    """Run leave-one-out kriging and return predictions plus residual diagnostics."""
+
+    native = _native()
+    payload = native.utility_ordinary_kriging_leave_one_out_diagnostics(
+        [(float(x), float(y), float(value)) for x, y, value in observations],
+        float(range),
+        float(nugget),
+        float(sill),
+        str(variogram_model),
+        str(drift),
+        float(anisotropy_angle_degrees),
+        float(anisotropy_scaling),
+        None if max_neighbors is None else int(max_neighbors),
+        int(min_neighbors),
+        None if max_distance is None else float(max_distance),
+    )
+    return dict(json.loads(payload))
 
 
 def _native() -> Any:
@@ -315,7 +504,9 @@ def _native() -> Any:
 __all__ = [
     "arima_forecast",
     "auto_arima_forecast",
+    "empirical_variogram",
     "ets_forecast",
+    "fit_ordinary_kriging_variogram",
     "kalman_filter",
     "croston_forecast",
     "local_level_kalman_forecast",
@@ -325,6 +516,8 @@ __all__ = [
     "naive_forecast",
     "optimized_theta_forecast",
     "ordinary_kriging_predict",
+    "ordinary_kriging_leave_one_out",
+    "ordinary_kriging_leave_one_out_diagnostics",
     "seasonal_naive_forecast",
     "sba_forecast",
     "series_forecast",

@@ -15,6 +15,12 @@ with `season_length=7`.
 | `NaiveForecaster` | Repeats the most recent observed value for each future horizon. |
 | `SeasonalNaiveForecaster(season_length)` | Repeats values from the most recent completed seasonal cycle. |
 
+Use both baselines before moving to ARIMA, ETS, Theta, Kalman, or lagged
+CartoBoost models. The naive baseline answers whether a model beats the latest
+known taxi pickup count. The seasonal naive baseline answers whether a model
+beats yesterday's same-hour pickup pattern, which is often the stronger
+comparison for taxi demand.
+
 ## Single-Series Example
 
 ```python
@@ -28,6 +34,15 @@ last_cycle = SeasonalNaiveForecaster(season_length=6).fit(hourly_pickups)
 print(last_value.predict(3).predictions())
 print(last_cycle.predict(3).predictions())
 ```
+
+Interpret the result directly:
+
+| Output pattern | Meaning | Typical next step |
+| --- | --- | --- |
+| Naive and seasonal naive are close. | The latest observation is already a good short-horizon summary. | Compare against Kalman or ETS before adding many lag features. |
+| Seasonal naive is much better. | Hour-of-day or day-of-week repetition dominates. | Keep the seasonal baseline in every validation table. |
+| Naive is better than seasonal naive. | The recent level shifted away from the prior cycle. | Check for events, holidays, weather disruption, or zone-level regime changes. |
+| Both baselines miss the same periods. | Repeated calendar cycles are not enough. | Add exogenous features, graph features, or a lagged CartoBoost model. |
 
 ## Pickup-Zone Panel Example
 
@@ -50,6 +65,85 @@ for row in forecast.predictions()[:5]:
     print(row)
 ```
 
+`ForecastFrame` keeps each `PULocationID` separate. For a 24-hour seasonal
+naive model, the next forecast for zone `132` uses zone `132` from 24 hours ago;
+it does not borrow observations from zone `236` or any other pickup zone.
+
+## Visual Example
+
+Run the committed visualization example:
+
+```bash
+uv run python examples/forecasting/naive_seasonal_visualization.py
+```
+
+It writes `target/examples/naive_seasonal_visualization.png` and prints a JSON
+summary with rows, zones, train horizon, forecast horizon, MAE, RMSE, and the
+seasonal-naive RMSE improvement over naive. The example generates deterministic
+JFK and Upper East Side pickup-zone demand, so it does not download data or
+write tracked benchmark artifacts.
+
+The plot compares three lines:
+
+- observed hourly taxi pickup counts,
+- the flat naive forecast from the last observed hour,
+- the seasonal naive forecast from the previous daily cycle.
+
+The core plotting pattern is:
+
+```python
+from pathlib import Path
+
+import matplotlib.pyplot as plt
+import pandas as pd
+from cartoboost.forecasting import ForecastFrame, NaiveForecaster, SeasonalNaiveForecaster
+
+train = hourly_zone_demand.groupby("PULocationID", sort=False).head(96)
+frame = ForecastFrame.from_pandas(
+    train,
+    timestamp_col="pickup_hour",
+    target_col="pickup_count",
+    series_id_col="PULocationID",
+    freq="h",
+)
+
+naive = NaiveForecaster().fit(frame).predict(24).predictions()
+seasonal = SeasonalNaiveForecaster(season_length=24).fit(frame).predict(24).predictions()
+
+naive_forecast = pd.DataFrame(
+    naive,
+    columns=["PULocationID", "pickup_hour", "horizon", "model", "prediction"],
+)
+seasonal_forecast = pd.DataFrame(
+    seasonal,
+    columns=["PULocationID", "pickup_hour", "horizon", "model", "prediction"],
+)
+
+zone_id = "132"
+observed = hourly_zone_demand[hourly_zone_demand["PULocationID"] == zone_id]
+naive_zone = naive_forecast[naive_forecast["PULocationID"] == zone_id]
+seasonal_zone = seasonal_forecast[seasonal_forecast["PULocationID"] == zone_id]
+
+plt.plot(observed["pickup_hour"], observed["pickup_count"], label="observed pickups")
+plt.plot(naive_zone["pickup_hour"], naive_zone["prediction"], label="naive")
+plt.plot(seasonal_zone["pickup_hour"], seasonal_zone["prediction"], label="seasonal naive")
+plt.xlabel("pickup hour")
+plt.ylabel("pickup count")
+plt.legend()
+
+Path("target/examples").mkdir(parents=True, exist_ok=True)
+plt.savefig("target/examples/naive_seasonal_pickups.png", dpi=160)
+```
+
+Interpretation:
+
+| Visual pattern | Meaning | Typical next step |
+| --- | --- | --- |
+| Naive is a horizontal line. | This is expected: it repeats the last observed pickup count. | Use it as a leakage and horizon-alignment smoke test. |
+| Seasonal naive follows the prior day's shape. | The daily pickup profile is stable enough to forecast from the last cycle. | Compare complex models against this, not only against naive. |
+| Seasonal naive is shifted above or below actuals. | The daily shape is useful but the level moved. | Try Kalman, ETS, or lagged features that can adjust level. |
+| Seasonal naive gets rush hours wrong. | The previous cycle did not capture the current rush-hour pattern. | Add holiday/event/weather features or validate separate zone groups. |
+
 ## Parameters
 
 | Parameter | Applies to | Notes |
@@ -57,9 +151,53 @@ for row in forecast.predictions()[:5]:
 | `season_length` | `SeasonalNaiveForecaster` | Required positive integer. Use `24` for hourly daily seasonality and `168` for hourly weekly seasonality. |
 | `prediction_interval_levels` | Both wrappers | Validated as values between `0` and `1`; interval support depends on the native model output. |
 
+## Choosing `season_length`
+
+Match `season_length` to the row spacing in the `ForecastFrame`.
+
+| Data frequency | Taxi question | Common `season_length` |
+| --- | --- | --- |
+| Hourly pickup counts | Does this hour behave like the same hour yesterday? | `24` |
+| Hourly pickup counts | Does this hour behave like the same hour last week? | `168` |
+| Daily pickup counts | Does this date behave like the same weekday last week? | `7` |
+| 15-minute pickup counts | Does this interval behave like the same interval yesterday? | `96` |
+
+Do not use `24` for daily data or `7` for hourly data unless the rows have been
+aggregated to that cadence. A wrong season length can look plausible in a plot
+while comparing the wrong historical period.
+
+## Backtest Guidance
+
+Score these baselines with the same split, horizon, and aggregation used for
+candidate models:
+
+```python
+from cartoboost.forecasting import (
+    NaiveForecaster,
+    RollingOriginBacktester,
+    RollingOriginSplitter,
+    SeasonalNaiveForecaster,
+)
+
+splitter = RollingOriginSplitter(horizon=24, step=24, min_train_size=72)
+backtester = RollingOriginBacktester(splitter=splitter)
+
+naive_result = backtester.evaluate(NaiveForecaster(), frame)
+seasonal_result = backtester.evaluate(SeasonalNaiveForecaster(season_length=24), frame)
+```
+
+Keep the seasonal naive score in model-selection reports for hourly taxi demand.
+If a richer model only wins against naive, it may only be learning the daily
+cycle rather than adding useful zone, graph, weather, or calendar signal.
+
 ## Validation Notes
 
 Seasonal naive is the minimum meaningful baseline for strongly seasonal taxi
 demand. If a more complex model cannot beat seasonal naive under rolling-origin
 backtests, inspect feature leakage, horizon alignment, and whether the model is
 overfitting repeated zones.
+
+These models do not learn trend, holiday effects, airport disruption, zone
+spillover, or pickup/dropoff graph structure. That limitation is useful: when
+they perform well, the repeated cycle is strong; when they fail, the residuals
+show where richer forecasting models need to explain the taxi system.

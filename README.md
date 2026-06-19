@@ -302,4 +302,3 @@ cartoboost eval --model model.json --data test_with_target.csv
 - [Python API Reference](docs/reference/python-api.md)
 - [CLI Reference](docs/reference/cli.md)
 - [Benchmarks](docs/benchmarks/index.md)
-- [Limitations](docs/limitations.md)

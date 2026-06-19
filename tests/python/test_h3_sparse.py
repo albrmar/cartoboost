@@ -1,6 +1,7 @@
 import sys
 import types
 
+import cartoboost.h3 as h3_module
 import pytest
 from cartoboost import FeatureKind, FeatureSchema
 from cartoboost.h3 import (
@@ -72,6 +73,7 @@ def test_expand_h3_sparse_set_adds_deterministic_scaffold_parents():
 
 
 def test_h3_auto_encoding_uses_optional_h3_package(monkeypatch):
+    h3_module._load_h3.cache_clear()
     fake_h3 = types.SimpleNamespace(
         latlng_to_cell=lambda lat, lng, resolution: (
             "8928308280fffff" if lat < 40.75 else "8928308280bffff"
@@ -99,7 +101,23 @@ def test_h3_auto_encoding_uses_optional_h3_package(monkeypatch):
     }
 
 
+def test_h3_sparse_rows_are_native_sorted_and_deduplicated(monkeypatch):
+    h3_module._load_h3.cache_clear()
+    fake_h3 = types.SimpleNamespace(
+        latlng_to_cell=lambda lat, lng, resolution: "8928308280fffff",
+        cell_to_parent=lambda cell, resolution: cell,
+    )
+    monkeypatch.setitem(sys.modules, "h3", fake_h3)
+
+    assert build_h3_sparse_sets(
+        {"pickup_h3": ([40.7], [-73.9])},
+        resolution=9,
+        parent_resolutions=[5, 7],
+    ) == {"pickup_h3": [[int("8928308280fffff", 16)]]}
+
+
 def test_h3_auto_encoding_hard_fails_without_optional_dependency(monkeypatch):
+    h3_module._load_h3.cache_clear()
     monkeypatch.setitem(sys.modules, "h3", None)
 
     with pytest.raises(ImportError, match="optional 'h3' package"):
@@ -107,6 +125,7 @@ def test_h3_auto_encoding_hard_fails_without_optional_dependency(monkeypatch):
 
 
 def test_build_h3_sparse_sets_validates_coordinate_rows(monkeypatch):
+    h3_module._load_h3.cache_clear()
     fake_h3 = types.SimpleNamespace(
         latlng_to_cell=lambda lat, lng, resolution: "8928308280fffff",
         cell_to_parent=lambda cell, resolution: "85283083fffffff",
@@ -115,6 +134,40 @@ def test_build_h3_sparse_sets_validates_coordinate_rows(monkeypatch):
 
     with pytest.raises(ValueError, match="same number of rows"):
         build_h3_sparse_sets({"pickup_h3": ([40.7], [-73.9, -74.0])}, resolution=9)
+
+
+def test_build_h3_sparse_sets_validates_cross_feature_row_counts(monkeypatch):
+    h3_module._load_h3.cache_clear()
+    fake_h3 = types.SimpleNamespace(
+        latlng_to_cell=lambda lat, lng, resolution: "8928308280fffff",
+        cell_to_parent=lambda cell, resolution: "85283083fffffff",
+    )
+    monkeypatch.setitem(sys.modules, "h3", fake_h3)
+
+    with pytest.raises(ValueError, match="dropoff_h3.*2 rows, expected 1"):
+        build_h3_sparse_sets(
+            {
+                "pickup_h3": ([40.7], [-73.9]),
+                "dropoff_h3": ([40.7, 40.8], [-73.9, -74.0]),
+            },
+            resolution=9,
+        )
+
+
+@pytest.mark.parametrize("resolution", [-1, 16, 1.25, True])
+def test_h3_resolution_validation_is_native_backed(resolution):
+    with pytest.raises(ValueError, match="resolution"):
+        expand_h3_sparse_set(["8928308280fffff"], resolution=resolution)
+
+
+@pytest.mark.parametrize("coordinate", [float("nan"), float("inf"), True])
+def test_h3_coordinate_validation_is_native_backed(monkeypatch, coordinate):
+    h3_module._load_h3.cache_clear()
+    fake_h3 = types.SimpleNamespace(latlng_to_cell=lambda lat, lng, resolution: "8928308280fffff")
+    monkeypatch.setitem(sys.modules, "h3", fake_h3)
+
+    with pytest.raises(ValueError, match="latitude must be a finite coordinate"):
+        latlng_to_h3_id(coordinate, -73.9, resolution=9)
 
 
 @pytest.mark.parametrize(

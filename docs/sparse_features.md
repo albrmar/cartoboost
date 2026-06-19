@@ -167,6 +167,22 @@ model.fit(X_dense, y, sparse_sets=h3_sparse_sets, feature_schema=schema)
 `cartoboost.h3.normalize_h3_id` accepts non-negative integer IDs plus decimal or
 hexadecimal strings when cells are already encoded upstream. Auto-encoding
 requires the optional `h3` package and raises `ImportError` if it is missing.
+ID parsing, coordinate validation, resolution validation, scaffold parent
+expansion, and sparse-row sorting/deduplication are Rust-backed through
+`cartoboost._native`; only the call into the optional `h3` library remains in
+the Python wrapper.
+
+Rust-backed H3 rules:
+
+- H3 resolutions must be integers from 0 through 15.
+- `parent_resolutions` must be strictly less than `resolution`.
+- H3 IDs may be non-negative integers, decimal strings, `0x`-prefixed
+  hexadecimal strings, or bare hexadecimal H3 cell strings.
+- `expand_h3_sparse_set` uses deterministic scaffold parent IDs for tests and
+  schema exercises; `build_h3_sparse_sets` uses real H3 parent cells when the
+  optional `h3` package is installed.
+- Sparse rows are sorted and deduplicated natively before they are returned to
+  the estimator.
 
 ## S2 Sparse Helpers
 
@@ -192,7 +208,18 @@ s2_sparse_sets = build_s2_sparse_sets(
 `cartoboost.s2.normalize_s2_id` accepts non-negative integer S2 IDs plus decimal
 or `0x`-prefixed strings when cells are already encoded upstream. Auto-encoding
 requires the optional `s2sphere` package and raises `ImportError` if it is
-missing.
+missing. ID parsing, coordinate validation, level validation, and sparse-row
+sorting/deduplication are Rust-backed through `cartoboost._native`; only the
+call into the optional `s2sphere` library remains in the Python wrapper.
+
+Rust-backed S2 rules:
+
+- S2 levels must be integers from 0 through 30.
+- `parent_levels` must be strictly less than `level` in sparse-set builders.
+- S2 IDs may be non-negative integers, decimal strings, or `0x`-prefixed
+  hexadecimal strings.
+- Sparse rows are sorted and deduplicated natively before they are returned to
+  the estimator.
 
 ## Routing Semantics
 

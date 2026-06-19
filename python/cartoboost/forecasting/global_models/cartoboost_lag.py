@@ -57,6 +57,8 @@ class CartoBoostLagForecaster(NativeForecastWrapper):
             if not isinstance(lag_config, LagFeatureConfig):
                 raise TypeError("lag_config must be a LagFeatureConfig")
             params.setdefault("lags", list(lag_config.lags))
+            params.setdefault("difference_lags", list(lag_config.difference_lags))
+            params.setdefault("rolling_trend_windows", list(lag_config.rolling_trend_windows))
 
         rolling_config = params.pop("rolling_config", None)
         if rolling_config is not None:
@@ -91,6 +93,8 @@ class CartoBoostLagForecaster(NativeForecastWrapper):
             - {
                 "lags",
                 "rolling_windows",
+                "difference_lags",
+                "rolling_trend_windows",
                 "calendar_features",
                 "recursive",
                 "prediction_interval_levels",

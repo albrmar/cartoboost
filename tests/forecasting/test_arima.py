@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 from cartoboost.forecasting.local import ArimaForecaster
 from cartoboost.forecasting.local.arima import AutoARIMAForecaster
@@ -38,3 +40,25 @@ def test_auto_arima_fit_predict_uses_rust_binding():
 
     assert [row[3] for row in result.predictions()] == ["auto_arima", "auto_arima"]
     assert [row[2] for row in result.predictions()] == [1, 2]
+    assert model.get_metadata()["selected_order"] is not None
+
+
+def test_arima_exposes_native_metadata():
+    model = ArimaForecaster(p=2, d=1, q=1)
+
+    model.fit([10.0, 11.0, 13.0, 16.0, 20.0])
+
+    assert model.get_metadata() == {"model": "arima", "p": 2, "d": 1, "q": 1}
+
+
+def test_arima_native_paths_release_gil_for_fit_predict_and_utility():
+    repo_root = Path(__file__).resolve().parents[2]
+    source = (repo_root / "crates" / "cartoboost-py" / "src" / "lib.rs").read_text(encoding="utf-8")
+
+    assert "fn fit_forecaster_py<M: Forecaster>" in source
+    assert "py.allow_threads(|| model.fit(&frame.frame))" in source
+    assert "fn predict_forecaster_py<M: Forecaster>" in source
+    assert "forecast_to_py(py.allow_threads(|| model.predict(horizon)))" in source
+    assert "fn utility_series_forecast(" in source
+    assert "forecaster.fit(&frame)?;" in source
+    assert "forecaster.predict(horizon)" in source

@@ -680,7 +680,7 @@ Split protocol options for the benchmark script:
 Use the repository script:
 
 ```bash
-uv run --group dev python scripts/run_neural_embedding_benchmark.py \
+uv run python scripts/run_neural_embedding_benchmark.py \
   --n-rows 2000 \
   --n-features 8 \
   --n-cells 128 \
@@ -693,7 +693,7 @@ uv run --group dev python scripts/run_neural_embedding_benchmark.py \
 Run one blocked protocol only:
 
 ```bash
-uv run --group dev python scripts/run_neural_embedding_benchmark.py \
+uv run python scripts/run_neural_embedding_benchmark.py \
   --split-mode cold_origin \
   --n-splits 6 \
   --block-fold 2 \

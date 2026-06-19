@@ -74,6 +74,14 @@ def test_kriging_normalizes_mapping_coordinates_and_delegates_to_native(install_
             "coordinates": [("pickup_1", 0.0, 0.0), ("pickup_2", 1.0, 0.0)],
             "range": 2.0,
             "nugget": 0.05,
+            "sill": 1.0,
+            "variogram_model": "exponential",
+            "drift": "ordinary",
+            "anisotropy_angle_degrees": 0.0,
+            "anisotropy_scaling": 1.0,
+            "max_neighbors": None,
+            "min_neighbors": 1,
+            "max_distance": None,
         },
     )
 
@@ -112,6 +120,53 @@ def test_kriging_accepts_coordinate_triples(install_fake_native):
             "coordinates": [("pickup_1", 0.0, 0.0), ("pickup_2", 2.0, 1.0)],
             "range": 1.5,
             "nugget": 0.0,
+            "sill": 1.0,
+            "variogram_model": "exponential",
+            "drift": "ordinary",
+            "anisotropy_angle_degrees": 0.0,
+            "anisotropy_scaling": 1.0,
+            "max_neighbors": None,
+            "min_neighbors": 1,
+            "max_distance": None,
+        },
+    )
+
+
+def test_kriging_passes_extended_native_parameters(install_fake_native):
+    native = install_fake_native("KrigingForecaster")
+
+    KrigingForecaster(
+        coordinates=[("pickup_1", 0, 0), ("pickup_2", 2, 1), ("pickup_3", 3, 1)],
+        range=1.5,
+        nugget=0.01,
+        sill=2.0,
+        variogram_model="spherical",
+        drift="linear",
+        anisotropy_angle_degrees=30.0,
+        anisotropy_scaling=0.5,
+        max_neighbors=2,
+        min_neighbors=2,
+        max_distance=5.0,
+    ).fit({"pickup_1": [10, 11], "pickup_2": [20, 21], "pickup_3": [30, 31]})
+
+    assert native.calls[0] == (
+        "init",
+        {
+            "coordinates": [
+                ("pickup_1", 0.0, 0.0),
+                ("pickup_2", 2.0, 1.0),
+                ("pickup_3", 3.0, 1.0),
+            ],
+            "range": 1.5,
+            "nugget": 0.01,
+            "sill": 2.0,
+            "variogram_model": "spherical",
+            "drift": "linear",
+            "anisotropy_angle_degrees": 30.0,
+            "anisotropy_scaling": 0.5,
+            "max_neighbors": 2,
+            "min_neighbors": 2,
+            "max_distance": 5.0,
         },
     )
 

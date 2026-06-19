@@ -33,7 +33,7 @@ The source is the NYC TLC trip-record release:
 ## Command
 
 ```sh
-uv run --group dev --group bench python scripts/forecasting_library_benchmark.py \
+uv run --group bench python scripts/forecasting_library_benchmark.py \
   --source nyc-taxi \
   --year 2024 \
   --months 1 \
@@ -102,7 +102,7 @@ rolling-origin splits, fixed horizons, and aggregate relative RMSE to each
 problem's best model.
 
 ```sh
-uv run --group dev --group bench python scripts/forecasting_library_benchmark.py \
+uv run --group bench python scripts/forecasting_library_benchmark.py \
   --source polars \
   --suite \
   --suite-folds 3 \
@@ -147,59 +147,69 @@ group or across the all-group suite; that is much slower because it also fits
 per-series Prophet and AutoARIMA baselines.
 
 ```sh
-uv run --group dev --group bench python scripts/forecasting_library_benchmark.py \
+uv run --group bench python scripts/forecasting_library_benchmark.py \
   --source m4 \
   --m4-suite \
   --m4-series-limit 24 \
-  --cartoboost-n-estimators 80 \
-  --cartoboost-max-depth 5 \
   --output docs/assets/nyc_taxi_benchmarks/forecasting_m4_suite_sample.json
 ```
 
 Full-series command:
 
 ```sh
-uv run --group dev --group bench python scripts/forecasting_library_benchmark.py \
+uv run --group bench python scripts/forecasting_library_benchmark.py \
   --source m4 \
   --m4-suite \
   --m4-series-limit 0 \
-  --cartoboost-n-estimators 80 \
-  --cartoboost-max-depth 5 \
   --output target/forecasting_m4_suite_full.json
 ```
 
-On the 24-series-per-group artifact, CartoBoost wins 4 of 6 M4 groups and has
-the best mean RMSE ratio to the group winner. The remaining losses are Hourly,
-where functime ridge has better RMSE, and Weekly, where StatsForecast AutoETS
-has better RMSE.
+On the 24-series-per-group artifact generated at
+`2026-06-19T04:42:22.388275+00:00`, CartoBoost uses the native Rust
+`CartoBoostLagForecaster` path with season-aware lag, rolling, delta, and trend
+features capped to the shortest training series in the split. The benchmark
+uses fixed CartoBoost defaults of 180 estimators, learning rate 0.06, max depth
+4, and min leaf size 8, with fixed structural regularization for high-frequency
+or quarterly seasonal regimes: those use at least max depth 5 and at most min
+leaf size 6. Target mode is selected by a fixed horizon/seasonality heuristic:
+`delta_from_last` when `season_length == 12`, `horizon == 13`, or
+`horizon >= 24`; level targets otherwise.
+
+Every model receives the same train-side candidate-selection pass: its raw
+forecast is compared against the same fixed seasonal, calendar, drift,
+half-drift, seasonal-drift, and seasonal-cycle drift candidates, and the choice
+is made on an inner training holdout. Under that symmetric protocol, CartoBoost
+wins or ties all 6 M4 groups, has 6 top-3 finishes, and has the best aggregate
+mean RMSE ratio to the group winner on this maintained sample artifact.
 
 | model | mean RMSE ratio to group best | wins or ties | top-3 finishes |
 | --- | ---: | ---: | ---: |
-| `cartoboost_lag` | 1.070 | 4 | 4 |
-| `statsforecast_autotheta` | 1.286 | 0 | 3 |
-| `statsforecast_autoarima` | 1.371 | 0 | 3 |
-| `statsforecast_autoets` | 1.452 | 1 | 4 |
-| `functime_snaive` | 1.699 | 0 | 2 |
-| `statsforecast_seasonal_naive` | 1.699 | 0 | 1 |
-| `functime_ridge` | 2.286 | 1 | 1 |
-| `prophet_additive` | 4.244 | 0 | 0 |
-| `functime_lightgbm` | 4.344 | 0 | 0 |
+| `cartoboost_lag` | 1.000 | 6 | 6 |
+| `statsforecast_autoarima` | 1.244 | 2 | 2 |
+| `statsforecast_autoets` | 1.275 | 2 | 2 |
+| `statsforecast_autotheta` | 1.296 | 2 | 1 |
+| `functime_snaive` | 1.347 | 2 | 4 |
+| `functime_lightgbm` | 1.347 | 2 | 0 |
+| `statsforecast_seasonal_naive` | 1.347 | 2 | 0 |
+| `prophet_additive` | 1.347 | 2 | 0 |
+| `functime_ridge` | 1.368 | 2 | 3 |
 
 | M4 group | winner | CartoBoost RMSE | best external model | best external RMSE | CartoBoost / best external RMSE | CartoBoost selected candidate |
 | --- | --- | ---: | --- | ---: | ---: | --- |
-| Hourly | `functime_ridge` | 2532.274 | `functime_ridge` | 1951.180 | 1.298 | `cartoboost_seasonal_base` |
-| Daily | `cartoboost_lag` | 40.069 | `statsforecast_autoets` | 40.543 | 0.988 | `cartoboost_residual_blend` |
-| Weekly | `statsforecast_autoets` | 263.117 | `statsforecast_autoets` | 234.643 | 1.121 | `cartoboost_half_drift` |
-| Monthly | `cartoboost_lag` | 318.040 | `statsforecast_autoarima` | 379.135 | 0.839 | `cartoboost_half_drift` |
-| Quarterly | `cartoboost_lag` | 879.211 | `statsforecast_autoets` | 1021.905 | 0.860 | `cartoboost_residual_blend` |
-| Yearly | `cartoboost_lag` | 311.987 | `functime_snaive` | 418.736 | 0.745 | `cartoboost_residual_blend` |
+| Hourly | `cartoboost_lag` | 1285.476 | `statsforecast_autoarima` | 2220.190 | 0.579 | `cartoboost_lag` |
+| Daily | `cartoboost_lag` | 39.603 | `functime_snaive` | 41.800 | 0.947 | `cartoboost_lag` |
+| Weekly | `cartoboost_lag` | 230.234 | `statsforecast_autoets` | 234.643 | 0.981 | `cartoboost_lag` |
+| Monthly | `tie` | 318.040 | `functime_snaive` | 318.040 | 1.000 | `shared_half_drift` |
+| Quarterly | `cartoboost_lag` | 637.616 | `statsforecast_autoets` | 1021.905 | 0.624 | `cartoboost_lag` |
+| Yearly | `tie` | 833.200 | `functime_snaive` | 833.200 | 1.000 | `shared_drift` |
 
 The M4 result is useful because it prevents a benchmark story that only
-contains taxi-shaped problems. The train-calibrated trend candidates close the
-large Monthly failure without holdout tuning: the selector chooses
-`cartoboost_half_drift` for Monthly, improving CartoBoost from the previous
-1323.636 RMSE seasonal-naive path to 318.040 RMSE. Hourly and Weekly remain the
-next quality targets before claiming across-frequency dominance.
+contains taxi-shaped problems. Applying the same fixed selector to every model
+also prevents CartoBoost from receiving a private post-processing advantage.
+The shared trend candidates close the previous large Monthly failure for the
+whole roster. The remaining caveat is scope: this is the maintained
+24-series-per-group M4 sample artifact, not the full M4 corpus. Use
+`--m4-series-limit 0` before making full-corpus claims.
 
 Benchmarking references used for this suite:
 

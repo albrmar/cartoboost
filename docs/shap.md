@@ -10,7 +10,7 @@ uv add "cartoboost[explain]"
 For a source checkout:
 
 ```sh
-uv sync --extra explain --group dev
+uv sync --extra explain
 ```
 
 ## Basic Usage

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import Any
@@ -73,6 +74,9 @@ class NativeForecastWrapper:
         method = getattr(self._native_model, "get_metadata", None)
         if method is not None:
             return dict(method())
+        metadata_json = getattr(self._native_model, "metadata_json", None)
+        if metadata_json is not None:
+            return dict(json.loads(metadata_json()))
         metadata = getattr(self._native_model, "metadata_", None)
         return {} if metadata is None else dict(metadata)
 

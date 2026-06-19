@@ -11,6 +11,7 @@ use crate::{fit_embedding_table_with_options, GraphSageEncoderArtifact, Node2Vec
 use cartoboost_core::loss::LossConfig;
 use cartoboost_core::tree::{FuzzyKernel, LeafPredictorKind, SplitterKind};
 use cartoboost_core::{Booster, BoosterConfig, Dataset, Model};
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
@@ -1265,20 +1266,21 @@ fn embedding_rows_with_dense(
     }
     let block = table.encode_ids(ids, "standalone_embedding")?;
     let values = block.values;
-    let mut rows = Vec::with_capacity(ids.len());
-    for row_index in 0..ids.len() {
-        let start = row_index * table.dim();
-        let mut row = dense
-            .and_then(|dense| dense.get(row_index).cloned())
-            .unwrap_or_default();
-        row.extend(
-            values[start..start + table.dim()]
-                .iter()
-                .map(|value| f64::from(*value)),
-        );
-        rows.push(row);
-    }
-    Ok(rows)
+    Ok((0..ids.len())
+        .into_par_iter()
+        .map(|row_index| {
+            let start = row_index * table.dim();
+            let mut row = dense
+                .and_then(|dense| dense.get(row_index).cloned())
+                .unwrap_or_default();
+            row.extend(
+                values[start..start + table.dim()]
+                    .iter()
+                    .map(|value| f64::from(*value)),
+            );
+            row
+        })
+        .collect())
 }
 
 fn graph_rows_with_dense(
@@ -1298,25 +1300,29 @@ fn graph_rows_with_dense(
             "row_nodes",
         )?;
     }
-    let mut rows = Vec::with_capacity(row_nodes.len());
-    for (row_index, &source) in row_nodes.iter().enumerate() {
-        let source_vec = embeddings.get(source).ok_or_else(|| {
-            NeuralError::InvalidArgument("row node id exceeds fitted node count".to_string())
-        })?;
-        let mut row = dense
-            .and_then(|dense| dense.get(row_index).cloned())
-            .unwrap_or_default();
-        if let Some(targets) = row_targets {
-            let target_vec = embeddings.get(targets[row_index]).ok_or_else(|| {
-                NeuralError::InvalidArgument("row target id exceeds fitted node count".to_string())
+    row_nodes
+        .par_iter()
+        .enumerate()
+        .map(|(row_index, &source)| {
+            let source_vec = embeddings.get(source).ok_or_else(|| {
+                NeuralError::InvalidArgument("row node id exceeds fitted node count".to_string())
             })?;
-            append_pair_features(&mut row, source_vec, target_vec);
-        } else {
-            row.extend(source_vec.iter().map(|value| f64::from(*value)));
-        }
-        rows.push(row);
-    }
-    Ok(rows)
+            let mut row = dense
+                .and_then(|dense| dense.get(row_index).cloned())
+                .unwrap_or_default();
+            if let Some(targets) = row_targets {
+                let target_vec = embeddings.get(targets[row_index]).ok_or_else(|| {
+                    NeuralError::InvalidArgument(
+                        "row target id exceeds fitted node count".to_string(),
+                    )
+                })?;
+                append_pair_features(&mut row, source_vec, target_vec);
+            } else {
+                row.extend(source_vec.iter().map(|value| f64::from(*value)));
+            }
+            Ok(row)
+        })
+        .collect()
 }
 
 fn append_pair_features(row: &mut Vec<f64>, source: &[f32], target: &[f32]) {
@@ -1338,7 +1344,7 @@ fn append_pair_features(row: &mut Vec<f64>, source: &[f32], target: &[f32]) {
 
 fn link_scores(embeddings: &[Vec<f32>], pairs: &[(usize, usize)]) -> Result<Vec<f64>> {
     pairs
-        .iter()
+        .par_iter()
         .map(|&(source, target)| {
             let source_vec = embeddings.get(source).ok_or_else(|| {
                 NeuralError::InvalidArgument("source node id exceeds node count".to_string())

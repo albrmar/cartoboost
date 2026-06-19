@@ -1,0 +1,32 @@
+{
+  "assets": {
+    "leave_one_out": "docs/assets/kriging_examples/kriging_leave_one_out.png",
+    "surface": "docs/assets/kriging_examples/kriging_surface.png",
+    "variogram": "docs/assets/kriging_examples/kriging_variogram_fit.png"
+  },
+  "diagnostics": {
+    "average_variance": 232.76410499770154,
+    "interval_coverage_95": 1.0,
+    "mae": 15.80400323353841,
+    "max_abs_standardized_error": 1.9234248195800547,
+    "mean_error": -1.75625498733395,
+    "mean_standardized_error": -0.028215264256936018,
+    "observation_count": 8,
+    "rmse": 18.46912519403715,
+    "rmse_standardized_error": 1.2890180244990286
+  },
+  "selected_config": {
+    "anisotropy_angle_degrees": 0.0,
+    "anisotropy_scaling": 1.0,
+    "drift": "ordinary",
+    "max_distance": null,
+    "max_neighbors": null,
+    "min_neighbors": 1,
+    "nugget": 9.0,
+    "range": 1.3,
+    "sill": 520.0,
+    "variogram_model": "gaussian"
+  },
+  "task": "example_taxi_zone_kriging",
+  "zones": 8
+}

@@ -33,7 +33,7 @@ destination ID depending on the scenario.
 ## Command
 
 ```sh
-uv run --group dev python scripts/run_neural_embedding_benchmark.py \
+uv run python scripts/run_neural_embedding_benchmark.py \
   --output target/validation/neural_benchmark.json
 ```
 

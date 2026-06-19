@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import importlib
 from collections.abc import Iterable
+from functools import cache
 from typing import Any
+
+from . import _native
 
 __all__ = [
     "build_s2_sparse_sets",
@@ -23,15 +26,7 @@ def normalize_s2_id(value: Any) -> int:
             raise ValueError("S2 IDs must be non-negative")
         return value
     if isinstance(value, str):
-        text = value.strip()
-        if not text:
-            raise ValueError("S2 IDs must not be empty")
-        if text.startswith("-"):
-            raise ValueError("S2 IDs must be non-negative")
-        try:
-            return int(text, 16) if text.lower().startswith("0x") else int(text, 10)
-        except ValueError as exc:
-            raise ValueError("S2 IDs must be decimal or 0x-prefixed integer strings") from exc
+        return int(_native.s2_normalize_id_text(value))
     raise ValueError("S2 IDs must be non-negative integers or integer strings")
 
 
@@ -94,9 +89,7 @@ def build_s2_sparse_sets(
         raise ValueError("coordinates cannot be empty")
     child_level = _normalize_level(level, "level")
     parents = [_normalize_level(value, "parent_levels") for value in parent_levels]
-    for parent in parents:
-        if parent >= child_level:
-            raise ValueError("parent_levels must be less than level")
+    _native.s2_validate_parent_levels_value(child_level, parents)
 
     sparse_sets: dict[str, list[list[int]]] = {}
     expected_rows: int | None = None
@@ -110,19 +103,19 @@ def build_s2_sparse_sets(
         cells = encode_s2_cells(latitudes, longitudes, level=child_level)
         if expected_rows is None:
             expected_rows = len(cells)
-        elif len(cells) != expected_rows:
-            raise ValueError(
-                f"coordinate feature '{name}' has {len(cells)} rows, expected {expected_rows}"
-            )
-        column: list[list[int]] = []
-        for cell in cells:
-            row = [cell]
-            row.extend(s2_parent_id(cell, parent_level=parent) for parent in parents)
-            column.append(sorted(set(row)))
-        sparse_sets[name] = column
+        else:
+            _native.geo_validate_equal_row_count_value(name, len(cells), expected_rows)
+        parent_columns = [
+            [s2_parent_id(cell, parent_level=parent) for cell in cells] for parent in parents
+        ]
+        sparse_sets[name] = [
+            [int(value) for value in row]
+            for row in _native.geo_assemble_sparse_column_value(cells, parent_columns)
+        ]
     return sparse_sets
 
 
+@cache
 def _load_s2sphere() -> Any:
     try:
         return importlib.import_module("s2sphere")
@@ -140,9 +133,7 @@ def _normalize_coordinate(value: Any, field_name: str) -> float:
         coordinate = float(value)
     except (TypeError, ValueError) as exc:
         raise ValueError(f"{field_name} must be a finite coordinate") from exc
-    if not coordinate == coordinate or coordinate in {float("inf"), float("-inf")}:
-        raise ValueError(f"{field_name} must be a finite coordinate")
-    return coordinate
+    return float(_native.geo_normalize_coordinate_value(coordinate, field_name))
 
 
 def _normalize_level(value: Any, field_name: str) -> int:
@@ -154,6 +145,4 @@ def _normalize_level(value: Any, field_name: str) -> int:
         raise ValueError(f"{field_name} must be an integer S2 level") from exc
     if level != value:
         raise ValueError(f"{field_name} must be an integer S2 level")
-    if level < 0 or level > 30:
-        raise ValueError(f"{field_name} must be between 0 and 30")
-    return level
+    return int(_native.s2_normalize_level_value(level, field_name))

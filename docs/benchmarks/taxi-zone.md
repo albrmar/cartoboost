@@ -36,7 +36,7 @@ different source of signal so the result can be attributed to a feature family.
 ## Command
 
 ```sh
-uv run --group dev python scripts/run_lane_level_acceptance_metrics.py
+uv run python scripts/run_lane_level_acceptance_metrics.py
 ```
 
 Generated evidence:

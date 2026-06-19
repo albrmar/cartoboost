@@ -1329,9 +1329,7 @@ fn encoded_sparse_contains_any(
     let Some(window) = offsets.get(row..row + 2) else {
         return false;
     };
-    values[window[0]..window[1]]
-        .iter()
-        .any(|value| ids.contains(value))
+    sorted_or_linear_contains_any(&values[window[0]..window[1]], ids)
 }
 
 pub fn sparse_set_value_contains_any(value: f64, ids: &[u64]) -> bool {
@@ -1339,7 +1337,41 @@ pub fn sparse_set_value_contains_any(value: f64, ids: &[u64]) -> bool {
         return false;
     }
     let id = value as u64;
-    value == id as f64 && ids.contains(&id)
+    value == id as f64 && sorted_or_linear_contains(ids, id)
+}
+
+fn sorted_or_linear_contains(values: &[u64], id: u64) -> bool {
+    if is_sorted(values) {
+        values.binary_search(&id).is_ok()
+    } else {
+        values.contains(&id)
+    }
+}
+
+fn sorted_or_linear_contains_any(values: &[u64], ids: &[u64]) -> bool {
+    if values.is_empty() || ids.is_empty() {
+        return false;
+    }
+    if is_sorted(values) && is_sorted(ids) {
+        let mut value_idx = 0;
+        let mut id_idx = 0;
+        while value_idx < values.len() && id_idx < ids.len() {
+            match values[value_idx].cmp(&ids[id_idx]) {
+                std::cmp::Ordering::Less => value_idx += 1,
+                std::cmp::Ordering::Greater => id_idx += 1,
+                std::cmp::Ordering::Equal => return true,
+            }
+        }
+        false
+    } else if values.len() <= ids.len() {
+        values.iter().any(|value| ids.contains(value))
+    } else {
+        ids.iter().any(|id| values.contains(id))
+    }
+}
+
+fn is_sorted(values: &[u64]) -> bool {
+    values.windows(2).all(|window| window[0] <= window[1])
 }
 
 pub fn periodic_contains(value: f64, period: f64, start: f64, end: f64) -> bool {

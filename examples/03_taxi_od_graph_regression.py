@@ -2,11 +2,11 @@
 
 Run with synthetic taxi-shaped data:
 
-    uv run --group dev python examples/03_taxi_od_graph_regression.py
+    uv run python examples/03_taxi_od_graph_regression.py
 
 Run with a local TLC-shaped CSV or Parquet file:
 
-    uv run --group dev --group bench python examples/03_taxi_od_graph_regression.py \
+    uv run --group bench python examples/03_taxi_od_graph_regression.py \
         --input data/yellow_tripdata_2024-01.parquet --sample-size 20000
 """
 

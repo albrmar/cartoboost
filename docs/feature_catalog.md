@@ -57,8 +57,8 @@ and [Spatial Modeling](spatial_modeling.md).
 | pandas/dataframe-style inputs | Dataframe columns in estimator and forecasting helpers | Core package. |
 | DuckDB relation inputs | Dense relation/query-result support | `cartoboost[duckdb]`. |
 | Polars inputs | Dataframe support where documented | `cartoboost[polars]`. |
-| H3 encoding | `latlng_to_h3_id`, `encode_h3_cells`, `build_h3_sparse_sets`, `h3_parent_id`, `normalize_h3_id` | `cartoboost[h3]`. |
-| S2 encoding | `latlng_to_s2_id`, `encode_s2_cells`, `build_s2_sparse_sets`, `s2_parent_id`, `normalize_s2_id` | `cartoboost[s2]`. |
+| H3 encoding | `latlng_to_h3_id`, `encode_h3_cells`, `build_h3_sparse_sets`, `h3_parent_id`, `normalize_h3_id` | `cartoboost[h3]`; validation, ID normalization, scaffold expansion, and row assembly are Rust-backed. |
+| S2 encoding | `latlng_to_s2_id`, `encode_s2_cells`, `build_s2_sparse_sets`, `s2_parent_id`, `normalize_s2_id` | `cartoboost[s2]`; validation, ID normalization, and row assembly are Rust-backed. |
 | Geographic sparse helpers | `build_geo_sparse_sets`, `build_zip_sparse_sets`, `coerce_geo_to_feature_id`, `coerce_zip_to_feature_id` | Core package. |
 | SHAP explanations | `make_shap_explainer`, `explain_shap` | `cartoboost[explain]`. |
 | Optuna workflows | Tuning examples/workflows | `cartoboost[optuna]`. |
@@ -74,11 +74,11 @@ and `cartoboost.forecasting`.
 | Feature | Public surface | Notes |
 | --- | --- | --- |
 | Single-series utility forecasts | `cartoboost.naive_forecast`, `seasonal_naive_forecast`, `theta_forecast`, `optimized_theta_forecast`, `ets_forecast`, `arima_forecast`, `auto_arima_forecast` | Rust-backed forecasts for plain numeric sequences without constructing a `ForecastFrame`. |
-| Local-level Kalman filter | `cartoboost.local_level_kalman_filter`, `local_level_kalman_forecast` | Filters and forecasts a numeric series with a one-state local-level Kalman model. |
-| Local-linear Kalman filter | `cartoboost.kalman_filter` | Filters a numeric series, returns per-step estimates, final level/trend state, and optional future mean forecast. |
+| Local-level Kalman filter | `cartoboost.local_level_kalman_filter`, `local_level_kalman_forecast` | Filters and forecasts a numeric series with a one-state local-level Kalman model, including smoothing, variance, gain, likelihood, residual metrics, interval diagnostics, and utility plotting examples. |
+| Local-linear Kalman filter | `cartoboost.kalman_filter` | Filters a numeric series and returns final state/covariance, smoothed states, per-step covariance/gain/likelihood diagnostics, residual metrics, optional future means, interval distributions, and visual diagnostic examples. |
 | Local-linear Kalman forecast | `cartoboost.local_linear_trend_kalman_forecast` | Forecasts a numeric sequence with the Rust local-linear trend Kalman model. |
 | Intermittent demand | `cartoboost.croston_forecast`, `sba_forecast`, `tsb_forecast`, `intermittent_demand_forecast` | Rust-backed Croston, SBA, and TSB utilities for non-negative intermittent demand sequences. |
-| Ordinary kriging | `cartoboost.ordinary_kriging_predict` | Interpolates target `(x, y)` coordinates from observed `(x, y, value)` triples and returns means plus kriging weights. |
+| Ordinary kriging | `cartoboost.ordinary_kriging_predict`, `empirical_variogram`, `fit_ordinary_kriging_variogram`, `ordinary_kriging_leave_one_out`, `ordinary_kriging_leave_one_out_diagnostics` | Interpolates target `(x, y)` coordinates from observed `(x, y, value)` triples with variogram fitting, anisotropy, drift, neighbor controls, cached all-neighbor scoring, variance output, empirical semivariograms, and leave-one-out residual diagnostics. |
 
 ## Evaluation And Metrics
 
@@ -94,7 +94,7 @@ and `cartoboost.forecasting`.
 
 See [Evaluation Protocol](evaluation_protocol.md).
 
-See [General Utilities](general_utilities.md) for toy examples covering
+See [General Utilities](general_utilities.md) for examples covering
 Kalman filters, ordinary kriging, intermittent-demand methods, and single-series
 forecast helpers.
 

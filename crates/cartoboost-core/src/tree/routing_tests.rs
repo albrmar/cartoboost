@@ -313,3 +313,191 @@ fn sparse_list_save_load_prediction_identity() {
 
     assert_eq!(loaded.predict(&x), predictions);
 }
+
+#[test]
+fn flat_axis_predictor_matches_dataset_prediction_and_validates_inputs() {
+    let model = Model {
+        artifact_version: MODEL_ARTIFACT_VERSION,
+        metadata: None,
+        init_prediction: 1.0,
+        learning_rate: 0.5,
+        feature_count: 1,
+        feature_schema: None,
+        target_name: None,
+        training_config: None,
+        prediction_transform: super::PredictionTransform::Identity,
+        trees: vec![
+            Tree {
+                root: Node::Branch {
+                    split: Split::Axis {
+                        feature: 0,
+                        threshold: 1.5,
+                        missing_goes_left: true,
+                    },
+                    left: Box::new(Node::Leaf {
+                        value: -2.0,
+                        sample_weight_sum: 1.0,
+                        training_loss: 0.0,
+                    }),
+                    right: Box::new(Node::Leaf {
+                        value: 4.0,
+                        sample_weight_sum: 1.0,
+                        training_loss: 0.0,
+                    }),
+                    gain: 0.0,
+                    sample_weight_sum: 2.0,
+                },
+            },
+            Tree {
+                root: Node::Branch {
+                    split: Split::Axis {
+                        feature: 0,
+                        threshold: 2.5,
+                        missing_goes_left: false,
+                    },
+                    left: Box::new(Node::Leaf {
+                        value: 1.0,
+                        sample_weight_sum: 1.0,
+                        training_loss: 0.0,
+                    }),
+                    right: Box::new(Node::Leaf {
+                        value: 3.0,
+                        sample_weight_sum: 1.0,
+                        training_loss: 0.0,
+                    }),
+                    gain: 0.0,
+                    sample_weight_sum: 2.0,
+                },
+            },
+        ],
+    };
+    let x = Dataset::from_rows(vec![vec![0.0], vec![2.0], vec![3.0]]).unwrap();
+    let values = vec![0.0, 2.0, 3.0];
+
+    let dataset_predictions = model.try_predict(&x).unwrap();
+    let flat_predictions = model.try_predict_flat(3, 1, &values, &[], &[]).unwrap();
+    let flat_axis_predictions = model
+        .flat_axis_predictor()
+        .expect("flat axis predictor")
+        .predict_flat(3, 1, &values);
+
+    assert_eq!(flat_predictions, dataset_predictions);
+    assert_eq!(flat_axis_predictions, dataset_predictions);
+    assert!(model.try_predict_flat(2, 2, &values, &[], &[]).is_err());
+    assert!(model.try_predict_flat(3, 2, &values, &[], &[]).is_err());
+    assert!(model
+        .try_predict_flat(3, 1, &[0.0, f64::NAN, 3.0], &[], &[])
+        .is_err());
+    assert!(model
+        .validate_dense_flat_prediction_inputs(3, 1, &values)
+        .is_ok());
+}
+
+#[test]
+fn flat_additive_predictions_sum_to_flat_predictions() {
+    let model = Model {
+        artifact_version: MODEL_ARTIFACT_VERSION,
+        metadata: None,
+        init_prediction: 2.0,
+        learning_rate: 0.25,
+        feature_count: 1,
+        feature_schema: None,
+        target_name: None,
+        training_config: None,
+        prediction_transform: super::PredictionTransform::Identity,
+        trees: vec![Tree {
+            root: Node::Branch {
+                split: Split::Axis {
+                    feature: 0,
+                    threshold: 1.0,
+                    missing_goes_left: true,
+                },
+                left: Box::new(Node::Leaf {
+                    value: 4.0,
+                    sample_weight_sum: 1.0,
+                    training_loss: 0.0,
+                }),
+                right: Box::new(Node::Leaf {
+                    value: -4.0,
+                    sample_weight_sum: 1.0,
+                    training_loss: 0.0,
+                }),
+                gain: 0.0,
+                sample_weight_sum: 2.0,
+            },
+        }],
+    };
+    let values = vec![0.0, 2.0];
+    let predictions = model.try_predict_flat(2, 1, &values, &[], &[]).unwrap();
+    let additive = model
+        .try_predict_additive_flat(2, 1, &values, &[], &[])
+        .unwrap();
+
+    assert_eq!(additive.len(), 2);
+    assert_eq!(additive[0].iter().sum::<f64>(), predictions[0]);
+    assert_eq!(additive[1].iter().sum::<f64>(), predictions[1]);
+}
+
+#[test]
+fn flat_sparse_list_prediction_validates_offsets_and_matches_dataset_prediction() {
+    let model = Model {
+        artifact_version: MODEL_ARTIFACT_VERSION,
+        metadata: None,
+        init_prediction: 0.0,
+        learning_rate: 1.0,
+        feature_count: 1,
+        feature_schema: None,
+        target_name: None,
+        training_config: None,
+        prediction_transform: super::PredictionTransform::Identity,
+        trees: vec![Tree {
+            root: Node::Branch {
+                split: Split::SparseListContainsAny {
+                    sparse_feature: 0,
+                    ids: vec![7, 11],
+                    missing_goes_left: false,
+                },
+                left: Box::new(Node::Leaf {
+                    value: 5.0,
+                    sample_weight_sum: 1.0,
+                    training_loss: 0.0,
+                }),
+                right: Box::new(Node::Leaf {
+                    value: -3.0,
+                    sample_weight_sum: 1.0,
+                    training_loss: 0.0,
+                }),
+                gain: 0.0,
+                sample_weight_sum: 2.0,
+            },
+        }],
+    };
+    let x = Dataset::from_rows(vec![vec![0.0], vec![0.0], vec![0.0]])
+        .unwrap()
+        .with_sparse_sets(vec![SparseSetColumn::new(vec![
+            vec![7],
+            vec![3, 4],
+            vec![11, 12],
+        ])])
+        .unwrap();
+    let values = vec![0.0, 0.0, 0.0];
+    let sparse_offsets = vec![vec![0, 1, 3, 5]];
+    let sparse_ids = vec![vec![7, 3, 4, 11, 12]];
+
+    assert_eq!(
+        model
+            .try_predict_flat(3, 1, &values, &sparse_offsets, &sparse_ids)
+            .unwrap(),
+        model.try_predict(&x).unwrap()
+    );
+    assert!(model.try_predict_flat(3, 1, &values, &[], &[]).is_err());
+    assert!(model
+        .try_predict_flat(3, 1, &values, &[vec![0, 1]], &sparse_ids)
+        .is_err());
+    assert!(model
+        .try_predict_flat(3, 1, &values, &[vec![0, 2, 1, 5]], &sparse_ids)
+        .is_err());
+    assert!(model
+        .try_predict_flat(3, 1, &values, &sparse_offsets, &[vec![7]])
+        .is_err());
+}

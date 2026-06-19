@@ -36,14 +36,24 @@ def test_cartoboost_lag_converts_supported_feature_configs(install_fake_native):
     native = install_fake_native("CartoBoostLagForecaster")
 
     CartoBoostLagForecaster(
-        lag_config=LagFeatureConfig(lags=[1, 24]),
+        lag_config=LagFeatureConfig(
+            lags=[1, 24],
+            difference_lags=[24],
+            rolling_trend_windows=[3],
+        ),
         rolling_config=RollingFeatureConfig(windows=[3], aggregations=["mean"]),
         calendar_config=CalendarFeatureConfig(features=["dayofweek", "month", "day"]),
     ).fit({"pickup_1": [10, 11, 12, 13]})
 
     assert native.calls[0] == (
         "init",
-        {"lags": [1, 24], "rolling_windows": [3], "calendar_features": True},
+        {
+            "lags": [1, 24],
+            "difference_lags": [24],
+            "rolling_trend_windows": [3],
+            "rolling_windows": [3],
+            "calendar_features": True,
+        },
     )
 
 
@@ -53,6 +63,8 @@ def test_cartoboost_lag_passes_supported_regressor_params(install_fake_native):
     CartoBoostLagForecaster(
         lags=[1, 7],
         rolling_windows=[7],
+        difference_lags=[7],
+        rolling_trend_windows=[7],
         calendar_features=True,
         trend_features=True,
         target_mode="delta_from_last",
@@ -71,6 +83,8 @@ def test_cartoboost_lag_passes_supported_regressor_params(install_fake_native):
         {
             "lags": [1, 7],
             "rolling_windows": [7],
+            "difference_lags": [7],
+            "rolling_trend_windows": [7],
             "calendar_features": True,
             "trend_features": True,
             "target_mode": "delta_from_last",

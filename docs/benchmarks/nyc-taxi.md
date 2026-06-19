@@ -16,7 +16,7 @@ The maintained single-run artifact uses cached NYC TLC yellow taxi trip records
 for January 2024:
 
 ```sh
-PYTHONPATH=python uv run --group dev --group bench python \
+PYTHONPATH=python uv run --group bench python \
   scripts/run_nyc_taxi_quality_benchmarks.py \
   --no-download \
   --output-dir docs/assets/nyc_taxi_benchmarks
@@ -153,7 +153,7 @@ deployment recommendation.
 Run one 25k-row month:
 
 ```sh
-uv run --group dev --group bench python scripts/run_nyc_taxi_quality_benchmarks.py \
+uv run --group bench python scripts/run_nyc_taxi_quality_benchmarks.py \
   --year 2024 \
   --months 1 \
   --sample-size 25000
@@ -162,7 +162,7 @@ uv run --group dev --group bench python scripts/run_nyc_taxi_quality_benchmarks.
 Run without TLC files:
 
 ```sh
-uv run --group dev --group bench python scripts/run_nyc_taxi_quality_benchmarks.py \
+uv run --group bench python scripts/run_nyc_taxi_quality_benchmarks.py \
   --synthetic-smoke \
   --models mean
 ```

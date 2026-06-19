@@ -19,7 +19,7 @@ from typing import Any
 
 import numpy as np
 from cartoboost import __version__
-from cartoboost.regressor import CartoBoostRegressor
+from cartoboost.forecasting.global_models import CartoBoostLagForecaster
 
 ROOT = Path(__file__).resolve().parents[1]
 PYTHON_SOURCE = ROOT / "python"
@@ -31,15 +31,9 @@ if str(PYTHON_SOURCE) not in sys.path:
 DEFAULT_CACHE_DIR = ROOT / "data" / "nyc_taxi"
 DEFAULT_FORECASTING_CACHE_DIR = ROOT / "data" / "forecasting_benchmarks"
 
-FEATURE_COLUMNS = [
-    "loads_lag_1",
-    "loads_lag_7",
-    "loads_lag_14",
-    "loads_lag_21",
-    "loads_lag_28",
-    "loads_roll_7",
-    "loads_roll_14",
-    "loads_roll_28",
+BASE_CARTOBOOST_LAGS = [1, 7, 14, 21, 28]
+BASE_CARTOBOOST_ROLLING_WINDOWS = [7, 14, 28]
+EXOGENOUS_FEATURE_COLUMNS = [
     "date_dayofweek",
     "date_day",
     "date_dayofyear",
@@ -86,6 +80,7 @@ SYNTHETIC_PROBLEMS = [
     "route_mix_shift",
     "borough_monthly_pulses",
 ]
+PROPHET_CLASS: Any | None = None
 
 
 def main() -> int:
@@ -144,12 +139,13 @@ def main() -> int:
         ),
     )
     parser.add_argument("--no-download", action="store_true")
-    parser.add_argument("--cartoboost-n-estimators", type=int, default=160)
-    parser.add_argument("--cartoboost-learning-rate", type=float, default=0.05)
-    parser.add_argument("--cartoboost-max-depth", type=int, default=6)
-    parser.add_argument("--cartoboost-min-samples-leaf", type=int, default=2)
+    parser.add_argument("--cartoboost-n-estimators", type=int, default=180)
+    parser.add_argument("--cartoboost-learning-rate", type=float, default=0.06)
+    parser.add_argument("--cartoboost-max-depth", type=int, default=4)
+    parser.add_argument("--cartoboost-min-samples-leaf", type=int, default=8)
     args = parser.parse_args()
     validate_args(args)
+    ensure_prophet_class()
 
     cartoboost_config = {
         "n_estimators": args.cartoboost_n_estimators,
@@ -193,7 +189,7 @@ def main() -> int:
         "model_libraries": MODEL_LIBRARIES,
         "dataset": dataset,
         "models": ["cartoboost_lag", *FORECASTING_LIBRARY_BASELINES],
-        "model_settings": {"cartoboost_lag": cartoboost_config},
+        "model_settings": {"cartoboost_lag": cartoboost_benchmark_settings(cartoboost_config)},
         "metrics": metrics,
         "quality": quality,
         "timing": timing,
@@ -287,7 +283,7 @@ def run_synthetic_suite(
             "static_covariates": STATIC_COVARIATES,
         },
         "models": ["cartoboost_lag", *FORECASTING_LIBRARY_BASELINES],
-        "model_settings": {"cartoboost_lag": cartoboost_config},
+        "model_settings": {"cartoboost_lag": cartoboost_benchmark_settings(cartoboost_config)},
         "problems": results,
         "aggregate_quality": aggregate_suite_quality(results),
         "timing": {
@@ -349,7 +345,7 @@ def run_m4_suite(
             "static_covariates": STATIC_COVARIATES,
         },
         "models": ["cartoboost_lag", *FORECASTING_LIBRARY_BASELINES],
-        "model_settings": {"cartoboost_lag": cartoboost_config},
+        "model_settings": {"cartoboost_lag": cartoboost_benchmark_settings(cartoboost_config)},
         "groups": results,
         "aggregate_quality": aggregate_quality,
         "timing": {
@@ -531,7 +527,7 @@ def load_m4_fixture(args: argparse.Namespace) -> tuple[Any, dict[str, Any]]:
     except ImportError as exc:
         raise ImportError(
             "M4 benchmark source requires datasetsforecast; run "
-            "`uv sync --group dev --group bench` after adding benchmark extras."
+            "`uv sync --group bench` after adding benchmark extras."
         ) from exc
 
     cache_dir = (
@@ -916,6 +912,7 @@ def forecast_model_roster(
     cartoboost_predictions, cartoboost_timing = cartoboost_raw_forecast(
         train,
         horizon,
+        season_length=season_length,
         config=cartoboost_config,
         prediction_col="cartoboost_lag",
     )
@@ -1148,6 +1145,7 @@ def cartoboost_forecast(
     raw_forecast, timing = cartoboost_raw_forecast(
         train,
         horizon,
+        season_length=season_length,
         config=config,
         prediction_col="cartoboost_raw",
     )
@@ -1280,6 +1278,7 @@ def calibrate_cartoboost_candidate(
         raw, _timing = cartoboost_raw_forecast(
             inner_train,
             horizon,
+            season_length=season_length,
             config=config,
             prediction_col="cartoboost_raw",
         )
@@ -1492,54 +1491,136 @@ def cartoboost_raw_forecast(
     train: Any,
     horizon: int,
     *,
+    season_length: int,
     config: dict[str, Any],
     prediction_col: str,
 ) -> tuple[Any, dict[str, float]]:
     pl = require_polars()
+    pd = require_pandas_for_benchmark()
     feature_start = perf_counter()
-    history_features = build_history_features(train)
-    feature_columns = select_cartoboost_feature_columns(history_features)
-    feature_frame = history_features.drop_nulls(feature_columns)
-    x = feature_frame.select(feature_columns).to_numpy()
-    y = feature_frame.select("loads").to_numpy().ravel()
+    model_params = cartoboost_native_forecaster_params(
+        season_length,
+        horizon,
+        config,
+        train=train,
+    )
+    training_frame = train.select("lane_id", "date", "loads").to_pandas()
+    if not isinstance(training_frame, pd.DataFrame):
+        raise TypeError("CartoBoost native benchmark training conversion did not return pandas")
     feature_seconds = perf_counter() - feature_start
-    model = CartoBoostRegressor(**config)
+    model = CartoBoostLagForecaster(
+        time_col="date",
+        target_col="loads",
+        panel_cols=["lane_id"],
+        frequency="D",
+        **model_params,
+    )
     fit_start = perf_counter()
-    model.fit(x, y)
+    model.fit(training_frame)
     fit_seconds = perf_counter() - fit_start
 
     predict_start = perf_counter()
-    history = train.clone()
-    history_schema = history.schema
-    forecast_frames = []
-    for step in range(1, horizon + 1):
-        future = next_future_rows(history)
-        future_features = build_future_features(history, future).drop_nulls(feature_columns)
-        predictions = model.predict(future_features.select(feature_columns).to_numpy())
-        step_forecast = future_features.select(
-            pl.col("lane_id").alias("series_id"),
-            pl.col("date").alias("timestamp"),
-            pl.lit(step).alias("horizon"),
-        ).with_columns(pl.Series(prediction_col, predictions))
-        forecast_frames.append(step_forecast)
-        predicted_future = future_features.with_columns(pl.Series(prediction_col, predictions))
-        append_frame = predicted_future.select(
-            pl.col("lane_id").cast(history_schema["lane_id"]),
-            pl.col("date").cast(history_schema["date"]),
-            pl.col(prediction_col).alias("loads").cast(history_schema["loads"]),
-            *[pl.col(column).cast(history_schema[column]) for column in STATIC_COVARIATES],
-        )
-        history = pl.concat([history, append_frame], how="vertical")
+    result = model.predict(horizon)
+    predictions = pl.DataFrame(
+        result.predictions(),
+        schema=["series_id", "timestamp", "horizon", "model", prediction_col],
+        orient="row",
+    ).select(
+        "series_id",
+        pl.col("timestamp").str.to_datetime().cast(pl.Datetime("us")).alias("timestamp"),
+        "horizon",
+        prediction_col,
+    )
     predict_seconds = perf_counter() - predict_start
+    feature_count = len(model.metadata_.get("feature_names", []))
     timing = {
         "feature_seconds": feature_seconds,
         "fit_seconds": fit_seconds,
         "predict_seconds": predict_seconds,
         "fit_predict_seconds": fit_seconds + predict_seconds,
         "total_seconds": feature_seconds + fit_seconds + predict_seconds,
-        "feature_count": float(len(feature_columns)),
+        "feature_count": float(feature_count),
     }
-    return pl.concat(forecast_frames, how="vertical"), timing
+    return predictions, timing
+
+
+def cartoboost_native_forecaster_params(
+    season_length: int,
+    horizon: int,
+    config: dict[str, Any],
+    *,
+    train: Any,
+) -> dict[str, Any]:
+    max_lag, max_window = cartoboost_supported_history_limits(train)
+    lags = [lag for lag in cartoboost_lag_values(season_length) if lag <= max_lag]
+    rolling_windows = [
+        window for window in cartoboost_rolling_windows(season_length) if window <= max_window
+    ]
+    difference_lags = [
+        lag for lag in cartoboost_difference_lags(season_length) if lag <= max_lag - 1
+    ]
+    rolling_trend_windows = list(rolling_windows)
+    if not lags:
+        lags = [1]
+    return {
+        "lags": lags,
+        "rolling_windows": rolling_windows,
+        "difference_lags": difference_lags,
+        "rolling_trend_windows": rolling_trend_windows,
+        "calendar_features": True,
+        "target_mode": cartoboost_target_mode(season_length, horizon),
+        "n_estimators": config["n_estimators"],
+        "learning_rate": config["learning_rate"],
+        **cartoboost_tree_regularization(season_length, horizon, config),
+        "splitters": config.get("splitters"),
+    }
+
+
+def cartoboost_benchmark_settings(config: dict[str, Any]) -> dict[str, Any]:
+    settings = dict(config)
+    settings["native_target_mode_policy"] = (
+        "delta_from_last when season_length == 12, horizon == 13, or horizon >= 24; level otherwise"
+    )
+    settings["native_tree_regularization_policy"] = (
+        "use at least max_depth=5 and at most min_samples_leaf=6 when "
+        "horizon >= 24 or season_length == 4; otherwise use configured values"
+    )
+    settings["native_feature_policy"] = (
+        "season-aware lags, rolling means, lag deltas, and rolling trends capped to "
+        "the shortest training series"
+    )
+    return settings
+
+
+def cartoboost_tree_regularization(
+    season_length: int,
+    horizon: int,
+    config: dict[str, Any],
+) -> dict[str, int]:
+    max_depth = int(config["max_depth"])
+    min_samples_leaf = int(config["min_samples_leaf"])
+    if horizon >= 24 or season_length == 4:
+        max_depth = max(max_depth, 5)
+        min_samples_leaf = min(min_samples_leaf, 6)
+    return {
+        "max_depth": max_depth,
+        "min_samples_leaf": min_samples_leaf,
+    }
+
+
+def cartoboost_target_mode(season_length: int, horizon: int) -> str:
+    if season_length == 12 or horizon == 13 or horizon >= 24:
+        return "delta_from_last"
+    return "level"
+
+
+def cartoboost_supported_history_limits(train: Any) -> tuple[int, int]:
+    pl = require_polars()
+    min_history = int(train.group_by("lane_id").len().select(pl.col("len").min()).item())
+    if min_history < 2:
+        raise ValueError("CartoBoost lag benchmark requires at least two rows per series")
+    max_lag = max(1, min_history - 1)
+    return max_lag, max_lag
 
 
 def seasonal_naive_forecast_frame(
@@ -1721,37 +1802,94 @@ def calendar_profile_prediction(
     raise ValueError(f"unsupported calendar profile mode {mode!r}")
 
 
-def select_cartoboost_feature_columns(feature_frame: Any) -> list[str]:
-    candidates = [
-        FEATURE_COLUMNS,
-        [name for name in FEATURE_COLUMNS if not name.endswith("_28")],
-        [name for name in FEATURE_COLUMNS if not name.endswith("_21") and not name.endswith("_28")],
-        [
-            name
-            for name in FEATURE_COLUMNS
-            if not name.endswith("_14") and not name.endswith("_21") and not name.endswith("_28")
-        ],
-    ]
-    for columns in candidates:
+def unique_positive_ints(values: list[int]) -> list[int]:
+    seen = set()
+    result = []
+    for value in values:
+        if value > 0 and value not in seen:
+            seen.add(value)
+            result.append(value)
+    return result
+
+
+def cartoboost_lag_values(season_length: int) -> list[int]:
+    seasonal_lags: list[int] = []
+    if season_length > 1:
+        seasonal_lags = [
+            season_length - 1,
+            season_length,
+            season_length + 1,
+            2 * season_length,
+        ]
+    return unique_positive_ints([*BASE_CARTOBOOST_LAGS, *seasonal_lags])
+
+
+def cartoboost_rolling_windows(season_length: int) -> list[int]:
+    seasonal_windows: list[int] = []
+    if season_length > 1:
+        seasonal_windows = [season_length, 2 * season_length]
+    return unique_positive_ints([*BASE_CARTOBOOST_ROLLING_WINDOWS, *seasonal_windows])
+
+
+def cartoboost_difference_lags(season_length: int) -> list[int]:
+    return [lag for lag in cartoboost_lag_values(season_length) if lag > 1]
+
+
+def cartoboost_target_feature_specs(season_length: int) -> list[tuple[str, int]]:
+    specs = [(f"loads_lag_{lag}", lag) for lag in cartoboost_lag_values(season_length)]
+    specs.extend(
+        (f"loads_roll_{window}", window) for window in cartoboost_rolling_windows(season_length)
+    )
+    specs.extend(
+        (f"loads_delta_lag_{lag}", lag) for lag in cartoboost_difference_lags(season_length)
+    )
+    specs.extend(
+        (f"loads_roll_trend_{window}", 2 * window)
+        for window in cartoboost_rolling_windows(season_length)
+    )
+    return specs
+
+
+def select_cartoboost_feature_columns(feature_frame: Any, *, season_length: int) -> list[str]:
+    target_specs = cartoboost_target_feature_specs(season_length)
+    ranked_drop_candidates = sorted(target_specs, key=lambda item: item[1], reverse=True)
+    for drop_count in range(len(ranked_drop_candidates) + 1):
+        dropped = {name for name, _cost in ranked_drop_candidates[:drop_count]}
+        target_columns = [name for name, _cost in target_specs if name not in dropped]
+        columns = [*target_columns, *EXOGENOUS_FEATURE_COLUMNS]
         if feature_frame.drop_nulls(columns).height > 0:
             return columns
     raise ValueError("CartoBoost lag benchmark has no complete lag feature rows")
 
 
-def build_history_features(frame: Any) -> Any:
+def build_history_features(frame: Any, *, season_length: int) -> Any:
     pl = require_polars()
+    lags = cartoboost_lag_values(season_length)
+    rolling_windows = cartoboost_rolling_windows(season_length)
+    difference_lags = cartoboost_difference_lags(season_length)
     return frame.sort(["lane_id", "date"]).with_columns(
-        *[
-            pl.col("loads").shift(lag).over("lane_id").alias(f"loads_lag_{lag}")
-            for lag in [1, 7, 14, 21, 28]
-        ],
+        *[pl.col("loads").shift(lag).over("lane_id").alias(f"loads_lag_{lag}") for lag in lags],
         *[
             pl.col("loads")
             .shift(1)
             .rolling_mean(window)
             .over("lane_id")
             .alias(f"loads_roll_{window}")
-            for window in [7, 14, 28]
+            for window in rolling_windows
+        ],
+        *[
+            (
+                pl.col("loads").shift(1).over("lane_id")
+                - pl.col("loads").shift(lag).over("lane_id")
+            ).alias(f"loads_delta_lag_{lag}")
+            for lag in difference_lags
+        ],
+        *[
+            (
+                pl.col("loads").shift(1).rolling_mean(window).over("lane_id")
+                - pl.col("loads").shift(window + 1).rolling_mean(window).over("lane_id")
+            ).alias(f"loads_roll_trend_{window}")
+            for window in rolling_windows
         ],
         date_dayofweek=pl.col("date").dt.weekday().cast(pl.Float64),
         date_day=pl.col("date").dt.day().cast(pl.Float64),
@@ -1772,18 +1910,31 @@ def next_future_rows(history: Any) -> Any:
     )
 
 
-def build_future_features(history: Any, future: Any) -> Any:
+def build_future_features(history: Any, future: Any, *, season_length: int) -> Any:
     pl = require_polars()
+    lags = cartoboost_lag_values(season_length)
+    rolling_windows = cartoboost_rolling_windows(season_length)
+    difference_lags = cartoboost_difference_lags(season_length)
     pieces = []
     for row in future.iter_rows(named=True):
         lane_history = history.filter(pl.col("lane_id") == row["lane_id"]).sort("date")
         values = dict(row)
         loads = lane_history["loads"].to_list()
-        for lag in [1, 7, 14, 21, 28]:
+        for lag in lags:
             values[f"loads_lag_{lag}"] = float(loads[-lag]) if len(loads) >= lag else None
-        for window in [7, 14, 28]:
+        for window in rolling_windows:
             values[f"loads_roll_{window}"] = (
                 float(np.mean(loads[-window:])) if len(loads) >= window else None
+            )
+        for lag in difference_lags:
+            values[f"loads_delta_lag_{lag}"] = (
+                float(loads[-1] - loads[-lag]) if len(loads) >= lag else None
+            )
+        for window in rolling_windows:
+            values[f"loads_roll_trend_{window}"] = (
+                float(np.mean(loads[-window:]) - np.mean(loads[-2 * window : -window]))
+                if len(loads) >= 2 * window
+                else None
             )
         timestamp = values["date"]
         values["date_dayofweek"] = float(timestamp.weekday() + 1)
@@ -1807,8 +1958,7 @@ def functime_forecasts(
         from functime.forecasting import lightgbm, ridge, snaive
     except ImportError as exc:
         raise ImportError(
-            "forecasting library benchmark requires functime; run "
-            "`uv sync --group dev --group bench`."
+            "forecasting library benchmark requires functime; run `uv sync --group bench`."
         ) from exc
 
     y = train.select(
@@ -1869,8 +2019,7 @@ def statsforecast_forecasts(
         from statsforecast.models import AutoARIMA, AutoETS, AutoTheta, SeasonalNaive
     except ImportError as exc:
         raise ImportError(
-            "forecasting library benchmark requires statsforecast; run "
-            "`uv sync --group dev --group bench`."
+            "forecasting library benchmark requires statsforecast; run `uv sync --group bench`."
         ) from exc
 
     y = (
@@ -1927,13 +2076,7 @@ def statsforecast_forecasts(
 def prophet_forecasts(train: Any, horizon: int) -> tuple[Any, dict[str, dict[str, float]]]:
     pl = require_polars()
     pd = require_pandas_for_benchmark()
-    try:
-        from prophet import Prophet
-    except ImportError as exc:
-        raise ImportError(
-            "forecasting library benchmark requires prophet; run "
-            "`uv sync --group dev --group bench`."
-        ) from exc
+    prophet_class = ensure_prophet_class()
 
     fit_seconds = 0.0
     predict_seconds = 0.0
@@ -1945,11 +2088,12 @@ def prophet_forecasts(train: Any, horizon: int) -> tuple[Any, dict[str, dict[str
             pl.col("loads").alias("y"),
         ).to_pandas()
         fit_start = perf_counter()
-        model = Prophet(
+        model = prophet_class(
             weekly_seasonality=True,
             daily_seasonality=False,
             yearly_seasonality=False,
             seasonality_mode="additive",
+            stan_backend="CMDSTANPY",
         )
         model.fit(series_frame)
         fit_seconds += perf_counter() - fit_start
@@ -2031,7 +2175,7 @@ def write_forecast_plots(scored: Any, plot_dir: Path, *, prefix: str) -> list[st
         import matplotlib.pyplot as plt
     except ImportError as exc:
         raise ImportError(
-            "forecasting benchmark plotting requires matplotlib; run `uv sync --group dev`."
+            "forecasting benchmark plotting requires matplotlib; run `uv sync`."
         ) from exc
 
     plot_dir.mkdir(parents=True, exist_ok=True)
@@ -2112,8 +2256,7 @@ def require_polars() -> Any:
         import polars as pl
     except ImportError as exc:
         raise ImportError(
-            "forecasting library benchmark requires polars; run "
-            "`uv sync --group dev --group bench`."
+            "forecasting library benchmark requires polars; run `uv sync --group bench`."
         ) from exc
     return pl
 
@@ -2124,7 +2267,7 @@ def require_duckdb() -> Any:
     except ImportError as exc:
         raise ImportError(
             "forecasting library benchmark requires duckdb for --source duckdb; run "
-            "`uv sync --group dev --group bench`."
+            "`uv sync --group bench`."
         ) from exc
     return duckdb
 
@@ -2134,10 +2277,23 @@ def require_pandas_for_benchmark() -> Any:
         import pandas as pd
     except ImportError as exc:
         raise ImportError(
-            "forecasting library benchmark requires pandas; run "
-            "`uv sync --group dev --group bench`."
+            "forecasting library benchmark requires pandas; run `uv sync --group bench`."
         ) from exc
     return pd
+
+
+def ensure_prophet_class() -> Any:
+    global PROPHET_CLASS
+    if PROPHET_CLASS is not None:
+        return PROPHET_CLASS
+    try:
+        from prophet import Prophet
+    except ImportError as exc:
+        raise ImportError(
+            "forecasting library benchmark requires prophet; run `uv sync --group bench`."
+        ) from exc
+    PROPHET_CLASS = Prophet
+    return PROPHET_CLASS
 
 
 if __name__ == "__main__":

@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import importlib
 from collections.abc import Iterable
+from functools import cache
 from typing import Any
+
+from . import _native
 
 __all__ = [
     "build_h3_sparse_sets",
@@ -25,16 +28,7 @@ def normalize_h3_id(value: Any) -> int:
             raise ValueError("H3 IDs must be non-negative")
         return value
     if isinstance(value, str):
-        text = value.strip()
-        if not text:
-            raise ValueError("H3 IDs must not be empty")
-        if text.startswith("-"):
-            raise ValueError("H3 IDs must be non-negative")
-        if text.lower().startswith("0x"):
-            return _parse_h3_string(text[2:], 16)
-        if text.isdecimal():
-            return int(text, 10)
-        return _parse_h3_string(text, 16)
+        return int(_native.h3_normalize_id_text(value))
     raise ValueError("H3 IDs must be non-negative integers or integer strings")
 
 
@@ -102,9 +96,7 @@ def build_h3_sparse_sets(
         raise ValueError("coordinates cannot be empty")
     child_resolution = _normalize_resolution(resolution, "resolution")
     parents = [_normalize_resolution(value, "parent_resolutions") for value in parent_resolutions]
-    for parent in parents:
-        if parent >= child_resolution:
-            raise ValueError("parent_resolutions must be less than resolution")
+    _native.h3_validate_parent_resolutions_value(child_resolution, parents)
 
     sparse_sets: dict[str, list[list[int]]] = {}
     expected_rows: int | None = None
@@ -118,16 +110,15 @@ def build_h3_sparse_sets(
         cells = encode_h3_cells(latitudes, longitudes, resolution=child_resolution)
         if expected_rows is None:
             expected_rows = len(cells)
-        elif len(cells) != expected_rows:
-            raise ValueError(
-                f"coordinate feature '{name}' has {len(cells)} rows, expected {expected_rows}"
-            )
-        column: list[list[int]] = []
-        for cell in cells:
-            row = [cell]
-            row.extend(h3_parent_id(cell, parent_resolution=parent) for parent in parents)
-            column.append(sorted(set(row)))
-        sparse_sets[name] = column
+        else:
+            _native.geo_validate_equal_row_count_value(name, len(cells), expected_rows)
+        parent_columns = [
+            [h3_parent_id(cell, parent_resolution=parent) for cell in cells] for parent in parents
+        ]
+        sparse_sets[name] = [
+            [int(value) for value in row]
+            for row in _native.geo_assemble_sparse_column_value(cells, parent_columns)
+        ]
     return sparse_sets
 
 
@@ -146,17 +137,11 @@ def expand_h3_sparse_set(
 
     child_resolution = _normalize_resolution(resolution, "resolution")
     parents = [_normalize_resolution(value, "parent_resolutions") for value in parent_resolutions]
-    for parent in parents:
-        if parent >= child_resolution:
-            raise ValueError("parent_resolutions must be less than resolution")
-
-    expanded: set[int] = set()
-    for value in values:
-        cell = normalize_h3_id(value)
-        expanded.add(cell)
-        for parent in parents:
-            expanded.add(scaffold_h3_parent_id(cell, child_resolution, parent))
-    return sorted(expanded)
+    normalized = [normalize_h3_id(value) for value in values]
+    return [
+        int(value)
+        for value in _native.h3_expand_sparse_set_value(normalized, child_resolution, parents)
+    ]
 
 
 def scaffold_h3_parent_id(cell: Any, resolution: int, parent_resolution: int) -> int:
@@ -168,26 +153,11 @@ def scaffold_h3_parent_id(cell: Any, resolution: int, parent_resolution: int) ->
 
     child = _normalize_resolution(resolution, "resolution")
     parent = _normalize_resolution(parent_resolution, "parent_resolution")
-    if parent >= child:
-        raise ValueError("parent_resolution must be less than resolution")
     normalized_cell = normalize_h3_id(cell)
-    resolution_gap = child - parent
-    bucket = normalized_cell >> (resolution_gap * 3)
-    return (1 << 63) | (parent << 56) | bucket
+    return int(_native.h3_scaffold_parent_id_value(normalized_cell, child, parent))
 
 
-def _parse_h3_string(text: str, base: int) -> int:
-    if not text:
-        raise ValueError("H3 IDs must not be empty")
-    try:
-        value = int(text, base)
-    except ValueError as exc:
-        raise ValueError("H3 IDs must be decimal or hexadecimal integer strings") from exc
-    if value < 0:
-        raise ValueError("H3 IDs must be non-negative")
-    return value
-
-
+@cache
 def _load_h3() -> Any:
     try:
         return importlib.import_module("h3")
@@ -205,9 +175,7 @@ def _normalize_coordinate(value: Any, field_name: str) -> float:
         coordinate = float(value)
     except (TypeError, ValueError) as exc:
         raise ValueError(f"{field_name} must be a finite coordinate") from exc
-    if not coordinate == coordinate or coordinate in {float("inf"), float("-inf")}:
-        raise ValueError(f"{field_name} must be a finite coordinate")
-    return coordinate
+    return float(_native.geo_normalize_coordinate_value(coordinate, field_name))
 
 
 def _normalize_resolution(value: Any, field_name: str) -> int:
@@ -219,6 +187,4 @@ def _normalize_resolution(value: Any, field_name: str) -> int:
         raise ValueError(f"{field_name} must be an integer H3 resolution") from exc
     if resolution != value:
         raise ValueError(f"{field_name} must be an integer H3 resolution")
-    if resolution < 0 or resolution > 15:
-        raise ValueError(f"{field_name} must be between 0 and 15")
-    return resolution
+    return int(_native.h3_normalize_resolution_value(resolution, field_name))

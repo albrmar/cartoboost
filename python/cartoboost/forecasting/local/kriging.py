@@ -18,13 +18,41 @@ class KrigingForecaster(NativeForecastWrapper):
         coordinates: CoordinateInput,
         range: float = 1.0,
         nugget: float = 1.0e-6,
+        sill: float = 1.0,
+        variogram_model: str = "exponential",
+        drift: str = "ordinary",
+        anisotropy_angle_degrees: float = 0.0,
+        anisotropy_scaling: float = 1.0,
+        max_neighbors: int | None = None,
+        min_neighbors: int = 1,
+        max_distance: float | None = None,
         **params: Any,
     ) -> None:
         coordinate_rows = _normalize_coordinates(coordinates)
-        super().__init__(coordinates=coordinate_rows, range=float(range), nugget=float(nugget))
+        super().__init__(
+            coordinates=coordinate_rows,
+            range=float(range),
+            nugget=float(nugget),
+            sill=float(sill),
+            variogram_model=str(variogram_model),
+            drift=str(drift),
+            anisotropy_angle_degrees=float(anisotropy_angle_degrees),
+            anisotropy_scaling=float(anisotropy_scaling),
+            max_neighbors=None if max_neighbors is None else int(max_neighbors),
+            min_neighbors=int(min_neighbors),
+            max_distance=None if max_distance is None else float(max_distance),
+        )
         self.coordinates = coordinate_rows
         self.range = float(range)
         self.nugget = float(nugget)
+        self.sill = float(sill)
+        self.variogram_model = str(variogram_model)
+        self.drift = str(drift)
+        self.anisotropy_angle_degrees = float(anisotropy_angle_degrees)
+        self.anisotropy_scaling = float(anisotropy_scaling)
+        self.max_neighbors = None if max_neighbors is None else int(max_neighbors)
+        self.min_neighbors = int(min_neighbors)
+        self.max_distance = None if max_distance is None else float(max_distance)
         for key, value in params.items():
             setattr(self, key, value)
 

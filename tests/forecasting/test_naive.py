@@ -27,3 +27,9 @@ def test_naive_converts_series_and_delegates_to_native(install_fake_native):
         ("__single__", "1970-01-03T00:00:00", 4.0),
     ]
     assert native.calls[2] == ("predict", (2,), {})
+
+
+def test_naive_native_metadata_round_trips_after_fit():
+    metadata = NaiveForecaster().fit([1.0, 2.0, 4.0]).get_metadata()
+
+    assert metadata == {"model": "naive"}

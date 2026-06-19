@@ -5,7 +5,7 @@ case LightGBM cannot express directly without manually materialized graph
 features: a GraphSAGE encoder learns zone embeddings from zone adjacency and
 zone-hour demand signals, then CartoBoost fits on the augmented rows.
 
-    uv run --group dev python examples/04_taxi_pickup_zone_graph.py
+    uv run python examples/04_taxi_pickup_zone_graph.py
 """
 
 from __future__ import annotations

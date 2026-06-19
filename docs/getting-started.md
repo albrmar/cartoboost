@@ -248,8 +248,8 @@ just validate
 For a faster Python-focused loop:
 
 ```sh
-uv run --group dev pre-commit run --all-files
-uv run --group dev pytest
+uv run pre-commit run --all-files
+uv run pytest
 ```
 
 ## Out-Of-Time Validation

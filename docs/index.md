@@ -44,7 +44,9 @@ context.
   ensembles, CLI runs, and portable forecast artifacts.
 - [Forecasting Model Guides](user-guide/forecasting-models/index.md):
   per-model examples for naive, seasonal naive, theta, ETS, ARIMA, AutoARIMA,
-  Kalman, kriging, CartoBoost lag, and weighted ensembles.
+  Kalman, kriging, CartoBoost lag, and weighted ensembles. The Kalman guide
+  includes taxi-demand examples, state diagnostics, and Matplotlib
+  visualization examples.
 - [Benchmarks](benchmarks/index.md): reproducible comparison reports and
   acceptance metrics.
 

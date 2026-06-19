@@ -39,7 +39,7 @@ split, target, and global benchmark settings for each workload.
 
 ## Command
 
-`uv run --group dev --group bench python scripts/run_model_benchmark_suite.py`
+`uv run --group bench python scripts/run_model_benchmark_suite.py`
 
 ## Configuration
 

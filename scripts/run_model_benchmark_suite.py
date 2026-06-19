@@ -1244,7 +1244,7 @@ def write_markdown(payload: dict[str, Any], output_path: Path) -> None:
         "",
         "## Command",
         "",
-        "`uv run --group dev --group bench python scripts/run_model_benchmark_suite.py`",
+        "`uv run --group bench python scripts/run_model_benchmark_suite.py`",
         "",
         "## Configuration",
         "",

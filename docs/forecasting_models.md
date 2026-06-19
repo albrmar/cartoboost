@@ -45,7 +45,7 @@ General utilities now exposed outside `cartoboost.forecasting`:
   `cartoboost.sba_forecast`, or `cartoboost.tsb_forecast`.
 - `ordinary_kriging`: use `cartoboost.ordinary_kriging_predict`.
 
-For toy usage examples, see [General Utilities](general_utilities.md).
+For usage examples, see [General Utilities](general_utilities.md).
 
 Native forecasting-class surface still required before frame-based Python
 wrappers can be exposed:

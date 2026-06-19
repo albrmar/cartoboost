@@ -5,7 +5,7 @@ from cartoboost.forecasting.ensemble import (
     MinTraceReconciler,
     WeightedEnsembleForecaster,
 )
-from cartoboost.forecasting.local import NaiveForecaster, SeasonalNaiveForecaster
+from cartoboost.forecasting.local import KalmanForecaster, NaiveForecaster, SeasonalNaiveForecaster
 
 
 def test_weighted_ensemble_requires_models():
@@ -60,6 +60,28 @@ def test_weighted_ensemble_aligns_panel_series():
         ("PU1->DO2", "1970-01-04T00:00:00", 1, "weighted_ensemble", 13.0),
         ("PU9->DO8", "1970-01-04T00:00:00", 1, "weighted_ensemble", 27.0),
     ]
+
+
+def test_weighted_ensemble_accepts_kalman_member():
+    model = WeightedEnsembleForecaster(
+        models={
+            "seasonal": SeasonalNaiveForecaster(season_length=2),
+            "kalman": KalmanForecaster(
+                level_process_variance=0.05,
+                trend_process_variance=0.005,
+                observation_variance=1.0,
+            ),
+        },
+        weights={"seasonal": 0.6, "kalman": 0.4},
+    )
+
+    model.fit([10.0, 12.0, 14.0, 18.0, 20.0])
+    predictions = model.predict(2).predictions()
+
+    assert [row[3] for row in predictions] == ["weighted_ensemble", "weighted_ensemble"]
+    assert [row[2] for row in predictions] == [1, 2]
+    assert all(row[-1] > 0.0 for row in predictions)
+    assert model.get_metadata()["weights"] == {"kalman": 0.4, "seasonal": 0.6}
 
 
 def test_backtest_weighted_ensemble_fit_requires_rust_binding():

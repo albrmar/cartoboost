@@ -16,13 +16,22 @@ use cartoboost_core::forecasting::{
     SeasonalNaiveForecaster as CoreSeasonalNaiveForecaster, ThetaForecaster as CoreThetaForecaster,
     ThetaSeasonality, WeightedEnsembleForecaster as CoreWeightedEnsembleForecaster,
 };
+use cartoboost_core::geo::{
+    assemble_sparse_column, assemble_sparse_row, expand_h3_sparse_set as core_expand_h3_sparse_set,
+    normalize_coordinate as core_normalize_coordinate, normalize_h3_id_text,
+    normalize_h3_resolution, normalize_s2_id_text, normalize_s2_level, scaffold_h3_parent_id,
+    validate_equal_row_count, validate_parent_levels, GeoGridKind,
+};
 use cartoboost_core::loss::{HuberLossConfig, LogL2LossConfig, LossConfig, QuantileLossConfig};
 use cartoboost_core::tree::{FlatAxisPredictor, FuzzyKernel, LeafPredictorKind, SplitterKind};
 use cartoboost_core::utilities::{
-    fit_local_level_kalman, fit_local_linear_kalman, intermittent_demand_forecast,
-    local_level_kalman_forecast, local_linear_kalman_forecast, ordinary_kriging_predict_many,
-    IntermittentDemandMethod, KrigingObservation, LocalLevelKalmanConfig, LocalLinearKalmanConfig,
-    OrdinaryKrigingConfig,
+    empirical_variogram, fit_local_level_kalman, fit_local_linear_kalman,
+    fit_ordinary_kriging_variogram, intermittent_demand_forecast, local_level_kalman_forecast,
+    local_level_kalman_forecast_distribution, local_linear_kalman_forecast,
+    local_linear_kalman_forecast_distribution, ordinary_kriging_leave_one_out,
+    ordinary_kriging_leave_one_out_diagnostics, ordinary_kriging_predict_many,
+    IntermittentDemandMethod, KrigingDrift, KrigingObservation, KrigingVariogramModel,
+    LocalLevelKalmanConfig, LocalLinearKalmanConfig, OrdinaryKrigingConfig,
 };
 use cartoboost_core::{Booster, BoosterConfig, CartoBoostError, Dataset, Model};
 use cartoboost_neural::{
@@ -48,6 +57,7 @@ use std::path::PathBuf;
 
 type StringTypedEdges = Vec<(String, String, String)>;
 type PyKrigingPrediction = (f64, f64, f64, Vec<f64>);
+type PyDetailedKrigingPrediction = (f64, f64, f64, f64, Vec<f64>, Vec<usize>);
 
 #[pyclass(name = "ForecastFrame")]
 #[derive(Clone, Debug)]
@@ -61,6 +71,7 @@ impl NativeForecastFrame {
     #[pyo3(signature = (rows, frequency, timestamp_col=None, target_col=None, series_id_col=None, static_covariates=None, known_future_covariates=None, historical_covariates=None))]
     #[allow(clippy::too_many_arguments)]
     fn new(
+        py: Python<'_>,
         rows: Vec<(String, String, f64)>,
         frequency: &str,
         timestamp_col: Option<String>,
@@ -71,6 +82,7 @@ impl NativeForecastFrame {
         historical_covariates: Option<Vec<String>>,
     ) -> PyResult<Self> {
         let frequency = ForecastFrequency::parse(frequency).map_err(to_py_value_error)?;
+        let frequency_name = frequency.as_str().to_string();
         let metadata = ForecastFrameMetadata {
             timestamp_col,
             target_col,
@@ -79,7 +91,11 @@ impl NativeForecastFrame {
             known_future_covariates: known_future_covariates.unwrap_or_default(),
             historical_covariates: historical_covariates.unwrap_or_default(),
         };
-        let frame = CoreForecastFrame::from_string_rows(rows, frequency, metadata)
+        let frame = py
+            .allow_threads(|| {
+                let frequency = ForecastFrequency::parse(&frequency_name)?;
+                CoreForecastFrame::from_string_rows(rows, frequency, metadata)
+            })
             .map_err(to_py_value_error)?;
         Ok(Self { frame })
     }
@@ -124,32 +140,44 @@ struct NativeForecastResult {
 #[pymethods]
 impl NativeForecastResult {
     #[new]
-    fn new(predictions: Vec<(String, String, usize, String, f64)>) -> PyResult<Self> {
-        let predictions = predictions
-            .into_iter()
-            .map(|(series_id, timestamp, horizon, model, mean)| {
-                Ok(ForecastPrediction {
-                    series_id,
-                    timestamp: cartoboost_core::forecasting::parse_forecast_timestamp(&timestamp)
-                        .map_err(to_py_value_error)?,
-                    horizon,
-                    model,
-                    mean,
-                })
+    fn new(
+        py: Python<'_>,
+        predictions: Vec<(String, String, usize, String, f64)>,
+    ) -> PyResult<Self> {
+        let result = py
+            .allow_threads(|| {
+                let predictions = predictions
+                    .into_iter()
+                    .map(|(series_id, timestamp, horizon, model, mean)| {
+                        Ok(ForecastPrediction {
+                            series_id,
+                            timestamp: cartoboost_core::forecasting::parse_forecast_timestamp(
+                                &timestamp,
+                            )?,
+                            horizon,
+                            model,
+                            mean,
+                        })
+                    })
+                    .collect::<cartoboost_core::Result<Vec<_>>>()?;
+                CoreForecastResult::new(predictions)
             })
-            .collect::<PyResult<Vec<_>>>()?;
-        let result = CoreForecastResult::new(predictions).map_err(to_py_value_error)?;
+            .map_err(to_py_value_error)?;
         Ok(Self { result })
     }
 
     #[staticmethod]
-    fn from_json(value: &str) -> PyResult<Self> {
-        let result = CoreForecastResult::from_json_string(value).map_err(to_py_value_error)?;
+    fn from_json(py: Python<'_>, value: &str) -> PyResult<Self> {
+        let value = value.to_string();
+        let result = py
+            .allow_threads(|| CoreForecastResult::from_json_string(&value))
+            .map_err(to_py_value_error)?;
         Ok(Self { result })
     }
 
-    fn to_json(&self) -> PyResult<String> {
-        self.result.to_json_string().map_err(to_py_value_error)
+    fn to_json(&self, py: Python<'_>) -> PyResult<String> {
+        py.allow_threads(|| self.result.to_json_string())
+            .map_err(to_py_value_error)
     }
 
     fn columns(&self) -> Vec<String> {
@@ -317,18 +345,21 @@ impl NativeRollingOriginSplitter {
         forecast_window_name(&self.splitter.window)
     }
 
-    fn split(&self, frame: &NativeForecastFrame) -> PyResult<Vec<NativeForecastFold>> {
-        Ok(self
-            .splitter
-            .split(&frame.frame)
+    fn split(
+        &self,
+        py: Python<'_>,
+        frame: &NativeForecastFrame,
+    ) -> PyResult<Vec<NativeForecastFold>> {
+        Ok(py
+            .allow_threads(|| self.splitter.split(&frame.frame))
             .map_err(to_py_value_error)?
             .into_iter()
             .map(|fold| NativeForecastFold { fold })
             .collect())
     }
 
-    fn n_splits_for_frame(&self, frame: &NativeForecastFrame) -> PyResult<usize> {
-        Ok(self.split(frame)?.len())
+    fn n_splits_for_frame(&self, py: Python<'_>, frame: &NativeForecastFrame) -> PyResult<usize> {
+        Ok(self.split(py, frame)?.len())
     }
 }
 
@@ -358,6 +389,7 @@ impl NativeForecastMetricSet {
     #[staticmethod]
     #[pyo3(signature = (forecast, actuals, training_actuals=None, mase_seasonality=None))]
     fn evaluate(
+        py: Python<'_>,
         forecast: &NativeForecastResult,
         actuals: Vec<(String, String, usize, f64)>,
         training_actuals: Option<Vec<(String, String, usize, f64)>>,
@@ -365,13 +397,16 @@ impl NativeForecastMetricSet {
     ) -> PyResult<Self> {
         let actuals = parse_forecast_actuals(actuals)?;
         let training_actuals = parse_forecast_actuals(training_actuals.unwrap_or_default())?;
-        let metrics = cartoboost_core::forecasting::evaluate_forecast_with_training(
-            &forecast.result,
-            &actuals,
-            &training_actuals,
-            mase_seasonality,
-        )
-        .map_err(to_py_value_error)?;
+        let metrics = py
+            .allow_threads(|| {
+                cartoboost_core::forecasting::evaluate_forecast_with_training(
+                    &forecast.result,
+                    &actuals,
+                    &training_actuals,
+                    mase_seasonality,
+                )
+            })
+            .map_err(to_py_value_error)?;
         Ok(Self { metrics })
     }
 
@@ -413,12 +448,13 @@ impl NativeForecastMetricSet {
 #[pyfunction]
 #[pyo3(signature = (forecast, actuals, training_actuals=None, mase_seasonality=None))]
 fn forecast_evaluate_metrics(
+    py: Python<'_>,
     forecast: &NativeForecastResult,
     actuals: Vec<(String, String, usize, f64)>,
     training_actuals: Option<Vec<(String, String, usize, f64)>>,
     mase_seasonality: Option<usize>,
 ) -> PyResult<NativeForecastMetricSet> {
-    NativeForecastMetricSet::evaluate(forecast, actuals, training_actuals, mase_seasonality)
+    NativeForecastMetricSet::evaluate(py, forecast, actuals, training_actuals, mase_seasonality)
 }
 
 #[pyclass(name = "BacktestFoldResult")]
@@ -525,66 +561,74 @@ impl NativeRollingOriginBacktester {
 
     fn run_naive(
         &self,
+        py: Python<'_>,
         model: &NativeNaiveForecaster,
         frame: &NativeForecastFrame,
     ) -> PyResult<NativeBacktestResult> {
-        backtest_to_py(self.backtester.run(model.model.clone(), &frame.frame))
+        backtest_to_py(py.allow_threads(|| self.backtester.run(model.model.clone(), &frame.frame)))
     }
 
     fn run_seasonal_naive(
         &self,
+        py: Python<'_>,
         model: &NativeSeasonalNaiveForecaster,
         frame: &NativeForecastFrame,
     ) -> PyResult<NativeBacktestResult> {
-        backtest_to_py(self.backtester.run(model.model.clone(), &frame.frame))
+        backtest_to_py(py.allow_threads(|| self.backtester.run(model.model.clone(), &frame.frame)))
     }
 
     fn run_theta(
         &self,
+        py: Python<'_>,
         model: &NativeThetaForecaster,
         frame: &NativeForecastFrame,
     ) -> PyResult<NativeBacktestResult> {
-        backtest_to_py(self.backtester.run(model.model.clone(), &frame.frame))
+        backtest_to_py(py.allow_threads(|| self.backtester.run(model.model.clone(), &frame.frame)))
     }
 
     fn run_optimized_theta(
         &self,
+        py: Python<'_>,
         model: &NativeOptimizedThetaForecaster,
         frame: &NativeForecastFrame,
     ) -> PyResult<NativeBacktestResult> {
-        backtest_to_py(self.backtester.run(model.model.clone(), &frame.frame))
+        backtest_to_py(py.allow_threads(|| self.backtester.run(model.model.clone(), &frame.frame)))
     }
 
     fn run_ets(
         &self,
+        py: Python<'_>,
         model: &NativeETSForecaster,
         frame: &NativeForecastFrame,
     ) -> PyResult<NativeBacktestResult> {
-        backtest_to_py(self.backtester.run(model.model.clone(), &frame.frame))
+        backtest_to_py(py.allow_threads(|| self.backtester.run(model.model.clone(), &frame.frame)))
     }
 
     fn run_arima(
         &self,
+        py: Python<'_>,
         model: &NativeArimaForecaster,
         frame: &NativeForecastFrame,
     ) -> PyResult<NativeBacktestResult> {
-        backtest_to_py(self.backtester.run(model.model.clone(), &frame.frame))
+        backtest_to_py(py.allow_threads(|| self.backtester.run(model.model.clone(), &frame.frame)))
     }
 
     fn run_auto_arima(
         &self,
+        py: Python<'_>,
         model: &NativeAutoARIMAForecaster,
         frame: &NativeForecastFrame,
     ) -> PyResult<NativeBacktestResult> {
-        backtest_to_py(self.backtester.run(model.model.clone(), &frame.frame))
+        backtest_to_py(py.allow_threads(|| self.backtester.run(model.model.clone(), &frame.frame)))
     }
 
     fn run_cartoboost_lag(
         &self,
+        py: Python<'_>,
         model: &NativeCartoBoostLagForecaster,
         frame: &NativeForecastFrame,
     ) -> PyResult<NativeBacktestResult> {
-        backtest_to_py(self.backtester.run(model.model.clone(), &frame.frame))
+        backtest_to_py(py.allow_threads(|| self.backtester.run(model.model.clone(), &frame.frame)))
     }
 }
 
@@ -597,13 +641,15 @@ fn forecast_parse_frequency(value: &str) -> PyResult<String> {
 }
 
 #[pyfunction]
-#[pyo3(signature = (values, level_process_variance=0.05, trend_process_variance=0.005, observation_variance=1.0, horizon=0))]
+#[pyo3(signature = (values, level_process_variance=0.05, trend_process_variance=0.005, observation_variance=1.0, horizon=0, interval_z=1.959963984540054))]
 fn utility_kalman_filter(
+    py: Python<'_>,
     values: Vec<f64>,
     level_process_variance: f64,
     trend_process_variance: f64,
     observation_variance: f64,
     horizon: usize,
+    interval_z: f64,
 ) -> PyResult<String> {
     let config = LocalLinearKalmanConfig::new(
         level_process_variance,
@@ -611,16 +657,33 @@ fn utility_kalman_filter(
         observation_variance,
     )
     .map_err(to_py_value_error)?;
-    let result = fit_local_linear_kalman(&values, config).map_err(to_py_value_error)?;
-    let forecast = if horizon == 0 {
-        Vec::new()
-    } else {
-        local_linear_kalman_forecast(result.final_state, horizon).map_err(to_py_value_error)?
-    };
+    let (result, forecast, forecast_distribution) = py
+        .allow_threads(|| {
+            let result = fit_local_linear_kalman(&values, config)?;
+            let forecast = if horizon == 0 {
+                Vec::new()
+            } else {
+                local_linear_kalman_forecast(result.final_state, horizon)?
+            };
+            let forecast_distribution = if horizon == 0 {
+                Vec::new()
+            } else {
+                local_linear_kalman_forecast_distribution(
+                    result.final_state,
+                    result.final_covariance,
+                    config,
+                    horizon,
+                    interval_z,
+                )?
+            };
+            Ok((result, forecast, forecast_distribution))
+        })
+        .map_err(to_py_value_error)?;
     let payload = json!({
         "final_state": {
             "level": result.final_state.level,
             "trend": result.final_state.trend,
+            "covariance": result.final_covariance,
         },
         "estimates": result.estimates.iter().map(|estimate| {
             json!({
@@ -628,46 +691,145 @@ fn utility_kalman_filter(
                 "observed": estimate.observed,
                 "prior_level": estimate.prior_level,
                 "prior_trend": estimate.prior_trend,
+                "prior_level_variance": estimate.prior_level_variance,
+                "prior_trend_variance": estimate.prior_trend_variance,
+                "prior_covariance": estimate.prior_covariance,
                 "level": estimate.level,
                 "trend": estimate.trend,
+                "level_variance": estimate.level_variance,
+                "trend_variance": estimate.trend_variance,
+                "covariance": estimate.covariance,
+                "fitted": estimate.prior_level,
+                "residual": estimate.innovation,
                 "innovation": estimate.innovation,
+                "innovation_variance": estimate.innovation_variance,
+                "standardized_innovation": estimate.innovation / estimate.innovation_variance.sqrt(),
+                "level_gain": estimate.level_gain,
+                "trend_gain": estimate.trend_gain,
+                "log_likelihood": estimate.log_likelihood,
+            })
+        }).collect::<Vec<_>>(),
+        "smoothed_states": result.smoothed_states.iter().map(|state| {
+            json!({
+                "step": state.step,
+                "level": state.level,
+                "trend": state.trend,
+                "covariance": state.covariance,
             })
         }).collect::<Vec<_>>(),
         "forecast": forecast,
+        "forecast_distribution": forecast_distribution.iter().map(|point| {
+            json!({
+                "step": point.step,
+                "mean": point.mean,
+                "variance": point.variance,
+                "lower": point.lower,
+                "upper": point.upper,
+            })
+        }).collect::<Vec<_>>(),
+        "diagnostics": {
+            "log_likelihood": result.log_likelihood,
+            "interval_z": interval_z,
+            "observation_count": result.residual_summary.observation_count,
+            "fitted_count": result.residual_summary.fitted_count,
+            "aic": result.residual_summary.aic,
+            "bic": result.residual_summary.bic,
+            "mse": result.residual_summary.mse,
+            "rmse": result.residual_summary.rmse,
+            "mae": result.residual_summary.mae,
+            "mean_standardized_innovation": result.residual_summary.mean_standardized_innovation,
+            "max_abs_standardized_innovation": result.residual_summary.max_abs_standardized_innovation,
+        },
     });
     serde_json::to_string(&payload).map_err(|err| PyRuntimeError::new_err(err.to_string()))
 }
 
 #[pyfunction]
-#[pyo3(signature = (values, level_process_variance=0.05, observation_variance=1.0, horizon=0))]
+#[pyo3(signature = (values, level_process_variance=0.05, observation_variance=1.0, horizon=0, interval_z=1.959963984540054))]
 fn utility_local_level_kalman_filter(
+    py: Python<'_>,
     values: Vec<f64>,
     level_process_variance: f64,
     observation_variance: f64,
     horizon: usize,
+    interval_z: f64,
 ) -> PyResult<String> {
     let config = LocalLevelKalmanConfig::new(level_process_variance, observation_variance)
         .map_err(to_py_value_error)?;
-    let result = fit_local_level_kalman(&values, config).map_err(to_py_value_error)?;
-    let forecast = if horizon == 0 {
-        Vec::new()
-    } else {
-        local_level_kalman_forecast(result.final_level, horizon).map_err(to_py_value_error)?
-    };
+    let (result, forecast, forecast_distribution) = py
+        .allow_threads(|| {
+            let result = fit_local_level_kalman(&values, config)?;
+            let forecast = if horizon == 0 {
+                Vec::new()
+            } else {
+                local_level_kalman_forecast(result.final_level, horizon)?
+            };
+            let forecast_distribution = if horizon == 0 {
+                Vec::new()
+            } else {
+                local_level_kalman_forecast_distribution(
+                    result.final_level,
+                    result.final_variance,
+                    config,
+                    horizon,
+                    interval_z,
+                )?
+            };
+            Ok((result, forecast, forecast_distribution))
+        })
+        .map_err(to_py_value_error)?;
     let payload = json!({
         "final_state": {
             "level": result.final_level,
+            "variance": result.final_variance,
         },
         "estimates": result.estimates.iter().map(|estimate| {
             json!({
                 "step": estimate.step,
                 "observed": estimate.observed,
                 "prior_level": estimate.prior_level,
+                "prior_variance": estimate.prior_variance,
                 "level": estimate.level,
+                "variance": estimate.variance,
+                "fitted": estimate.prior_level,
+                "residual": estimate.innovation,
                 "innovation": estimate.innovation,
+                "innovation_variance": estimate.innovation_variance,
+                "standardized_innovation": estimate.innovation / estimate.innovation_variance.sqrt(),
+                "gain": estimate.gain,
+                "log_likelihood": estimate.log_likelihood,
+            })
+        }).collect::<Vec<_>>(),
+        "smoothed_states": result.smoothed_states.iter().map(|state| {
+            json!({
+                "step": state.step,
+                "level": state.level,
+                "variance": state.variance,
             })
         }).collect::<Vec<_>>(),
         "forecast": forecast,
+        "forecast_distribution": forecast_distribution.iter().map(|point| {
+            json!({
+                "step": point.step,
+                "mean": point.mean,
+                "variance": point.variance,
+                "lower": point.lower,
+                "upper": point.upper,
+            })
+        }).collect::<Vec<_>>(),
+        "diagnostics": {
+            "log_likelihood": result.log_likelihood,
+            "interval_z": interval_z,
+            "observation_count": result.residual_summary.observation_count,
+            "fitted_count": result.residual_summary.fitted_count,
+            "aic": result.residual_summary.aic,
+            "bic": result.residual_summary.bic,
+            "mse": result.residual_summary.mse,
+            "rmse": result.residual_summary.rmse,
+            "mae": result.residual_summary.mae,
+            "mean_standardized_innovation": result.residual_summary.mean_standardized_innovation,
+            "max_abs_standardized_innovation": result.residual_summary.max_abs_standardized_innovation,
+        },
     });
     serde_json::to_string(&payload).map_err(|err| PyRuntimeError::new_err(err.to_string()))
 }
@@ -675,6 +837,7 @@ fn utility_local_level_kalman_filter(
 #[pyfunction]
 #[pyo3(signature = (values, horizon, method="croston", alpha=0.1, beta=0.1))]
 fn utility_intermittent_demand_forecast(
+    py: Python<'_>,
     values: Vec<f64>,
     horizon: usize,
     method: &str,
@@ -691,12 +854,14 @@ fn utility_intermittent_demand_forecast(
             )));
         }
     };
-    intermittent_demand_forecast(&values, horizon, alpha, beta, method).map_err(to_py_value_error)
+    py.allow_threads(|| intermittent_demand_forecast(&values, horizon, alpha, beta, method))
+        .map_err(to_py_value_error)
 }
 
 #[pyfunction]
 #[pyo3(signature = (observations, targets, range=1.0, nugget=1.0e-6))]
 fn utility_ordinary_kriging_predict(
+    py: Python<'_>,
     observations: Vec<(f64, f64, f64)>,
     targets: Vec<(f64, f64)>,
     range: f64,
@@ -707,7 +872,8 @@ fn utility_ordinary_kriging_predict(
         .map(|(x, y, value)| KrigingObservation { x, y, value })
         .collect::<Vec<_>>();
     let config = OrdinaryKrigingConfig::new(range, nugget).map_err(to_py_value_error)?;
-    let predictions = ordinary_kriging_predict_many(&observations, &targets, config)
+    let predictions = py
+        .allow_threads(|| ordinary_kriging_predict_many(&observations, &targets, config))
         .map_err(to_py_value_error)?;
     Ok(predictions
         .into_iter()
@@ -723,8 +889,323 @@ fn utility_ordinary_kriging_predict(
 }
 
 #[pyfunction]
+#[pyo3(signature = (
+    observations,
+    targets,
+    range=1.0,
+    nugget=1.0e-6,
+    sill=1.0,
+    variogram_model="exponential",
+    drift="ordinary",
+    anisotropy_angle_degrees=0.0,
+    anisotropy_scaling=1.0,
+    max_neighbors=None,
+    min_neighbors=1,
+    max_distance=None
+))]
+#[allow(clippy::too_many_arguments)]
+fn utility_ordinary_kriging_predict_detailed(
+    py: Python<'_>,
+    observations: Vec<(f64, f64, f64)>,
+    targets: Vec<(f64, f64)>,
+    range: f64,
+    nugget: f64,
+    sill: f64,
+    variogram_model: &str,
+    drift: &str,
+    anisotropy_angle_degrees: f64,
+    anisotropy_scaling: f64,
+    max_neighbors: Option<usize>,
+    min_neighbors: usize,
+    max_distance: Option<f64>,
+) -> PyResult<Vec<PyDetailedKrigingPrediction>> {
+    let observations = observations
+        .into_iter()
+        .map(|(x, y, value)| KrigingObservation { x, y, value })
+        .collect::<Vec<_>>();
+    let config = build_kriging_config(
+        range,
+        nugget,
+        sill,
+        variogram_model,
+        drift,
+        anisotropy_angle_degrees,
+        anisotropy_scaling,
+        max_neighbors,
+        min_neighbors,
+        max_distance,
+    )?;
+    let predictions = py
+        .allow_threads(|| ordinary_kriging_predict_many(&observations, &targets, config))
+        .map_err(to_py_value_error)?;
+    Ok(predictions
+        .into_iter()
+        .map(|prediction| {
+            (
+                prediction.x,
+                prediction.y,
+                prediction.mean,
+                prediction.variance,
+                prediction.weights,
+                prediction.neighbor_indices,
+            )
+        })
+        .collect())
+}
+
+#[pyfunction]
+#[pyo3(signature = (
+    observations,
+    range=1.0,
+    nugget=1.0e-6,
+    sill=1.0,
+    variogram_model="exponential",
+    drift="ordinary",
+    anisotropy_angle_degrees=0.0,
+    anisotropy_scaling=1.0,
+    max_neighbors=None,
+    min_neighbors=1,
+    max_distance=None
+))]
+#[allow(clippy::too_many_arguments)]
+fn utility_ordinary_kriging_leave_one_out(
+    py: Python<'_>,
+    observations: Vec<(f64, f64, f64)>,
+    range: f64,
+    nugget: f64,
+    sill: f64,
+    variogram_model: &str,
+    drift: &str,
+    anisotropy_angle_degrees: f64,
+    anisotropy_scaling: f64,
+    max_neighbors: Option<usize>,
+    min_neighbors: usize,
+    max_distance: Option<f64>,
+) -> PyResult<Vec<PyDetailedKrigingPrediction>> {
+    let observations = observations
+        .into_iter()
+        .map(|(x, y, value)| KrigingObservation { x, y, value })
+        .collect::<Vec<_>>();
+    let config = build_kriging_config(
+        range,
+        nugget,
+        sill,
+        variogram_model,
+        drift,
+        anisotropy_angle_degrees,
+        anisotropy_scaling,
+        max_neighbors,
+        min_neighbors,
+        max_distance,
+    )?;
+    let predictions = py
+        .allow_threads(|| ordinary_kriging_leave_one_out(&observations, config))
+        .map_err(to_py_value_error)?;
+    Ok(predictions
+        .into_iter()
+        .map(|prediction| {
+            (
+                prediction.x,
+                prediction.y,
+                prediction.mean,
+                prediction.variance,
+                prediction.weights,
+                prediction.neighbor_indices,
+            )
+        })
+        .collect())
+}
+
+#[pyfunction]
+#[pyo3(signature = (
+    observations,
+    bin_count=10,
+    max_distance=None,
+    anisotropy_angle_degrees=0.0,
+    anisotropy_scaling=1.0
+))]
+fn utility_empirical_variogram(
+    py: Python<'_>,
+    observations: Vec<(f64, f64, f64)>,
+    bin_count: usize,
+    max_distance: Option<f64>,
+    anisotropy_angle_degrees: f64,
+    anisotropy_scaling: f64,
+) -> PyResult<String> {
+    let observations = observations
+        .into_iter()
+        .map(|(x, y, value)| KrigingObservation { x, y, value })
+        .collect::<Vec<_>>();
+    let bins = py
+        .allow_threads(|| {
+            empirical_variogram(
+                &observations,
+                bin_count,
+                max_distance,
+                anisotropy_angle_degrees,
+                anisotropy_scaling,
+            )
+        })
+        .map_err(to_py_value_error)?;
+    let payload = json!({
+        "bins": bins.iter().map(|bin| {
+            json!({
+                "lag_min": bin.lag_min,
+                "lag_max": bin.lag_max,
+                "lag_center": bin.lag_center,
+                "mean_distance": bin.mean_distance,
+                "semivariance": bin.semivariance,
+                "pair_count": bin.pair_count,
+            })
+        }).collect::<Vec<_>>(),
+    });
+    serde_json::to_string(&payload).map_err(|err| PyRuntimeError::new_err(err.to_string()))
+}
+
+#[pyfunction]
+#[pyo3(signature = (
+    observations,
+    variogram_models=None,
+    range_candidates=None,
+    nugget_candidates=None,
+    sill_candidates=None,
+    bin_count=10,
+    anisotropy_angle_degrees=0.0,
+    anisotropy_scaling=1.0
+))]
+#[allow(clippy::too_many_arguments)]
+fn utility_fit_ordinary_kriging_variogram(
+    py: Python<'_>,
+    observations: Vec<(f64, f64, f64)>,
+    variogram_models: Option<Vec<String>>,
+    range_candidates: Option<Vec<f64>>,
+    nugget_candidates: Option<Vec<f64>>,
+    sill_candidates: Option<Vec<f64>>,
+    bin_count: usize,
+    anisotropy_angle_degrees: f64,
+    anisotropy_scaling: f64,
+) -> PyResult<String> {
+    let observations = observations
+        .into_iter()
+        .map(|(x, y, value)| KrigingObservation { x, y, value })
+        .collect::<Vec<_>>();
+    let models = variogram_models
+        .unwrap_or_default()
+        .iter()
+        .map(|model| parse_kriging_variogram_model(model))
+        .collect::<PyResult<Vec<_>>>()?;
+    let ranges = range_candidates.unwrap_or_default();
+    let nuggets = nugget_candidates.unwrap_or_default();
+    let sills = sill_candidates.unwrap_or_default();
+    let fit = py
+        .allow_threads(|| {
+            fit_ordinary_kriging_variogram(
+                &observations,
+                &models,
+                &ranges,
+                &nuggets,
+                &sills,
+                bin_count,
+                anisotropy_angle_degrees,
+                anisotropy_scaling,
+            )
+        })
+        .map_err(to_py_value_error)?;
+    let payload = json!({
+        "config": kriging_config_json(fit.config),
+        "weighted_sse": fit.weighted_sse,
+        "bins": fit.bins.iter().map(|bin| {
+            json!({
+                "lag_min": bin.lag_min,
+                "lag_max": bin.lag_max,
+                "lag_center": bin.lag_center,
+                "mean_distance": bin.mean_distance,
+                "semivariance": bin.semivariance,
+                "pair_count": bin.pair_count,
+            })
+        }).collect::<Vec<_>>(),
+    });
+    serde_json::to_string(&payload).map_err(|err| PyRuntimeError::new_err(err.to_string()))
+}
+
+#[pyfunction]
+#[pyo3(signature = (
+    observations,
+    range=1.0,
+    nugget=1.0e-6,
+    sill=1.0,
+    variogram_model="exponential",
+    drift="ordinary",
+    anisotropy_angle_degrees=0.0,
+    anisotropy_scaling=1.0,
+    max_neighbors=None,
+    min_neighbors=1,
+    max_distance=None
+))]
+#[allow(clippy::too_many_arguments)]
+fn utility_ordinary_kriging_leave_one_out_diagnostics(
+    py: Python<'_>,
+    observations: Vec<(f64, f64, f64)>,
+    range: f64,
+    nugget: f64,
+    sill: f64,
+    variogram_model: &str,
+    drift: &str,
+    anisotropy_angle_degrees: f64,
+    anisotropy_scaling: f64,
+    max_neighbors: Option<usize>,
+    min_neighbors: usize,
+    max_distance: Option<f64>,
+) -> PyResult<String> {
+    let observations = observations
+        .into_iter()
+        .map(|(x, y, value)| KrigingObservation { x, y, value })
+        .collect::<Vec<_>>();
+    let config = build_kriging_config(
+        range,
+        nugget,
+        sill,
+        variogram_model,
+        drift,
+        anisotropy_angle_degrees,
+        anisotropy_scaling,
+        max_neighbors,
+        min_neighbors,
+        max_distance,
+    )?;
+    let (predictions, diagnostics) = py
+        .allow_threads(|| ordinary_kriging_leave_one_out_diagnostics(&observations, config))
+        .map_err(to_py_value_error)?;
+    let payload = json!({
+        "predictions": predictions.iter().map(|prediction| {
+            json!({
+                "x": prediction.x,
+                "y": prediction.y,
+                "mean": prediction.mean,
+                "variance": prediction.variance,
+                "weights": prediction.weights,
+                "neighbor_indices": prediction.neighbor_indices,
+            })
+        }).collect::<Vec<_>>(),
+        "diagnostics": {
+            "observation_count": diagnostics.observation_count,
+            "mean_error": diagnostics.mean_error,
+            "mae": diagnostics.mae,
+            "rmse": diagnostics.rmse,
+            "mean_standardized_error": diagnostics.mean_standardized_error,
+            "rmse_standardized_error": diagnostics.rmse_standardized_error,
+            "max_abs_standardized_error": diagnostics.max_abs_standardized_error,
+            "interval_coverage_95": diagnostics.interval_coverage_95,
+            "average_variance": diagnostics.average_variance,
+        },
+    });
+    serde_json::to_string(&payload).map_err(|err| PyRuntimeError::new_err(err.to_string()))
+}
+
+#[pyfunction]
 #[pyo3(signature = (model, values, horizon, params_json=None))]
 fn utility_series_forecast(
+    py: Python<'_>,
     model: &str,
     values: Vec<f64>,
     horizon: usize,
@@ -738,8 +1219,12 @@ fn utility_series_forecast(
     };
     let frame = utility_frame_from_values(values).map_err(to_py_value_error)?;
     let mut forecaster = utility_forecaster(model, &params).map_err(to_py_value_error)?;
-    forecaster.fit(&frame).map_err(to_py_value_error)?;
-    let result = forecaster.predict(horizon).map_err(to_py_value_error)?;
+    let result = py
+        .allow_threads(|| {
+            forecaster.fit(&frame)?;
+            forecaster.predict(horizon)
+        })
+        .map_err(to_py_value_error)?;
     Ok(result
         .predictions()
         .iter()
@@ -907,12 +1392,17 @@ impl NativeNaiveForecaster {
         })
     }
 
-    fn fit(&mut self, frame: &NativeForecastFrame) -> PyResult<()> {
-        self.model.fit(&frame.frame).map_err(to_py_value_error)
+    fn fit(&mut self, py: Python<'_>, frame: &NativeForecastFrame) -> PyResult<()> {
+        fit_forecaster_py(py, &mut self.model, frame)
     }
 
-    fn predict(&self, horizon: usize) -> PyResult<NativeForecastResult> {
-        forecast_to_py(self.model.predict(horizon))
+    fn predict(&self, py: Python<'_>, horizon: usize) -> PyResult<NativeForecastResult> {
+        predict_forecaster_py(py, &self.model, horizon)
+    }
+
+    fn metadata_json(&self) -> PyResult<String> {
+        serde_json::to_string(&self.model.metadata())
+            .map_err(|err| PyRuntimeError::new_err(err.to_string()))
     }
 }
 
@@ -933,12 +1423,17 @@ impl NativeSeasonalNaiveForecaster {
         })
     }
 
-    fn fit(&mut self, frame: &NativeForecastFrame) -> PyResult<()> {
-        self.model.fit(&frame.frame).map_err(to_py_value_error)
+    fn fit(&mut self, py: Python<'_>, frame: &NativeForecastFrame) -> PyResult<()> {
+        fit_forecaster_py(py, &mut self.model, frame)
     }
 
-    fn predict(&self, horizon: usize) -> PyResult<NativeForecastResult> {
-        forecast_to_py(self.model.predict(horizon))
+    fn predict(&self, py: Python<'_>, horizon: usize) -> PyResult<NativeForecastResult> {
+        predict_forecaster_py(py, &self.model, horizon)
+    }
+
+    fn metadata_json(&self) -> PyResult<String> {
+        serde_json::to_string(&self.model.metadata())
+            .map_err(|err| PyRuntimeError::new_err(err.to_string()))
     }
 }
 
@@ -967,12 +1462,17 @@ impl NativeThetaForecaster {
         })
     }
 
-    fn fit(&mut self, frame: &NativeForecastFrame) -> PyResult<()> {
-        self.model.fit(&frame.frame).map_err(to_py_value_error)
+    fn fit(&mut self, py: Python<'_>, frame: &NativeForecastFrame) -> PyResult<()> {
+        fit_forecaster_py(py, &mut self.model, frame)
     }
 
-    fn predict(&self, horizon: usize) -> PyResult<NativeForecastResult> {
-        forecast_to_py(self.model.predict(horizon))
+    fn predict(&self, py: Python<'_>, horizon: usize) -> PyResult<NativeForecastResult> {
+        predict_forecaster_py(py, &self.model, horizon)
+    }
+
+    fn metadata_json(&self) -> PyResult<String> {
+        serde_json::to_string(&self.model.metadata())
+            .map_err(|err| PyRuntimeError::new_err(err.to_string()))
     }
 }
 
@@ -1005,12 +1505,17 @@ impl NativeOptimizedThetaForecaster {
         })
     }
 
-    fn fit(&mut self, frame: &NativeForecastFrame) -> PyResult<()> {
-        self.model.fit(&frame.frame).map_err(to_py_value_error)
+    fn fit(&mut self, py: Python<'_>, frame: &NativeForecastFrame) -> PyResult<()> {
+        fit_forecaster_py(py, &mut self.model, frame)
     }
 
-    fn predict(&self, horizon: usize) -> PyResult<NativeForecastResult> {
-        forecast_to_py(self.model.predict(horizon))
+    fn predict(&self, py: Python<'_>, horizon: usize) -> PyResult<NativeForecastResult> {
+        predict_forecaster_py(py, &self.model, horizon)
+    }
+
+    fn metadata_json(&self) -> PyResult<String> {
+        serde_json::to_string(&self.model.metadata())
+            .map_err(|err| PyRuntimeError::new_err(err.to_string()))
     }
 }
 
@@ -1036,17 +1541,53 @@ impl NativeETSForecaster {
         })
     }
 
-    fn fit(&mut self, frame: &NativeForecastFrame) -> PyResult<()> {
-        self.model.fit(&frame.frame).map_err(to_py_value_error)
+    fn fit(&mut self, py: Python<'_>, frame: &NativeForecastFrame) -> PyResult<()> {
+        fit_forecaster_py(py, &mut self.model, frame)
     }
 
-    fn predict(&self, horizon: usize) -> PyResult<NativeForecastResult> {
-        forecast_to_py(self.model.predict(horizon))
+    fn predict(&self, py: Python<'_>, horizon: usize) -> PyResult<NativeForecastResult> {
+        predict_forecaster_py(py, &self.model, horizon)
     }
 
     fn metadata_json(&self) -> PyResult<String> {
         serde_json::to_string(&self.model.metadata())
             .map_err(|err| PyRuntimeError::new_err(err.to_string()))
+    }
+
+    fn fitted_values(&self, series_id: &str) -> PyResult<Vec<f64>> {
+        ets_diagnostic_values(
+            self.model.fitted_values(series_id),
+            series_id,
+            "fitted values",
+        )
+    }
+
+    fn residuals(&self, series_id: &str) -> PyResult<Vec<f64>> {
+        ets_diagnostic_values(self.model.residuals(series_id), series_id, "residuals")
+    }
+
+    fn level_values(&self, series_id: &str) -> PyResult<Vec<f64>> {
+        ets_diagnostic_values(
+            self.model.level_values(series_id),
+            series_id,
+            "level values",
+        )
+    }
+
+    fn trend_values(&self, series_id: &str) -> PyResult<Vec<f64>> {
+        ets_diagnostic_values(
+            self.model.trend_values(series_id),
+            series_id,
+            "trend values",
+        )
+    }
+
+    fn seasonal_values(&self, series_id: &str) -> PyResult<Vec<f64>> {
+        ets_diagnostic_values(
+            self.model.seasonal_values(series_id),
+            series_id,
+            "seasonal values",
+        )
     }
 }
 
@@ -1066,12 +1607,17 @@ impl NativeArimaForecaster {
         })
     }
 
-    fn fit(&mut self, frame: &NativeForecastFrame) -> PyResult<()> {
-        self.model.fit(&frame.frame).map_err(to_py_value_error)
+    fn fit(&mut self, py: Python<'_>, frame: &NativeForecastFrame) -> PyResult<()> {
+        fit_forecaster_py(py, &mut self.model, frame)
     }
 
-    fn predict(&self, horizon: usize) -> PyResult<NativeForecastResult> {
-        forecast_to_py(self.model.predict(horizon))
+    fn predict(&self, py: Python<'_>, horizon: usize) -> PyResult<NativeForecastResult> {
+        predict_forecaster_py(py, &self.model, horizon)
+    }
+
+    fn metadata_json(&self) -> PyResult<String> {
+        serde_json::to_string(&self.model.metadata())
+            .map_err(|err| PyRuntimeError::new_err(err.to_string()))
     }
 }
 
@@ -1112,12 +1658,12 @@ impl NativeAutoARIMAForecaster {
         })
     }
 
-    fn fit(&mut self, frame: &NativeForecastFrame) -> PyResult<()> {
-        self.model.fit(&frame.frame).map_err(to_py_value_error)
+    fn fit(&mut self, py: Python<'_>, frame: &NativeForecastFrame) -> PyResult<()> {
+        fit_forecaster_py(py, &mut self.model, frame)
     }
 
-    fn predict(&self, horizon: usize) -> PyResult<NativeForecastResult> {
-        forecast_to_py(self.model.predict(horizon))
+    fn predict(&self, py: Python<'_>, horizon: usize) -> PyResult<NativeForecastResult> {
+        predict_forecaster_py(py, &self.model, horizon)
     }
 
     fn metadata_json(&self) -> PyResult<String> {
@@ -1151,12 +1697,12 @@ impl NativeKalmanForecaster {
         })
     }
 
-    fn fit(&mut self, frame: &NativeForecastFrame) -> PyResult<()> {
-        self.model.fit(&frame.frame).map_err(to_py_value_error)
+    fn fit(&mut self, py: Python<'_>, frame: &NativeForecastFrame) -> PyResult<()> {
+        fit_forecaster_py(py, &mut self.model, frame)
     }
 
-    fn predict(&self, horizon: usize) -> PyResult<NativeForecastResult> {
-        forecast_to_py(self.model.predict(horizon))
+    fn predict(&self, py: Python<'_>, horizon: usize) -> PyResult<NativeForecastResult> {
+        predict_forecaster_py(py, &self.model, horizon)
     }
 
     fn metadata_json(&self) -> PyResult<String> {
@@ -1174,24 +1720,61 @@ struct NativeKrigingForecaster {
 #[pymethods]
 impl NativeKrigingForecaster {
     #[new]
-    #[pyo3(signature = (coordinates, range=1.0, nugget=1.0e-9))]
-    fn new(coordinates: Vec<(String, f64, f64)>, range: f64, nugget: f64) -> PyResult<Self> {
+    #[pyo3(signature = (
+        coordinates,
+        range=1.0,
+        nugget=1.0e-9,
+        sill=1.0,
+        variogram_model="exponential",
+        drift="ordinary",
+        anisotropy_angle_degrees=0.0,
+        anisotropy_scaling=1.0,
+        max_neighbors=None,
+        min_neighbors=1,
+        max_distance=None
+    ))]
+    #[allow(clippy::too_many_arguments)]
+    fn new(
+        coordinates: Vec<(String, f64, f64)>,
+        range: f64,
+        nugget: f64,
+        sill: f64,
+        variogram_model: &str,
+        drift: &str,
+        anisotropy_angle_degrees: f64,
+        anisotropy_scaling: f64,
+        max_neighbors: Option<usize>,
+        min_neighbors: usize,
+        max_distance: Option<f64>,
+    ) -> PyResult<Self> {
         let coordinates = coordinates
             .into_iter()
             .map(|(series_id, x, y)| (series_id, (x, y)))
             .collect::<BTreeMap<_, _>>();
+        let config = build_kriging_config(
+            range,
+            nugget,
+            sill,
+            variogram_model,
+            drift,
+            anisotropy_angle_degrees,
+            anisotropy_scaling,
+            max_neighbors,
+            min_neighbors,
+            max_distance,
+        )?;
         Ok(Self {
-            model: CoreKrigingForecaster::new(coordinates, range, nugget)
+            model: CoreKrigingForecaster::with_config(coordinates, config)
                 .map_err(to_py_value_error)?,
         })
     }
 
-    fn fit(&mut self, frame: &NativeForecastFrame) -> PyResult<()> {
-        self.model.fit(&frame.frame).map_err(to_py_value_error)
+    fn fit(&mut self, py: Python<'_>, frame: &NativeForecastFrame) -> PyResult<()> {
+        fit_forecaster_py(py, &mut self.model, frame)
     }
 
-    fn predict(&self, horizon: usize) -> PyResult<NativeForecastResult> {
-        forecast_to_py(self.model.predict(horizon))
+    fn predict(&self, py: Python<'_>, horizon: usize) -> PyResult<NativeForecastResult> {
+        predict_forecaster_py(py, &self.model, horizon)
     }
 
     fn metadata_json(&self) -> PyResult<String> {
@@ -1209,11 +1792,13 @@ struct NativeCartoBoostLagForecaster {
 #[pymethods]
 impl NativeCartoBoostLagForecaster {
     #[new]
-    #[pyo3(signature = (lags=None, rolling_windows=None, calendar_features=true, recursive=true, prediction_interval_levels=None, n_estimators=None, learning_rate=None, max_depth=None, min_samples_leaf=None, min_gain=None, splitters=None, trend_features=true, target_mode="level"))]
+    #[pyo3(signature = (lags=None, rolling_windows=None, difference_lags=None, rolling_trend_windows=None, calendar_features=true, recursive=true, prediction_interval_levels=None, n_estimators=None, learning_rate=None, max_depth=None, min_samples_leaf=None, min_gain=None, splitters=None, trend_features=true, target_mode="level"))]
     #[allow(clippy::too_many_arguments)]
     fn new(
         lags: Option<Vec<usize>>,
         rolling_windows: Option<Vec<usize>>,
+        difference_lags: Option<Vec<usize>>,
+        rolling_trend_windows: Option<Vec<usize>>,
         calendar_features: bool,
         recursive: bool,
         prediction_interval_levels: Option<Vec<f64>>,
@@ -1234,21 +1819,23 @@ impl NativeCartoBoostLagForecaster {
         validate_interval_levels(prediction_interval_levels.as_deref())?;
         let lags = lags.unwrap_or_else(|| vec![1, 7, 14]);
         let rolling_mean_windows = rolling_windows.unwrap_or_else(|| vec![7, 28]);
+        let difference_lags = match difference_lags {
+            Some(values) => values,
+            None if trend_features => lags.iter().copied().filter(|lag| *lag > 1).collect(),
+            None => Vec::new(),
+        };
+        let rolling_trend_windows = match rolling_trend_windows {
+            Some(values) => values,
+            None if trend_features => rolling_mean_windows
+                .iter()
+                .copied()
+                .filter(|window| *window > 1)
+                .collect(),
+            None => Vec::new(),
+        };
         let config = LagFeatureConfig {
-            difference_lags: if trend_features {
-                lags.iter().copied().filter(|lag| *lag > 1).collect()
-            } else {
-                Vec::new()
-            },
-            rolling_trend_windows: if trend_features {
-                rolling_mean_windows
-                    .iter()
-                    .copied()
-                    .filter(|window| *window > 1)
-                    .collect()
-            } else {
-                Vec::new()
-            },
+            difference_lags,
+            rolling_trend_windows,
             lags,
             rolling_mean_windows,
             calendar_features: if calendar_features {
@@ -1304,12 +1891,18 @@ impl NativeCartoBoostLagForecaster {
         })
     }
 
-    fn fit(&mut self, frame: &NativeForecastFrame) -> PyResult<()> {
-        self.model.fit(&frame.frame).map_err(to_py_value_error)
+    fn fit(&mut self, py: Python<'_>, frame: &NativeForecastFrame) -> PyResult<()> {
+        fit_forecaster_py(py, &mut self.model, frame)
     }
 
-    fn predict(&self, horizon: usize) -> PyResult<NativeForecastResult> {
-        forecast_to_py(self.model.predict(horizon))
+    fn predict(&self, py: Python<'_>, horizon: usize) -> PyResult<NativeForecastResult> {
+        predict_forecaster_py(py, &self.model, horizon)
+    }
+
+    fn metadata_json(&self) -> PyResult<String> {
+        serde_json::to_string(&self.model.metadata()).map_err(|err| {
+            PyValueError::new_err(format!("failed to serialize forecaster metadata: {err}"))
+        })
     }
 }
 
@@ -1333,12 +1926,12 @@ impl NativeWeightedEnsembleForecaster {
         })
     }
 
-    fn fit(&mut self, frame: &NativeForecastFrame) -> PyResult<()> {
-        self.model.fit(&frame.frame).map_err(to_py_value_error)
+    fn fit(&mut self, py: Python<'_>, frame: &NativeForecastFrame) -> PyResult<()> {
+        fit_forecaster_py(py, &mut self.model, frame)
     }
 
-    fn predict(&self, horizon: usize) -> PyResult<NativeForecastResult> {
-        forecast_to_py(self.model.predict(horizon))
+    fn predict(&self, py: Python<'_>, horizon: usize) -> PyResult<NativeForecastResult> {
+        predict_forecaster_py(py, &self.model, horizon)
     }
 
     fn metadata_json(&self) -> PyResult<String> {
@@ -1370,6 +1963,9 @@ fn boxed_forecaster_from_py(py: Python<'_>, model: &Py<PyAny>) -> PyResult<Box<d
     if let Ok(model) = model.extract::<PyRef<'_, NativeAutoARIMAForecaster>>() {
         return Ok(Box::new(model.model.clone()));
     }
+    if let Ok(model) = model.extract::<PyRef<'_, NativeKalmanForecaster>>() {
+        return Ok(Box::new(model.model.clone()));
+    }
     if let Ok(model) = model.extract::<PyRef<'_, NativeCartoBoostLagForecaster>>() {
         return Ok(Box::new(model.model.clone()));
     }
@@ -1383,6 +1979,100 @@ fn forecast_to_py(
 ) -> PyResult<NativeForecastResult> {
     Ok(NativeForecastResult {
         result: result.map_err(to_py_value_error)?,
+    })
+}
+
+fn fit_forecaster_py<M: Forecaster>(
+    py: Python<'_>,
+    model: &mut M,
+    frame: &NativeForecastFrame,
+) -> PyResult<()> {
+    py.allow_threads(|| model.fit(&frame.frame))
+        .map_err(to_py_value_error)
+}
+
+fn predict_forecaster_py<M: Forecaster>(
+    py: Python<'_>,
+    model: &M,
+    horizon: usize,
+) -> PyResult<NativeForecastResult> {
+    forecast_to_py(py.allow_threads(|| model.predict(horizon)))
+}
+
+#[allow(dead_code)]
+fn ets_diagnostic_values(
+    values: Option<&[f64]>,
+    series_id: &str,
+    name: &str,
+) -> PyResult<Vec<f64>> {
+    values.map(|values| values.to_vec()).ok_or_else(|| {
+        PyValueError::new_err(format!(
+            "ETS {name} are unavailable for series {series_id:?}; fit the model and check the series id"
+        ))
+    })
+}
+
+#[allow(clippy::too_many_arguments)]
+fn build_kriging_config(
+    range: f64,
+    nugget: f64,
+    sill: f64,
+    variogram_model: &str,
+    drift: &str,
+    anisotropy_angle_degrees: f64,
+    anisotropy_scaling: f64,
+    max_neighbors: Option<usize>,
+    min_neighbors: usize,
+    max_distance: Option<f64>,
+) -> PyResult<OrdinaryKrigingConfig> {
+    let variogram_model = parse_kriging_variogram_model(variogram_model)?;
+    let drift = parse_kriging_drift(drift)?;
+    OrdinaryKrigingConfig::new(range, nugget)
+        .and_then(|config| config.with_sill(sill))
+        .and_then(|config| config.with_anisotropy(anisotropy_angle_degrees, anisotropy_scaling))
+        .and_then(|config| config.with_neighbor_limits(max_neighbors, min_neighbors, max_distance))
+        .map(|config| {
+            config
+                .with_variogram_model(variogram_model)
+                .with_drift(drift)
+        })
+        .map_err(to_py_value_error)
+}
+
+fn parse_kriging_variogram_model(value: &str) -> PyResult<KrigingVariogramModel> {
+    match value.trim().to_ascii_lowercase().replace('-', "_").as_str() {
+        "exponential" | "exp" => Ok(KrigingVariogramModel::Exponential),
+        "gaussian" | "gauss" => Ok(KrigingVariogramModel::Gaussian),
+        "spherical" | "sphere" => Ok(KrigingVariogramModel::Spherical),
+        "linear" => Ok(KrigingVariogramModel::Linear),
+        other => Err(PyValueError::new_err(format!(
+            "unsupported kriging variogram_model {other:?}; expected exponential, gaussian, spherical, or linear"
+        ))),
+    }
+}
+
+fn parse_kriging_drift(value: &str) -> PyResult<KrigingDrift> {
+    match value.trim().to_ascii_lowercase().replace('-', "_").as_str() {
+        "ordinary" | "constant" | "none" => Ok(KrigingDrift::Ordinary),
+        "linear" | "universal_linear" | "universal" => Ok(KrigingDrift::Linear),
+        other => Err(PyValueError::new_err(format!(
+            "unsupported kriging drift {other:?}; expected ordinary or linear"
+        ))),
+    }
+}
+
+fn kriging_config_json(config: OrdinaryKrigingConfig) -> Value {
+    json!({
+        "range": config.range,
+        "nugget": config.nugget,
+        "sill": config.sill,
+        "variogram_model": format!("{:?}", config.variogram_model).to_lowercase(),
+        "drift": format!("{:?}", config.drift).to_lowercase(),
+        "anisotropy_angle_degrees": config.anisotropy_angle_degrees,
+        "anisotropy_scaling": config.anisotropy_scaling,
+        "max_neighbors": config.max_neighbors,
+        "min_neighbors": config.min_neighbors,
+        "max_distance": config.max_distance,
     })
 }
 
@@ -1764,31 +2454,36 @@ impl NativeCartoBoostRegressor {
         .map_err(to_py_value_error)
     }
 
-    fn save(&self, path: PathBuf) -> PyResult<()> {
+    fn save(&self, py: Python<'_>, path: PathBuf) -> PyResult<()> {
         let model = self
             .model
             .as_ref()
             .ok_or_else(|| PyRuntimeError::new_err("CartoBoostRegressor is not fitted"))?;
-        model.save(path).map_err(to_py_error)
+        py.allow_threads(|| model.save(path)).map_err(to_py_error)
     }
 
-    fn save_weights(&self, path: PathBuf) -> PyResult<()> {
+    fn save_weights(&self, py: Python<'_>, path: PathBuf) -> PyResult<()> {
         let model = self
             .model
             .as_ref()
             .ok_or_else(|| PyRuntimeError::new_err("CartoBoostRegressor is not fitted"))?;
-        model.save_weights(path).map_err(to_py_error)
+        py.allow_threads(|| model.save_weights(path))
+            .map_err(to_py_error)
     }
 
     #[staticmethod]
-    fn load(path: PathBuf) -> PyResult<Self> {
-        let model = Model::load(path).map_err(to_py_error)?;
+    fn load(py: Python<'_>, path: PathBuf) -> PyResult<Self> {
+        let model = py
+            .allow_threads(|| Model::load(path))
+            .map_err(to_py_error)?;
         Self::from_model(model)
     }
 
     #[staticmethod]
-    fn load_weights(path: PathBuf) -> PyResult<Self> {
-        let model = Model::load_weights(path).map_err(to_py_error)?;
+    fn load_weights(py: Python<'_>, path: PathBuf) -> PyResult<Self> {
+        let model = py
+            .allow_threads(|| Model::load_weights(path))
+            .map_err(to_py_error)?;
         Self::from_model(model)
     }
 
@@ -2167,10 +2862,11 @@ impl NativeNeuralEmbeddingFeatures {
     #[pyo3(signature = (ids, target))]
     fn fit(
         &mut self,
+        py: Python<'_>,
         ids: PyReadonlyArray1<'_, u64>,
         target: PyReadonlyArray1<'_, f64>,
     ) -> PyResult<()> {
-        let ids = ids.as_slice()?;
+        let ids = ids.as_slice()?.to_vec();
         let target: Vec<f32> = target
             .as_slice()?
             .iter()
@@ -2179,15 +2875,18 @@ impl NativeNeuralEmbeddingFeatures {
             .collect();
         let random_state = self.random_state.map(|value| value as u64);
 
-        let table = fit_embedding_table_with_options(
-            self.dim,
-            ids,
-            &target,
-            self.fallback.clone(),
-            random_state,
-            self.support_prior_strength,
-        )
-        .map_err(|err| PyValueError::new_err(err.to_string()))?;
+        let table = py
+            .allow_threads(|| {
+                fit_embedding_table_with_options(
+                    self.dim,
+                    &ids,
+                    &target,
+                    self.fallback.clone(),
+                    random_state,
+                    self.support_prior_strength,
+                )
+            })
+            .map_err(|err| PyValueError::new_err(err.to_string()))?;
         self.table = Some(table);
         Ok(())
     }
@@ -2195,10 +2894,11 @@ impl NativeNeuralEmbeddingFeatures {
     #[pyo3(signature = (ids, target))]
     fn fit_transform(
         &mut self,
+        py: Python<'_>,
         ids: PyReadonlyArray1<'_, u64>,
         target: PyReadonlyArray1<'_, f64>,
     ) -> PyResult<Vec<Vec<f32>>> {
-        let ids = ids.as_slice()?;
+        let ids = ids.as_slice()?.to_vec();
         let target: Vec<f32> = target
             .as_slice()?
             .iter()
@@ -2206,24 +2906,21 @@ impl NativeNeuralEmbeddingFeatures {
             .map(|value| value as f32)
             .collect();
         let random_state = self.random_state.map(|value| value as u64);
-        let table = fit_embedding_table_with_options(
-            self.dim,
-            ids,
-            &target,
-            self.fallback.clone(),
-            random_state,
-            self.support_prior_strength,
-        )
-        .map_err(|err| PyValueError::new_err(err.to_string()))?;
-        self.table = Some(table);
-
-        let table = self
-            .table
-            .as_ref()
-            .ok_or_else(|| PyRuntimeError::new_err("fit_transform failed to set table"))?;
-        let block = table
-            .encode_ids(ids, "neural_embedding")
+        let (table, block) = py
+            .allow_threads(|| {
+                let table = fit_embedding_table_with_options(
+                    self.dim,
+                    &ids,
+                    &target,
+                    self.fallback.clone(),
+                    random_state,
+                    self.support_prior_strength,
+                )?;
+                let block = table.encode_ids(&ids, "neural_embedding")?;
+                Ok::<_, cartoboost_neural::NeuralError>((table, block))
+            })
             .map_err(|err| PyValueError::new_err(err.to_string()))?;
+        self.table = Some(table);
         let mut output = Vec::with_capacity(ids.len());
         for row in block.values.chunks_exact(block.dim) {
             output.push(row.to_vec());
@@ -2232,15 +2929,15 @@ impl NativeNeuralEmbeddingFeatures {
     }
 
     #[pyo3(signature = (ids))]
-    fn transform(&self, ids: PyReadonlyArray1<'_, u64>) -> PyResult<Vec<Vec<f32>>> {
+    fn transform(&self, py: Python<'_>, ids: PyReadonlyArray1<'_, u64>) -> PyResult<Vec<Vec<f32>>> {
         let table = self
             .table
             .as_ref()
             .ok_or_else(|| PyRuntimeError::new_err("transform called before fit or load"))?;
 
-        let ids = ids.as_slice()?;
-        let block = table
-            .encode_ids(ids, "neural_embedding")
+        let ids = ids.as_slice()?.to_vec();
+        let block = py
+            .allow_threads(|| table.encode_ids(&ids, "neural_embedding"))
             .map_err(|err| PyValueError::new_err(err.to_string()))?;
         let mut output = Vec::with_capacity(ids.len());
         for row in block.values.chunks_exact(block.dim) {
@@ -2250,26 +2947,28 @@ impl NativeNeuralEmbeddingFeatures {
     }
 
     #[pyo3(signature = (path))]
-    fn export(&self, path: String) -> PyResult<()> {
+    fn export(&self, py: Python<'_>, path: String) -> PyResult<()> {
         let table = self
             .table
             .as_ref()
             .ok_or_else(|| PyRuntimeError::new_err("export called before fit or load"))?;
 
-        let artifact = build_embedding_table_artifact(
-            self.dim,
-            table.rows().to_vec(),
-            table.artifact_metadata().fallback.clone(),
-        )
-        .map_err(|err| PyValueError::new_err(err.to_string()))?;
-        write_embedding_table_artifact(path, &artifact)
-            .map_err(|err| PyValueError::new_err(err.to_string()))
+        py.allow_threads(|| {
+            let artifact = build_embedding_table_artifact(
+                self.dim,
+                table.rows().to_vec(),
+                table.artifact_metadata().fallback.clone(),
+            )?;
+            write_embedding_table_artifact(path, &artifact)
+        })
+        .map_err(|err| PyValueError::new_err(err.to_string()))
     }
 
     #[classmethod]
-    fn from_artifact(_cls: &Bound<'_, PyType>, path: String) -> PyResult<Self> {
-        let table =
-            EmbeddingTable::load(path).map_err(|err| PyValueError::new_err(err.to_string()))?;
+    fn from_artifact(_cls: &Bound<'_, PyType>, py: Python<'_>, path: String) -> PyResult<Self> {
+        let table = py
+            .allow_threads(|| EmbeddingTable::load(path))
+            .map_err(|err| PyValueError::new_err(err.to_string()))?;
         let metadata = table.artifact_metadata().clone();
         let parent_resolution = match metadata.fallback {
             ArtifactFallbackKind::ParentCell { parent_resolution } => Some(parent_resolution),
@@ -2386,6 +3085,7 @@ impl NativeGraphSageEncoder {
     #[pyo3(signature = (node_count, edges, node_features))]
     fn fit(
         &mut self,
+        py: Python<'_>,
         node_count: usize,
         edges: Vec<(usize, usize)>,
         node_features: Vec<Vec<f32>>,
@@ -2394,17 +3094,16 @@ impl NativeGraphSageEncoder {
             .map_err(to_py_neural_error)?;
         let mut model = GraphSageEncoder::new(self.config.clone(), self.encoder.input_dim())
             .map_err(to_py_neural_error)?;
-        let embedding = model
-            .fit(&graph, &node_features)
+        let embedding = py
+            .allow_threads(|| model.fit(&graph, &node_features))
             .map_err(to_py_neural_error)?;
         self.encoder = model;
         Ok(embedding.into_inner())
     }
 
-    fn encode(&self, node_features: Vec<Vec<f32>>) -> PyResult<Vec<Vec<f32>>> {
-        let embedding = self
-            .encoder
-            .encode(&node_features)
+    fn encode(&self, py: Python<'_>, node_features: Vec<Vec<f32>>) -> PyResult<Vec<Vec<f32>>> {
+        let embedding = py
+            .allow_threads(|| self.encoder.encode(&node_features))
             .map_err(to_py_neural_error)?;
         Ok(embedding.into_inner())
     }
@@ -2412,15 +3111,15 @@ impl NativeGraphSageEncoder {
     #[pyo3(signature = (node_count, edges, node_features))]
     fn encode_graph(
         &self,
+        py: Python<'_>,
         node_count: usize,
         edges: Vec<(usize, usize)>,
         node_features: Vec<Vec<f32>>,
     ) -> PyResult<Vec<Vec<f32>>> {
         let graph = HomogeneousGraph::from_directed_edges(node_count, &edges)
             .map_err(to_py_neural_error)?;
-        let embedding = self
-            .encoder
-            .encode_graph(&graph, &node_features)
+        let embedding = py
+            .allow_threads(|| self.encoder.encode_graph(&graph, &node_features))
             .map_err(to_py_neural_error)?;
         Ok(embedding.into_inner())
     }
@@ -2429,19 +3128,25 @@ impl NativeGraphSageEncoder {
         self.encoder.loss_curve().values().to_vec()
     }
 
-    fn save_artifact_json(&self, path: String) -> PyResult<()> {
-        self.encoder
-            .save_artifact_json(path)
+    fn save_artifact_json(&self, py: Python<'_>, path: String) -> PyResult<()> {
+        py.allow_threads(|| self.encoder.save_artifact_json(path))
             .map_err(to_py_neural_error)
     }
 
-    fn to_artifact_json(&self) -> PyResult<String> {
-        self.encoder.to_artifact_json().map_err(to_py_neural_error)
+    fn to_artifact_json(&self, py: Python<'_>) -> PyResult<String> {
+        py.allow_threads(|| self.encoder.to_artifact_json())
+            .map_err(to_py_neural_error)
     }
 
     #[classmethod]
-    fn load_artifact_json(_cls: &Bound<'_, PyType>, path: String) -> PyResult<Self> {
-        let encoder = GraphSageEncoder::load_artifact_json(path).map_err(to_py_neural_error)?;
+    fn load_artifact_json(
+        _cls: &Bound<'_, PyType>,
+        py: Python<'_>,
+        path: String,
+    ) -> PyResult<Self> {
+        let encoder = py
+            .allow_threads(|| GraphSageEncoder::load_artifact_json(path))
+            .map_err(to_py_neural_error)?;
         let config = encoder.config();
         Ok(Self { encoder, config })
     }
@@ -2546,20 +3251,23 @@ impl NativeNode2VecEncoder {
     #[pyo3(signature = (node_count, edges, edge_weights=None))]
     fn fit(
         &mut self,
+        py: Python<'_>,
         node_count: usize,
         edges: Vec<(usize, usize)>,
         edge_weights: Option<Vec<f32>>,
     ) -> PyResult<Vec<Vec<f32>>> {
         let mut model = Node2VecEncoder::new(self.config.clone()).map_err(to_py_neural_error)?;
-        let embedding = model
-            .fit(node_count, &edges, edge_weights.as_deref())
+        let embedding = py
+            .allow_threads(|| model.fit(node_count, &edges, edge_weights.as_deref()))
             .map_err(to_py_neural_error)?;
         self.encoder = model;
         Ok(embedding.into_inner())
     }
 
-    fn encode(&self) -> PyResult<Vec<Vec<f32>>> {
-        let embedding = self.encoder.encode().map_err(to_py_neural_error)?;
+    fn encode(&self, py: Python<'_>) -> PyResult<Vec<Vec<f32>>> {
+        let embedding = py
+            .allow_threads(|| self.encoder.encode())
+            .map_err(to_py_neural_error)?;
         Ok(embedding.into_inner())
     }
 
@@ -2567,19 +3275,25 @@ impl NativeNode2VecEncoder {
         self.encoder.loss_curve().values().to_vec()
     }
 
-    fn save_artifact_json(&self, path: String) -> PyResult<()> {
-        self.encoder
-            .save_artifact_json(path)
+    fn save_artifact_json(&self, py: Python<'_>, path: String) -> PyResult<()> {
+        py.allow_threads(|| self.encoder.save_artifact_json(path))
             .map_err(to_py_neural_error)
     }
 
-    fn to_artifact_json(&self) -> PyResult<String> {
-        self.encoder.to_artifact_json().map_err(to_py_neural_error)
+    fn to_artifact_json(&self, py: Python<'_>) -> PyResult<String> {
+        py.allow_threads(|| self.encoder.to_artifact_json())
+            .map_err(to_py_neural_error)
     }
 
     #[classmethod]
-    fn load_artifact_json(_cls: &Bound<'_, PyType>, path: String) -> PyResult<Self> {
-        let encoder = Node2VecEncoder::load_artifact_json(path).map_err(to_py_neural_error)?;
+    fn load_artifact_json(
+        _cls: &Bound<'_, PyType>,
+        py: Python<'_>,
+        path: String,
+    ) -> PyResult<Self> {
+        let encoder = py
+            .allow_threads(|| Node2VecEncoder::load_artifact_json(path))
+            .map_err(to_py_neural_error)?;
         let config = encoder.config();
         Ok(Self { encoder, config })
     }
@@ -2671,28 +3385,41 @@ impl NativeStandaloneNeuralEmbeddingRegressor {
     }
 
     #[pyo3(signature = (ids, y, dense=None))]
-    fn fit(&mut self, ids: Vec<u64>, y: Vec<f64>, dense: Option<Vec<Vec<f64>>>) -> PyResult<()> {
-        self.model
-            .fit(&ids, &y, dense.as_deref())
+    fn fit(
+        &mut self,
+        py: Python<'_>,
+        ids: Vec<u64>,
+        y: Vec<f64>,
+        dense: Option<Vec<Vec<f64>>>,
+    ) -> PyResult<()> {
+        py.allow_threads(|| self.model.fit(&ids, &y, dense.as_deref()))
             .map_err(to_py_neural_error)
     }
 
     #[pyo3(signature = (ids, dense=None))]
-    fn predict(&self, ids: Vec<u64>, dense: Option<Vec<Vec<f64>>>) -> PyResult<Vec<f64>> {
-        self.model
-            .predict(&ids, dense.as_deref())
+    fn predict(
+        &self,
+        py: Python<'_>,
+        ids: Vec<u64>,
+        dense: Option<Vec<Vec<f64>>>,
+    ) -> PyResult<Vec<f64>> {
+        py.allow_threads(|| self.model.predict(&ids, dense.as_deref()))
             .map_err(to_py_neural_error)
     }
 
-    fn save_artifact_json(&self, path: String) -> PyResult<()> {
-        self.model
-            .save_artifact_json(path)
+    fn save_artifact_json(&self, py: Python<'_>, path: String) -> PyResult<()> {
+        py.allow_threads(|| self.model.save_artifact_json(path))
             .map_err(to_py_neural_error)
     }
 
     #[classmethod]
-    fn load_artifact_json(_cls: &Bound<'_, PyType>, path: String) -> PyResult<Self> {
-        let model = StandaloneNeuralEmbeddingRegressor::load_artifact_json(path)
+    fn load_artifact_json(
+        _cls: &Bound<'_, PyType>,
+        py: Python<'_>,
+        path: String,
+    ) -> PyResult<Self> {
+        let model = py
+            .allow_threads(|| StandaloneNeuralEmbeddingRegressor::load_artifact_json(path))
             .map_err(to_py_neural_error)?;
         Ok(Self { model })
     }
@@ -2762,6 +3489,7 @@ impl NativeStandaloneNode2VecRegressor {
     #[allow(clippy::too_many_arguments)]
     fn fit(
         &mut self,
+        py: Python<'_>,
         node_count: usize,
         edges: Vec<(usize, usize)>,
         row_nodes: Vec<usize>,
@@ -2770,8 +3498,8 @@ impl NativeStandaloneNode2VecRegressor {
         dense: Option<Vec<Vec<f64>>>,
         edge_weights: Option<Vec<f32>>,
     ) -> PyResult<()> {
-        self.model
-            .fit(
+        py.allow_threads(|| {
+            self.model.fit(
                 node_count,
                 &edges,
                 edge_weights.as_deref(),
@@ -2780,30 +3508,39 @@ impl NativeStandaloneNode2VecRegressor {
                 dense.as_deref(),
                 &y,
             )
-            .map_err(to_py_neural_error)
+        })
+        .map_err(to_py_neural_error)
     }
 
     #[pyo3(signature = (row_nodes, row_targets=None, dense=None))]
     fn predict(
         &self,
+        py: Python<'_>,
         row_nodes: Vec<usize>,
         row_targets: Option<Vec<usize>>,
         dense: Option<Vec<Vec<f64>>>,
     ) -> PyResult<Vec<f64>> {
-        self.model
-            .predict(&row_nodes, row_targets.as_deref(), dense.as_deref())
-            .map_err(to_py_neural_error)
+        py.allow_threads(|| {
+            self.model
+                .predict(&row_nodes, row_targets.as_deref(), dense.as_deref())
+        })
+        .map_err(to_py_neural_error)
     }
 
-    fn save_artifact_json(&self, path: String) -> PyResult<()> {
-        self.model
-            .save_artifact_json(path)
+    fn save_artifact_json(&self, py: Python<'_>, path: String) -> PyResult<()> {
+        py.allow_threads(|| self.model.save_artifact_json(path))
             .map_err(to_py_neural_error)
     }
 
     #[classmethod]
-    fn load_artifact_json(_cls: &Bound<'_, PyType>, path: String) -> PyResult<Self> {
-        let model = Node2VecRegressor::load_artifact_json(path).map_err(to_py_neural_error)?;
+    fn load_artifact_json(
+        _cls: &Bound<'_, PyType>,
+        py: Python<'_>,
+        path: String,
+    ) -> PyResult<Self> {
+        let model = py
+            .allow_threads(|| Node2VecRegressor::load_artifact_json(path))
+            .map_err(to_py_neural_error)?;
         Ok(Self { model })
     }
 }
@@ -2859,8 +3596,10 @@ impl NativeStandaloneGraphSageRegressor {
     }
 
     #[pyo3(signature = (node_features, edges, row_nodes, y, row_targets=None, dense=None))]
+    #[allow(clippy::too_many_arguments)]
     fn fit(
         &mut self,
+        py: Python<'_>,
         node_features: Vec<Vec<f32>>,
         edges: Vec<(usize, usize)>,
         row_nodes: Vec<usize>,
@@ -2868,8 +3607,8 @@ impl NativeStandaloneGraphSageRegressor {
         row_targets: Option<Vec<usize>>,
         dense: Option<Vec<Vec<f64>>>,
     ) -> PyResult<()> {
-        self.model
-            .fit(
+        py.allow_threads(|| {
+            self.model.fit(
                 &node_features,
                 &edges,
                 &row_nodes,
@@ -2877,36 +3616,44 @@ impl NativeStandaloneGraphSageRegressor {
                 dense.as_deref(),
                 &y,
             )
-            .map_err(to_py_neural_error)
+        })
+        .map_err(to_py_neural_error)
     }
 
     #[pyo3(signature = (node_features, row_nodes, row_targets=None, dense=None))]
     fn predict(
         &self,
+        py: Python<'_>,
         node_features: Vec<Vec<f32>>,
         row_nodes: Vec<usize>,
         row_targets: Option<Vec<usize>>,
         dense: Option<Vec<Vec<f64>>>,
     ) -> PyResult<Vec<f64>> {
-        self.model
-            .predict(
+        py.allow_threads(|| {
+            self.model.predict(
                 &node_features,
                 &row_nodes,
                 row_targets.as_deref(),
                 dense.as_deref(),
             )
-            .map_err(to_py_neural_error)
+        })
+        .map_err(to_py_neural_error)
     }
 
-    fn save_artifact_json(&self, path: String) -> PyResult<()> {
-        self.model
-            .save_artifact_json(path)
+    fn save_artifact_json(&self, py: Python<'_>, path: String) -> PyResult<()> {
+        py.allow_threads(|| self.model.save_artifact_json(path))
             .map_err(to_py_neural_error)
     }
 
     #[classmethod]
-    fn load_artifact_json(_cls: &Bound<'_, PyType>, path: String) -> PyResult<Self> {
-        let model = GraphSageRegressor::load_artifact_json(path).map_err(to_py_neural_error)?;
+    fn load_artifact_json(
+        _cls: &Bound<'_, PyType>,
+        py: Python<'_>,
+        path: String,
+    ) -> PyResult<Self> {
+        let model = py
+            .allow_threads(|| GraphSageRegressor::load_artifact_json(path))
+            .map_err(to_py_neural_error)?;
         Ok(Self { model })
     }
 }
@@ -2965,6 +3712,7 @@ impl NativeStandaloneHeteroGraphSageRegressor {
     #[allow(clippy::too_many_arguments)]
     fn fit(
         &mut self,
+        py: Python<'_>,
         node_features: Vec<Vec<f32>>,
         edges: Vec<(usize, usize, usize)>,
         row_nodes: Vec<usize>,
@@ -2972,8 +3720,8 @@ impl NativeStandaloneHeteroGraphSageRegressor {
         row_targets: Option<Vec<usize>>,
         dense: Option<Vec<Vec<f64>>>,
     ) -> PyResult<()> {
-        self.model
-            .fit(
+        py.allow_threads(|| {
+            self.model.fit(
                 &node_features,
                 &edges,
                 &row_nodes,
@@ -2981,37 +3729,44 @@ impl NativeStandaloneHeteroGraphSageRegressor {
                 dense.as_deref(),
                 &y,
             )
-            .map_err(to_py_neural_error)
+        })
+        .map_err(to_py_neural_error)
     }
 
     #[pyo3(signature = (node_features, row_nodes, row_targets=None, dense=None))]
     fn predict(
         &self,
+        py: Python<'_>,
         node_features: Vec<Vec<f32>>,
         row_nodes: Vec<usize>,
         row_targets: Option<Vec<usize>>,
         dense: Option<Vec<Vec<f64>>>,
     ) -> PyResult<Vec<f64>> {
-        self.model
-            .predict(
+        py.allow_threads(|| {
+            self.model.predict(
                 &node_features,
                 &row_nodes,
                 row_targets.as_deref(),
                 dense.as_deref(),
             )
-            .map_err(to_py_neural_error)
+        })
+        .map_err(to_py_neural_error)
     }
 
-    fn save_artifact_json(&self, path: String) -> PyResult<()> {
-        self.model
-            .save_artifact_json(path)
+    fn save_artifact_json(&self, py: Python<'_>, path: String) -> PyResult<()> {
+        py.allow_threads(|| self.model.save_artifact_json(path))
             .map_err(to_py_neural_error)
     }
 
     #[classmethod]
-    fn load_artifact_json(_cls: &Bound<'_, PyType>, path: String) -> PyResult<Self> {
-        let model =
-            HeteroGraphSageRegressor::load_artifact_json(path).map_err(to_py_neural_error)?;
+    fn load_artifact_json(
+        _cls: &Bound<'_, PyType>,
+        py: Python<'_>,
+        path: String,
+    ) -> PyResult<Self> {
+        let model = py
+            .allow_threads(|| HeteroGraphSageRegressor::load_artifact_json(path))
+            .map_err(to_py_neural_error)?;
         Ok(Self { model })
     }
 }
@@ -3074,6 +3829,7 @@ impl NativeStandaloneHinSageRegressor {
     #[allow(clippy::too_many_arguments)]
     fn fit(
         &mut self,
+        py: Python<'_>,
         node_features: Vec<Vec<f32>>,
         node_types: Vec<usize>,
         edges: Vec<(usize, usize, usize)>,
@@ -3082,8 +3838,8 @@ impl NativeStandaloneHinSageRegressor {
         row_targets: Option<Vec<usize>>,
         dense: Option<Vec<Vec<f64>>>,
     ) -> PyResult<()> {
-        self.model
-            .fit(
+        py.allow_threads(|| {
+            self.model.fit(
                 &node_features,
                 &node_types,
                 &edges,
@@ -3092,36 +3848,44 @@ impl NativeStandaloneHinSageRegressor {
                 dense.as_deref(),
                 &y,
             )
-            .map_err(to_py_neural_error)
+        })
+        .map_err(to_py_neural_error)
     }
 
     #[pyo3(signature = (node_features, row_nodes, row_targets=None, dense=None))]
     fn predict(
         &self,
+        py: Python<'_>,
         node_features: Vec<Vec<f32>>,
         row_nodes: Vec<usize>,
         row_targets: Option<Vec<usize>>,
         dense: Option<Vec<Vec<f64>>>,
     ) -> PyResult<Vec<f64>> {
-        self.model
-            .predict(
+        py.allow_threads(|| {
+            self.model.predict(
                 &node_features,
                 &row_nodes,
                 row_targets.as_deref(),
                 dense.as_deref(),
             )
-            .map_err(to_py_neural_error)
+        })
+        .map_err(to_py_neural_error)
     }
 
-    fn save_artifact_json(&self, path: String) -> PyResult<()> {
-        self.model
-            .save_artifact_json(path)
+    fn save_artifact_json(&self, py: Python<'_>, path: String) -> PyResult<()> {
+        py.allow_threads(|| self.model.save_artifact_json(path))
             .map_err(to_py_neural_error)
     }
 
     #[classmethod]
-    fn load_artifact_json(_cls: &Bound<'_, PyType>, path: String) -> PyResult<Self> {
-        let model = HinSageRegressor::load_artifact_json(path).map_err(to_py_neural_error)?;
+    fn load_artifact_json(
+        _cls: &Bound<'_, PyType>,
+        py: Python<'_>,
+        path: String,
+    ) -> PyResult<Self> {
+        let model = py
+            .allow_threads(|| HinSageRegressor::load_artifact_json(path))
+            .map_err(to_py_neural_error)?;
         Ok(Self { model })
     }
 }
@@ -3174,30 +3938,34 @@ impl NativeStandaloneNode2VecLinkPredictor {
     #[pyo3(signature = (node_count, edges, edge_weights=None))]
     fn fit(
         &mut self,
+        py: Python<'_>,
         node_count: usize,
         edges: Vec<(usize, usize)>,
         edge_weights: Option<Vec<f32>>,
     ) -> PyResult<()> {
-        self.model
-            .fit(node_count, &edges, edge_weights.as_deref())
+        py.allow_threads(|| self.model.fit(node_count, &edges, edge_weights.as_deref()))
             .map_err(to_py_neural_error)
     }
 
-    fn predict_scores(&self, pairs: Vec<(usize, usize)>) -> PyResult<Vec<f64>> {
-        self.model
-            .predict_scores(&pairs)
+    fn predict_scores(&self, py: Python<'_>, pairs: Vec<(usize, usize)>) -> PyResult<Vec<f64>> {
+        py.allow_threads(|| self.model.predict_scores(&pairs))
             .map_err(to_py_neural_error)
     }
 
-    fn save_artifact_json(&self, path: String) -> PyResult<()> {
-        self.model
-            .save_artifact_json(path)
+    fn save_artifact_json(&self, py: Python<'_>, path: String) -> PyResult<()> {
+        py.allow_threads(|| self.model.save_artifact_json(path))
             .map_err(to_py_neural_error)
     }
 
     #[classmethod]
-    fn load_artifact_json(_cls: &Bound<'_, PyType>, path: String) -> PyResult<Self> {
-        let model = Node2VecLinkPredictor::load_artifact_json(path).map_err(to_py_neural_error)?;
+    fn load_artifact_json(
+        _cls: &Bound<'_, PyType>,
+        py: Python<'_>,
+        path: String,
+    ) -> PyResult<Self> {
+        let model = py
+            .allow_threads(|| Node2VecLinkPredictor::load_artifact_json(path))
+            .map_err(to_py_neural_error)?;
         Ok(Self { model })
     }
 }
@@ -3236,31 +4004,40 @@ impl NativeStandaloneGraphSageLinkPredictor {
         Ok(Self { model })
     }
 
-    fn fit(&mut self, node_features: Vec<Vec<f32>>, edges: Vec<(usize, usize)>) -> PyResult<()> {
-        self.model
-            .fit(&node_features, &edges)
+    fn fit(
+        &mut self,
+        py: Python<'_>,
+        node_features: Vec<Vec<f32>>,
+        edges: Vec<(usize, usize)>,
+    ) -> PyResult<()> {
+        py.allow_threads(|| self.model.fit(&node_features, &edges))
             .map_err(to_py_neural_error)
     }
 
     fn predict_scores(
         &self,
+        py: Python<'_>,
         node_features: Vec<Vec<f32>>,
         pairs: Vec<(usize, usize)>,
     ) -> PyResult<Vec<f64>> {
-        self.model
-            .predict_scores(&node_features, &pairs)
+        py.allow_threads(|| self.model.predict_scores(&node_features, &pairs))
             .map_err(to_py_neural_error)
     }
 
-    fn save_artifact_json(&self, path: String) -> PyResult<()> {
-        self.model
-            .save_artifact_json(path)
+    fn save_artifact_json(&self, py: Python<'_>, path: String) -> PyResult<()> {
+        py.allow_threads(|| self.model.save_artifact_json(path))
             .map_err(to_py_neural_error)
     }
 
     #[classmethod]
-    fn load_artifact_json(_cls: &Bound<'_, PyType>, path: String) -> PyResult<Self> {
-        let model = GraphSageLinkPredictor::load_artifact_json(path).map_err(to_py_neural_error)?;
+    fn load_artifact_json(
+        _cls: &Bound<'_, PyType>,
+        py: Python<'_>,
+        path: String,
+    ) -> PyResult<Self> {
+        let model = py
+            .allow_threads(|| GraphSageLinkPredictor::load_artifact_json(path))
+            .map_err(to_py_neural_error)?;
         Ok(Self { model })
     }
 }
@@ -3301,34 +4078,38 @@ impl NativeStandaloneHeteroGraphSageLinkPredictor {
 
     fn fit(
         &mut self,
+        py: Python<'_>,
         node_features: Vec<Vec<f32>>,
         edges: Vec<(usize, usize, usize)>,
     ) -> PyResult<()> {
-        self.model
-            .fit(&node_features, &edges)
+        py.allow_threads(|| self.model.fit(&node_features, &edges))
             .map_err(to_py_neural_error)
     }
 
     fn predict_scores(
         &self,
+        py: Python<'_>,
         node_features: Vec<Vec<f32>>,
         pairs: Vec<(usize, usize)>,
     ) -> PyResult<Vec<f64>> {
-        self.model
-            .predict_scores(&node_features, &pairs)
+        py.allow_threads(|| self.model.predict_scores(&node_features, &pairs))
             .map_err(to_py_neural_error)
     }
 
-    fn save_artifact_json(&self, path: String) -> PyResult<()> {
-        self.model
-            .save_artifact_json(path)
+    fn save_artifact_json(&self, py: Python<'_>, path: String) -> PyResult<()> {
+        py.allow_threads(|| self.model.save_artifact_json(path))
             .map_err(to_py_neural_error)
     }
 
     #[classmethod]
-    fn load_artifact_json(_cls: &Bound<'_, PyType>, path: String) -> PyResult<Self> {
-        let model =
-            HeteroGraphSageLinkPredictor::load_artifact_json(path).map_err(to_py_neural_error)?;
+    fn load_artifact_json(
+        _cls: &Bound<'_, PyType>,
+        py: Python<'_>,
+        path: String,
+    ) -> PyResult<Self> {
+        let model = py
+            .allow_threads(|| HeteroGraphSageLinkPredictor::load_artifact_json(path))
+            .map_err(to_py_neural_error)?;
         Ok(Self { model })
     }
 }
@@ -3373,34 +4154,39 @@ impl NativeStandaloneHinSageLinkPredictor {
 
     fn fit(
         &mut self,
+        py: Python<'_>,
         node_features: Vec<Vec<f32>>,
         node_types: Vec<usize>,
         edges: Vec<(usize, usize, usize)>,
     ) -> PyResult<()> {
-        self.model
-            .fit(&node_features, &node_types, &edges)
+        py.allow_threads(|| self.model.fit(&node_features, &node_types, &edges))
             .map_err(to_py_neural_error)
     }
 
     fn predict_scores(
         &self,
+        py: Python<'_>,
         node_features: Vec<Vec<f32>>,
         pairs: Vec<(usize, usize)>,
     ) -> PyResult<Vec<f64>> {
-        self.model
-            .predict_scores(&node_features, &pairs)
+        py.allow_threads(|| self.model.predict_scores(&node_features, &pairs))
             .map_err(to_py_neural_error)
     }
 
-    fn save_artifact_json(&self, path: String) -> PyResult<()> {
-        self.model
-            .save_artifact_json(path)
+    fn save_artifact_json(&self, py: Python<'_>, path: String) -> PyResult<()> {
+        py.allow_threads(|| self.model.save_artifact_json(path))
             .map_err(to_py_neural_error)
     }
 
     #[classmethod]
-    fn load_artifact_json(_cls: &Bound<'_, PyType>, path: String) -> PyResult<Self> {
-        let model = HinSageLinkPredictor::load_artifact_json(path).map_err(to_py_neural_error)?;
+    fn load_artifact_json(
+        _cls: &Bound<'_, PyType>,
+        py: Python<'_>,
+        path: String,
+    ) -> PyResult<Self> {
+        let model = py
+            .allow_threads(|| HinSageLinkPredictor::load_artifact_json(path))
+            .map_err(to_py_neural_error)?;
         Ok(Self { model })
     }
 }
@@ -3448,6 +4234,7 @@ impl NativeHeteroGraphSageEncoder {
     #[pyo3(signature = (node_count, edges, node_features))]
     fn fit(
         &mut self,
+        py: Python<'_>,
         node_count: usize,
         edges: Vec<(usize, usize, usize)>,
         node_features: Vec<Vec<f32>>,
@@ -3468,17 +4255,16 @@ impl NativeHeteroGraphSageEncoder {
             self.relation_count,
         )
         .map_err(to_py_neural_error)?;
-        let embedding = model
-            .fit(&graph, &node_features)
+        let embedding = py
+            .allow_threads(|| model.fit(&graph, &node_features))
             .map_err(to_py_neural_error)?;
         self.encoder = model;
         Ok(embedding.into_inner())
     }
 
-    fn encode(&self, node_features: Vec<Vec<f32>>) -> PyResult<Vec<Vec<f32>>> {
-        let embedding = self
-            .encoder
-            .encode(&node_features)
+    fn encode(&self, py: Python<'_>, node_features: Vec<Vec<f32>>) -> PyResult<Vec<Vec<f32>>> {
+        let embedding = py
+            .allow_threads(|| self.encoder.encode(&node_features))
             .map_err(to_py_neural_error)?;
         Ok(embedding.into_inner())
     }
@@ -3486,6 +4272,7 @@ impl NativeHeteroGraphSageEncoder {
     #[pyo3(signature = (node_count, edges, node_features))]
     fn encode_graph(
         &self,
+        py: Python<'_>,
         node_count: usize,
         edges: Vec<(usize, usize, usize)>,
         node_features: Vec<Vec<f32>>,
@@ -3500,9 +4287,8 @@ impl NativeHeteroGraphSageEncoder {
             .collect::<Vec<_>>();
         let graph = HeteroGraph::from_typed_edges(node_count, self.relation_count, &typed_edges)
             .map_err(to_py_neural_error)?;
-        let embedding = self
-            .encoder
-            .encode_graph(&graph, &node_features)
+        let embedding = py
+            .allow_threads(|| self.encoder.encode_graph(&graph, &node_features))
             .map_err(to_py_neural_error)?;
         Ok(embedding.into_inner())
     }
@@ -3511,20 +4297,25 @@ impl NativeHeteroGraphSageEncoder {
         self.encoder.loss_curve().values().to_vec()
     }
 
-    fn save_artifact_json(&self, path: String) -> PyResult<()> {
-        self.encoder
-            .save_artifact_json(path)
+    fn save_artifact_json(&self, py: Python<'_>, path: String) -> PyResult<()> {
+        py.allow_threads(|| self.encoder.save_artifact_json(path))
             .map_err(to_py_neural_error)
     }
 
-    fn to_artifact_json(&self) -> PyResult<String> {
-        self.encoder.to_artifact_json().map_err(to_py_neural_error)
+    fn to_artifact_json(&self, py: Python<'_>) -> PyResult<String> {
+        py.allow_threads(|| self.encoder.to_artifact_json())
+            .map_err(to_py_neural_error)
     }
 
     #[classmethod]
-    fn load_artifact_json(_cls: &Bound<'_, PyType>, path: String) -> PyResult<Self> {
-        let encoder =
-            HeteroGraphSageEncoder::load_artifact_json(path).map_err(to_py_neural_error)?;
+    fn load_artifact_json(
+        _cls: &Bound<'_, PyType>,
+        py: Python<'_>,
+        path: String,
+    ) -> PyResult<Self> {
+        let encoder = py
+            .allow_threads(|| HeteroGraphSageEncoder::load_artifact_json(path))
+            .map_err(to_py_neural_error)?;
         let config = encoder.config();
         Ok(Self {
             relation_count: encoder.relation_count(),
@@ -3607,6 +4398,7 @@ impl NativeHinSageEncoder {
     #[pyo3(signature = (node_types, edges, node_features))]
     fn fit(
         &mut self,
+        py: Python<'_>,
         node_types: Vec<usize>,
         edges: Vec<(usize, usize, usize)>,
         node_features: Vec<Vec<f32>>,
@@ -3634,17 +4426,16 @@ impl NativeHinSageEncoder {
             self.edge_type_triples.clone(),
         )
         .map_err(to_py_neural_error)?;
-        let embedding = model
-            .fit(&graph, &node_features)
+        let embedding = py
+            .allow_threads(|| model.fit(&graph, &node_features))
             .map_err(to_py_neural_error)?;
         self.encoder = model;
         Ok(embedding.into_inner())
     }
 
-    fn encode(&self, node_features: Vec<Vec<f32>>) -> PyResult<Vec<Vec<f32>>> {
-        let embedding = self
-            .encoder
-            .encode(&node_features)
+    fn encode(&self, py: Python<'_>, node_features: Vec<Vec<f32>>) -> PyResult<Vec<Vec<f32>>> {
+        let embedding = py
+            .allow_threads(|| self.encoder.encode(&node_features))
             .map_err(to_py_neural_error)?;
         Ok(embedding.into_inner())
     }
@@ -3652,6 +4443,7 @@ impl NativeHinSageEncoder {
     #[pyo3(signature = (node_types, edges, node_features))]
     fn encode_graph(
         &self,
+        py: Python<'_>,
         node_types: Vec<usize>,
         edges: Vec<(usize, usize, usize)>,
         node_features: Vec<Vec<f32>>,
@@ -3672,20 +4464,19 @@ impl NativeHinSageEncoder {
             typed_edges,
         )
         .map_err(to_py_neural_error)?;
-        let embedding = self
-            .encoder
-            .encode_graph(&graph, &node_features)
+        let embedding = py
+            .allow_threads(|| self.encoder.encode_graph(&graph, &node_features))
             .map_err(to_py_neural_error)?;
         Ok(embedding.into_inner())
     }
 
     fn link_embeddings(
         &self,
+        py: Python<'_>,
         embeddings: Vec<Vec<f32>>,
         pairs: Vec<(usize, usize)>,
     ) -> PyResult<Vec<Vec<f32>>> {
-        self.encoder
-            .link_embeddings(&embeddings, &pairs)
+        py.allow_threads(|| self.encoder.link_embeddings(&embeddings, &pairs))
             .map_err(to_py_neural_error)
     }
 
@@ -3693,19 +4484,25 @@ impl NativeHinSageEncoder {
         self.encoder.loss_curve().values().to_vec()
     }
 
-    fn save_artifact_json(&self, path: String) -> PyResult<()> {
-        self.encoder
-            .save_artifact_json(path)
+    fn save_artifact_json(&self, py: Python<'_>, path: String) -> PyResult<()> {
+        py.allow_threads(|| self.encoder.save_artifact_json(path))
             .map_err(to_py_neural_error)
     }
 
-    fn to_artifact_json(&self) -> PyResult<String> {
-        self.encoder.to_artifact_json().map_err(to_py_neural_error)
+    fn to_artifact_json(&self, py: Python<'_>) -> PyResult<String> {
+        py.allow_threads(|| self.encoder.to_artifact_json())
+            .map_err(to_py_neural_error)
     }
 
     #[classmethod]
-    fn load_artifact_json(_cls: &Bound<'_, PyType>, path: String) -> PyResult<Self> {
-        let encoder = HinSageEncoder::load_artifact_json(path).map_err(to_py_neural_error)?;
+    fn load_artifact_json(
+        _cls: &Bound<'_, PyType>,
+        py: Python<'_>,
+        path: String,
+    ) -> PyResult<Self> {
+        let encoder = py
+            .allow_threads(|| HinSageEncoder::load_artifact_json(path))
+            .map_err(to_py_neural_error)?;
         let config = encoder.config();
         Ok(Self {
             node_type_count: encoder.node_type_count(),
@@ -3753,7 +4550,9 @@ impl NativeHinSageEncoder {
 
 #[pyfunction]
 #[pyo3(signature = (node_count, edges, embeddings, edge_weights=None, edge_timestamps=None, feature_prefix="graph", requested_features=None))]
+#[allow(clippy::too_many_arguments)]
 fn graph_compute_directional_features(
+    py: Python<'_>,
     node_count: usize,
     edges: Vec<(usize, usize)>,
     embeddings: Vec<Vec<f32>>,
@@ -3763,45 +4562,138 @@ fn graph_compute_directional_features(
     requested_features: Option<Vec<String>>,
 ) -> PyResult<(Vec<Vec<f32>>, Vec<String>)> {
     let requested_features = requested_features.unwrap_or_default();
-    let block = compute_directional_features(
-        node_count,
-        &edges,
-        &embeddings,
-        edge_weights.as_deref(),
-        edge_timestamps.as_deref(),
-        feature_prefix,
-        &requested_features,
-    )
-    .map_err(to_py_neural_error)?;
+    let block = py
+        .allow_threads(|| {
+            compute_directional_features(
+                node_count,
+                &edges,
+                &embeddings,
+                edge_weights.as_deref(),
+                edge_timestamps.as_deref(),
+                feature_prefix,
+                &requested_features,
+            )
+        })
+        .map_err(to_py_neural_error)?;
     Ok((block.values, block.feature_names))
 }
 
 #[pyfunction]
 fn graph_validate_directed_metapath(
+    py: Python<'_>,
     steps: Vec<String>,
     edge_types: Vec<(String, String, String)>,
 ) -> PyResult<()> {
-    validate_directed_metapath(&steps, &edge_types).map_err(to_py_neural_error)
+    py.allow_threads(|| validate_directed_metapath(&steps, &edge_types))
+        .map_err(to_py_neural_error)
 }
 
 #[pyfunction]
 #[pyo3(signature = (edges, source_to_pair_relation="source_to_pair", pair_to_target_relation="pair_to_target", pair_node_prefix="od_pair", include_original_edges=true))]
 fn graph_materialize_source_target_pair_nodes(
+    py: Python<'_>,
     edges: Vec<(String, String, String)>,
     source_to_pair_relation: &str,
     pair_to_target_relation: &str,
     pair_node_prefix: &str,
     include_original_edges: bool,
 ) -> PyResult<(StringTypedEdges, Vec<String>)> {
-    let expansion = materialize_source_target_pair_nodes(
-        &edges,
-        source_to_pair_relation,
-        pair_to_target_relation,
-        pair_node_prefix,
-        include_original_edges,
-    )
-    .map_err(to_py_neural_error)?;
+    let source_to_pair_relation = source_to_pair_relation.to_string();
+    let pair_to_target_relation = pair_to_target_relation.to_string();
+    let pair_node_prefix = pair_node_prefix.to_string();
+    let expansion = py
+        .allow_threads(|| {
+            materialize_source_target_pair_nodes(
+                &edges,
+                &source_to_pair_relation,
+                &pair_to_target_relation,
+                &pair_node_prefix,
+                include_original_edges,
+            )
+        })
+        .map_err(to_py_neural_error)?;
     Ok((expansion.edges, expansion.pair_node_ids))
+}
+
+#[pyfunction]
+fn h3_normalize_id_text(value: &str) -> PyResult<u64> {
+    normalize_h3_id_text(value).map_err(to_py_value_error)
+}
+
+#[pyfunction]
+fn s2_normalize_id_text(value: &str) -> PyResult<u64> {
+    normalize_s2_id_text(value).map_err(to_py_value_error)
+}
+
+#[pyfunction]
+fn h3_normalize_resolution_value(value: i64, field_name: &str) -> PyResult<u8> {
+    normalize_h3_resolution(value, field_name).map_err(to_py_value_error)
+}
+
+#[pyfunction]
+fn s2_normalize_level_value(value: i64, field_name: &str) -> PyResult<u8> {
+    normalize_s2_level(value, field_name).map_err(to_py_value_error)
+}
+
+#[pyfunction]
+fn geo_normalize_coordinate_value(value: f64, field_name: &str) -> PyResult<f64> {
+    core_normalize_coordinate(value, field_name).map_err(to_py_value_error)
+}
+
+#[pyfunction]
+fn h3_validate_parent_resolutions_value(
+    py: Python<'_>,
+    resolution: u8,
+    parent_resolutions: Vec<u8>,
+) -> PyResult<()> {
+    py.allow_threads(|| validate_parent_levels(resolution, &parent_resolutions, GeoGridKind::H3))
+        .map_err(to_py_value_error)
+}
+
+#[pyfunction]
+fn s2_validate_parent_levels_value(
+    py: Python<'_>,
+    level: u8,
+    parent_levels: Vec<u8>,
+) -> PyResult<()> {
+    py.allow_threads(|| validate_parent_levels(level, &parent_levels, GeoGridKind::S2))
+        .map_err(to_py_value_error)
+}
+
+#[pyfunction]
+fn h3_scaffold_parent_id_value(cell: u64, resolution: u8, parent_resolution: u8) -> PyResult<u64> {
+    scaffold_h3_parent_id(cell, resolution, parent_resolution).map_err(to_py_value_error)
+}
+
+#[pyfunction]
+fn h3_expand_sparse_set_value(
+    py: Python<'_>,
+    values: Vec<u64>,
+    resolution: u8,
+    parent_resolutions: Vec<u8>,
+) -> PyResult<Vec<u64>> {
+    py.allow_threads(|| core_expand_h3_sparse_set(&values, resolution, &parent_resolutions))
+        .map_err(to_py_value_error)
+}
+
+#[pyfunction]
+fn geo_assemble_sparse_row_value(child: u64, parents: Vec<u64>) -> Vec<u64> {
+    assemble_sparse_row(child, &parents)
+}
+
+#[pyfunction]
+fn geo_assemble_sparse_column_value(
+    py: Python<'_>,
+    children: Vec<u64>,
+    parent_columns: Vec<Vec<u64>>,
+) -> PyResult<Vec<Vec<u64>>> {
+    py.allow_threads(|| assemble_sparse_column(&children, &parent_columns))
+        .map_err(to_py_value_error)
+}
+
+#[pyfunction]
+fn geo_validate_equal_row_count_value(name: &str, actual: usize, expected: usize) -> PyResult<()> {
+    validate_equal_row_count(name, actual, expected).map_err(to_py_value_error)
 }
 
 fn artifact_fallback_name(fallback: &ArtifactFallbackKind) -> &'static str {
@@ -4207,30 +5099,33 @@ fn weighted_overlay(
         .call_method1("dumps", (weights,))?
         .extract::<String>()?;
 
-    let points_value = serde_json::from_str::<Value>(&points_payload)
-        .map_err(|err| PyValueError::new_err(format!("invalid points payload: {err}")))?;
-    let zones_value = serde_json::from_str::<Value>(&zones_payload)
-        .map_err(|err| PyValueError::new_err(format!("invalid zones payload: {err}")))?;
-    let weights_value = serde_json::from_str::<Value>(&weights_payload)
-        .map_err(|err| PyValueError::new_err(format!("invalid weights payload: {err}")))?;
+    let kernel = kernel.to_string();
+    let payload = py
+        .allow_threads(|| {
+            let points_value = serde_json::from_str::<Value>(&points_payload)
+                .map_err(|err| format!("invalid points payload: {err}"))?;
+            let zones_value = serde_json::from_str::<Value>(&zones_payload)
+                .map_err(|err| format!("invalid zones payload: {err}"))?;
+            let weights_value = serde_json::from_str::<Value>(&weights_payload)
+                .map_err(|err| format!("invalid weights payload: {err}"))?;
 
-    let result = weighted_overlay_impl(
-        &points_value,
-        &zones_value,
-        &weights_value,
-        origin,
-        zone_priority_multiplier,
-        kernel,
-        bandwidth_meters,
-        distance_alpha,
-        precision,
-        include_debug,
-    )
-    .map_err(PyValueError::new_err)?;
+            let result = weighted_overlay_impl(
+                &points_value,
+                &zones_value,
+                &weights_value,
+                origin,
+                zone_priority_multiplier,
+                &kernel,
+                bandwidth_meters,
+                distance_alpha,
+                precision,
+                include_debug,
+            )?;
 
-    let payload = serde_json::to_string(&result).map_err(|err| {
-        PyValueError::new_err(format!("failed to serialize overlay result: {err}"))
-    })?;
+            serde_json::to_string(&result)
+                .map_err(|err| format!("failed to serialize overlay result: {err}"))
+        })
+        .map_err(PyValueError::new_err)?;
     Ok(json_module.call_method1("loads", (payload,))?.unbind())
 }
 
@@ -4668,6 +5563,17 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(utility_local_level_kalman_filter, m)?)?;
     m.add_function(wrap_pyfunction!(utility_intermittent_demand_forecast, m)?)?;
     m.add_function(wrap_pyfunction!(utility_ordinary_kriging_predict, m)?)?;
+    m.add_function(wrap_pyfunction!(
+        utility_ordinary_kriging_predict_detailed,
+        m
+    )?)?;
+    m.add_function(wrap_pyfunction!(utility_ordinary_kriging_leave_one_out, m)?)?;
+    m.add_function(wrap_pyfunction!(utility_empirical_variogram, m)?)?;
+    m.add_function(wrap_pyfunction!(utility_fit_ordinary_kriging_variogram, m)?)?;
+    m.add_function(wrap_pyfunction!(
+        utility_ordinary_kriging_leave_one_out_diagnostics,
+        m
+    )?)?;
     m.add_function(wrap_pyfunction!(utility_series_forecast, m)?)?;
     m.add_function(wrap_pyfunction!(graph_compute_directional_features, m)?)?;
     m.add_function(wrap_pyfunction!(graph_validate_directed_metapath, m)?)?;
@@ -4675,6 +5581,18 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
         graph_materialize_source_target_pair_nodes,
         m
     )?)?;
+    m.add_function(wrap_pyfunction!(h3_normalize_id_text, m)?)?;
+    m.add_function(wrap_pyfunction!(s2_normalize_id_text, m)?)?;
+    m.add_function(wrap_pyfunction!(h3_normalize_resolution_value, m)?)?;
+    m.add_function(wrap_pyfunction!(s2_normalize_level_value, m)?)?;
+    m.add_function(wrap_pyfunction!(geo_normalize_coordinate_value, m)?)?;
+    m.add_function(wrap_pyfunction!(h3_validate_parent_resolutions_value, m)?)?;
+    m.add_function(wrap_pyfunction!(s2_validate_parent_levels_value, m)?)?;
+    m.add_function(wrap_pyfunction!(h3_scaffold_parent_id_value, m)?)?;
+    m.add_function(wrap_pyfunction!(h3_expand_sparse_set_value, m)?)?;
+    m.add_function(wrap_pyfunction!(geo_assemble_sparse_row_value, m)?)?;
+    m.add_function(wrap_pyfunction!(geo_assemble_sparse_column_value, m)?)?;
+    m.add_function(wrap_pyfunction!(geo_validate_equal_row_count_value, m)?)?;
     m.add_function(wrap_pyfunction!(weighted_overlay, m)?)?;
     m.add_function(wrap_pyfunction!(forecast_parse_frequency, m)?)?;
     m.add_function(wrap_pyfunction!(forecast_evaluate_metrics, m)?)?;

@@ -1,5 +1,6 @@
 use crate::artifact::{build_embedding_table_artifact, ArtifactFallbackKind, EmbeddingRow};
 use crate::error::{NeuralError, Result};
+use rayon::prelude::*;
 use std::collections::HashMap;
 
 const DEFAULT_TRAINING_ITERS: usize = 24;
@@ -94,7 +95,7 @@ pub fn fit_embedding_table_with_options(
         / total_count;
 
     for _ in 0..DEFAULT_TRAINING_ITERS {
-        for state in &mut states {
+        states.par_iter_mut().for_each(|state| {
             state.embedding = updated_embedding(
                 state.mean,
                 state.count,
@@ -103,7 +104,7 @@ pub fn fit_embedding_table_with_options(
                 bias,
                 prior_strength,
             );
-        }
+        });
 
         let bias_numerator = states.iter().fold(0.0_f64, |acc, state| {
             acc + state.count * (state.mean - dot_f64(&head, &state.embedding))
@@ -118,7 +119,7 @@ pub fn fit_embedding_table_with_options(
     }
 
     let mut rows: Vec<EmbeddingRow> = states
-        .into_iter()
+        .into_par_iter()
         .map(|state| EmbeddingRow {
             id: state.id,
             values: state

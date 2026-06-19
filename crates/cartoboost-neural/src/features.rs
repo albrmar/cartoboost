@@ -1,4 +1,5 @@
 use crate::error::{NeuralError, Result};
+use rayon::prelude::*;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct NeuralFeatureBlock {
@@ -48,11 +49,14 @@ impl NeuralFeatureBlock {
             });
         }
 
-        for (row_index, row) in dense.iter_mut().enumerate() {
-            let start = row_index * self.dim;
-            let end = start + self.dim;
-            row.extend(&self.values[start..end]);
-        }
+        dense
+            .par_iter_mut()
+            .enumerate()
+            .for_each(|(row_index, row)| {
+                let start = row_index * self.dim;
+                let end = start + self.dim;
+                row.extend(&self.values[start..end]);
+            });
 
         Ok(())
     }
@@ -66,15 +70,18 @@ impl NeuralFeatureBlock {
             });
         }
 
-        for (row_index, row) in dense.iter_mut().enumerate() {
-            let start = row_index * self.dim;
-            let end = start + self.dim;
-            row.extend(
-                self.values[start..end]
-                    .iter()
-                    .map(|value| f64::from(*value)),
-            );
-        }
+        dense
+            .par_iter_mut()
+            .enumerate()
+            .for_each(|(row_index, row)| {
+                let start = row_index * self.dim;
+                let end = start + self.dim;
+                row.extend(
+                    self.values[start..end]
+                        .iter()
+                        .map(|value| f64::from(*value)),
+                );
+            });
 
         Ok(())
     }

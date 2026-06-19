@@ -5,7 +5,7 @@
 - Keep tests focused on user-visible behavior and failure messages.
 
 ## Testing instructions
-- Use `uv run --group dev pytest tests/integration/<file>.py` while iterating.
+- Use `uv run pytest tests/integration/<file>.py` while iterating.
 - Run broader pytest when contracts change.
 
 ## PR instructions

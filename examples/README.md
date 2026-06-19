@@ -6,6 +6,26 @@ patterns are easy to inspect.
 
 Taxi graph examples:
 
+- `forecasting/naive_seasonal_visualization.py` compares native naive and
+  seasonal naive forecasters on hourly taxi-zone pickup demand and writes a
+  comparison plot.
+- `forecasting/theta_optimized_visualization.py` compares native theta and
+  optimized theta forecasters with an explicit theta/alpha grid.
+- `forecasting/ets_component_visualization.py` fits native additive ETS and
+  plots fitted values, residual-ready forecasts, level/trend paths, and
+  seasonal components.
+- `forecasting/arima_example_visualization.py` builds a deterministic taxi
+  pickup/dropoff lane panel, fits fixed ARIMA and AutoARIMA, prints held-out
+  metrics, and can write a forecast plot under `target/`.
+- `forecasting/cartoboost_lag_visualization.py` fits a recursive CartoBoost lag
+  forecaster with lag, rolling, calendar, and trend features for pickup demand.
+- `forecasting/weighted_ensemble_visualization.py` combines seasonal naive,
+  theta, and Kalman components in a native weighted ensemble.
+- `forecasting/kriging_example_visualization.py` builds deterministic pickup-zone
+  coordinates, fits a kriging variogram, writes interpolation/variogram/LOO
+  diagnostic plots, and records the selected config.
+- `forecasting/kalman_diagnostics_visualization.py` writes Kalman filtered and
+  smoothed state diagnostics, forecast intervals, and innovation charts.
 - `03_taxi_od_graph_regression.py` builds a pickup-dropoff zone graph for trip
   duration regression. It uses synthetic taxi-shaped rows by default and can
   read a local TLC-style CSV or Parquet file with `--input`.

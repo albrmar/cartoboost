@@ -54,7 +54,7 @@ those inputs exist.
 ## Command
 
 ```sh
-uv run --group dev --group bench python scripts/run_model_benchmark_suite.py \
+uv run --group bench python scripts/run_model_benchmark_suite.py \
   --output-dir docs/assets/model_benchmarks
 ```
 

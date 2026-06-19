@@ -1,6 +1,7 @@
 import sys
 import types
 
+import cartoboost.s2 as s2_module
 import pytest
 from cartoboost.s2 import (
     build_s2_sparse_sets,
@@ -61,6 +62,7 @@ def test_normalize_s2_id_rejects_invalid_values(raw):
 
 
 def test_s2_auto_encoding_uses_optional_s2sphere_package(monkeypatch):
+    s2_module._load_s2sphere.cache_clear()
     fake_s2sphere = types.SimpleNamespace(LatLng=_FakeLatLng, CellId=_FakeCellId)
     monkeypatch.setitem(sys.modules, "s2sphere", fake_s2sphere)
 
@@ -81,7 +83,25 @@ def test_s2_auto_encoding_uses_optional_s2sphere_package(monkeypatch):
     }
 
 
+def test_s2_sparse_rows_are_native_sorted_and_deduplicated(monkeypatch):
+    s2_module._load_s2sphere.cache_clear()
+
+    class DuplicateParentCellId(_FakeCellId):
+        def parent(self, level: int) -> "_FakeCellId":
+            return DuplicateParentCellId(self._value, level=level)
+
+    fake_s2sphere = types.SimpleNamespace(LatLng=_FakeLatLng, CellId=DuplicateParentCellId)
+    monkeypatch.setitem(sys.modules, "s2sphere", fake_s2sphere)
+
+    assert build_s2_sparse_sets(
+        {"pickup_s2": ([40.7], [-73.9])},
+        level=12,
+        parent_levels=[8, 10],
+    ) == {"pickup_s2": [[50_700_739]]}
+
+
 def test_s2_auto_encoding_hard_fails_without_optional_dependency(monkeypatch):
+    s2_module._load_s2sphere.cache_clear()
     monkeypatch.setitem(sys.modules, "s2sphere", None)
 
     with pytest.raises(ImportError, match="optional 's2sphere' package"):
@@ -89,8 +109,40 @@ def test_s2_auto_encoding_hard_fails_without_optional_dependency(monkeypatch):
 
 
 def test_build_s2_sparse_sets_validates_coordinate_rows(monkeypatch):
+    s2_module._load_s2sphere.cache_clear()
     fake_s2sphere = types.SimpleNamespace(LatLng=_FakeLatLng, CellId=_FakeCellId)
     monkeypatch.setitem(sys.modules, "s2sphere", fake_s2sphere)
 
     with pytest.raises(ValueError, match="same number of rows"):
         build_s2_sparse_sets({"pickup_s2": ([40.7], [-73.9, -74.0])}, level=12)
+
+
+def test_build_s2_sparse_sets_validates_cross_feature_row_counts(monkeypatch):
+    s2_module._load_s2sphere.cache_clear()
+    fake_s2sphere = types.SimpleNamespace(LatLng=_FakeLatLng, CellId=_FakeCellId)
+    monkeypatch.setitem(sys.modules, "s2sphere", fake_s2sphere)
+
+    with pytest.raises(ValueError, match="dropoff_s2.*2 rows, expected 1"):
+        build_s2_sparse_sets(
+            {
+                "pickup_s2": ([40.7], [-73.9]),
+                "dropoff_s2": ([40.7, 40.8], [-73.9, -74.0]),
+            },
+            level=12,
+        )
+
+
+@pytest.mark.parametrize("level", [-1, 31, 1.25, True])
+def test_s2_level_validation_is_native_backed(level):
+    with pytest.raises(ValueError, match="level"):
+        encode_s2_cells([40.7], [-73.9], level=level)
+
+
+@pytest.mark.parametrize("coordinate", [float("nan"), float("inf"), True])
+def test_s2_coordinate_validation_is_native_backed(monkeypatch, coordinate):
+    s2_module._load_s2sphere.cache_clear()
+    fake_s2sphere = types.SimpleNamespace(LatLng=_FakeLatLng, CellId=_FakeCellId)
+    monkeypatch.setitem(sys.modules, "s2sphere", fake_s2sphere)
+
+    with pytest.raises(ValueError, match="latitude must be a finite coordinate"):
+        latlng_to_s2_id(coordinate, -73.9, level=12)

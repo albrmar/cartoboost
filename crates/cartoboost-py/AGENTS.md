@@ -5,7 +5,7 @@
 - Keep Python-facing errors clear and compatible with the Python wrapper expectations.
 
 ## Testing instructions
-- Run `uv run --group dev maturin develop` after binding changes.
+- From the repository root, run `uv run maturin develop` after binding changes.
 - Run relevant Python tests under `tests/python`.
 
 ## PR instructions

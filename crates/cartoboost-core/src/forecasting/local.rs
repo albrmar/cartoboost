@@ -12,6 +12,9 @@ use rayon::prelude::*;
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 
+const MAX_ARIMA_ORDER: usize = 8;
+const MAX_ARIMA_COLUMNS: usize = MAX_ARIMA_ORDER * 2 + 1;
+
 #[derive(Debug, Clone, Default)]
 pub struct NaiveForecaster {
     fitted: Option<FittedLocalState>,
@@ -80,8 +83,7 @@ pub struct KalmanForecaster {
 #[derive(Debug, Clone)]
 pub struct KrigingForecaster {
     coordinates: BTreeMap<String, (f64, f64)>,
-    range: f64,
-    nugget: f64,
+    config: OrdinaryKrigingConfig,
     fitted: Option<FittedKrigingState>,
 }
 
@@ -124,6 +126,9 @@ struct FittedETSSeries {
     seasonals: Option<Vec<f64>>,
     fitted_values: Vec<f64>,
     residuals: Vec<f64>,
+    level_values: Vec<f64>,
+    trend_values: Vec<f64>,
+    seasonal_values: Vec<f64>,
 }
 
 #[derive(Debug, Clone)]
@@ -138,6 +143,7 @@ struct FittedArimaSeries {
     intercept: f64,
     ar_coefficients: Vec<f64>,
     ma_coefficients: Vec<f64>,
+    score_start: usize,
     differenced_history: Vec<f64>,
     residual_history: Vec<f64>,
     last_differences: Vec<f64>,
@@ -363,6 +369,27 @@ impl ETSForecaster {
             .and_then(|state| state.series.get(series_id))
             .map(|series| series.residuals.as_slice())
     }
+
+    pub fn level_values(&self, series_id: &str) -> Option<&[f64]> {
+        self.fitted
+            .as_ref()
+            .and_then(|state| state.series.get(series_id))
+            .map(|series| series.level_values.as_slice())
+    }
+
+    pub fn trend_values(&self, series_id: &str) -> Option<&[f64]> {
+        self.fitted
+            .as_ref()
+            .and_then(|state| state.series.get(series_id))
+            .map(|series| series.trend_values.as_slice())
+    }
+
+    pub fn seasonal_values(&self, series_id: &str) -> Option<&[f64]> {
+        self.fitted
+            .as_ref()
+            .and_then(|state| state.series.get(series_id))
+            .map(|series| series.seasonal_values.as_slice())
+    }
 }
 
 impl ArimaForecaster {
@@ -468,12 +495,18 @@ impl Default for KalmanForecaster {
 
 impl KrigingForecaster {
     pub fn new(coordinates: BTreeMap<String, (f64, f64)>, range: f64, nugget: f64) -> Result<Self> {
+        Self::with_config(coordinates, OrdinaryKrigingConfig::new(range, nugget)?)
+    }
+
+    pub fn with_config(
+        coordinates: BTreeMap<String, (f64, f64)>,
+        config: OrdinaryKrigingConfig,
+    ) -> Result<Self> {
         if coordinates.is_empty() {
             return Err(CartoBoostError::InvalidInput(
                 "kriging coordinates must not be empty".to_string(),
             ));
         }
-        OrdinaryKrigingConfig::new(range, nugget)?;
         for (series_id, (x, y)) in &coordinates {
             if !x.is_finite() || !y.is_finite() {
                 return Err(CartoBoostError::InvalidInput(format!(
@@ -483,8 +516,7 @@ impl KrigingForecaster {
         }
         Ok(Self {
             coordinates,
-            range,
-            nugget,
+            config,
             fitted: None,
         })
     }
@@ -499,7 +531,7 @@ impl Forecaster for NaiveForecaster {
     fn predict(&self, horizon: usize) -> Result<ForecastResult> {
         validate_horizon(horizon)?;
         let fitted = self.fitted.as_ref().ok_or_else(not_fitted)?;
-        let predictions = fitted
+        let series_predictions = fitted
             .history_by_series
             .iter()
             .collect::<Vec<_>>()
@@ -508,22 +540,25 @@ impl Forecaster for NaiveForecaster {
                 let last = history.last().ok_or_else(|| {
                     CartoBoostError::InvalidInput("empty series history".to_string())
                 })?;
-                (1..=horizon)
-                    .map(|step| {
-                        Ok(ForecastPrediction {
-                            series_id: series_id.clone(),
-                            timestamp: fitted.frame.frequency().advance(last.timestamp, step)?,
-                            horizon: step,
-                            model: self.model_name().to_string(),
-                            mean: last.target,
-                        })
-                    })
-                    .collect::<Result<Vec<_>>>()
+                let model = self.model_name().to_string();
+                let mut predictions = Vec::with_capacity(horizon);
+                for step in 1..=horizon {
+                    predictions.push(ForecastPrediction {
+                        series_id: series_id.clone(),
+                        timestamp: fitted.frame.frequency().advance(last.timestamp, step)?,
+                        horizon: step,
+                        model: model.clone(),
+                        mean: last.target,
+                    });
+                }
+                Ok(predictions)
             })
-            .collect::<Result<Vec<_>>>()?
-            .into_iter()
-            .flatten()
-            .collect();
+            .collect::<Result<Vec<_>>>()?;
+        let mut predictions =
+            Vec::with_capacity(fitted.history_by_series.len().saturating_mul(horizon));
+        for series in series_predictions {
+            predictions.extend(series);
+        }
         ForecastResult::new(predictions)
     }
 
@@ -555,7 +590,7 @@ impl Forecaster for SeasonalNaiveForecaster {
     fn predict(&self, horizon: usize) -> Result<ForecastResult> {
         validate_horizon(horizon)?;
         let fitted = self.fitted.as_ref().ok_or_else(not_fitted)?;
-        let predictions = fitted
+        let series_predictions = fitted
             .history_by_series
             .iter()
             .collect::<Vec<_>>()
@@ -565,23 +600,26 @@ impl Forecaster for SeasonalNaiveForecaster {
                     CartoBoostError::InvalidInput("empty series history".to_string())
                 })?;
                 let base = history.len() - self.season_length;
-                (1..=horizon)
-                    .map(|step| {
-                        let seasonal_index = base + ((step - 1) % self.season_length);
-                        Ok(ForecastPrediction {
-                            series_id: series_id.clone(),
-                            timestamp: fitted.frame.frequency().advance(last.timestamp, step)?,
-                            horizon: step,
-                            model: self.model_name().to_string(),
-                            mean: history[seasonal_index].target,
-                        })
-                    })
-                    .collect::<Result<Vec<_>>>()
+                let model = self.model_name().to_string();
+                let mut predictions = Vec::with_capacity(horizon);
+                for step in 1..=horizon {
+                    let seasonal_index = base + ((step - 1) % self.season_length);
+                    predictions.push(ForecastPrediction {
+                        series_id: series_id.clone(),
+                        timestamp: fitted.frame.frequency().advance(last.timestamp, step)?,
+                        horizon: step,
+                        model: model.clone(),
+                        mean: history[seasonal_index].target,
+                    });
+                }
+                Ok(predictions)
             })
-            .collect::<Result<Vec<_>>>()?
-            .into_iter()
-            .flatten()
-            .collect();
+            .collect::<Result<Vec<_>>>()?;
+        let mut predictions =
+            Vec::with_capacity(fitted.history_by_series.len().saturating_mul(horizon));
+        for series in series_predictions {
+            predictions.extend(series);
+        }
         ForecastResult::new(predictions)
     }
 
@@ -918,7 +956,6 @@ impl Forecaster for KrigingForecaster {
                 })
             })
             .collect::<Result<Vec<_>>>()?;
-        let config = OrdinaryKrigingConfig::new(self.range, self.nugget)?;
         let series_ids = fitted.frame.series_ids();
         let targets = series_ids
             .iter()
@@ -930,7 +967,7 @@ impl Forecaster for KrigingForecaster {
                 })
             })
             .collect::<Result<Vec<_>>>()?;
-        let means = ordinary_kriging_predict_many(&observations, &targets, config)?
+        let means = ordinary_kriging_predict_many(&observations, &targets, self.config)?
             .into_iter()
             .map(|prediction| prediction.mean)
             .collect::<Vec<_>>();
@@ -971,8 +1008,16 @@ impl Forecaster for KrigingForecaster {
     fn metadata(&self) -> Value {
         json!({
             "model": self.model_name(),
-            "range": self.range,
-            "nugget": self.nugget,
+            "range": self.config.range,
+            "nugget": self.config.nugget,
+            "sill": self.config.sill,
+            "variogram_model": format!("{:?}", self.config.variogram_model).to_lowercase(),
+            "drift": format!("{:?}", self.config.drift).to_lowercase(),
+            "anisotropy_angle_degrees": self.config.anisotropy_angle_degrees,
+            "anisotropy_scaling": self.config.anisotropy_scaling,
+            "max_neighbors": self.config.max_neighbors,
+            "min_neighbors": self.config.min_neighbors,
+            "max_distance": self.config.max_distance,
             "series_count": self.coordinates.len(),
         })
     }
@@ -1138,6 +1183,7 @@ impl FittedArimaState {
                 series
                     .residuals
                     .iter()
+                    .skip(series.score_start)
                     .fold((0.0, 0usize), |(sum, count), residual| {
                         (sum + residual * residual, count + 1)
                     })
@@ -1280,8 +1326,14 @@ impl FittedETSSeries {
         let mut trend = initial_trend(&values, seasonals.as_deref());
         let mut fitted_values = Vec::with_capacity(values.len());
         let mut residuals = Vec::with_capacity(values.len());
+        let mut level_values = Vec::with_capacity(values.len());
+        let mut trend_values = Vec::with_capacity(values.len());
+        let mut seasonal_values = Vec::with_capacity(values.len());
         fitted_values.push(values[0]);
         residuals.push(0.0);
+        level_values.push(level);
+        trend_values.push(trend);
+        seasonal_values.push(seasonals.as_ref().map(|s| s[0]).unwrap_or(0.0));
 
         for (idx, value) in values.iter().enumerate().skip(1) {
             let seasonal_idx = seasonals.as_ref().map(|seasonals| idx % seasonals.len());
@@ -1303,6 +1355,9 @@ impl FittedETSSeries {
                 seasonals[seasonal_idx] =
                     gamma * (*value - level) + (1.0 - gamma) * seasonals[seasonal_idx];
             }
+            level_values.push(level);
+            trend_values.push(trend);
+            seasonal_values.push(seasonal);
         }
 
         Ok(Self {
@@ -1313,6 +1368,9 @@ impl FittedETSSeries {
             seasonals,
             fitted_values,
             residuals,
+            level_values,
+            trend_values,
+            seasonal_values,
         })
     }
 }
@@ -1337,6 +1395,7 @@ impl FittedArimaSeries {
             intercept,
             ar_coefficients,
             ma_coefficients,
+            score_start: required_lags,
             differenced_history: differences,
             residual_history: residuals.clone(),
             last_differences: last_differences(&values, d)?,
@@ -1346,8 +1405,10 @@ impl FittedArimaSeries {
     }
 
     fn forecast_values(&self, horizon: usize) -> Vec<f64> {
-        let mut differenced = self.differenced_history.clone();
-        let mut residuals = self.residual_history.clone();
+        let p = self.ar_coefficients.len();
+        let q = self.ma_coefficients.len();
+        let mut differenced = tail_values(&self.differenced_history, p);
+        let mut residuals = tail_values(&self.residual_history, q);
         let mut levels = self.last_differences.clone();
         let mut forecasts = Vec::with_capacity(horizon);
         for _ in 0..horizon {
@@ -1358,8 +1419,8 @@ impl FittedArimaSeries {
                 &self.ar_coefficients,
                 &self.ma_coefficients,
             );
-            differenced.push(next_diff);
-            residuals.push(0.0);
+            push_tail(&mut differenced, p, next_diff);
+            push_tail(&mut residuals, q, 0.0);
             let mut value = next_diff;
             for idx in (0..(levels.len() - 1)).rev() {
                 levels[idx] += value;
@@ -1534,7 +1595,7 @@ fn validate_unit_interval(name: &str, value: f64, allow_zero: bool) -> Result<()
 }
 
 fn validate_arima_order(p: usize, d: usize, q: usize) -> Result<()> {
-    if p > 8 {
+    if p > MAX_ARIMA_ORDER {
         return Err(CartoBoostError::InvalidInput(
             "ARIMA p must be <= 8".to_string(),
         ));
@@ -1544,7 +1605,7 @@ fn validate_arima_order(p: usize, d: usize, q: usize) -> Result<()> {
             "ARIMA d must be <= 2".to_string(),
         ));
     }
-    if q > 8 {
+    if q > MAX_ARIMA_ORDER {
         return Err(CartoBoostError::InvalidInput(
             "ARIMA q must be <= 8".to_string(),
         ));
@@ -1575,34 +1636,127 @@ fn difference_series(values: &[f64], d: usize) -> Result<Vec<f64>> {
             "ARIMA differencing order leaves no observations".to_string(),
         ));
     }
-    let mut current = values.to_vec();
-    for _ in 0..d {
-        current = current
-            .windows(2)
-            .map(|window| window[1] - window[0])
-            .collect();
+    match d {
+        0 => Ok(values.to_vec()),
+        1 => {
+            let mut differences = Vec::with_capacity(values.len() - 1);
+            for idx in 1..values.len() {
+                differences.push(values[idx] - values[idx - 1]);
+            }
+            Ok(differences)
+        }
+        2 => {
+            let mut differences = Vec::with_capacity(values.len() - 2);
+            for idx in 2..values.len() {
+                differences.push(values[idx] - 2.0 * values[idx - 1] + values[idx - 2]);
+            }
+            Ok(differences)
+        }
+        _ => Err(CartoBoostError::InvalidInput(
+            "ARIMA d must be <= 2".to_string(),
+        )),
     }
-    Ok(current)
 }
 
 fn last_differences(values: &[f64], d: usize) -> Result<Vec<f64>> {
-    let mut levels = Vec::with_capacity(d + 1);
-    levels.push(*values.last().ok_or_else(|| {
-        CartoBoostError::InvalidInput("ARIMA requires at least one observation".to_string())
-    })?);
-    let mut current = values.to_vec();
-    for _ in 0..d {
-        current = current
-            .windows(2)
-            .map(|window| window[1] - window[0])
-            .collect();
-        levels.push(*current.last().ok_or_else(|| {
-            CartoBoostError::InvalidInput(
-                "ARIMA differencing order leaves no observations".to_string(),
-            )
-        })?);
+    if values.is_empty() {
+        return Err(CartoBoostError::InvalidInput(
+            "ARIMA requires at least one observation".to_string(),
+        ));
     }
-    Ok(levels)
+    if values.len() <= d {
+        return Err(CartoBoostError::InvalidInput(
+            "ARIMA differencing order leaves no observations".to_string(),
+        ));
+    }
+    let last = values[values.len() - 1];
+    match d {
+        0 => Ok(vec![last]),
+        1 => Ok(vec![last, last - values[values.len() - 2]]),
+        2 => {
+            let n = values.len();
+            Ok(vec![
+                last,
+                last - values[n - 2],
+                last - 2.0 * values[n - 2] + values[n - 3],
+            ])
+        }
+        _ => Err(CartoBoostError::InvalidInput(
+            "ARIMA d must be <= 2".to_string(),
+        )),
+    }
+}
+
+fn tail_values(values: &[f64], length: usize) -> Vec<f64> {
+    if length == 0 {
+        Vec::new()
+    } else {
+        values[values.len().saturating_sub(length)..].to_vec()
+    }
+}
+
+fn push_tail(values: &mut Vec<f64>, max_len: usize, value: f64) {
+    if max_len == 0 {
+        return;
+    }
+    if values.len() == max_len {
+        values.rotate_left(1);
+        if let Some(last) = values.last_mut() {
+            *last = value;
+        }
+    } else {
+        values.push(value);
+    }
+}
+
+fn arima_feature(values: &[f64], residuals: &[f64], idx: usize, p: usize, col: usize) -> f64 {
+    if col == 0 {
+        1.0
+    } else if col <= p {
+        values[idx - col]
+    } else {
+        residuals[idx - (col - p)]
+    }
+}
+
+fn solve_arima_normal_equations(
+    mut matrix: [[f64; MAX_ARIMA_COLUMNS]; MAX_ARIMA_COLUMNS],
+    mut rhs: [f64; MAX_ARIMA_COLUMNS],
+    n: usize,
+) -> Option<Vec<f64>> {
+    for pivot_idx in 0..n {
+        let mut pivot_row = pivot_idx;
+        for row in (pivot_idx + 1)..n {
+            if matrix[row][pivot_idx].abs() > matrix[pivot_row][pivot_idx].abs() {
+                pivot_row = row;
+            }
+        }
+        if matrix[pivot_row][pivot_idx].abs() < 1.0e-12 {
+            return None;
+        }
+        matrix.swap(pivot_idx, pivot_row);
+        rhs.swap(pivot_idx, pivot_row);
+
+        let pivot = matrix[pivot_idx][pivot_idx];
+        for value in matrix[pivot_idx].iter_mut().take(n).skip(pivot_idx) {
+            *value /= pivot;
+        }
+        rhs[pivot_idx] /= pivot;
+        let pivot_tail = matrix[pivot_idx];
+        let pivot_rhs = rhs[pivot_idx];
+
+        for row in 0..n {
+            if row == pivot_idx {
+                continue;
+            }
+            let factor = matrix[row][pivot_idx];
+            for (col, pivot_cell) in pivot_tail.iter().enumerate().take(n).skip(pivot_idx) {
+                matrix[row][col] -= factor * pivot_cell;
+            }
+            rhs[row] -= factor * pivot_rhs;
+        }
+    }
+    Some(rhs[..n].to_vec())
 }
 
 fn fit_arima_components(
@@ -1661,29 +1815,22 @@ fn fit_arima_coefficients_once(
         );
     }
     let cols = p + q + 1;
-    let mut xtx = vec![vec![0.0; cols]; cols];
-    let mut xty = vec![0.0; cols];
+    let mut xtx = [[0.0; MAX_ARIMA_COLUMNS]; MAX_ARIMA_COLUMNS];
+    let mut xty = [0.0; MAX_ARIMA_COLUMNS];
     let start = p.max(q);
     for idx in start..values.len() {
-        let mut features = Vec::with_capacity(cols);
-        features.push(1.0);
-        for lag in 1..=p {
-            features.push(values[idx - lag]);
-        }
-        for lag in 1..=q {
-            features.push(residuals[idx - lag]);
-        }
         for row in 0..cols {
-            xty[row] += features[row] * values[idx];
-            for col in 0..cols {
-                xtx[row][col] += features[row] * features[col];
+            let row_value = arima_feature(values, residuals, idx, p, row);
+            xty[row] += row_value * values[idx];
+            for (col, cell) in xtx[row].iter_mut().enumerate().take(cols) {
+                *cell += row_value * arima_feature(values, residuals, idx, p, col);
             }
         }
     }
-    for (idx, row) in xtx.iter_mut().enumerate() {
+    for (idx, row) in xtx.iter_mut().enumerate().take(cols) {
         row[idx] += 1.0e-8;
     }
-    let solution = solve_linear_system(xtx, xty).unwrap_or_else(|| vec![0.0; cols]);
+    let solution = solve_arima_normal_equations(xtx, xty, cols).unwrap_or_else(|| vec![0.0; cols]);
     (
         solution[0],
         solution[1..=p].to_vec(),
@@ -1707,17 +1854,14 @@ fn fitted_arima_values(
         let mean = if idx < start {
             values[idx]
         } else {
-            intercept
-                + ar_coefficients
-                    .iter()
-                    .enumerate()
-                    .map(|(coef_idx, coef)| coef * values[idx - coef_idx - 1])
-                    .sum::<f64>()
-                + ma_coefficients
-                    .iter()
-                    .enumerate()
-                    .map(|(coef_idx, coef)| coef * residual_history[idx - coef_idx - 1])
-                    .sum::<f64>()
+            let mut mean = intercept;
+            for (coef_idx, coef) in ar_coefficients.iter().enumerate() {
+                mean += coef * values[idx - coef_idx - 1];
+            }
+            for (coef_idx, coef) in ma_coefficients.iter().enumerate() {
+                mean += coef * residual_history[idx - coef_idx - 1];
+            }
+            mean
         };
         fitted.push(mean);
         if idx >= start {
@@ -1734,17 +1878,14 @@ fn forecast_arima_next(
     ar_coefficients: &[f64],
     ma_coefficients: &[f64],
 ) -> f64 {
-    intercept
-        + ar_coefficients
-            .iter()
-            .enumerate()
-            .map(|(idx, coef)| coef * history[history.len() - idx - 1])
-            .sum::<f64>()
-        + ma_coefficients
-            .iter()
-            .enumerate()
-            .map(|(idx, coef)| coef * residuals[residuals.len() - idx - 1])
-            .sum::<f64>()
+    let mut forecast = intercept;
+    for (idx, coef) in ar_coefficients.iter().enumerate() {
+        forecast += coef * history[history.len() - idx - 1];
+    }
+    for (idx, coef) in ma_coefficients.iter().enumerate() {
+        forecast += coef * residuals[residuals.len() - idx - 1];
+    }
+    forecast
 }
 
 fn undifference_fitted_values(values: &[f64], fitted_diff: &[f64], d: usize) -> Vec<f64> {
@@ -2115,6 +2256,21 @@ mod tests {
             model.fitted_values("PULocationID=1").expect("fitted").len(),
             4
         );
+        assert_eq!(
+            model.level_values("PULocationID=1").expect("levels").len(),
+            4
+        );
+        assert_eq!(
+            model.trend_values("PULocationID=1").expect("trends").len(),
+            4
+        );
+        assert_eq!(
+            model
+                .seasonal_values("PULocationID=1")
+                .expect("seasonals")
+                .len(),
+            4
+        );
     }
 
     #[test]
@@ -2142,6 +2298,11 @@ mod tests {
 
         assert_eq!(forecast.predictions()[0].timestamp, ts(9));
         assert!(means[1] > means[0]);
+        let seasonals = model
+            .seasonal_values("__single__")
+            .expect("seasonal contributions");
+        assert_eq!(seasonals.len(), 8);
+        assert!(seasonals[1] > seasonals[0]);
     }
 
     #[test]
@@ -2265,6 +2426,30 @@ mod tests {
             .predictions()
             .iter()
             .all(|row| row.mean.is_finite()));
+    }
+
+    #[test]
+    fn arima_candidate_score_excludes_warmup_residuals() {
+        let frame = ForecastFrame::new(
+            (1..=8)
+                .map(|day| ForecastRow::single(ts(day), 20.0 + f64::from(day * day)))
+                .collect(),
+            ForecastFrequency::Daily,
+        )
+        .expect("valid frame");
+        let state = FittedArimaState::from_frame(&frame, 2, 0, 1).expect("fit arima");
+        let series = state.series.get("__single__").expect("single series");
+
+        let expected = series
+            .residuals
+            .iter()
+            .skip(2)
+            .map(|residual| residual * residual)
+            .sum::<f64>()
+            / 6.0;
+
+        assert_eq!(series.score_start, 2);
+        assert!((state.mean_squared_residual() - expected).abs() < 1.0e-12);
     }
 
     #[test]

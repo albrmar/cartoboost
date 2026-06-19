@@ -13,10 +13,18 @@ taxi-zone panels, CLI runs, and wrapper APIs:
 
 | File | Coverage |
 | --- | --- |
+| `naive_seasonal_visualization.py` | Rust-backed `NaiveForecaster` and `SeasonalNaiveForecaster` on hourly taxi-zone pickup demand, with holdout metrics and a comparison plot under `target/examples/`. |
+| `theta_optimized_visualization.py` | Rust-backed `ThetaForecaster` and `OptimizedThetaForecaster` with an explicit theta/alpha grid over taxi-zone demand, plus held-out metrics and a plot. |
+| `ets_component_visualization.py` | Rust-backed `ETSForecaster` with fitted values, residuals, level/trend paths, seasonal components, held-out metrics, and a component plot. |
+| `arima_example_visualization.py` | Python `ArimaForecaster` and `AutoARIMAForecaster` on a deterministic taxi lane panel, with held-out metrics and optional Matplotlib plot output under `target/`. |
+| `cartoboost_lag_visualization.py` | Python `CartoBoostLagForecaster` wrapper with lag, rolling, calendar, trend, recursive forecasting, held-out metrics, and a residual plot. |
+| `weighted_ensemble_visualization.py` | Rust-backed `WeightedEnsembleForecaster` combining seasonal naive, theta, and Kalman components for taxi-lane pickup demand. |
+| `kriging_example_visualization.py` | Rust-backed kriging variogram fitting, interpolation surface, leave-one-out diagnostics, and committed documentation assets for example pickup-zone geometry. |
 | `single_series_theta.py` | CLI `fit` shape for `theta` over taxi pickup demand. |
 | `panel_forecasting.py` | CLI `fit` shape for panel `seasonal_naive` over `PULocationID`. |
 | `rolling_origin_backtest.py` | CLI `backtest` shape and current clear failure when the Rust backtest binding is unavailable. |
 | `probabilistic_intervals.py` | Python `ForecastResult` and `PredictionInterval` output columns for interval forecasts. |
+| `kalman_diagnostics_visualization.py` | Rust-backed Kalman utility diagnostics with filtered/smoothed states, forecast intervals, standardized innovations, and a saved Matplotlib plot under `target/examples/`. |
 | `carto_boost_lag_forecaster.py` | Python `CartoBoostLagForecaster` wrapper with lag, rolling, calendar, static, and known-future features. |
 
 The Forecasting V1 model-name surface includes `local_level_kalman`,

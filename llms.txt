@@ -9,6 +9,8 @@ temporal, spatial, geotemporal, graph, and neural-embedding modeling.
 - Documentation home: ./docs/index.md
 - Installation: ./docs/installation.md
 - Getting started: ./docs/getting-started.md
+- ARIMA and AutoARIMA guide: ./docs/user-guide/forecasting-models/arima.md
+- ARIMA examples: ./docs/user-guide/forecasting-models/arima-examples.md
 - Python estimator: ./docs/user-guide/python-estimator.md
 - Python API reference: ./docs/reference/python-api.md
 - Parameters: ./docs/user-guide/parameters.md
@@ -17,7 +19,7 @@ temporal, spatial, geotemporal, graph, and neural-embedding modeling.
 - Neural embedding models and features: ./docs/neural-features.md
 - Evaluation protocol: ./docs/evaluation_protocol.md
 - Benchmarks: ./docs/benchmarks/index.md
-- Limitations: ./docs/limitations.md
+- Forecasting benchmarks and M4 evidence: ./docs/benchmarks/forecasting.md
 
 ## Public Python Entry Points
 
@@ -39,8 +41,10 @@ temporal, spatial, geotemporal, graph, and neural-embedding modeling.
 
 ## Optional Integrations
 
-- `cartoboost[h3]`: H3 latitude/longitude encoding helpers.
-- `cartoboost[s2]`: S2 latitude/longitude encoding helpers.
+- `cartoboost[h3]`: H3 latitude/longitude encoding helpers; deterministic
+  validation and sparse-row assembly are Rust-backed.
+- `cartoboost[s2]`: S2 latitude/longitude encoding helpers; deterministic
+  validation and sparse-row assembly are Rust-backed.
 - `cartoboost[duckdb]`: DuckDB relation inputs.
 - `cartoboost[polars]`: Polars inputs.
 - `cartoboost[explain]`: SHAP explanation helpers.
@@ -57,6 +61,19 @@ temporal, spatial, geotemporal, graph, and neural-embedding modeling.
   explicitly wants generated columns for another estimator.
 - Keep algorithmic behavior in Rust crates under `crates/`; Python modules under
   `python/cartoboost` should stay thin ergonomic wrappers.
-- Use `uv sync --group dev` for local development and
-  `uv run --group dev maturin develop` after native binding changes.
+- Use `cartoboost.kalman_filter` or `local_level_kalman_filter` when users need
+  Kalman state diagnostics, smoothed states, covariance/variance, gains,
+  residual metrics, likelihood, or forecast intervals in addition to point
+  forecasts.
+- For Kalman docs or examples, prefer taxi pickup-demand examples with
+  filtered/smoothed state plots, forecast interval bands, and standardized
+  innovation charts; the runnable plotting example is
+  `examples/forecasting/kalman_diagnostics_visualization.py`.
+- Forecasting model examples with runnable visual diagnostics live under
+  `examples/forecasting/`: `naive_seasonal_visualization.py`,
+  `theta_optimized_visualization.py`, `ets_component_visualization.py`,
+  `arima_example_visualization.py`, `cartoboost_lag_visualization.py`,
+  `weighted_ensemble_visualization.py`, and `kriging_example_visualization.py`.
+- Use `uv sync` for local development and
+  `uv run maturin develop` after native binding changes.
 - Run `just validate` for full validation when feasible.

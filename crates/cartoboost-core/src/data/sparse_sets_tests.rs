@@ -28,3 +28,14 @@ fn contains_checks_single_id_membership() {
     assert!(!column.contains(0, 6));
     assert!(!column.contains(1, 4));
 }
+
+#[test]
+fn membership_handles_direct_unsorted_rows() {
+    let column = SparseSetColumn {
+        values: vec![vec![9, 1, 7]],
+    };
+
+    assert!(column.contains(0, 7));
+    assert!(column.contains_any(0, [3, 9]));
+    assert!(!column.contains_any(0, [3, 5]));
+}

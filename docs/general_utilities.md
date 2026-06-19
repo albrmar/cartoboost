@@ -14,7 +14,7 @@ import cartoboost as cb
 Use local-level Kalman filtering when the signal is a noisy measurement of a
 slowly moving level and there is no explicit trend term.
 
-Toy problem: a warehouse inventory sensor reads a stable stock level with small
+Example: a warehouse inventory sensor reads a stable stock level with small
 noise, and you want a smoothed level plus a short flat forecast.
 
 ```python
@@ -55,16 +55,50 @@ Parameters:
 Return shape:
 
 - `local_level_kalman_filter(...)` returns a dictionary with per-step estimates,
-  final level state, and optional `forecast`.
+  final level state, fixed-interval `smoothed_states`, optional `forecast`,
+  optional `forecast_distribution`, and `diagnostics`.
+- Each estimate includes the prior level, filtered level, variances, innovation,
+  fitted value, residual, standardized innovation, Kalman gain, and per-step
+  Gaussian log likelihood.
+- `forecast_distribution` rows include `step`, `mean`, observation `variance`,
+  and normal-approximation `lower`/`upper` bounds. Use `interval_z` to control
+  the interval width.
+- `diagnostics` includes log likelihood, AIC, BIC, MSE, RMSE, MAE, and
+  standardized-innovation summaries.
 - `local_level_kalman_forecast(...)` returns `list[float]`.
+
+Visualization example:
+
+```python
+import matplotlib.pyplot as plt
+import cartoboost as cb
+
+readings = [184.0, 187.0, 183.0, 186.0, 185.0, 188.0, 186.0]
+state = cb.local_level_kalman_filter(readings, horizon=3)
+
+steps = list(range(len(readings)))
+smoothed_steps = [row["step"] for row in state["smoothed_states"]]
+smoothed = [row["level"] for row in state["smoothed_states"]]
+future_steps = [steps[-1] + row["step"] for row in state["forecast_distribution"]]
+future_mean = [row["mean"] for row in state["forecast_distribution"]]
+future_lower = [row["lower"] for row in state["forecast_distribution"]]
+future_upper = [row["upper"] for row in state["forecast_distribution"]]
+
+plt.plot(steps, readings, marker="o", label="observed zone pickups")
+plt.plot(smoothed_steps, smoothed, label="smoothed level")
+plt.plot(future_steps, future_mean, marker="o", label="forecast")
+plt.fill_between(future_steps, future_lower, future_upper, alpha=0.18)
+plt.legend()
+plt.savefig("target/examples/local_level_kalman_utility.png", dpi=160)
+```
 
 ## Local-Linear-Trend Kalman
 
 Use local-linear Kalman filtering when the series has a level and a slope. This
-is usually a better toy model for load, traffic, or pickup counts that drift
+is usually a better match for load, traffic, or pickup counts that drift
 over time.
 
-Toy problem: daily pickup demand is increasing by about two trips per day, with
+Example: daily pickup demand is increasing by about two trips per day, with
 noise.
 
 ```python
@@ -104,6 +138,45 @@ Parameters:
 | `trend_process_variance` | Process noise for the latent trend/slope. |
 | `observation_variance` | Measurement noise in the observed values. |
 | `horizon` | Number of future means to emit from the final level/trend state. |
+| `interval_z` | Normal critical value used for `forecast_distribution` bounds when `horizon > 0`. |
+
+Return shape:
+
+- `kalman_filter(...)` returns final level/trend state, final covariance,
+  fixed-interval `smoothed_states`, per-step estimates, optional point
+  `forecast`, optional `forecast_distribution`, and `diagnostics`.
+- Each local-linear estimate includes prior and filtered state values,
+  covariance matrices, fitted value, residual, standardized innovation,
+  innovation variance, level/trend gains, and per-step Gaussian log likelihood.
+- `diagnostics` includes log likelihood, AIC, BIC, MSE, RMSE, MAE, and
+  standardized-innovation summaries.
+
+Visualization example:
+
+```python
+import matplotlib.pyplot as plt
+import cartoboost as cb
+
+pickups = [40.0, 42.0, 45.0, 47.0, 50.0, 51.0, 54.0]
+state = cb.kalman_filter(pickups, horizon=4)
+
+steps = list(range(len(pickups)))
+estimate_steps = [row["step"] for row in state["estimates"]]
+filtered = [row["level"] for row in state["estimates"]]
+fitted = [row["fitted"] for row in state["estimates"]]
+future_steps = [steps[-1] + row["step"] for row in state["forecast_distribution"]]
+future_mean = [row["mean"] for row in state["forecast_distribution"]]
+future_lower = [row["lower"] for row in state["forecast_distribution"]]
+future_upper = [row["upper"] for row in state["forecast_distribution"]]
+
+plt.plot(steps, pickups, marker="o", label="observed pickup count")
+plt.plot(estimate_steps, fitted, linestyle="--", label="one-step fitted")
+plt.plot(estimate_steps, filtered, label="filtered level")
+plt.plot(future_steps, future_mean, marker="o", label="forecast")
+plt.fill_between(future_steps, future_lower, future_upper, alpha=0.18)
+plt.legend()
+plt.savefig("target/examples/local_linear_kalman_utility.png", dpi=160)
+```
 
 Forecasting wrapper:
 
@@ -142,7 +215,7 @@ spatial interpolation at new coordinates. The utility is independent of
 forecasting. The forecasting wrapper uses the latest observed value for each
 series and interpolates across panel coordinates.
 
-Toy problem: three taxi zones have observed pickup pressure, and you want the
+Example: three taxi zones have observed pickup pressure, and you want the
 estimated pressure at a nearby zone centroid.
 
 ```python
@@ -163,10 +236,12 @@ predictions = cb.ordinary_kriging_predict(
     targets,
     range=1.5,
     nugget=1.0e-6,
+    variogram_model="spherical",
+    detailed=True,
 )
 
 for row in predictions:
-    print(row["x"], row["y"], row["mean"], row["weights"])
+    print(row["x"], row["y"], row["mean"], row["variance"], row["neighbor_indices"])
 ```
 
 Parameters:
@@ -177,11 +252,39 @@ Parameters:
 | `targets` | Sequence of `(x, y)` coordinates to interpolate. |
 | `range` | Distance scale for spatial covariance. Larger values spread influence farther. |
 | `nugget` | Small diagonal variance for numerical stability and measurement noise. |
+| `sill` | Marginal spatial covariance scale. |
+| `variogram_model` | `exponential`, `gaussian`, `spherical`, or `linear`. |
+| `drift` | `ordinary` for constant mean or `linear` for universal kriging with x/y drift. |
+| `anisotropy_angle_degrees`, `anisotropy_scaling` | Rotate and stretch the spatial distance metric. |
+| `max_neighbors`, `min_neighbors`, `max_distance` | Optional target-local neighbor selection. All-neighbor predictions cache the kriging system once for faster many-target scoring. |
+| `detailed` | When true, include kriging variance and selected neighbor indices. |
 
 Return shape:
 
 - `ordinary_kriging_predict(...)` returns a list of dictionaries:
   `{"x": ..., "y": ..., "mean": ..., "weights": [...]}`.
+- With `detailed=True`, each row also includes `variance` and
+  `neighbor_indices`.
+- `ordinary_kriging_leave_one_out(...)` returns the detailed row shape for each
+  held-out observation and is intended for spatial residual diagnostics.
+- `empirical_variogram(...)` returns binned semivariances with lag boundaries,
+  mean lag distance, and pair counts.
+- `fit_ordinary_kriging_variogram(...)` runs Rust weighted least-squares
+  selection over variogram, range, nugget, and sill candidates and returns the
+  selected config plus the empirical bins and objective value.
+- `ordinary_kriging_leave_one_out_diagnostics(...)` returns held-out predictions
+  plus residual metrics such as bias, MAE, RMSE, standardized RMSE, 95% interval
+  coverage, and average kriging variance.
+
+Visual example walkthrough:
+
+- Full example script: `examples/forecasting/kriging_example_visualization.py`
+- Generated surface:
+  ![Taxi pickup kriging example surface](assets/kriging_examples/kriging_surface.png)
+- Generated variogram:
+  ![Empirical variogram with fitted model](assets/kriging_examples/kriging_variogram_fit.png)
+- Generated leave-one-out diagnostics:
+  ![Kriging leave-one-out diagnostics](assets/kriging_examples/kriging_leave_one_out.png)
 
 Forecasting wrapper:
 
@@ -228,7 +331,7 @@ Use Croston-family utilities when demand is non-negative and contains many
 zeros. They are useful for sparse pickup requests, low-volume parts, or rare
 lane/customer activity.
 
-Toy problem: a low-volume lane has several zero-demand days and occasional
+Example: a low-volume lane has several zero-demand days and occasional
 orders.
 
 ```python

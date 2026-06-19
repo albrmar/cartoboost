@@ -2,7 +2,7 @@
 
 ## Dev environment tips
 - This folder contains validation, benchmark, plotting, synthetic data, and report scripts.
-- Keep scripts runnable through `uv run --group dev python scripts/<name>.py` unless a benchmark dependency group is required.
+- Keep scripts runnable through `uv run python scripts/<name>.py` unless a benchmark dependency group is required.
 - Avoid hard-coded machine paths.
 - Benchmark scripts should default to honest, reproducible comparisons. Use the same split, same feature treatment, and comparable model settings across CartoBoost and baselines such as LightGBM/XGBoost.
 - Do not add p-hacking or hyperparameter-search behavior to benchmark scripts unless the script explicitly compares equal search budgets for every model.

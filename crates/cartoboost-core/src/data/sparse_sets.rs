@@ -26,7 +26,8 @@ impl SparseSetColumn {
     }
 
     pub fn contains(&self, row: usize, id: u64) -> bool {
-        self.row(row).is_some_and(|values| values.contains(&id))
+        self.row(row)
+            .is_some_and(|values| sorted_or_linear_contains(values, id))
     }
 
     pub fn contains_any<I>(&self, row: usize, ids: I) -> bool
@@ -36,7 +37,11 @@ impl SparseSetColumn {
         let Some(values) = self.row(row) else {
             return false;
         };
-        ids.into_iter().any(|id| values.contains(&id))
+        if is_sorted(values) {
+            ids.into_iter().any(|id| values.binary_search(&id).is_ok())
+        } else {
+            ids.into_iter().any(|id| values.contains(&id))
+        }
     }
 
     pub fn normalize(&mut self) {
@@ -45,4 +50,16 @@ impl SparseSetColumn {
             values.dedup();
         }
     }
+}
+
+fn sorted_or_linear_contains(values: &[u64], id: u64) -> bool {
+    if is_sorted(values) {
+        values.binary_search(&id).is_ok()
+    } else {
+        values.contains(&id)
+    }
+}
+
+fn is_sorted(values: &[u64]) -> bool {
+    values.windows(2).all(|window| window[0] <= window[1])
 }
