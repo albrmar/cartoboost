@@ -1,13 +1,13 @@
 {
   "benchmark": "geotemporal_lane_demand_forecasting_libraries",
-  "cartoboost_version": "0.1.40",
+  "cartoboost_version": "0.1.44",
   "comparison_libraries": [
     "functime",
     "statsforecast",
     "prophet",
     "external_trees"
   ],
-  "created_at": "2026-06-19T15:46:17.813090+00:00",
+  "created_at": "2026-06-19T17:14:11.873635+00:00",
   "dataset": {
     "assets_file": "data/forecasting_benchmarks/m6/assets_m6.csv",
     "available_series": 100,
@@ -184,6 +184,7 @@
     "statsforecast_seasonal_naive": "statsforecast",
     "xgboost_lag": "external_trees"
   },
+  "model_roster": "full",
   "model_settings": {
     "cartoboost_lag": {
       "learning_rate": 0.06,
@@ -345,7 +346,7 @@
   },
   "timing": {
     "candidate_selection": {
-      "calibration_seconds": 95.30840562499361,
+      "calibration_seconds": 91.86650091699266,
       "inner_origin_count": 1.0,
       "inner_rmse": {
         "cartoboost_lag": {
@@ -422,90 +423,90 @@
         "xgboost_lag": "xgboost_lag"
       }
     },
-    "load_seconds": 0.9663349579932401,
+    "load_seconds": 0.15629120900121052,
     "models": {
       "cartoboost_lag": {
         "feature_count": 22.0,
-        "feature_seconds": 0.00831550000293646,
-        "fit_predict_seconds": 4.330497874994762,
-        "fit_seconds": 4.28951387500274,
-        "predict_seconds": 0.04098399999202229,
-        "total_seconds": 4.338813374997699
+        "feature_seconds": 0.0020436659979168326,
+        "fit_predict_seconds": 0.6914069170161383,
+        "fit_seconds": 0.6818169580074027,
+        "predict_seconds": 0.009589959008735605,
+        "total_seconds": 0.6934505830140552
       },
       "functime_lightgbm": {
-        "fit_predict_seconds": 0.44456554199859966,
-        "fit_seconds": 0.35567366699979175,
-        "predict_seconds": 0.08889187499880791
+        "fit_predict_seconds": 0.4030402069911361,
+        "fit_seconds": 0.31606491599814035,
+        "predict_seconds": 0.08697529099299572
       },
       "functime_ridge": {
-        "fit_predict_seconds": 0.12025691698363516,
-        "fit_seconds": 0.030121249990770593,
-        "predict_seconds": 0.09013566699286457
+        "fit_predict_seconds": 0.09894870901189279,
+        "fit_seconds": 0.011656875009066425,
+        "predict_seconds": 0.08729183400282636
       },
       "functime_snaive": {
-        "fit_predict_seconds": 0.01810687499528285,
-        "fit_seconds": 0.00925400000414811,
-        "predict_seconds": 0.00885287499113474
+        "fit_predict_seconds": 0.003572957997675985,
+        "fit_seconds": 0.0011060409888159484,
+        "predict_seconds": 0.0024669170088600367
       },
       "lightgbm_lag": {
         "feature_count": 29.0,
-        "feature_seconds": 0.006988541994360276,
-        "fit_predict_seconds": 1.1802771670045331,
-        "fit_seconds": 0.23363641700416338,
-        "predict_seconds": 0.9466407500003697,
+        "feature_seconds": 0.006187499995576218,
+        "fit_predict_seconds": 1.1819273750006687,
+        "fit_seconds": 0.23396629199851304,
+        "predict_seconds": 0.9479610830021556,
         "target_mode_delta": 1.0,
-        "total_seconds": 1.1872657089988934
+        "total_seconds": 1.188114874996245
       },
       "prophet_additive": {
-        "fit_predict_seconds": 4.0240106659330195,
-        "fit_seconds": 3.193404584962991,
-        "predict_seconds": 0.8306060809700284
+        "fit_predict_seconds": 2.867249415052356,
+        "fit_seconds": 2.058205458029988,
+        "predict_seconds": 0.809043957022368
       },
       "statsforecast_autoarima": {
-        "fit_predict_seconds": 22.664423875001376,
-        "fit_seconds": 22.664423875001376,
+        "fit_predict_seconds": 22.725339416007046,
+        "fit_seconds": 22.725339416007046,
         "predict_seconds": 0.0
       },
       "statsforecast_autoces": {
-        "fit_predict_seconds": 11.746814666010323,
-        "fit_seconds": 11.746814666010323,
+        "fit_predict_seconds": 11.666238833990064,
+        "fit_seconds": 11.666238833990064,
         "predict_seconds": 0.0
       },
       "statsforecast_autoets": {
-        "fit_predict_seconds": 3.383600415996625,
-        "fit_seconds": 3.383600415996625,
+        "fit_predict_seconds": 3.3843603329878533,
+        "fit_seconds": 3.3843603329878533,
         "predict_seconds": 0.0
       },
       "statsforecast_autotbats": {
-        "fit_predict_seconds": 34.30743612500373,
-        "fit_seconds": 34.30743612500373,
+        "fit_predict_seconds": 35.26283779100049,
+        "fit_seconds": 35.26283779100049,
         "predict_seconds": 0.0
       },
       "statsforecast_autotheta": {
-        "fit_predict_seconds": 1.0789114169892855,
-        "fit_seconds": 1.0789114169892855,
+        "fit_predict_seconds": 1.079556374999811,
+        "fit_seconds": 1.079556374999811,
         "predict_seconds": 0.0
       },
       "statsforecast_dynamic_optimized_theta": {
-        "fit_predict_seconds": 0.3800628750032047,
-        "fit_seconds": 0.3800628750032047,
+        "fit_predict_seconds": 0.3810862079990329,
+        "fit_seconds": 0.3810862079990329,
         "predict_seconds": 0.0
       },
       "statsforecast_seasonal_naive": {
-        "fit_predict_seconds": 0.014179999998304993,
-        "fit_seconds": 0.014179999998304993,
+        "fit_predict_seconds": 0.008684874992468394,
+        "fit_seconds": 0.008684874992468394,
         "predict_seconds": 0.0
       },
       "xgboost_lag": {
         "feature_count": 29.0,
-        "feature_seconds": 0.012008332996629179,
-        "fit_predict_seconds": 1.2252549580007326,
-        "fit_seconds": 0.2916670409904327,
-        "predict_seconds": 0.9335879170102999,
+        "feature_seconds": 0.008654082994326018,
+        "fit_predict_seconds": 1.2240644999983488,
+        "fit_seconds": 0.2902410419919761,
+        "predict_seconds": 0.9338234580063727,
         "target_mode_delta": 1.0,
-        "total_seconds": 1.2372632909973618
+        "total_seconds": 1.2327185829926748
       }
     },
-    "total_seconds": 192.66578012499667
+    "total_seconds": 173.59059062499728
   }
 }

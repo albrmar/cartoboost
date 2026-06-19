@@ -208,6 +208,14 @@ def main() -> int:
         ),
     )
     parser.add_argument(
+        "--allow-full-m5-roster",
+        action="store_true",
+        help=(
+            "Allow the full per-series library roster on the unbounded M5 corpus. "
+            "Without this flag, full M5 roster runs require a positive --m5-series-limit."
+        ),
+    )
+    parser.add_argument(
         "--no-candidate-selection",
         action="store_true",
         help="Skip inner-origin shared candidate selection for very large panels.",
@@ -321,12 +329,17 @@ def validate_args(args: argparse.Namespace) -> None:
         raise ValueError("--m6-series-limit must be non-negative; use 0 for every M6 symbol")
     if args.m6_horizon <= 0:
         raise ValueError("--m6-horizon must be positive")
-    if args.source == "m5" and args.model_roster == "full":
+    if (
+        args.source == "m5"
+        and args.model_roster == "full"
+        and args.m5_series_limit == 0
+        and not args.allow_full_m5_roster
+    ):
         raise ValueError(
-            "--source m5 requires --model-roster scalable or --model-roster cartoboost "
-            "for full-corpus runs; "
-            "the full roster launches per-series Prophet/StatsForecast models and is not "
-            "practical for the M5 bottom-level panel"
+            "--source m5 --model-roster full requires a positive --m5-series-limit for "
+            "scientific comparison samples. To run the full per-series roster on all "
+            "30,490 M5 bottom-level series, pass --allow-full-m5-roster and expect a "
+            "long heavyweight benchmark."
         )
     if args.suite_folds <= 0:
         raise ValueError("--suite-folds must be positive")

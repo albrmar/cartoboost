@@ -224,6 +224,69 @@ def test_forecasting_benchmark_m5_requires_real_local_files(tmp_path):
         raise AssertionError("missing M5 files should hard-fail")
 
 
+def test_forecasting_benchmark_allows_bounded_m5_full_roster():
+    repo_root = Path(__file__).resolve().parents[2]
+    module_path = repo_root / "scripts" / "forecasting_library_benchmark.py"
+    spec = importlib.util.spec_from_file_location(
+        "forecasting_library_benchmark_m5_roster",
+        module_path,
+    )
+    assert spec is not None
+    assert spec.loader is not None
+    benchmark = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = benchmark
+    spec.loader.exec_module(benchmark)
+
+    benchmark.validate_args(
+        types.SimpleNamespace(
+            lanes=1,
+            horizon=28,
+            source="m5",
+            days=120,
+            suite=False,
+            m4_suite=False,
+            m4_series_limit=0,
+            m5_series_limit=100,
+            m5_history_days=90,
+            m6_series_limit=0,
+            m6_horizon=28,
+            model_roster="full",
+            allow_full_m5_roster=False,
+            cartoboost_n_estimators=1,
+            cartoboost_max_depth=3,
+            cartoboost_min_samples_leaf=8,
+            suite_folds=1,
+        )
+    )
+
+    try:
+        benchmark.validate_args(
+            types.SimpleNamespace(
+                lanes=1,
+                horizon=28,
+                source="m5",
+                days=120,
+                suite=False,
+                m4_suite=False,
+                m4_series_limit=0,
+                m5_series_limit=0,
+                m5_history_days=90,
+                m6_series_limit=0,
+                m6_horizon=28,
+                model_roster="full",
+                allow_full_m5_roster=False,
+                cartoboost_n_estimators=1,
+                cartoboost_max_depth=3,
+                cartoboost_min_samples_leaf=8,
+                suite_folds=1,
+            )
+        )
+    except ValueError as exc:
+        assert "requires a positive --m5-series-limit" in str(exc)
+    else:
+        raise AssertionError("unbounded M5 full-roster runs should require explicit opt-in")
+
+
 def test_forecasting_benchmark_loads_m6_assets_file(tmp_path):
     repo_root = Path(__file__).resolve().parents[2]
     module_path = repo_root / "scripts" / "forecasting_library_benchmark.py"

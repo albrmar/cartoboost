@@ -4,8 +4,9 @@
 
 | Competition | Artifact | Scope | Result |
 | --- | --- | --- | --- |
-| M5 Forecasting Accuracy | `docs/assets/nyc_taxi_benchmarks/forecasting_m5_full.json` | 30,490 item-store series, 90 recent days, 28-day holdout | CartoBoost-only fast run: RMSE 2.634879, MAE 1.332997, WAPE 0.923884. |
-| M6 financial assets | `docs/assets/nyc_taxi_benchmarks/forecasting_m6_full.json` | 100 symbols, 38,219 daily-return rows, 28-day holdout | `statsforecast_autoarima` won RMSE at 0.013402; CartoBoost RMSE was 0.014348. |
+| M5 Forecasting Accuracy comparison sample | `docs/assets/nyc_taxi_benchmarks/forecasting_m5_full_roster_sample.json` | 100 item-store series, 90 recent days, 28-day holdout, full 14-model roster | `statsforecast_autoets` won RMSE at 2.525734; CartoBoost RMSE was 2.678097. |
+| M5 Forecasting Accuracy full-corpus check | `docs/assets/nyc_taxi_benchmarks/forecasting_m5_full.json` | 30,490 item-store series, 90 recent days, 28-day holdout, CartoBoost-only fast roster | CartoBoost RMSE 2.634879, MAE 1.332997, WAPE 0.923884. |
+| M6 financial assets | `docs/assets/nyc_taxi_benchmarks/forecasting_m6_full.json` | 100 symbols, 38,219 daily-return rows, 28-day holdout, full 14-model roster | `statsforecast_autoarima` won RMSE at 0.013402; CartoBoost RMSE was 0.014348. |
 
 ## Bottom Line
 
@@ -18,19 +19,23 @@ The forecasting benchmark has five maintained views:
 - M4 24-series-per-group sample: `cartoboost_lag` ranks first by mean RMSE
   ratio in the refreshed committed sample, but this is still a sample, not a
   full M4 corpus claim.
-- M5 full-run protocol: Kaggle M5 Accuracy files are now a first-class source
-  for the full 30,490 item-store daily unit-sales panel with the official
-  28-day holdout shape. The June 19, 2026 run completed over all 30,490
+- M5 comparison sample: Kaggle M5 Accuracy files are now a first-class source
+  with a full 14-model roster sample over 100 item-store daily unit-sales
+  series, the official 28-day holdout shape, and the same model-family table
+  style as the M4 sample.
+- M5 full-corpus check: The June 19, 2026 run also completed over all 30,490
   bottom-level series using the public M5 mirror, a 90-day recent-history
-  window, and a CartoBoost-only fast roster.
+  window, and a CartoBoost-only fast roster. That artifact is coverage and
+  throughput evidence, not a model bakeoff.
 - M6 full-run protocol: M6 assets are now a first-class source for a daily
   return point-forecast proxy over the public M6 asset panel. The June 19, 2026
   run completed over 100 symbols and 38,219 daily-return rows.
 
 Forecasting claims should stay split-specific. A seasonal baseline tie is a
 valid result; it means the short panel did not prove residual lift. M5 and M6
-are real competition panels, but the maintained M5 result below is a
-CartoBoost-only full-corpus fast run, not a full external-library bakeoff.
+are real competition panels, but the M5 model comparison below is a bounded
+100-series sample, not a full external-library bakeoff across all 30,490
+bottom-level series.
 
 ## Real NYC Taxi Lane Demand
 
@@ -157,9 +162,23 @@ hard-fails under `--no-download` when the required files are missing.
 | Split | Last 28 days from the supplied training/evaluation file |
 | Horizon | 28 daily steps |
 | Scoring | Shared harness: RMSE, MAE, MASE, WAPE, SMAPE, bias |
-| Maintained artifact | `docs/assets/nyc_taxi_benchmarks/forecasting_m5_full.json` |
+| Maintained comparison artifact | `docs/assets/nyc_taxi_benchmarks/forecasting_m5_full_roster_sample.json` |
+| Maintained full-corpus artifact | `docs/assets/nyc_taxi_benchmarks/forecasting_m5_full.json` |
 
-Reproduce the maintained full-corpus fast run:
+Reproduce the maintained full-roster comparison sample:
+
+```sh
+uv run --group bench python scripts/forecasting_library_benchmark.py \
+  --source m5 \
+  --model-roster full \
+  --m5-data-dir data/forecasting_benchmarks/m5 \
+  --m5-series-limit 100 \
+  --m5-history-days 90 \
+  --output docs/assets/nyc_taxi_benchmarks/forecasting_m5_full_roster_sample.json \
+  --plot-dir docs/assets/nyc_taxi_benchmarks/forecasting_m5_full_roster_plots
+```
+
+Reproduce the maintained full-corpus CartoBoost fast run:
 
 ```sh
 uv run --group bench python scripts/forecasting_library_benchmark.py \
@@ -179,35 +198,71 @@ uv run --group bench python scripts/forecasting_library_benchmark.py \
 Use a positive `--m5-series-limit` only for smoke tests. Results from limited
 runs must be labeled as samples, not as M5 full-corpus evidence.
 
-### M5 Result
+### M5 Full-Roster Sample Result
 
 Command run on June 19, 2026:
 
 ```sh
 uv run --group bench python scripts/forecasting_library_benchmark.py \
   --source m5 \
-  --model-roster cartoboost \
+  --model-roster full \
   --m5-data-dir data/forecasting_benchmarks/m5 \
-  --m5-series-limit 0 \
+  --m5-series-limit 100 \
   --m5-history-days 90 \
-  --cartoboost-n-estimators 1 \
-  --cartoboost-max-depth 3 \
-  --cartoboost-min-samples-leaf 20 \
-  --no-candidate-selection \
-  --output docs/assets/nyc_taxi_benchmarks/forecasting_m5_full.json \
-  --plot-dir docs/assets/nyc_taxi_benchmarks/forecasting_m5_plots
+  --output docs/assets/nyc_taxi_benchmarks/forecasting_m5_full_roster_sample.json \
+  --plot-dir docs/assets/nyc_taxi_benchmarks/forecasting_m5_full_roster_plots
 ```
 
 | Field | Value |
 | --- | --- |
-| Artifact | `docs/assets/nyc_taxi_benchmarks/forecasting_m5_full.json` |
-| Plots | `docs/assets/nyc_taxi_benchmarks/forecasting_m5_plots/` |
+| Artifact | `docs/assets/nyc_taxi_benchmarks/forecasting_m5_full_roster_sample.json` |
+| Plots | `docs/assets/nyc_taxi_benchmarks/forecasting_m5_full_roster_plots/` |
 | Source files | `data/forecasting_benchmarks/m5/datasets/sales_train_evaluation.csv`, `calendar.csv` |
 | Mirror URL | `https://github.com/Nixtla/m5-forecasts/raw/main/datasets/m5.zip` |
-| Series | 30,490 item-store series |
-| Rows | 2,744,100 daily unit-sales rows |
+| Series | 100 item-store series from 30,490 available |
+| Rows | 9,000 daily unit-sales rows |
 | Days materialized | 90 recent days from 1,941 available days |
 | Horizon | 28 daily steps |
+| Roster | `full`: CartoBoost, functime, StatsForecast, Prophet, XGBoost lag, LightGBM lag |
+| Candidate selection | Enabled, shared one-origin calibration |
+| Total runtime | 93.734 seconds |
+| Winner | `statsforecast_autoets` |
+| Best RMSE | 2.525734 |
+| CartoBoost RMSE | 2.678097 |
+| CartoBoost MAE | 1.187821 |
+| CartoBoost WAPE | 0.958196 |
+
+### M5 Model RMSE
+
+The table below reports every model present in the committed M5 full-roster
+sample artifact, ranked by RMSE. It is the M5 counterpart to the M4 sample
+table: same shared harness, same full model family, and explicit sample scope.
+
+| Model | RMSE | MAE | WAPE |
+| --- | ---: | ---: | ---: |
+| `statsforecast_autoets` | 2.525734 | 1.141999 | 0.921232 |
+| `statsforecast_dynamic_optimized_theta` | 2.556517 | 1.163750 | 0.938779 |
+| `statsforecast_autotbats` | 2.602055 | 1.156588 | 0.933001 |
+| `functime_ridge` | 2.606775 | 1.207878 | 0.974376 |
+| `statsforecast_autotheta` | 2.607077 | 1.196042 | 0.964828 |
+| `statsforecast_autoarima` | 2.655754 | 1.194312 | 0.963433 |
+| `cartoboost_lag` | 2.678097 | 1.187821 | 0.958196 |
+| `functime_snaive` | 2.678097 | 1.187821 | 0.958196 |
+| `functime_lightgbm` | 2.678097 | 1.187821 | 0.958196 |
+| `statsforecast_seasonal_naive` | 2.678097 | 1.187821 | 0.958196 |
+| `statsforecast_autoces` | 2.678097 | 1.187821 | 0.958196 |
+| `prophet_additive` | 2.678097 | 1.187821 | 0.958196 |
+| `xgboost_lag` | 2.793477 | 1.500446 | 1.210386 |
+| `lightgbm_lag` | 2.825295 | 1.253991 | 1.011575 |
+
+This sample does not support a claim that CartoBoost beats the M5 model
+families; it ranks seventh by RMSE. The all-series M5 artifact remains useful
+as a CartoBoost full-corpus check:
+
+| Field | Value |
+| --- | --- |
+| Artifact | `docs/assets/nyc_taxi_benchmarks/forecasting_m5_full.json` |
+| Scope | 30,490 item-store series, 2,744,100 rows, 90 recent days, 28-day holdout |
 | Roster | `cartoboost` |
 | Candidate selection | Disabled |
 | CartoBoost settings | 1 estimator, learning rate 0.06, max depth 3, min samples leaf 20 |
@@ -215,22 +270,6 @@ uv run --group bench python scripts/forecasting_library_benchmark.py \
 | CartoBoost RMSE | 2.634879 |
 | CartoBoost MAE | 1.332997 |
 | CartoBoost WAPE | 0.923884 |
-
-### M5 Model RMSE
-
-The committed M5 artifact used the `cartoboost` roster. That means the only
-scientifically measured model in this full-corpus run is `cartoboost_lag`.
-Unrun external-library rows are not fabricated here.
-
-| Model | RMSE | MAE | WAPE |
-| --- | ---: | ---: | ---: |
-| `cartoboost_lag` | 2.634879 | 1.332997 | 0.923884 |
-
-The full external-library comparison was not used for M5 because recursive
-external tree prediction and per-series heavyweight models are not practical on
-30,490 series in the current benchmark harness. The maintained M5 artifact is
-therefore a full-corpus CartoBoost fast-run check, not a claim that CartoBoost
-beats the M5 leaderboard or external forecasting libraries.
 
 ## M6 Full Competition Proxy Run
 
@@ -284,7 +323,9 @@ uv run --group bench python scripts/forecasting_library_benchmark.py \
 | Rows | 38,219 daily-return rows |
 | Days | 383 calendar days |
 | Horizon | 28 calendar days |
-| Total runtime | 192.666 seconds |
+| Roster | `full`: CartoBoost, functime, StatsForecast, Prophet, XGBoost lag, LightGBM lag |
+| Candidate selection | Enabled, shared one-origin calibration |
+| Total runtime | 173.591 seconds |
 | Winner | `statsforecast_autoarima` |
 | Best RMSE | 0.013402 |
 | CartoBoost RMSE | 0.014348 |
@@ -335,8 +376,9 @@ equivalence.
 - Real taxi panel is short: 31 days and a 7-day holdout.
 - Synthetic suite is diagnostic.
 - M4 artifact is a 24-series-per-group sample.
-- M5 full-run evidence is CartoBoost-only with a 90-day materialized history
-  window and fast tree settings.
+- M5 full-roster evidence is a 100-series sample with a 90-day materialized
+  history window; the full 30,490-series artifact is CartoBoost-only with fast
+  tree settings.
 - M6 uses a daily point-forecast proxy, not the official RPS/investment-return
   competition scorer.
 - External model availability depends on optional benchmark dependencies.
