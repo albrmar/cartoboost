@@ -56,6 +56,31 @@ rolling aggregations, static columns, known-future covariates, and custom booste
 options outside the documented native surface, should fail clearly instead of
 being silently ignored by the native wrapper.
 
+## Direct Feature Matrix
+
+`ForecastFeatureFactory` builds a Rust-native `DirectFeatureMatrix` from a
+`ForecastFrame` and an existing `LagFeatureBuilder`. The matrix is intended for
+direct horizon models where each supervised row records:
+
+- `series_id`;
+- origin timestamp, the last observed taxi lane timestamp available to
+  target-derived features;
+- target timestamp;
+- horizon;
+- feature vector;
+- target value.
+
+For horizon 1, the target timestamp is one frame step after the origin
+timestamp. For horizon 2 and beyond, lag and rolling target features are still
+built only from rows at or before the origin timestamp. Intervening future
+targets are not available to the feature builder. Calendar features are
+evaluated at the target timestamp because they are known future covariates, not
+observed future demand.
+
+Rows are emitted in deterministic panel order: `ForecastFrame` series order,
+then origin timestamp, then horizon. Early origins without enough prior history
+for the configured lag or rolling features are skipped.
+
 ## How The Lag Forecaster Works
 
 `CartoBoostLagForecaster` turns each taxi pickup/dropoff lane into supervised

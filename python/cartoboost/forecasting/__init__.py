@@ -1,6 +1,13 @@
 """Forecasting API for CartoBoost."""
 
 from .artifacts import ForecastArtifact, ForecastArtifactManifest
+from .auto import (
+    AutoForecaster,
+    evaluate_m4,
+    evaluate_m5,
+    evaluate_m6_official_style,
+    evaluate_m6_proxy,
+)
 from .backtesting import BacktestFoldResult, BacktestResult, RollingOriginBacktester
 from .base import BaseForecaster, PanelForecasterMixin, SingleSeriesForecasterMixin
 from .config import ForecastingConfig
@@ -33,6 +40,7 @@ from .local import (
     ThetaForecaster,
 )
 from .metrics import ForecastMetricSet
+from .neural import NBEATSForecaster, NBeatsForecaster, NHITSForecaster, NHiTSForecaster
 from .registry import ForecastModelSpec, ForecastRegistry
 from .schema import ForecastFrame, ForecastResult, PredictionInterval
 from .splitters import (
@@ -44,6 +52,7 @@ from .splitters import (
 
 __all__ = [
     "AutoARIMAForecaster",
+    "AutoForecaster",
     "AutoKalmanForecaster",
     "AutoLocalLevelKalmanForecaster",
     "BacktestFoldResult",
@@ -69,6 +78,10 @@ __all__ = [
     "LagFeatureBuilder",
     "LagFeatureConfig",
     "NaiveForecaster",
+    "NBEATSForecaster",
+    "NBeatsForecaster",
+    "NHITSForecaster",
+    "NHiTSForecaster",
     "next_timestamps",
     "normalize_frequency",
     "OptimizedThetaForecaster",
@@ -84,4 +97,8 @@ __all__ = [
     "validate_horizon",
     "validate_regular_frequency",
     "WeightedEnsembleForecaster",
+    "evaluate_m4",
+    "evaluate_m5",
+    "evaluate_m6_official_style",
+    "evaluate_m6_proxy",
 ]

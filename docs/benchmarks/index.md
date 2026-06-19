@@ -22,6 +22,9 @@ separate real NYC TLC evidence from synthetic mechanism checks.
 | --- | --- | --- |
 | [NYC Taxi Benchmarks](nyc-taxi.md) | Real TLC fare, duration, and pickup-demand regression. | Metric summary, predicted-vs-actual plots, throughput plots. |
 | [Forecasting Tool Benchmark](forecasting.md) | Real taxi lane demand, synthetic taxi-shaped forecasting, M4 sample, M5 full-roster sample, and M5/M6 full-run protocols. | RMSE/WAPE tables, M5/M6 model rosters, run commands, horizon plot, forecast-line plot. |
+| [M4-Style Forecasting](m4.md) | Command and claim boundary for the committed M4 sample wrapper. | No-hyperopt command and sample-vs-corpus distinction. |
+| [M5-Style WRMSSE](m5.md) | Metric definition for M5-like hierarchical validation; not a benchmark result. | Scale definition, weight normalization, and claim boundary. |
+| [M6-Style Metrics](m6.md) | RPS, pinball, and portfolio-style metric contract; not an RMSE-only result. | Rank-probability scoring and proxy warning. |
 | [Model Benchmark Suite](model-suite.md) | Synthetic dense, repeated-ID, and graph diagnostics. | MAE-by-model plot and workload table. |
 | [Taxi Zone Acceptance](taxi-zone.md) | Deterministic taxi-lane feature acceptance. | Lane heatmap, hour profile, route midpoint geometry. |
 | [Neural Embedding Strategy](neural-embedding-strategy.md) | Method rules for neural residual rows. | Safeguards and split-specific claim boundary. |
@@ -35,6 +38,11 @@ separate real NYC TLC evidence from synthetic mechanism checks.
 | NYC regression report | `docs/assets/nyc_taxi_benchmarks/results.md` |
 | NYC repeated speed report | `docs/assets/nyc_taxi_benchmarks/repeated_results.md` |
 | NYC forecasting JSON | `docs/assets/nyc_taxi_benchmarks/forecasting_library_benchmark_real.json` |
+| Forecasting overhaul committed suite JSON | `docs/assets/nyc_taxi_benchmarks/forecasting_overhaul_committed_suite.json` |
+| Forecasting overhaul full-roster committed suite JSON | `docs/assets/nyc_taxi_benchmarks/forecasting_overhaul_committed_suite_full_roster.json` |
+| Forecasting overhaul M4 JSON | `docs/assets/nyc_taxi_benchmarks/forecasting_overhaul_m4_committed.json` |
+| Forecasting overhaul M5 JSON | `docs/assets/nyc_taxi_benchmarks/forecasting_overhaul_m5_committed.json` |
+| Forecasting overhaul M6 JSON | `docs/assets/nyc_taxi_benchmarks/forecasting_overhaul_m6_committed.json` |
 | Synthetic forecasting suite JSON | `docs/assets/nyc_taxi_benchmarks/forecasting_library_suite_synthetic.json` |
 | M4 sample suite JSON | `docs/assets/nyc_taxi_benchmarks/forecasting_m4_suite_sample.json` |
 | M5 full-roster sample JSON | `docs/assets/nyc_taxi_benchmarks/forecasting_m5_full_roster_sample.json` |

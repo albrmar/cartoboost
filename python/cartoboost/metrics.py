@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Literal
 
 import numpy as np
+
+__path__ = [str(Path(__file__).with_suffix(""))]
 
 __all__ = [
     "calibrated_intervals",
@@ -14,6 +17,8 @@ __all__ = [
     "mean_interval_width",
     "pinball_loss",
     "residual_morans_i",
+    "rmsse_scale",
+    "wrmsse",
 ]
 
 
@@ -122,6 +127,95 @@ def mean_interval_width(
     return _weighted_mean(widths, sample_weight)
 
 
+def rmsse_scale(y_train: object, *, seasonal_period: int = 1) -> float:
+    """Return the squared seasonal-naive scale used by RMSSE and WRMSSE."""
+
+    if seasonal_period <= 0:
+        raise ValueError("seasonal_period must be positive")
+    train = _as_float_vector(y_train, "y_train")
+    if train.size <= seasonal_period:
+        raise ValueError("y_train must be longer than seasonal_period")
+    diffs = train[seasonal_period:] - train[:-seasonal_period]
+    scale = float(np.mean(diffs * diffs))
+    if scale <= 0.0:
+        raise ValueError("RMSSE scale is zero")
+    return scale
+
+
+def wrmsse(
+    y_train: object,
+    y_true: object,
+    y_pred: object,
+    weights: object,
+    *,
+    seasonal_period: int = 1,
+    series_ids: object | None = None,
+    return_breakdown: bool = False,
+) -> float | dict[str, object]:
+    """Return official-style weighted RMSSE for hierarchical forecasting.
+
+    Inputs are shaped ``(n_series, n_time)`` for training history and
+    ``(n_series, horizon)`` for actual and predicted forecast windows. Weights
+    are non-negative value weights, such as M5 dollar-sales weights; they are
+    normalized inside the metric.
+    """
+
+    train = _as_float_matrix(y_train, "y_train")
+    truth = _as_float_matrix(y_true, "y_true")
+    pred = _as_float_matrix(y_pred, "y_pred")
+    if truth.shape != pred.shape:
+        raise ValueError("y_true and y_pred must have the same shape")
+    if train.shape[0] != truth.shape[0]:
+        raise ValueError("y_train, y_true, and y_pred must have the same number of series")
+    if truth.shape[1] == 0:
+        raise ValueError("y_true and y_pred must contain at least one horizon")
+
+    weight_arr = _as_float_vector(weights, "weights")
+    if weight_arr.shape[0] != truth.shape[0]:
+        raise ValueError("weights length must match the number of series")
+    if np.any(weight_arr < 0.0):
+        raise ValueError("weights must be non-negative")
+    total_weight = float(np.sum(weight_arr))
+    if total_weight <= 0.0:
+        raise ValueError("weights must sum to a positive value")
+    normalized_weights = weight_arr / total_weight
+
+    if series_ids is None:
+        ids = [str(idx) for idx in range(truth.shape[0])]
+    else:
+        ids_arr = np.asarray(series_ids, dtype=object)
+        if ids_arr.ndim != 1 or ids_arr.shape[0] != truth.shape[0]:
+            raise ValueError("series_ids must be one-dimensional and match the number of series")
+        ids = [str(value) for value in ids_arr]
+        if any(not value for value in ids):
+            raise ValueError("series_ids must be non-empty")
+
+    scales = np.array(
+        [rmsse_scale(row, seasonal_period=seasonal_period) for row in train],
+        dtype=float,
+    )
+    mse = np.mean((truth - pred) ** 2, axis=1)
+    rmsse = np.sqrt(mse / scales)
+    contributions = normalized_weights * rmsse
+    score = float(np.sum(contributions))
+
+    if not return_breakdown:
+        return score
+
+    rows = [
+        {
+            "series_id": ids[idx],
+            "weight": float(weight_arr[idx]),
+            "normalized_weight": float(normalized_weights[idx]),
+            "scale": float(scales[idx]),
+            "rmsse": float(rmsse[idx]),
+            "contribution": float(contributions[idx]),
+        }
+        for idx in range(truth.shape[0])
+    ]
+    return {"wrmsse": score, "series": rows}
+
+
 def jitter_volatility(
     predictions: object,
     *,
@@ -212,6 +306,17 @@ def _as_float_vector(values: object, name: str) -> np.ndarray:
     arr = np.asarray(values, dtype=float)
     if arr.ndim != 1:
         raise ValueError(f"{name} must be one-dimensional")
+    if not np.all(np.isfinite(arr)):
+        raise ValueError(f"{name} must contain only finite values")
+    return arr
+
+
+def _as_float_matrix(values: object, name: str) -> np.ndarray:
+    arr = np.asarray(values, dtype=float)
+    if arr.ndim != 2:
+        raise ValueError(f"{name} must be two-dimensional")
+    if arr.shape[0] == 0 or arr.shape[1] == 0:
+        raise ValueError(f"{name} must contain at least one row and one column")
     if not np.all(np.isfinite(arr)):
         raise ValueError(f"{name} must contain only finite values")
     return arr

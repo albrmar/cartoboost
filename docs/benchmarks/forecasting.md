@@ -1,5 +1,42 @@
 # Forecasting Tool Benchmark
 
+For the deterministic forecasting architecture, see
+[Forecasting Overhaul](../forecasting_overhaul.md). The benchmark command
+surface accepts fixed no-hyperopt runs:
+
+```sh
+python scripts/forecasting_library_benchmark.py --suite committed --no-hyperopt
+python scripts/forecasting_m4.py --committed --no-hyperopt
+python scripts/forecasting_m5.py --committed --official-wrmsse --no-hyperopt
+python scripts/forecasting_m6.py --committed --official-style --no-hyperopt
+```
+
+The commands above do not imply a new benchmark win by themselves. Public claims
+must cite the resulting artifact, split, seed, model roster, and metric table.
+
+## Forecasting Overhaul Committed Run
+
+Run date: June 19, 2026. These runs used the deterministic CartoBoost-only
+roster, fixed seed 42, no hyperopt, and the committed benchmark sample settings.
+Artifacts are committed under `docs/assets/nyc_taxi_benchmarks/`.
+
+| Suite | Command | Artifact | Result |
+| --- | --- | --- | --- |
+| Synthetic committed suite | `uv run --group dev python scripts/forecasting_library_benchmark.py --suite committed --no-hyperopt --model-roster cartoboost --output target/forecasting_library_benchmark_committed.json` | `forecasting_overhaul_committed_suite.json` | `cartoboost_auto_forecast` ranked first by mean RMSE ratio, 1.006163 vs `cartoboost_lag` 1.008250. |
+| Synthetic committed suite, full external roster | `uv run --group dev python scripts/forecasting_library_benchmark.py --suite committed --no-hyperopt --output docs/assets/nyc_taxi_benchmarks/forecasting_overhaul_committed_suite_full_roster.json` | `forecasting_overhaul_committed_suite_full_roster.json` | `lightgbm_lag` ranked first by mean RMSE ratio at 1.069525. `cartoboost_auto_forecast` ranked second at 1.187837, slightly ahead of `cartoboost_lag` at 1.189963. |
+| M4 committed sample | `uv run --group dev python scripts/forecasting_m4.py --committed --no-hyperopt --output target/forecasting_m4_committed.json` | `forecasting_overhaul_m4_committed.json` | `cartoboost_auto_forecast` and `cartoboost_lag` tied: both mean RMSE ratio 1.000000 and 6/6 wins-or-ties. |
+| M5 committed sample | `uv run --group dev python scripts/forecasting_m5.py --committed --official-wrmsse --no-hyperopt --output target/forecasting_m5_committed.json` | `forecasting_overhaul_m5_committed.json` | Tie on the current point-metric harness: RMSE 2.455906, MAE 1.149696, WAPE 0.918936 for both methods. |
+| M6 committed sample | `uv run --group dev python scripts/forecasting_m6.py --committed --official-style --no-hyperopt --output target/forecasting_m6_committed.json` | `forecasting_overhaul_m6_committed.json` | Tie on the current point-metric proxy harness: RMSE 0.014440, MAE 0.009290, WAPE 1.265338 for both methods. |
+
+Interpretation: the deterministic auto route improved the committed synthetic
+suite average versus `cartoboost_lag`, and it did not regress the M4/M5/M6
+committed samples. The full external-roster synthetic run is not a CartoBoost
+win: LightGBM was the best method on that committed suite. The M5 and M6 wrapper
+commands enforce the official-style flags, but this benchmark payload is still
+the existing point-metric/proxy harness; use the WRMSSE and RPS helper tests for
+scorer correctness until level-wise WRMSSE and M6 RPS are fully emitted in
+benchmark artifacts.
+
 ## Competition Results Snapshot
 
 | Competition | Artifact | Scope | Result |

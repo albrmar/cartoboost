@@ -1,5 +1,14 @@
 use rayon::prelude::*;
 
+pub mod m6;
+pub mod pinball;
+pub mod rps;
+pub mod wrmsse;
+pub use m6::{evaluate_m6_metrics, m6_combined_score, M6MetricSummary};
+pub use pinball::pinball_loss;
+pub use rps::rank_probability_score;
+pub use wrmsse::{rmsse_scale, wrmsse, WrmsseScore, WrmsseSeries, WrmsseSeriesScore};
+
 pub fn mae(y_true: &[f64], y_pred: &[f64]) -> f64 {
     y_true
         .par_iter()

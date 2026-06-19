@@ -28,6 +28,10 @@ for these model names:
 - `kriging`
 - `cartoboost_lag`
 - `weighted_ensemble`
+- `stl_cartoboost`
+- `mstl_cartoboost`
+- `classical_expert_bank`
+- `autostats_bank`
 
 ## Implemented Scope
 
@@ -47,6 +51,10 @@ for these model names:
 | `kriging` | [Kriging](user-guide/forecasting-models/kriging.md) | Ordinary-kriging panel forecaster over explicit series coordinates. | Nearby zones or route coordinates should borrow spatial signal. |
 | `cartoboost_lag` | [CartoBoost Lag](user-guide/forecasting-models/cartoboost-lag.md) | Supervised native lag, rolling, calendar, trend, and CartoBoost regressor workflow. | Many related panels should share one leakage-safe lag model. |
 | `weighted_ensemble` | [Weighted Ensembles](user-guide/forecasting-models/ensembles.md) | Native PyO3 class requiring explicit native component models and weights. | Validated components make complementary errors under the same split. |
+| `stl_cartoboost` | [Forecasting Decomposition](forecasting_decomposition.md) | Native additive STL decomposition with a native remainder forecaster and deterministic recomposition. | One dominant taxi seasonality should be separated before modeling residual autocorrelation. |
+| `mstl_cartoboost` | [Forecasting Decomposition](forecasting_decomposition.md) | Native additive MSTL decomposition over multiple season lengths with a native remainder forecaster and deterministic recomposition. | Hour-of-day and day-of-week taxi patterns should be separated before residual modeling. |
+| `classical_expert_bank` | This page | Native deterministic validation over a configured bank of classical local forecasters, then refit of the selected expert. | A small auditable roster should choose among naive, seasonal naive, theta, ETS, ARIMA, and Kalman assumptions. |
+| `autostats_bank` | This page | Native default classical bank using naive, seasonal naive, theta, ETS, AutoARIMA, and Kalman variants. | You need a reproducible classical baseline selector before comparing a learned global taxi model. |
 
 Unsupported multiplicative ETS, damped ETS, and seasonal AutoARIMA fail
 explicitly.
@@ -86,8 +94,9 @@ wrappers can be exposed:
 - `unobserved_components`: no Rust/PyO3 forecasting class is exposed.
 - `sarimax`: no Rust/PyO3 forecasting class is exposed.
 - `dynamic_regression`: no Rust/PyO3 forecasting class is exposed.
-- `mstl_ets`, `stl_arima`: no Rust/PyO3 decomposition-hybrid forecasting
-  classes are exposed.
+- Specialized `mstl_ets` and `stl_arima` Python wrapper names are not exposed;
+  use the native `stl_cartoboost` and `mstl_cartoboost` decomposition-hybrid
+  forecasters where bindings are available.
 
 Example:
 

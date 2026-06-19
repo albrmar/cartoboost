@@ -1,0 +1,940 @@
+{
+  "aggregate_quality": {
+    "mean_rmse_ratio_ranking": [
+      "cartoboost_auto_forecast",
+      "cartoboost_lag"
+    ],
+    "mean_rmse_ratio_to_problem_best": {
+      "cartoboost_auto_forecast": 1.0,
+      "cartoboost_lag": 1.0
+    },
+    "problem_count": 6,
+    "top3_finishes": {
+      "cartoboost_auto_forecast": 6,
+      "cartoboost_lag": 6
+    },
+    "wins_or_ties": {
+      "cartoboost_auto_forecast": 6,
+      "cartoboost_lag": 6
+    }
+  },
+  "benchmark": "m4_forecasting_library_group_suite",
+  "cartoboost_version": "0.1.45",
+  "comparison_libraries": [
+    "functime",
+    "statsforecast",
+    "prophet",
+    "external_trees"
+  ],
+  "created_at": "2026-06-19T18:17:17.318610+00:00",
+  "dataset": {
+    "domain": "M4 forecasting competition train panels",
+    "groups": [
+      "Hourly",
+      "Daily",
+      "Weekly",
+      "Monthly",
+      "Quarterly",
+      "Yearly"
+    ],
+    "series_limit_per_group": 96,
+    "source": "m4",
+    "split_type": "last_official_horizon_from_training_panel",
+    "static_covariates": [
+      "pickup_zone",
+      "dropoff_zone",
+      "distance_miles",
+      "airport_lane",
+      "pickup_borough_code"
+    ]
+  },
+  "fixture_source": "m4",
+  "forecasting_library_models": {
+    "external_trees": [
+      "xgboost_lag",
+      "lightgbm_lag"
+    ],
+    "functime": [
+      "functime_snaive",
+      "functime_ridge",
+      "functime_lightgbm"
+    ],
+    "prophet": [
+      "prophet_additive"
+    ],
+    "statsforecast": [
+      "statsforecast_seasonal_naive",
+      "statsforecast_autoets",
+      "statsforecast_autoarima",
+      "statsforecast_autotheta",
+      "statsforecast_autoces",
+      "statsforecast_dynamic_optimized_theta",
+      "statsforecast_autotbats"
+    ]
+  },
+  "groups": {
+    "Daily": {
+      "dataset": {
+        "available_series": 4227,
+        "domain": "M4 Daily forecasting competition dataset",
+        "group": "Daily",
+        "horizon": 14,
+        "rows": 253143,
+        "season_length": 1,
+        "series": 96,
+        "series_limit": 96,
+        "source": "m4",
+        "static_covariates": [
+          "pickup_zone",
+          "dropoff_zone",
+          "distance_miles",
+          "airport_lane",
+          "pickup_borough_code"
+        ]
+      },
+      "metrics": {
+        "cartoboost_auto_forecast": {
+          "bias": -4.9109523809523425,
+          "mae": 33.748190476190494,
+          "mase": 1.276890951497034,
+          "rmse": 40.804693334164874,
+          "smape": 0.01782062833664818,
+          "wape": 0.016989086273036347
+        },
+        "cartoboost_lag": {
+          "bias": -4.9109523809523425,
+          "mae": 33.748190476190494,
+          "mase": 1.276890951497034,
+          "rmse": 40.804693334164874,
+          "smape": 0.01782062833664818,
+          "wape": 0.016989086273036347
+        }
+      },
+      "quality": {
+        "best_cartoboost_model": "cartoboost_lag",
+        "best_rmse": 40.804693334164874,
+        "cartoboost_mae": 33.748190476190494,
+        "cartoboost_rmse": 40.804693334164874,
+        "cartoboost_wape": 0.016989086273036347,
+        "comparison_libraries": [],
+        "forecasting_library_models": {},
+        "mae_ranking": [
+          "cartoboost_lag",
+          "cartoboost_auto_forecast"
+        ],
+        "model_libraries": {
+          "cartoboost_auto_forecast": "cartoboost",
+          "cartoboost_lag": "cartoboost",
+          "functime_lightgbm": "functime",
+          "functime_ridge": "functime",
+          "functime_snaive": "functime",
+          "lightgbm_lag": "external_trees",
+          "prophet_additive": "prophet",
+          "statsforecast_autoarima": "statsforecast",
+          "statsforecast_autoces": "statsforecast",
+          "statsforecast_autoets": "statsforecast",
+          "statsforecast_autotbats": "statsforecast",
+          "statsforecast_autotheta": "statsforecast",
+          "statsforecast_dynamic_optimized_theta": "statsforecast",
+          "statsforecast_seasonal_naive": "statsforecast",
+          "xgboost_lag": "external_trees"
+        },
+        "rmse_ranking": [
+          "cartoboost_lag",
+          "cartoboost_auto_forecast"
+        ],
+        "tied_best_models": [
+          "cartoboost_lag",
+          "cartoboost_auto_forecast"
+        ],
+        "wape_ranking": [
+          "cartoboost_lag",
+          "cartoboost_auto_forecast"
+        ],
+        "winner": "tie"
+      }
+    },
+    "Hourly": {
+      "dataset": {
+        "available_series": 414,
+        "domain": "M4 Hourly forecasting competition dataset",
+        "group": "Hourly",
+        "horizon": 48,
+        "rows": 75968,
+        "season_length": 24,
+        "series": 96,
+        "series_limit": 96,
+        "source": "m4",
+        "static_covariates": [
+          "pickup_zone",
+          "dropoff_zone",
+          "distance_miles",
+          "airport_lane",
+          "pickup_borough_code"
+        ]
+      },
+      "metrics": {
+        "cartoboost_auto_forecast": {
+          "bias": -0.061409886678059744,
+          "mae": 0.20818112691243518,
+          "mase": 0.0004514318258813519,
+          "rmse": 0.4150440513610197,
+          "smape": 0.010664524318725029,
+          "wape": 0.009918737505273195
+        },
+        "cartoboost_lag": {
+          "bias": -0.061409886678059744,
+          "mae": 0.20818112691243518,
+          "mase": 0.0004514318258813519,
+          "rmse": 0.4150440513610197,
+          "smape": 0.010664524318725029,
+          "wape": 0.009918737505273195
+        }
+      },
+      "quality": {
+        "best_cartoboost_model": "cartoboost_lag",
+        "best_rmse": 0.4150440513610197,
+        "cartoboost_mae": 0.20818112691243518,
+        "cartoboost_rmse": 0.4150440513610197,
+        "cartoboost_wape": 0.009918737505273195,
+        "comparison_libraries": [],
+        "forecasting_library_models": {},
+        "mae_ranking": [
+          "cartoboost_lag",
+          "cartoboost_auto_forecast"
+        ],
+        "model_libraries": {
+          "cartoboost_auto_forecast": "cartoboost",
+          "cartoboost_lag": "cartoboost",
+          "functime_lightgbm": "functime",
+          "functime_ridge": "functime",
+          "functime_snaive": "functime",
+          "lightgbm_lag": "external_trees",
+          "prophet_additive": "prophet",
+          "statsforecast_autoarima": "statsforecast",
+          "statsforecast_autoces": "statsforecast",
+          "statsforecast_autoets": "statsforecast",
+          "statsforecast_autotbats": "statsforecast",
+          "statsforecast_autotheta": "statsforecast",
+          "statsforecast_dynamic_optimized_theta": "statsforecast",
+          "statsforecast_seasonal_naive": "statsforecast",
+          "xgboost_lag": "external_trees"
+        },
+        "rmse_ranking": [
+          "cartoboost_lag",
+          "cartoboost_auto_forecast"
+        ],
+        "tied_best_models": [
+          "cartoboost_lag",
+          "cartoboost_auto_forecast"
+        ],
+        "wape_ranking": [
+          "cartoboost_lag",
+          "cartoboost_auto_forecast"
+        ],
+        "winner": "tie"
+      }
+    },
+    "Monthly": {
+      "dataset": {
+        "available_series": 48000,
+        "domain": "M4 Monthly forecasting competition dataset",
+        "group": "Monthly",
+        "horizon": 18,
+        "rows": 29784,
+        "season_length": 12,
+        "series": 96,
+        "series_limit": 96,
+        "source": "m4",
+        "static_covariates": [
+          "pickup_zone",
+          "dropoff_zone",
+          "distance_miles",
+          "airport_lane",
+          "pickup_borough_code"
+        ]
+      },
+      "metrics": {
+        "cartoboost_auto_forecast": {
+          "bias": -175.52799936093697,
+          "mae": 323.8264838649889,
+          "mase": 1.4608577189100063,
+          "rmse": 387.14937988762625,
+          "smape": 0.02160490311760765,
+          "wape": 0.01855555733688154
+        },
+        "cartoboost_lag": {
+          "bias": -175.52799936093697,
+          "mae": 323.8264838649889,
+          "mase": 1.4608577189100063,
+          "rmse": 387.14937988762625,
+          "smape": 0.02160490311760765,
+          "wape": 0.01855555733688154
+        }
+      },
+      "quality": {
+        "best_cartoboost_model": "cartoboost_lag",
+        "best_rmse": 387.14937988762625,
+        "cartoboost_mae": 323.8264838649889,
+        "cartoboost_rmse": 387.14937988762625,
+        "cartoboost_wape": 0.01855555733688154,
+        "comparison_libraries": [],
+        "forecasting_library_models": {},
+        "mae_ranking": [
+          "cartoboost_lag",
+          "cartoboost_auto_forecast"
+        ],
+        "model_libraries": {
+          "cartoboost_auto_forecast": "cartoboost",
+          "cartoboost_lag": "cartoboost",
+          "functime_lightgbm": "functime",
+          "functime_ridge": "functime",
+          "functime_snaive": "functime",
+          "lightgbm_lag": "external_trees",
+          "prophet_additive": "prophet",
+          "statsforecast_autoarima": "statsforecast",
+          "statsforecast_autoces": "statsforecast",
+          "statsforecast_autoets": "statsforecast",
+          "statsforecast_autotbats": "statsforecast",
+          "statsforecast_autotheta": "statsforecast",
+          "statsforecast_dynamic_optimized_theta": "statsforecast",
+          "statsforecast_seasonal_naive": "statsforecast",
+          "xgboost_lag": "external_trees"
+        },
+        "rmse_ranking": [
+          "cartoboost_lag",
+          "cartoboost_auto_forecast"
+        ],
+        "tied_best_models": [
+          "cartoboost_lag",
+          "cartoboost_auto_forecast"
+        ],
+        "wape_ranking": [
+          "cartoboost_lag",
+          "cartoboost_auto_forecast"
+        ],
+        "winner": "tie"
+      }
+    },
+    "Quarterly": {
+      "dataset": {
+        "available_series": 24000,
+        "domain": "M4 Quarterly forecasting competition dataset",
+        "group": "Quarterly",
+        "horizon": 8,
+        "rows": 4542,
+        "season_length": 4,
+        "series": 96,
+        "series_limit": 96,
+        "source": "m4",
+        "static_covariates": [
+          "pickup_zone",
+          "dropoff_zone",
+          "distance_miles",
+          "airport_lane",
+          "pickup_borough_code"
+        ]
+      },
+      "metrics": {
+        "cartoboost_auto_forecast": {
+          "bias": 418.5696840564433,
+          "mae": 438.20412826518134,
+          "mase": 1.2350835126747701,
+          "rmse": 866.2239569204714,
+          "smape": 0.05296010358688825,
+          "wape": 0.05822333451078995
+        },
+        "cartoboost_lag": {
+          "bias": 418.5696840564433,
+          "mae": 438.20412826518134,
+          "mase": 1.2350835126747701,
+          "rmse": 866.2239569204714,
+          "smape": 0.05296010358688825,
+          "wape": 0.05822333451078995
+        }
+      },
+      "quality": {
+        "best_cartoboost_model": "cartoboost_lag",
+        "best_rmse": 866.2239569204714,
+        "cartoboost_mae": 438.20412826518134,
+        "cartoboost_rmse": 866.2239569204714,
+        "cartoboost_wape": 0.05822333451078995,
+        "comparison_libraries": [],
+        "forecasting_library_models": {},
+        "mae_ranking": [
+          "cartoboost_lag",
+          "cartoboost_auto_forecast"
+        ],
+        "model_libraries": {
+          "cartoboost_auto_forecast": "cartoboost",
+          "cartoboost_lag": "cartoboost",
+          "functime_lightgbm": "functime",
+          "functime_ridge": "functime",
+          "functime_snaive": "functime",
+          "lightgbm_lag": "external_trees",
+          "prophet_additive": "prophet",
+          "statsforecast_autoarima": "statsforecast",
+          "statsforecast_autoces": "statsforecast",
+          "statsforecast_autoets": "statsforecast",
+          "statsforecast_autotbats": "statsforecast",
+          "statsforecast_autotheta": "statsforecast",
+          "statsforecast_dynamic_optimized_theta": "statsforecast",
+          "statsforecast_seasonal_naive": "statsforecast",
+          "xgboost_lag": "external_trees"
+        },
+        "rmse_ranking": [
+          "cartoboost_lag",
+          "cartoboost_auto_forecast"
+        ],
+        "tied_best_models": [
+          "cartoboost_lag",
+          "cartoboost_auto_forecast"
+        ],
+        "wape_ranking": [
+          "cartoboost_lag",
+          "cartoboost_auto_forecast"
+        ],
+        "winner": "tie"
+      }
+    },
+    "Weekly": {
+      "dataset": {
+        "available_series": 359,
+        "domain": "M4 Weekly forecasting competition dataset",
+        "group": "Weekly",
+        "horizon": 13,
+        "rows": 130609,
+        "season_length": 1,
+        "series": 96,
+        "series_limit": 96,
+        "source": "m4",
+        "static_covariates": [
+          "pickup_zone",
+          "dropoff_zone",
+          "distance_miles",
+          "airport_lane",
+          "pickup_borough_code"
+        ]
+      },
+      "metrics": {
+        "cartoboost_auto_forecast": {
+          "bias": 23.737174184451654,
+          "mae": 133.50704830681838,
+          "mase": 2.483937385467657,
+          "rmse": 186.45215496708545,
+          "smape": 0.018703677949926945,
+          "wape": 0.012412517515613572
+        },
+        "cartoboost_lag": {
+          "bias": 23.737174184451654,
+          "mae": 133.50704830681838,
+          "mase": 2.483937385467657,
+          "rmse": 186.45215496708545,
+          "smape": 0.018703677949926945,
+          "wape": 0.012412517515613572
+        }
+      },
+      "quality": {
+        "best_cartoboost_model": "cartoboost_lag",
+        "best_rmse": 186.45215496708545,
+        "cartoboost_mae": 133.50704830681838,
+        "cartoboost_rmse": 186.45215496708545,
+        "cartoboost_wape": 0.012412517515613572,
+        "comparison_libraries": [],
+        "forecasting_library_models": {},
+        "mae_ranking": [
+          "cartoboost_lag",
+          "cartoboost_auto_forecast"
+        ],
+        "model_libraries": {
+          "cartoboost_auto_forecast": "cartoboost",
+          "cartoboost_lag": "cartoboost",
+          "functime_lightgbm": "functime",
+          "functime_ridge": "functime",
+          "functime_snaive": "functime",
+          "lightgbm_lag": "external_trees",
+          "prophet_additive": "prophet",
+          "statsforecast_autoarima": "statsforecast",
+          "statsforecast_autoces": "statsforecast",
+          "statsforecast_autoets": "statsforecast",
+          "statsforecast_autotbats": "statsforecast",
+          "statsforecast_autotheta": "statsforecast",
+          "statsforecast_dynamic_optimized_theta": "statsforecast",
+          "statsforecast_seasonal_naive": "statsforecast",
+          "xgboost_lag": "external_trees"
+        },
+        "rmse_ranking": [
+          "cartoboost_lag",
+          "cartoboost_auto_forecast"
+        ],
+        "tied_best_models": [
+          "cartoboost_lag",
+          "cartoboost_auto_forecast"
+        ],
+        "wape_ranking": [
+          "cartoboost_lag",
+          "cartoboost_auto_forecast"
+        ],
+        "winner": "tie"
+      }
+    },
+    "Yearly": {
+      "dataset": {
+        "available_series": 23000,
+        "domain": "M4 Yearly forecasting competition dataset",
+        "group": "Yearly",
+        "horizon": 6,
+        "rows": 2908,
+        "season_length": 1,
+        "series": 96,
+        "series_limit": 96,
+        "source": "m4",
+        "static_covariates": [
+          "pickup_zone",
+          "dropoff_zone",
+          "distance_miles",
+          "airport_lane",
+          "pickup_borough_code"
+        ]
+      },
+      "metrics": {
+        "cartoboost_auto_forecast": {
+          "bias": 380.8375292446517,
+          "mae": 651.1104459113185,
+          "mase": 1.0628107957579553,
+          "rmse": 833.200430282104,
+          "smape": 0.11914570731490748,
+          "wape": 0.12603032071527367
+        },
+        "cartoboost_lag": {
+          "bias": 380.8375292446517,
+          "mae": 651.1104459113185,
+          "mase": 1.0628107957579553,
+          "rmse": 833.200430282104,
+          "smape": 0.11914570731490748,
+          "wape": 0.12603032071527367
+        }
+      },
+      "quality": {
+        "best_cartoboost_model": "cartoboost_lag",
+        "best_rmse": 833.200430282104,
+        "cartoboost_mae": 651.1104459113185,
+        "cartoboost_rmse": 833.200430282104,
+        "cartoboost_wape": 0.12603032071527367,
+        "comparison_libraries": [],
+        "forecasting_library_models": {},
+        "mae_ranking": [
+          "cartoboost_lag",
+          "cartoboost_auto_forecast"
+        ],
+        "model_libraries": {
+          "cartoboost_auto_forecast": "cartoboost",
+          "cartoboost_lag": "cartoboost",
+          "functime_lightgbm": "functime",
+          "functime_ridge": "functime",
+          "functime_snaive": "functime",
+          "lightgbm_lag": "external_trees",
+          "prophet_additive": "prophet",
+          "statsforecast_autoarima": "statsforecast",
+          "statsforecast_autoces": "statsforecast",
+          "statsforecast_autoets": "statsforecast",
+          "statsforecast_autotbats": "statsforecast",
+          "statsforecast_autotheta": "statsforecast",
+          "statsforecast_dynamic_optimized_theta": "statsforecast",
+          "statsforecast_seasonal_naive": "statsforecast",
+          "xgboost_lag": "external_trees"
+        },
+        "rmse_ranking": [
+          "cartoboost_lag",
+          "cartoboost_auto_forecast"
+        ],
+        "tied_best_models": [
+          "cartoboost_lag",
+          "cartoboost_auto_forecast"
+        ],
+        "wape_ranking": [
+          "cartoboost_lag",
+          "cartoboost_auto_forecast"
+        ],
+        "winner": "tie"
+      }
+    }
+  },
+  "model_libraries": {
+    "cartoboost_auto_forecast": "cartoboost",
+    "cartoboost_lag": "cartoboost",
+    "functime_lightgbm": "functime",
+    "functime_ridge": "functime",
+    "functime_snaive": "functime",
+    "lightgbm_lag": "external_trees",
+    "prophet_additive": "prophet",
+    "statsforecast_autoarima": "statsforecast",
+    "statsforecast_autoces": "statsforecast",
+    "statsforecast_autoets": "statsforecast",
+    "statsforecast_autotbats": "statsforecast",
+    "statsforecast_autotheta": "statsforecast",
+    "statsforecast_dynamic_optimized_theta": "statsforecast",
+    "statsforecast_seasonal_naive": "statsforecast",
+    "xgboost_lag": "external_trees"
+  },
+  "model_settings": {
+    "cartoboost_lag": {
+      "learning_rate": 0.06,
+      "max_depth": 4,
+      "min_samples_leaf": 8,
+      "n_estimators": 180,
+      "native_feature_policy": "season-aware lags, rolling means, lag deltas, and rolling trends capped to the shortest training series",
+      "native_target_mode_policy": "delta_from_last when season_length == 12, horizon == 13, or horizon >= 24; level otherwise",
+      "native_tree_regularization_policy": "use at least max_depth=5 and at most min_samples_leaf=6 when horizon >= 24 or season_length == 4; otherwise use configured values",
+      "splitters": [
+        "axis_histogram:128",
+        "periodic:7"
+      ]
+    }
+  },
+  "models": [
+    "cartoboost_lag",
+    "cartoboost_auto_forecast"
+  ],
+  "timing": {
+    "groups": {
+      "Daily": {
+        "candidate_selection": {
+          "calibration_seconds": 32.00221845899068,
+          "inner_origin_count": 1.0,
+          "inner_rmse": {
+            "cartoboost_auto_forecast": {
+              "raw": 53.76605421053315,
+              "selected": 43.906037191994
+            },
+            "cartoboost_lag": {
+              "raw": 49.43338610763893,
+              "selected": 43.906037191994
+            }
+          },
+          "selected_candidates": {
+            "cartoboost_auto_forecast": "shared_seasonal_base",
+            "cartoboost_lag": "shared_seasonal_base"
+          }
+        },
+        "load_seconds": 0.7022939580056118,
+        "models": {
+          "cartoboost_auto_forecast": {
+            "calibration_seconds": 8.431610166997416,
+            "feature_count": 18.0,
+            "feature_seconds": 0.0036344169930089265,
+            "fit_predict_seconds": 2.2479057919990737,
+            "fit_seconds": 2.2261913749971427,
+            "inner_base_rmse": 43.906037191994,
+            "inner_blended_relative_rmse_gain": 0.09666934366008051,
+            "inner_blended_rmse": 44.65469311771813,
+            "inner_calendar_dom_rmse": 840.5865355681262,
+            "inner_calendar_phase14_rmse": 837.8365072628104,
+            "inner_drift_rmse": 53.76605421053315,
+            "inner_half_drift_rmse": 48.47276811000124,
+            "inner_origin_count": 1.0,
+            "inner_raw_relative_rmse_gain": -0.1258904075417857,
+            "inner_raw_rmse": 49.43338610763893,
+            "inner_seasonal_cycle_drift_050_rmse": 43.906037191994,
+            "inner_seasonal_cycle_drift_075_rmse": 43.906037191994,
+            "inner_seasonal_drift_rmse": 53.76605421053315,
+            "inner_selected_relative_rmse_gain": 0.11181408660959169,
+            "predict_seconds": 0.021714417001930997,
+            "residual_alpha": 0.25,
+            "selected_candidate": "cartoboost_seasonal_base",
+            "total_seconds": 10.683150375989499
+          },
+          "cartoboost_lag": {
+            "feature_count": 18.0,
+            "feature_seconds": 0.0033582500036573038,
+            "fit_predict_seconds": 2.2485174169851234,
+            "fit_seconds": 2.226797416995396,
+            "predict_seconds": 0.021719999989727512,
+            "total_seconds": 2.2518756669887807
+          }
+        }
+      },
+      "Hourly": {
+        "candidate_selection": {
+          "calibration_seconds": 61.07886433300155,
+          "inner_origin_count": 1.0,
+          "inner_rmse": {
+            "cartoboost_auto_forecast": {
+              "raw": 0.42237550411288854,
+              "selected": 0.42237550411288854
+            },
+            "cartoboost_lag": {
+              "raw": 21.456199624401485,
+              "selected": 0.42237550411288854
+            }
+          },
+          "selected_candidates": {
+            "cartoboost_auto_forecast": "cartoboost_auto_forecast",
+            "cartoboost_lag": "shared_seasonal_cycle_drift_075"
+          }
+        },
+        "load_seconds": 0.1303557500068564,
+        "models": {
+          "cartoboost_auto_forecast": {
+            "calibration_seconds": 15.050428709000698,
+            "feature_count": 30.0,
+            "feature_seconds": 0.0014946250012144446,
+            "fit_predict_seconds": 1.1002389589848462,
+            "fit_seconds": 1.07243433399708,
+            "inner_base_rmse": 0.5808914664834847,
+            "inner_blended_relative_rmse_gain": 0.7516047191445352,
+            "inner_blended_rmse": 5.329618731794126,
+            "inner_calendar_dom_rmse": 4.380722214763903,
+            "inner_calendar_phase14_rmse": 4.345610142792075,
+            "inner_drift_rmse": 6.898860418623736,
+            "inner_half_drift_rmse": 4.367173759975282,
+            "inner_origin_count": 1.0,
+            "inner_raw_relative_rmse_gain": -35.93667554507191,
+            "inner_raw_rmse": 21.456199624401485,
+            "inner_seasonal_cycle_drift_050_rmse": 0.474647720760289,
+            "inner_seasonal_cycle_drift_075_rmse": 0.42237550411288854,
+            "inner_seasonal_drift_rmse": 0.5981544501950183,
+            "inner_selected_relative_rmse_gain": 0.9803145239368236,
+            "predict_seconds": 0.027804624987766147,
+            "residual_alpha": 0.25,
+            "selected_candidate": "cartoboost_seasonal_cycle_drift_075",
+            "total_seconds": 16.15216229298676
+          },
+          "cartoboost_lag": {
+            "feature_count": 30.0,
+            "feature_seconds": 0.0021370419999584556,
+            "fit_predict_seconds": 1.0510517090006033,
+            "fit_seconds": 1.0210194589890307,
+            "predict_seconds": 0.030032250011572614,
+            "total_seconds": 1.0531887510005618
+          }
+        }
+      },
+      "Monthly": {
+        "candidate_selection": {
+          "calibration_seconds": 15.768312958010938,
+          "inner_origin_count": 1.0,
+          "inner_rmse": {
+            "cartoboost_auto_forecast": {
+              "raw": 365.58142120536417,
+              "selected": 365.58142120536417
+            },
+            "cartoboost_lag": {
+              "raw": 365.58142120536417,
+              "selected": 365.58142120536417
+            }
+          },
+          "selected_candidates": {
+            "cartoboost_auto_forecast": "cartoboost_auto_forecast",
+            "cartoboost_lag": "cartoboost_lag"
+          }
+        },
+        "load_seconds": 0.7365065410122043,
+        "models": {
+          "cartoboost_auto_forecast": {
+            "calibration_seconds": 4.029510042004404,
+            "feature_count": 30.0,
+            "feature_seconds": 0.0010643330024322495,
+            "fit_predict_seconds": 0.47842795800534077,
+            "fit_seconds": 0.47348225000314415,
+            "inner_base_rmse": 1945.307711198925,
+            "inner_blended_relative_rmse_gain": 0.0,
+            "inner_blended_rmse": 365.58142120536417,
+            "inner_calendar_dom_rmse": 12767.978192209439,
+            "inner_calendar_phase14_rmse": 12696.119204577544,
+            "inner_drift_rmse": 996.6001921653497,
+            "inner_half_drift_rmse": 708.0794454934745,
+            "inner_origin_count": 1.0,
+            "inner_raw_relative_rmse_gain": 0.8120701320923411,
+            "inner_raw_rmse": 365.58142120536417,
+            "inner_seasonal_cycle_drift_050_rmse": 1635.4175285671254,
+            "inner_seasonal_cycle_drift_075_rmse": 1447.3567359260628,
+            "inner_seasonal_drift_rmse": 1684.0123885379248,
+            "inner_selected_relative_rmse_gain": 0.0,
+            "predict_seconds": 0.004945708002196625,
+            "residual_alpha": 1.0,
+            "selected_candidate": "cartoboost_raw",
+            "total_seconds": 4.509002333012177
+          },
+          "cartoboost_lag": {
+            "feature_count": 30.0,
+            "feature_seconds": 0.001360000009299256,
+            "fit_predict_seconds": 0.482589541003108,
+            "fit_seconds": 0.4777835410059197,
+            "predict_seconds": 0.004805999997188337,
+            "total_seconds": 0.4839495410124073
+          }
+        }
+      },
+      "Quarterly": {
+        "candidate_selection": {
+          "calibration_seconds": 4.08779245900223,
+          "inner_origin_count": 1.0,
+          "inner_rmse": {
+            "cartoboost_auto_forecast": {
+              "raw": 593.8323876969911,
+              "selected": 515.8814097124366
+            },
+            "cartoboost_lag": {
+              "raw": 593.8323876969911,
+              "selected": 515.8814097124366
+            }
+          },
+          "selected_candidates": {
+            "cartoboost_auto_forecast": "shared_half_drift",
+            "cartoboost_lag": "shared_half_drift"
+          }
+        },
+        "load_seconds": 0.16153429199766833,
+        "models": {
+          "cartoboost_auto_forecast": {
+            "calibration_seconds": 1.4028155409905594,
+            "feature_count": 30.0,
+            "feature_seconds": 0.0007375419954769313,
+            "fit_predict_seconds": 0.2838647910102736,
+            "fit_seconds": 0.28236987499985844,
+            "inner_base_rmse": 697.6405880801015,
+            "inner_blended_relative_rmse_gain": 0.19322509075241923,
+            "inner_blended_rmse": 479.08907069251416,
+            "inner_calendar_dom_rmse": 3211.8038605987254,
+            "inner_calendar_phase14_rmse": 2760.1626582861186,
+            "inner_drift_rmse": 1362.4208901772283,
+            "inner_half_drift_rmse": 515.8814097124366,
+            "inner_origin_count": 1.0,
+            "inner_raw_relative_rmse_gain": 0.14879896920675062,
+            "inner_raw_rmse": 593.8323876969911,
+            "inner_seasonal_cycle_drift_050_rmse": 783.7573581601932,
+            "inner_seasonal_cycle_drift_075_rmse": 938.0252801296417,
+            "inner_seasonal_drift_rmse": 611.8182244863917,
+            "inner_selected_relative_rmse_gain": 0.19322509075241923,
+            "predict_seconds": 0.0014949160104151815,
+            "residual_alpha": 0.5,
+            "selected_candidate": "cartoboost_residual_blend",
+            "total_seconds": 1.68741787399631
+          },
+          "cartoboost_lag": {
+            "feature_count": 30.0,
+            "feature_seconds": 0.0008103329892037436,
+            "fit_predict_seconds": 0.30705937500169966,
+            "fit_seconds": 0.3054212080023717,
+            "predict_seconds": 0.0016381669993279502,
+            "total_seconds": 0.3078697079909034
+          }
+        }
+      },
+      "Weekly": {
+        "candidate_selection": {
+          "calibration_seconds": 19.06867404199147,
+          "inner_origin_count": 1.0,
+          "inner_rmse": {
+            "cartoboost_auto_forecast": {
+              "raw": 263.1738382374539,
+              "selected": 263.1738382374539
+            },
+            "cartoboost_lag": {
+              "raw": 202.31851019656554,
+              "selected": 202.31851019656554
+            }
+          },
+          "selected_candidates": {
+            "cartoboost_auto_forecast": "cartoboost_auto_forecast",
+            "cartoboost_lag": "cartoboost_lag"
+          }
+        },
+        "load_seconds": 0.0683142920024693,
+        "models": {
+          "cartoboost_auto_forecast": {
+            "calibration_seconds": 5.045516540994868,
+            "feature_count": 18.0,
+            "feature_seconds": 0.0019440829928498715,
+            "fit_predict_seconds": 1.341163334014709,
+            "fit_seconds": 1.3307323750050273,
+            "inner_base_rmse": 294.9552193711497,
+            "inner_blended_relative_rmse_gain": 0.0,
+            "inner_blended_rmse": 202.31851019656554,
+            "inner_calendar_dom_rmse": 8057.818416599142,
+            "inner_calendar_phase14_rmse": 8026.386532068431,
+            "inner_drift_rmse": 279.492183919652,
+            "inner_half_drift_rmse": 263.1738382374539,
+            "inner_origin_count": 1.0,
+            "inner_raw_relative_rmse_gain": 0.31407041845907135,
+            "inner_raw_rmse": 202.31851019656554,
+            "inner_seasonal_cycle_drift_050_rmse": 294.9552193711497,
+            "inner_seasonal_cycle_drift_075_rmse": 294.9552193711497,
+            "inner_seasonal_drift_rmse": 279.492183919652,
+            "inner_selected_relative_rmse_gain": 0.0,
+            "predict_seconds": 0.010430959009681828,
+            "residual_alpha": 1.0,
+            "selected_candidate": "cartoboost_raw",
+            "total_seconds": 6.388623958002427
+          },
+          "cartoboost_lag": {
+            "feature_count": 18.0,
+            "feature_seconds": 0.002437999995891005,
+            "fit_predict_seconds": 1.3438300410052761,
+            "fit_seconds": 1.3322026250098133,
+            "predict_seconds": 0.011627415995462798,
+            "total_seconds": 1.3462680410011671
+          }
+        }
+      },
+      "Yearly": {
+        "candidate_selection": {
+          "calibration_seconds": 2.6918188749987166,
+          "inner_origin_count": 1.0,
+          "inner_rmse": {
+            "cartoboost_auto_forecast": {
+              "raw": 979.7725572602286,
+              "selected": 524.9735600798105
+            },
+            "cartoboost_lag": {
+              "raw": 979.7725572602286,
+              "selected": 524.9735600798105
+            }
+          },
+          "selected_candidates": {
+            "cartoboost_auto_forecast": "shared_drift",
+            "cartoboost_lag": "shared_drift"
+          }
+        },
+        "load_seconds": 0.06516545900376514,
+        "models": {
+          "cartoboost_auto_forecast": {
+            "calibration_seconds": 0.9394982920057373,
+            "feature_count": 13.0,
+            "feature_seconds": 0.0011999589914921671,
+            "fit_predict_seconds": 0.1193795839935774,
+            "fit_seconds": 0.11823179200291634,
+            "inner_base_rmse": 960.3579333491278,
+            "inner_blended_relative_rmse_gain": 0.01498561119784525,
+            "inner_blended_rmse": 965.0900666548082,
+            "inner_calendar_dom_rmse": 2848.6603714039934,
+            "inner_calendar_phase14_rmse": 2418.0478281400383,
+            "inner_drift_rmse": 524.9735600798105,
+            "inner_half_drift_rmse": 739.0036938421829,
+            "inner_origin_count": 1.0,
+            "inner_raw_relative_rmse_gain": -0.020216029083442555,
+            "inner_raw_rmse": 979.7725572602286,
+            "inner_seasonal_cycle_drift_050_rmse": 960.3579333491278,
+            "inner_seasonal_cycle_drift_075_rmse": 960.3579333491278,
+            "inner_seasonal_drift_rmse": 524.9735600798105,
+            "inner_selected_relative_rmse_gain": 0.46418834025336253,
+            "predict_seconds": 0.0011477919906610623,
+            "residual_alpha": 0.25,
+            "selected_candidate": "cartoboost_drift",
+            "total_seconds": 1.0600778349908069
+          },
+          "cartoboost_lag": {
+            "feature_count": 13.0,
+            "feature_seconds": 0.0015362499980255961,
+            "fit_predict_seconds": 0.1062364579847781,
+            "fit_seconds": 0.10483283299254254,
+            "predict_seconds": 0.0014036249922355637,
+            "total_seconds": 0.1077727079828037
+          }
+        }
+      }
+    },
+    "total_seconds": 212.37272420800582
+  }
+}

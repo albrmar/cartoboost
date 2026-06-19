@@ -115,6 +115,39 @@ class BacktestWeightedEnsembleForecaster(WeightedEnsembleForecaster):
         )
 
 
+class RuleBasedGating:
+    """Configuration object for Rust rule-based forecast expert gating."""
+
+    def __init__(
+        self,
+        *,
+        metric: str,
+        scores: list[Mapping[str, Any]],
+        error_floor: float = 1e-9,
+        top_k: int | None = None,
+    ) -> None:
+        if not metric:
+            raise ValueError("metric must be non-empty")
+        if not scores:
+            raise ValueError("scores must contain at least one validation score")
+        if error_floor <= 0:
+            raise ValueError("error_floor must be positive")
+        if top_k is not None and top_k < 1:
+            raise ValueError("top_k must be positive when provided")
+        self.metric = str(metric)
+        self.scores = [dict(score) for score in scores]
+        self.error_floor = float(error_floor)
+        self.top_k = top_k
+
+    def to_native_config(self) -> dict[str, Any]:
+        return {
+            "metric": self.metric,
+            "scores": self.scores,
+            "error_floor": self.error_floor,
+            "top_k": self.top_k,
+        }
+
+
 class BottomUpReconciler(NativeForecastWrapper):
     """Thin wrapper for the Rust bottom-up hierarchical reconciliation binding."""
 
@@ -197,6 +230,7 @@ __all__ = [
     "BacktestWeightedEnsembleForecaster",
     "BottomUpReconciler",
     "MinTraceReconciler",
+    "RuleBasedGating",
     "WeightedEnsembleForecaster",
 ]
 

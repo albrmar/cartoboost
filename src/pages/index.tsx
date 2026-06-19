@@ -54,7 +54,10 @@ function HomepageHeader() {
           <Link className="button button--primary button--lg" to="/docs/installation">
             Install CartoBoost
           </Link>
-          <Link className="button button--secondary button--lg" to="/docs/user-guide/model-types">
+          <Link
+            className={clsx('button button--secondary button--lg', styles.heroSecondaryButton)}
+            to="/docs/user-guide/model-types"
+          >
             Choose a modeling path
           </Link>
         </div>

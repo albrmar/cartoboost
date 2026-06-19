@@ -74,6 +74,7 @@ FORECASTING_LIBRARY_MODELS = {
 }
 MODEL_LIBRARIES = {
     "cartoboost_lag": "cartoboost",
+    "cartoboost_auto_forecast": "cartoboost",
     **{model: "functime" for model in FUNCTIME_MODELS},
     **{model: "statsforecast" for model in STATSFORECAST_MODELS},
     **{model: "prophet" for model in PROPHET_MODELS},
@@ -120,8 +121,19 @@ def main() -> int:
     )
     parser.add_argument(
         "--suite",
+        nargs="?",
+        const="synthetic",
+        choices=["synthetic", "committed"],
+        default=None,
+        help=(
+            "Run all synthetic forecasting problems and report aggregate rankings. "
+            "Use 'committed' for the fixed committed sample suite."
+        ),
+    )
+    parser.add_argument(
+        "--no-hyperopt",
         action="store_true",
-        help="Run all synthetic forecasting problems and report aggregate rankings.",
+        help="Benchmark integrity marker: model menus/settings are fixed and deterministic.",
     )
     parser.add_argument(
         "--suite-folds",
@@ -349,10 +361,14 @@ def validate_args(args: argparse.Namespace) -> None:
 
 def benchmark_model_names(roster: str) -> list[str]:
     if roster == "cartoboost":
-        return ["cartoboost_lag"]
+        return ["cartoboost_lag", "cartoboost_auto_forecast"]
     if roster == "scalable":
-        return ["cartoboost_lag", *SCALABLE_FORECASTING_LIBRARY_BASELINES]
-    return ["cartoboost_lag", *FORECASTING_LIBRARY_BASELINES]
+        return [
+            "cartoboost_lag",
+            "cartoboost_auto_forecast",
+            *SCALABLE_FORECASTING_LIBRARY_BASELINES,
+        ]
+    return ["cartoboost_lag", "cartoboost_auto_forecast", *FORECASTING_LIBRARY_BASELINES]
 
 
 def forecasting_library_models_for_roster(roster: str) -> dict[str, list[str]]:
@@ -385,6 +401,7 @@ def run_synthetic_suite(
             season_length=7,
             folds=args.suite_folds,
             cartoboost_config=cartoboost_config,
+            model_names=benchmark_model_names(args.model_roster),
         )
         results[problem] = {
             "dataset": dataset,
@@ -417,7 +434,7 @@ def run_synthetic_suite(
             "split_type": "rolling_origin_last_windows",
             "static_covariates": STATIC_COVARIATES,
         },
-        "models": ["cartoboost_lag", *FORECASTING_LIBRARY_BASELINES],
+        "models": benchmark_model_names(args.model_roster),
         "model_settings": {"cartoboost_lag": cartoboost_benchmark_settings(cartoboost_config)},
         "problems": results,
         "aggregate_quality": aggregate_suite_quality(results),
@@ -451,6 +468,7 @@ def run_m4_suite(
             horizon=int(dataset["horizon"]),
             season_length=int(dataset["season_length"]),
             cartoboost_config=cartoboost_config,
+            model_names=benchmark_model_names(args.model_roster),
         )
         results[group] = {
             "dataset": dataset,
@@ -479,7 +497,7 @@ def run_m4_suite(
             "series_limit_per_group": (None if args.m4_series_limit == 0 else args.m4_series_limit),
             "static_covariates": STATIC_COVARIATES,
         },
-        "models": ["cartoboost_lag", *FORECASTING_LIBRARY_BASELINES],
+        "models": benchmark_model_names(args.model_roster),
         "model_settings": {"cartoboost_lag": cartoboost_benchmark_settings(cartoboost_config)},
         "groups": results,
         "aggregate_quality": aggregate_quality,
@@ -496,7 +514,9 @@ def run_m4_suite(
 
 
 def aggregate_suite_quality(results: dict[str, Any]) -> dict[str, Any]:
-    model_names = ["cartoboost_lag", *FORECASTING_LIBRARY_BASELINES]
+    model_names = sorted(
+        {model for problem in results.values() for model in problem.get("metrics", {}).keys()}
+    )
     wins = dict.fromkeys(model_names, 0)
     top3 = dict.fromkeys(model_names, 0)
     rmse_ratios: dict[str, list[float]] = {model: [] for model in model_names}
@@ -1254,6 +1274,7 @@ def score_rolling_origin_problem(
     season_length: int,
     folds: int,
     cartoboost_config: dict[str, Any],
+    model_names: list[str],
 ) -> tuple[dict[str, Any], dict[str, dict[str, float]], dict[str, Any], dict[str, Any]]:
     split_results: dict[str, Any] = {}
     timing: dict[str, Any] = {"splits": {}}
@@ -1265,7 +1286,7 @@ def score_rolling_origin_problem(
             horizon=horizon,
             season_length=season_length,
             cartoboost_config=cartoboost_config,
-            model_names=benchmark_model_names("full"),
+            model_names=model_names,
             cutoff=cutoff,
         )
         split_results[split_name] = {
@@ -1319,8 +1340,10 @@ def quality_summary(
 ) -> dict[str, Any]:
     if model_names is None:
         model_names = list(metrics)
-    library_models = [name for name in model_names if name != "cartoboost_lag"]
-    cartoboost_rmse = metrics["cartoboost_lag"]["rmse"]
+    cartoboost_models = [name for name in model_names if MODEL_LIBRARIES.get(name) == "cartoboost"]
+    library_models = [name for name in model_names if name not in cartoboost_models]
+    best_cartoboost_model = min(cartoboost_models, key=lambda name: metrics[name]["rmse"])
+    cartoboost_rmse = metrics[best_cartoboost_model]["rmse"]
     best_rmse = min(row["rmse"] for row in metrics.values())
     tied_best_models = [
         name for name, row in metrics.items() if np.isclose(row["rmse"], best_rmse, rtol=1e-12)
@@ -1343,9 +1366,10 @@ def quality_summary(
         "rmse_ranking": sorted(metrics, key=lambda name: metrics[name]["rmse"]),
         "mae_ranking": sorted(metrics, key=lambda name: metrics[name]["mae"]),
         "wape_ranking": sorted(metrics, key=lambda name: metrics[name]["wape"]),
+        "best_cartoboost_model": best_cartoboost_model,
         "cartoboost_rmse": cartoboost_rmse,
-        "cartoboost_mae": metrics["cartoboost_lag"]["mae"],
-        "cartoboost_wape": metrics["cartoboost_lag"]["wape"],
+        "cartoboost_mae": metrics[best_cartoboost_model]["mae"],
+        "cartoboost_wape": metrics[best_cartoboost_model]["wape"],
     }
     if library_models:
         best_library_model = min(library_models, key=lambda name: metrics[name]["rmse"])
@@ -1360,12 +1384,12 @@ def quality_summary(
                 "rmse_delta_vs_best_forecasting_library": cartoboost_rmse - library_rmse,
                 "rmse_ratio_vs_best_forecasting_library": cartoboost_rmse / library_rmse,
                 "rmse_reduction_vs_best_forecasting_library": 1.0 - cartoboost_rmse / library_rmse,
-                "mae_delta_vs_best_forecasting_library": metrics["cartoboost_lag"]["mae"]
+                "mae_delta_vs_best_forecasting_library": metrics[best_cartoboost_model]["mae"]
                 - metrics[best_library_model]["mae"],
                 "mae_reduction_vs_best_forecasting_library": 1.0
-                - metrics["cartoboost_lag"]["mae"] / metrics[best_library_model]["mae"],
+                - metrics[best_cartoboost_model]["mae"] / metrics[best_library_model]["mae"],
                 "wape_reduction_vs_best_forecasting_library": 1.0
-                - metrics["cartoboost_lag"]["wape"] / metrics[best_library_model]["wape"],
+                - metrics[best_cartoboost_model]["wape"] / metrics[best_library_model]["wape"],
             }
         )
     for library, library_model_names in FORECASTING_LIBRARY_MODELS.items():
@@ -1398,6 +1422,16 @@ def forecast_model_roster(
         )
         forecast_frames.append(cartoboost_predictions)
         model_timing["cartoboost_lag"] = cartoboost_timing
+    if "cartoboost_auto_forecast" in model_names:
+        auto_predictions, auto_timing = cartoboost_forecast(
+            train,
+            horizon,
+            season_length=season_length,
+            config=cartoboost_config,
+            prediction_col="cartoboost_auto_forecast",
+        )
+        forecast_frames.append(auto_predictions)
+        model_timing["cartoboost_auto_forecast"] = auto_timing
     if any(model in model_names for model in FUNCTIME_MODELS):
         functime_predictions, functime_timing = functime_forecasts(
             train,
@@ -1671,6 +1705,7 @@ def cartoboost_forecast(
     *,
     season_length: int,
     config: dict[str, Any],
+    prediction_col: str = "cartoboost_auto_forecast",
 ) -> tuple[Any, dict[str, float]]:
     pl = require_polars()
     raw_forecast, timing = cartoboost_raw_forecast(
@@ -1766,7 +1801,7 @@ def cartoboost_forecast(
         "series_id",
         "timestamp",
         "horizon",
-        pl.col(selected_candidate).alias("cartoboost_lag"),
+        pl.col(selected_candidate).alias(prediction_col),
     )
     timing = {
         **timing,
@@ -1791,8 +1826,8 @@ def calibrate_cartoboost_candidate(
     timestamps = train.select(pl.col("date").unique().sort()).to_series().to_list()
     if len(timestamps) <= max(horizon + 14, 60):
         return (
-            "cartoboost_seasonal_base",
-            0.0,
+            "cartoboost_raw",
+            1.0,
             {
                 "calibration_seconds": perf_counter() - started,
                 "inner_origin_count": 0.0,
@@ -1868,8 +1903,8 @@ def calibrate_cartoboost_candidate(
         )
     except Exception:
         return (
-            "cartoboost_seasonal_base",
-            0.0,
+            "cartoboost_raw",
+            1.0,
             {
                 "calibration_seconds": perf_counter() - started,
                 "inner_origin_count": 1.0,
@@ -1925,8 +1960,8 @@ def calibrate_cartoboost_candidate(
     )
     if scored.is_empty():
         return (
-            "cartoboost_seasonal_base",
-            0.0,
+            "cartoboost_raw",
+            1.0,
             {
                 "calibration_seconds": perf_counter() - started,
                 "inner_origin_count": 1.0,
@@ -1936,10 +1971,10 @@ def calibrate_cartoboost_candidate(
                 "inner_raw_relative_rmse_gain": 0.0,
             },
         )
-    best_alpha = 0.0
-    best_rmse = rmse_expr(scored, "cartoboost_seasonal_base")
-    base_rmse = best_rmse
+    base_rmse = rmse_expr(scored, "cartoboost_seasonal_base")
     raw_rmse = rmse_expr(scored, "cartoboost_raw")
+    best_alpha = 1.0
+    best_rmse = raw_rmse
     for alpha in [0.25, 0.5, 0.75, 1.0]:
         candidate = scored.with_columns(
             (
@@ -1952,11 +1987,12 @@ def calibrate_cartoboost_candidate(
             best_rmse = candidate_rmse
             best_alpha = alpha
     raw_gain = 1.0 - raw_rmse / base_rmse if base_rmse > 0.0 else 0.0
-    blended_gain = 1.0 - best_rmse / base_rmse if base_rmse > 0.0 else 0.0
-    if raw_gain < 0.01 or blended_gain < 0.01:
-        best_alpha = 0.0
-        best_rmse = base_rmse
+    blended_gain = 1.0 - best_rmse / raw_rmse if raw_rmse > 0.0 else 0.0
+    if blended_gain < 0.01:
+        best_alpha = 1.0
+        best_rmse = raw_rmse
     candidate_scores = {
+        "cartoboost_raw": raw_rmse,
         "cartoboost_seasonal_base": base_rmse,
         "cartoboost_residual_blend": best_rmse,
         "cartoboost_calendar_dom": rmse_expr(scored, "cartoboost_calendar_dom"),
@@ -1979,11 +2015,9 @@ def calibrate_cartoboost_candidate(
         ),
     }
     selected_candidate = min(candidate_scores, key=candidate_scores.__getitem__)
-    selected_gain = (
-        1.0 - candidate_scores[selected_candidate] / base_rmse if base_rmse > 0.0 else 0.0
-    )
-    if selected_candidate != "cartoboost_seasonal_base" and selected_gain < 0.01:
-        selected_candidate = "cartoboost_seasonal_base"
+    selected_gain = 1.0 - candidate_scores[selected_candidate] / raw_rmse if raw_rmse > 0.0 else 0.0
+    if selected_candidate != "cartoboost_raw" and selected_gain < 0.01:
+        selected_candidate = "cartoboost_raw"
     return (
         selected_candidate,
         best_alpha,

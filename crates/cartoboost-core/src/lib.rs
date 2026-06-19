@@ -1,10 +1,12 @@
 pub mod booster;
 pub mod data;
 pub mod explain;
+pub mod finance;
 pub mod forecasting;
 pub mod geo;
 pub mod loss;
 pub mod metrics;
+pub mod objectives;
 pub mod predictors;
 pub(crate) mod profile;
 pub mod serialize;

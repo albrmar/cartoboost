@@ -45,6 +45,23 @@
   margin-top: 2rem;
 }
 
+.heroSecondaryButton {
+  --ifm-button-background-color: rgba(101, 201, 255, 0.12);
+  --ifm-button-border-color: rgba(101, 201, 255, 0.64);
+  color: #dff5ff;
+}
+
+.heroSecondaryButton:hover {
+  --ifm-button-background-color: rgba(101, 201, 255, 0.2);
+  --ifm-button-border-color: var(--cb-secondary);
+  color: #ffffff;
+}
+
+.heroSecondaryButton:focus-visible {
+  outline: 3px solid rgba(101, 201, 255, 0.42);
+  outline-offset: 3px;
+}
+
 .mapPanel {
   overflow: hidden;
   border: 1px solid var(--cb-border);

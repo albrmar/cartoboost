@@ -49,6 +49,27 @@ Accepted names:
 `quantile_alpha` must be in `(0, 1)`. Quantile loss currently requires
 constant leaves.
 
+## Count Objective Helpers
+
+The Rust core includes finite-difference-friendly helpers for count-style
+objectives used by native modeling experiments and forecasting work. These
+helpers expose objective value, gradient, and Hessian with respect to the raw
+score. Count means use a log link, so `mean = exp(raw_score)` after internal
+finite clipping.
+
+| Helper | Target use |
+| --- | --- |
+| `PoissonObjective` | Pickup counts or trip counts where variance is close to the mean. |
+| `NegativeBinomialObjective` | Overdispersed pickup/dropoff counts with positive dispersion. |
+| `TweedieObjective` | Non-negative compound targets with mass near zero and positive continuous values. |
+| `HurdleObjective` | Two-stage zero occurrence plus positive count or severity objective. |
+
+The helpers validate finite non-negative targets and finite raw scores. Tweedie
+power must be in `(1, 2)`, and negative-binomial dispersion must be positive.
+They do not create benchmark claims by themselves; any public quality claim
+still needs a real run with fixed data, settings, baselines, and recorded
+metrics.
+
 ## Evaluation Guidance
 
 - Use RMSE, MAE, and R2 for L2 point prediction.

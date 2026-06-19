@@ -1,4 +1,6 @@
-use crate::forecasting::{ForecastFrame, ForecastPrediction, ForecastResult, Forecaster};
+use crate::forecasting::{
+    ForecastFrame, ForecastPrediction, ForecastResult, Forecaster, RuleBasedGating,
+};
 use crate::{CartoBoostError, Result};
 use rayon::prelude::*;
 use serde_json::{json, Value};
@@ -8,9 +10,22 @@ pub struct WeightedEnsembleForecaster {
     members: Vec<WeightedMember>,
 }
 
+pub type ForecastEnsemble = WeightedEnsembleForecaster;
+
 struct WeightedMember {
     name: String,
     weight: f64,
+    forecaster: Box<dyn Forecaster>,
+}
+
+pub struct GatedEnsembleForecaster {
+    members: Vec<NamedMember>,
+    gating: RuleBasedGating,
+    weights: Option<BTreeMap<String, f64>>,
+}
+
+struct NamedMember {
+    name: String,
     forecaster: Box<dyn Forecaster>,
 }
 
@@ -92,6 +107,114 @@ impl WeightedEnsembleForecaster {
     }
 }
 
+impl GatedEnsembleForecaster {
+    pub fn new(
+        members: Vec<(String, Box<dyn Forecaster>)>,
+        gating: RuleBasedGating,
+    ) -> Result<Self> {
+        if members.is_empty() {
+            return Err(CartoBoostError::InvalidInput(
+                "gated ensemble requires at least one member".to_string(),
+            ));
+        }
+        let mut cleaned = Vec::with_capacity(members.len());
+        for (name, forecaster) in members {
+            if name.trim().is_empty() {
+                return Err(CartoBoostError::InvalidInput(
+                    "gated ensemble member names must be non-empty".to_string(),
+                ));
+            }
+            if cleaned
+                .iter()
+                .any(|member: &NamedMember| member.name == name)
+            {
+                return Err(CartoBoostError::InvalidInput(format!(
+                    "duplicate gated ensemble member name '{name}'"
+                )));
+            }
+            cleaned.push(NamedMember { name, forecaster });
+        }
+        Ok(Self {
+            members: cleaned,
+            gating,
+            weights: None,
+        })
+    }
+
+    pub fn weights(&self) -> Option<&BTreeMap<String, f64>> {
+        self.weights.as_ref()
+    }
+
+    fn weighted_result(
+        &self,
+        weights: &BTreeMap<String, f64>,
+        horizon: usize,
+    ) -> Result<ForecastResult> {
+        if horizon == 0 {
+            return Err(CartoBoostError::InvalidInput(
+                "forecast horizon must be positive".to_string(),
+            ));
+        }
+        for member in &self.members {
+            if !weights.contains_key(&member.name) {
+                return Err(CartoBoostError::InvalidInput(format!(
+                    "gating weights missing ensemble member '{}'",
+                    member.name
+                )));
+            }
+        }
+        for expert in weights.keys() {
+            if !self.members.iter().any(|member| &member.name == expert) {
+                return Err(CartoBoostError::InvalidInput(format!(
+                    "gating weights reference unknown ensemble member '{expert}'"
+                )));
+            }
+        }
+
+        let member_results = self
+            .members
+            .par_iter()
+            .map(|member| member.forecaster.predict(horizon))
+            .collect::<Result<Vec<_>>>()?;
+        let mut weighted: BTreeMap<ForecastKey, f64> = BTreeMap::new();
+        let mut expected_keys: Option<Vec<ForecastKey>> = None;
+        for (member, result) in self.members.iter().zip(member_results) {
+            let weight = weights[&member.name];
+            let mut current_keys = Vec::with_capacity(result.predictions().len());
+            for prediction in result.predictions() {
+                let key = ForecastKey {
+                    series_id: prediction.series_id.clone(),
+                    timestamp: prediction.timestamp,
+                    horizon: prediction.horizon,
+                };
+                current_keys.push(key.clone());
+                *weighted.entry(key).or_insert(0.0) += weight * prediction.mean;
+            }
+            if let Some(expected) = &expected_keys {
+                if expected != &current_keys {
+                    return Err(CartoBoostError::InvalidInput(format!(
+                        "ensemble member '{}' produced a mismatched forecast index",
+                        member.name
+                    )));
+                }
+            } else {
+                expected_keys = Some(current_keys);
+            }
+        }
+        let predictions = weighted
+            .into_iter()
+            .map(|(key, mean)| ForecastPrediction {
+                series_id: key.series_id,
+                timestamp: key.timestamp,
+                horizon: key.horizon,
+                model: self.model_name().to_string(),
+                mean,
+            })
+            .collect();
+        ForecastResult::new(predictions)
+    }
+}
+
 impl Forecaster for WeightedEnsembleForecaster {
     fn fit(&mut self, frame: &ForecastFrame) -> Result<()> {
         self.members
@@ -156,6 +279,36 @@ impl Forecaster for WeightedEnsembleForecaster {
         json!({
             "model": self.model_name(),
             "weights": self.weights(),
+        })
+    }
+}
+
+impl Forecaster for GatedEnsembleForecaster {
+    fn fit(&mut self, frame: &ForecastFrame) -> Result<()> {
+        self.members
+            .par_iter_mut()
+            .map(|member| member.forecaster.fit(frame))
+            .collect::<Result<Vec<_>>>()?;
+        self.weights = Some(self.gating.weights_for_frame(frame)?);
+        Ok(())
+    }
+
+    fn predict(&self, horizon: usize) -> Result<ForecastResult> {
+        let weights = self.weights.as_ref().ok_or_else(|| {
+            CartoBoostError::InvalidInput("gated ensemble must be fit before predict".to_string())
+        })?;
+        self.weighted_result(weights, horizon)
+    }
+
+    fn model_name(&self) -> &'static str {
+        "gated_ensemble"
+    }
+
+    fn metadata(&self) -> Value {
+        json!({
+            "model": self.model_name(),
+            "weights": self.weights,
+            "gating": self.gating.metadata(),
         })
     }
 }
