@@ -1,8 +1,12 @@
 # Getting Started
 
+import AgentLlmsCallout from '@site/src/components/AgentLlmsCallout';
+
 This guide starts with the modeling decisions that matter for CartoBoost:
 target, place/time structure, validation, and baselines. The code snippets show
 the mechanics after those choices are clear.
+
+<AgentLlmsCallout />
 
 ## 1. Frame The Scientific Question
 

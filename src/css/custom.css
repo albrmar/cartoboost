@@ -97,3 +97,96 @@ html {
 .table-of-contents__link {
   border-radius: 6px;
 }
+
+.agent-copy-controls {
+  align-items: center;
+  border: 1px solid var(--cb-border);
+  border-radius: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0 0 1.25rem;
+  padding: 0.65rem;
+}
+
+.agent-copy-button,
+.agent-copy-link {
+  align-items: center;
+  background: transparent;
+  border: 1px solid var(--cb-border);
+  border-radius: 8px;
+  color: var(--ifm-font-color-base);
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  font-size: 0.88rem;
+  font-weight: 700;
+  min-height: 2.25rem;
+  padding: 0.35rem 0.65rem;
+  text-decoration: none;
+}
+
+.agent-copy-button:hover,
+.agent-copy-link:hover {
+  border-color: var(--cb-primary);
+  color: var(--cb-primary);
+  text-decoration: none;
+}
+
+.agent-copy-button--primary {
+  background: var(--cb-primary);
+  border-color: var(--cb-primary);
+  color: #06131f;
+}
+
+.agent-copy-button--primary:hover {
+  color: #06131f;
+}
+
+.agent-copy-status {
+  color: var(--cb-muted);
+  font-size: 0.86rem;
+  margin-left: auto;
+}
+
+.agent-llms-callout {
+  border: 1px solid var(--cb-border);
+  border-radius: 8px;
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(0, 1fr) auto;
+  margin: 1.5rem 0 2rem;
+  padding: 1rem;
+}
+
+.agent-llms-callout h2 {
+  font-size: 1.15rem;
+  margin: 0 0 0.35rem;
+}
+
+.agent-llms-callout p {
+  margin: 0;
+}
+
+.agent-llms-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+@media (max-width: 720px) {
+  .agent-llms-callout {
+    grid-template-columns: 1fr;
+  }
+
+  .agent-llms-actions {
+    justify-content: flex-start;
+  }
+
+  .agent-copy-status {
+    margin-left: 0;
+    width: 100%;
+  }
+}

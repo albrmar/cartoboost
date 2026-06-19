@@ -1,6 +1,20 @@
-import type { Config } from '@docusaurus/types';
+import fs from 'node:fs';
+import path from 'node:path';
+import type { Config, Plugin } from '@docusaurus/types';
 import type { Options as ClassicOptions } from '@docusaurus/preset-classic';
 import { themes as prismThemes } from 'prism-react-renderer';
+
+function llmsTxtDocsPlugin(): Plugin {
+  return {
+    name: 'llms-txt-docs',
+    postBuild({ outDir }) {
+      const source = path.join(process.cwd(), 'docs', 'llms.txt');
+      const target = path.join(outDir, 'docs', 'llms.txt');
+      fs.mkdirSync(path.dirname(target), { recursive: true });
+      fs.copyFileSync(source, target);
+    },
+  };
+}
 
 const config: Config = {
   title: 'CartoBoost',
@@ -58,6 +72,7 @@ const config: Config = {
   themes: ['@docusaurus/theme-mermaid'],
 
   plugins: [
+    llmsTxtDocsPlugin,
     [
       '@docusaurus/plugin-client-redirects',
       {
