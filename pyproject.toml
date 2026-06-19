@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "cartoboost"
-version = "0.1.38"
+version = "0.1.39"
 description = "Clean-room CartoBoost-inspired regression package."
 readme = "README.md"
 requires-python = ">=3.10"
