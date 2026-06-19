@@ -4,6 +4,8 @@ import importlib.util
 import json
 import subprocess
 import sys
+import types
+from datetime import date, timedelta
 from pathlib import Path
 
 
@@ -148,6 +150,113 @@ def test_model_benchmark_suite_link_negatives_avoid_positive_edges():
         )
         is None
     )
+
+
+def test_forecasting_benchmark_loads_m5_local_competition_files(tmp_path):
+    repo_root = Path(__file__).resolve().parents[2]
+    module_path = repo_root / "scripts" / "forecasting_library_benchmark.py"
+    spec = importlib.util.spec_from_file_location("forecasting_library_benchmark", module_path)
+    assert spec is not None
+    assert spec.loader is not None
+    benchmark = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = benchmark
+    spec.loader.exec_module(benchmark)
+
+    data_dir = tmp_path / "m5"
+    data_dir.mkdir()
+    days = 35
+    d_columns = ",".join(f"d_{day}" for day in range(1, days + 1))
+    values_a = ",".join(str(day) for day in range(1, days + 1))
+    values_b = ",".join(str(day * 2) for day in range(1, days + 1))
+    (data_dir / "sales_train_validation.csv").write_text(
+        "\n".join(
+            [
+                f"id,item_id,dept_id,cat_id,store_id,state_id,{d_columns}",
+                f"FOODS_1_001_CA_1_validation,FOODS_1_001,FOODS_1,FOODS,CA_1,CA,{values_a}",
+                f"HOBBIES_1_001_TX_1_validation,HOBBIES_1_001,HOBBIES_1,HOBBIES,TX_1,TX,{values_b}",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (data_dir / "calendar.csv").write_text(
+        "d,date\n" + "\n".join(f"d_{day},2020-01-{day:02d}" for day in range(1, days + 1)) + "\n",
+        encoding="utf-8",
+    )
+
+    table, dataset = benchmark.load_m5_fixture(
+        types.SimpleNamespace(
+            m5_data_dir=data_dir, m5_series_limit=0, m5_history_days=0, no_download=True
+        )
+    )
+
+    assert dataset["series"] == 2
+    assert dataset["horizon"] == 28
+    assert table.height == 70
+    assert {"lane_id", "date", "loads", *benchmark.STATIC_COVARIATES} <= set(table.columns)
+
+
+def test_forecasting_benchmark_m5_requires_real_local_files(tmp_path):
+    repo_root = Path(__file__).resolve().parents[2]
+    module_path = repo_root / "scripts" / "forecasting_library_benchmark.py"
+    spec = importlib.util.spec_from_file_location(
+        "forecasting_library_benchmark_missing",
+        module_path,
+    )
+    assert spec is not None
+    assert spec.loader is not None
+    benchmark = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = benchmark
+    spec.loader.exec_module(benchmark)
+
+    try:
+        benchmark.load_m5_fixture(
+            types.SimpleNamespace(
+                m5_data_dir=tmp_path,
+                m5_series_limit=0,
+                m5_history_days=0,
+                no_download=True,
+            )
+        )
+    except FileNotFoundError as exc:
+        assert "sales_train_evaluation.csv or sales_train_validation.csv" in str(exc)
+    else:
+        raise AssertionError("missing M5 files should hard-fail")
+
+
+def test_forecasting_benchmark_loads_m6_assets_file(tmp_path):
+    repo_root = Path(__file__).resolve().parents[2]
+    module_path = repo_root / "scripts" / "forecasting_library_benchmark.py"
+    spec = importlib.util.spec_from_file_location("forecasting_library_benchmark_m6", module_path)
+    assert spec is not None
+    assert spec.loader is not None
+    benchmark = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = benchmark
+    spec.loader.exec_module(benchmark)
+
+    path = tmp_path / "assets_m6.csv"
+    lines = ["symbol,date,price"]
+    start = date(2020, 1, 1)
+    for day in range(90):
+        current = start + timedelta(days=day)
+        lines.append(f"AAA,{current.isoformat()},{100.0 + day}")
+        lines.append(f"BBB,{current.isoformat()},{200.0 + day * 2}")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    table, dataset = benchmark.load_m6_fixture(
+        types.SimpleNamespace(
+            m6_assets_path=path,
+            m6_series_limit=0,
+            m6_horizon=28,
+            no_download=True,
+        )
+    )
+
+    assert dataset["series"] == 2
+    assert dataset["horizon"] == 28
+    assert dataset["days"] == 90
+    assert table.height == 180
+    assert {"lane_id", "date", "loads", *benchmark.STATIC_COVARIATES} <= set(table.columns)
 
 
 def test_model_benchmark_suite_graph_families_smoke(tmp_path):

@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import urllib.request
 import warnings
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -84,8 +85,13 @@ FORECASTING_LIBRARY_BASELINES = [
     *PROPHET_MODELS,
     *EXTERNAL_TREE_MODELS,
 ]
+SCALABLE_FORECASTING_LIBRARY_BASELINES = [
+    *FUNCTIME_MODELS,
+    *EXTERNAL_TREE_MODELS,
+]
 AIRPORT_ZONE_IDS = {1, 132, 138}
 M4_GROUPS = ["Hourly", "Daily", "Weekly", "Monthly", "Quarterly", "Yearly"]
+M6_ASSETS_URL = "https://raw.githubusercontent.com/Mcompetitions/M6-methods/main/assets_m6.csv"
 SYNTHETIC_PROBLEMS = [
     "taxi_weekly",
     "airport_calendar_events",
@@ -101,7 +107,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--source",
-        choices=["polars", "duckdb", "nyc-taxi", "m4"],
+        choices=["polars", "duckdb", "nyc-taxi", "m4", "m5", "m6"],
         default="polars",
     )
     parser.add_argument("--output", default="artifacts/forecasting_library_benchmark_polars.json")
@@ -150,6 +156,62 @@ def main() -> int:
             "The full group dataset is still downloaded."
         ),
     )
+    parser.add_argument(
+        "--m5-data-dir",
+        type=Path,
+        default=DEFAULT_FORECASTING_CACHE_DIR / "m5",
+        help=(
+            "Directory containing Kaggle M5 files. Requires calendar.csv and either "
+            "sales_train_evaluation.csv or sales_train_validation.csv."
+        ),
+    )
+    parser.add_argument(
+        "--m5-series-limit",
+        type=int,
+        default=0,
+        help="Maximum M5 item-store series to score; use 0 for the full bottom-level corpus.",
+    )
+    parser.add_argument(
+        "--m5-history-days",
+        type=int,
+        default=365,
+        help=(
+            "Most recent M5 daily columns to materialize before the 28-day holdout; "
+            "use 0 for every available day."
+        ),
+    )
+    parser.add_argument(
+        "--m6-assets-path",
+        type=Path,
+        default=DEFAULT_FORECASTING_CACHE_DIR / "m6" / "assets_m6.csv",
+        help="Path to the M6 assets CSV with symbol/date/price columns.",
+    )
+    parser.add_argument(
+        "--m6-series-limit",
+        type=int,
+        default=0,
+        help="Maximum M6 symbols to score; use 0 for every symbol in the assets file.",
+    )
+    parser.add_argument(
+        "--m6-horizon",
+        type=int,
+        default=28,
+        help="Daily return holdout horizon for the M6 point-forecast proxy.",
+    )
+    parser.add_argument(
+        "--model-roster",
+        choices=["full", "scalable", "cartoboost"],
+        default="full",
+        help=(
+            "Forecast model roster. Use scalable for full M5-style panels where "
+            "per-series Prophet/StatsForecast models are impractical."
+        ),
+    )
+    parser.add_argument(
+        "--no-candidate-selection",
+        action="store_true",
+        help="Skip inner-origin shared candidate selection for very large panels.",
+    )
     parser.add_argument("--no-download", action="store_true")
     parser.add_argument("--cartoboost-n-estimators", type=int, default=180)
     parser.add_argument("--cartoboost-learning-rate", type=float, default=0.06)
@@ -183,6 +245,8 @@ def main() -> int:
         horizon=benchmark_horizon,
         season_length=season_length,
         cartoboost_config=cartoboost_config,
+        model_names=benchmark_model_names(args.model_roster),
+        candidate_selection=not args.no_candidate_selection,
     )
     total_seconds = perf_counter() - benchmark_start
     timing = {
@@ -190,17 +254,27 @@ def main() -> int:
         "load_seconds": load_seconds,
         **timing,
     }
-    plots = write_forecast_plots(scored, args.plot_dir, prefix=args.source) if args.plot_dir else []
+    plots = (
+        write_forecast_plots(
+            scored,
+            args.plot_dir,
+            prefix=args.source,
+            models=benchmark_model_names(args.model_roster),
+        )
+        if args.plot_dir
+        else []
+    )
     payload = {
         "created_at": datetime.now(timezone.utc).isoformat(),
         "cartoboost_version": __version__,
         "benchmark": "geotemporal_lane_demand_forecasting_libraries",
         "fixture_source": args.source,
         "comparison_libraries": list(FORECASTING_LIBRARY_MODELS),
-        "forecasting_library_models": FORECASTING_LIBRARY_MODELS,
+        "forecasting_library_models": forecasting_library_models_for_roster(args.model_roster),
         "model_libraries": MODEL_LIBRARIES,
         "dataset": dataset,
-        "models": ["cartoboost_lag", *FORECASTING_LIBRARY_BASELINES],
+        "models": benchmark_model_names(args.model_roster),
+        "model_roster": args.model_roster,
         "model_settings": {"cartoboost_lag": cartoboost_benchmark_settings(cartoboost_config)},
         "metrics": metrics,
         "quality": quality,
@@ -219,7 +293,7 @@ def validate_args(args: argparse.Namespace) -> None:
         raise ValueError("--lanes must be positive")
     if args.horizon <= 0:
         raise ValueError("--horizon must be positive")
-    if args.source != "nyc-taxi" and args.days <= args.horizon + max(28, args.horizon):
+    if args.source in {"polars", "duckdb"} and args.days <= args.horizon + max(28, args.horizon):
         raise ValueError("--days must leave at least 28 training days before the holdout")
     if args.cartoboost_n_estimators <= 0:
         raise ValueError("--cartoboost-n-estimators must be positive")
@@ -233,14 +307,50 @@ def validate_args(args: argparse.Namespace) -> None:
         raise ValueError(
             "use --source m4 without --suite; M4 groups are already benchmark datasets"
         )
+    if args.suite and args.source in {"m5", "m6"}:
+        raise ValueError("--suite is only supported for synthetic polars or duckdb sources")
     if args.m4_suite and args.source != "m4":
         raise ValueError("--m4-suite requires --source m4")
     if args.m4_series_limit < 0:
         raise ValueError("--m4-series-limit must be non-negative; use 0 for every M4 series")
+    if args.m5_series_limit < 0:
+        raise ValueError("--m5-series-limit must be non-negative; use 0 for every M5 series")
+    if args.m5_history_days < 0:
+        raise ValueError("--m5-history-days must be non-negative; use 0 for every M5 day")
+    if args.m6_series_limit < 0:
+        raise ValueError("--m6-series-limit must be non-negative; use 0 for every M6 symbol")
+    if args.m6_horizon <= 0:
+        raise ValueError("--m6-horizon must be positive")
+    if args.source == "m5" and args.model_roster == "full":
+        raise ValueError(
+            "--source m5 requires --model-roster scalable or --model-roster cartoboost "
+            "for full-corpus runs; "
+            "the full roster launches per-series Prophet/StatsForecast models and is not "
+            "practical for the M5 bottom-level panel"
+        )
     if args.suite_folds <= 0:
         raise ValueError("--suite-folds must be positive")
     if args.suite and args.days <= args.horizon * args.suite_folds + 60:
         raise ValueError("--suite requires enough days for rolling origins and 60 training days")
+
+
+def benchmark_model_names(roster: str) -> list[str]:
+    if roster == "cartoboost":
+        return ["cartoboost_lag"]
+    if roster == "scalable":
+        return ["cartoboost_lag", *SCALABLE_FORECASTING_LIBRARY_BASELINES]
+    return ["cartoboost_lag", *FORECASTING_LIBRARY_BASELINES]
+
+
+def forecasting_library_models_for_roster(roster: str) -> dict[str, list[str]]:
+    if roster == "cartoboost":
+        return {}
+    if roster == "scalable":
+        return {
+            "functime": FUNCTIME_MODELS,
+            "external_trees": EXTERNAL_TREE_MODELS,
+        }
+    return FORECASTING_LIBRARY_MODELS
 
 
 def run_synthetic_suite(
@@ -404,6 +514,10 @@ def load_dataset(args: argparse.Namespace) -> tuple[Any, dict[str, Any]]:
         return load_synthetic_fixture(args)
     if args.source == "m4":
         return load_m4_fixture(args)
+    if args.source == "m5":
+        return load_m5_fixture(args)
+    if args.source == "m6":
+        return load_m6_fixture(args)
     return load_nyc_taxi_fixture(args)
 
 
@@ -592,6 +706,308 @@ def load_m4_fixture(args: argparse.Namespace) -> tuple[Any, dict[str, Any]]:
     }
 
 
+def load_m5_fixture(args: argparse.Namespace) -> tuple[Any, dict[str, Any]]:
+    pl = require_polars()
+    data_dir = ensure_m5_data_dir(args.m5_data_dir, no_download=args.no_download)
+    sales_path = find_m5_sales_file(data_dir)
+    calendar_path = data_dir / "calendar.csv"
+    if not calendar_path.exists():
+        raise FileNotFoundError(
+            f"M5 benchmark requires {calendar_path}; download the Kaggle M5 Accuracy files "
+            "and point --m5-data-dir at the extracted directory."
+        )
+
+    sales = pl.read_csv(sales_path, n_rows=args.m5_series_limit or None)
+    calendar = pl.read_csv(calendar_path)
+    required_sales_columns = ["item_id", "dept_id", "cat_id", "store_id", "state_id"]
+    missing_sales = [column for column in required_sales_columns if column not in sales.columns]
+    if missing_sales:
+        raise ValueError(f"M5 sales file is missing required columns: {missing_sales}")
+    if "id" not in sales.columns:
+        sales = sales.with_columns(
+            pl.concat_str(["item_id", "store_id"], separator="_").alias("id")
+        )
+    if "date" not in calendar.columns:
+        raise ValueError("M5 calendar file is missing required column: date")
+    if "d" not in calendar.columns:
+        calendar = calendar.with_row_index("d_index").with_columns(
+            pl.format("d_{}", pl.col("d_index") + 1).alias("d")
+        )
+
+    available_series = count_m5_series(sales_path)
+    value_columns = sorted(
+        [column for column in sales.columns if column.startswith("d_")],
+        key=lambda value: int(value.split("_", 1)[1]),
+    )
+    if len(value_columns) <= 28:
+        raise ValueError("M5 sales file must contain more than 28 daily observations per series")
+    materialized_value_columns = (
+        value_columns
+        if args.m5_history_days == 0
+        else value_columns[-max(args.m5_history_days, 29) :]
+    )
+
+    id_columns = ["id", *required_sales_columns]
+    long = unpivot_frame(
+        sales,
+        index=id_columns,
+        on=materialized_value_columns,
+        variable_name="d",
+        value_name="loads",
+    )
+    calendar = calendar.select(
+        "d",
+        pl.col("date").str.strptime(pl.Date, "%Y-%m-%d", strict=False).cast(pl.Datetime("us")),
+    )
+
+    lookup_frame = m5_static_lookup(sales)
+    result = (
+        long.join(calendar, on="d", how="inner")
+        .join(lookup_frame, on=["id", "item_id", "dept_id", "cat_id", "store_id", "state_id"])
+        .select(
+            pl.col("id").alias("lane_id"),
+            "date",
+            pl.col("loads").cast(pl.Float64),
+            *STATIC_COVARIATES,
+        )
+        .sort(["lane_id", "date"])
+    )
+    if result.height != sales.height * len(materialized_value_columns):
+        raise RuntimeError(
+            "M5 calendar join dropped rows; check that calendar.csv covers all d_* columns"
+        )
+    return result, {
+        "series": int(sales.height),
+        "available_series": int(available_series),
+        "rows": int(result.height),
+        "days": int(len(materialized_value_columns)),
+        "available_days": int(len(value_columns)),
+        "horizon": 28,
+        "season_length": 7,
+        "domain": "M5 Forecasting Accuracy Walmart item-store unit sales",
+        "source": "m5_kaggle_local_files",
+        "source_url": "https://www.kaggle.com/competitions/m5-forecasting-accuracy/data",
+        "mirror_url": "https://github.com/Nixtla/m5-forecasts/raw/main/datasets/m5.zip",
+        "sales_file": str(sales_path),
+        "calendar_file": str(calendar_path),
+        "series_limit": int(args.m5_series_limit),
+        "history_days": int(args.m5_history_days),
+        "split_type": "last_28_days_from_training_or_evaluation_file",
+        "static_covariates": STATIC_COVARIATES,
+    }
+
+
+def count_m5_series(sales_path: Path) -> int:
+    with sales_path.open("rb") as handle:
+        return max(sum(1 for _line in handle) - 1, 0)
+
+
+def ensure_m5_data_dir(data_dir: Path, *, no_download: bool) -> Path:
+    if m5_data_files_exist(data_dir):
+        return data_dir
+    nested_data_dir = data_dir / "datasets"
+    if m5_data_files_exist(nested_data_dir):
+        return nested_data_dir
+    if no_download:
+        return data_dir
+    try:
+        from datasetsforecast.m5 import M5
+    except ImportError as exc:
+        raise ImportError(
+            "M5 benchmark download requires datasetsforecast; run `uv sync --group bench`."
+        ) from exc
+    M5.download(str(data_dir.parent))
+    if m5_data_files_exist(nested_data_dir):
+        return nested_data_dir
+    if m5_data_files_exist(data_dir):
+        return data_dir
+    raise FileNotFoundError(
+        f"M5 public mirror download completed but required CSVs were not found under {data_dir}"
+    )
+
+
+def m5_data_files_exist(data_dir: Path) -> bool:
+    return (data_dir / "calendar.csv").exists() and (
+        (data_dir / "sales_train_evaluation.csv").exists()
+        or (data_dir / "sales_train_validation.csv").exists()
+    )
+
+
+def find_m5_sales_file(data_dir: Path) -> Path:
+    candidates = [
+        data_dir / "sales_train_evaluation.csv",
+        data_dir / "sales_train_validation.csv",
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    raise FileNotFoundError(
+        "M5 benchmark requires sales_train_evaluation.csv or sales_train_validation.csv "
+        f"under {data_dir}; download the Kaggle M5 Accuracy files first."
+    )
+
+
+def unpivot_frame(
+    frame: Any,
+    *,
+    index: list[str],
+    on: list[str],
+    variable_name: str,
+    value_name: str,
+) -> Any:
+    if hasattr(frame, "unpivot"):
+        return frame.unpivot(
+            index=index,
+            on=on,
+            variable_name=variable_name,
+            value_name=value_name,
+        )
+    return frame.melt(
+        id_vars=index,
+        value_vars=on,
+        variable_name=variable_name,
+        value_name=value_name,
+    )
+
+
+def m5_static_lookup(sales: Any) -> Any:
+    pl = require_polars()
+    base = sales.select("id", "item_id", "dept_id", "cat_id", "store_id", "state_id")
+    lookups = [
+        code_lookup(base, "store_id", "pickup_zone_code"),
+        code_lookup(base, "item_id", "dropoff_zone_code"),
+        code_lookup(base, "dept_id", "dept_code"),
+        code_lookup(base, "cat_id", "cat_code"),
+        code_lookup(base, "state_id", "state_code"),
+    ]
+    for lookup in lookups:
+        base = base.join(lookup, on=lookup.columns[0], how="left")
+    return base.with_columns(
+        pl.col("pickup_zone_code").cast(pl.Float64).alias("pickup_zone"),
+        pl.col("dropoff_zone_code").cast(pl.Float64).alias("dropoff_zone"),
+        (1.0 + (pl.col("dept_code").cast(pl.Float64) % 20.0) / 4.0).alias("distance_miles"),
+        (pl.col("cat_code") % 2).cast(pl.Float64).alias("airport_lane"),
+        pl.col("state_code").cast(pl.Float64).alias("pickup_borough_code"),
+    ).select("id", "item_id", "dept_id", "cat_id", "store_id", "state_id", *STATIC_COVARIATES)
+
+
+def code_lookup(frame: Any, column: str, output: str) -> Any:
+    pl = require_polars()
+    values = sorted(frame.select(pl.col(column).unique()).to_series().to_list())
+    return pl.DataFrame({column: values, output: list(range(1, len(values) + 1))})
+
+
+def load_m6_fixture(args: argparse.Namespace) -> tuple[Any, dict[str, Any]]:
+    pd = require_pandas_for_benchmark()
+    pl = require_polars()
+    assets_path = ensure_m6_assets_file(args.m6_assets_path, no_download=args.no_download)
+    raw = pd.read_csv(assets_path)
+    raw.columns = [str(column).strip().lower() for column in raw.columns]
+    required_columns = {"symbol", "date", "price"}
+    missing = sorted(required_columns - set(raw.columns))
+    if missing:
+        raise ValueError(f"M6 assets file is missing required columns: {missing}")
+    raw = raw[["symbol", "date", "price"]].copy()
+    raw["date"] = pd.to_datetime(raw["date"], errors="raise").dt.normalize()
+    raw["price"] = pd.to_numeric(raw["price"], errors="raise")
+    raw = raw.dropna(subset=["symbol", "date", "price"]).sort_values(["symbol", "date"])
+    if raw.empty:
+        raise ValueError("M6 assets file did not contain any usable symbol/date/price rows")
+
+    available_symbols = sorted(raw["symbol"].astype(str).unique())
+    selected_symbols = (
+        available_symbols
+        if args.m6_series_limit == 0
+        else available_symbols[: args.m6_series_limit]
+    )
+    raw = raw[raw["symbol"].astype(str).isin(selected_symbols)].copy()
+    result = build_m6_daily_return_panel(raw, selected_symbols)
+    day_count = result.select(pl.col("date").unique()).height
+    if day_count <= args.m6_horizon + 60:
+        raise ValueError("M6 assets file does not leave enough daily observations for the holdout")
+    return result, {
+        "series": int(len(selected_symbols)),
+        "available_series": int(len(available_symbols)),
+        "rows": int(result.height),
+        "days": int(day_count),
+        "horizon": int(args.m6_horizon),
+        "season_length": 7,
+        "domain": "M6 financial competition assets daily return point-forecast proxy",
+        "source": "m6_methods_assets_csv",
+        "source_url": M6_ASSETS_URL,
+        "assets_file": str(assets_path),
+        "series_limit": int(args.m6_series_limit),
+        "split_type": f"last_{args.m6_horizon}_calendar_days_from_daily_return_panel",
+        "official_metric_note": (
+            "M6 official scoring used probability rank buckets, RPS, and investment return. "
+            "This benchmark scores daily point return forecasts with the shared CartoBoost "
+            "library RMSE/MAE/WAPE harness."
+        ),
+        "static_covariates": STATIC_COVARIATES,
+    }
+
+
+def ensure_m6_assets_file(path: Path, *, no_download: bool) -> Path:
+    if path.exists():
+        return path
+    if no_download:
+        raise FileNotFoundError(
+            f"M6 benchmark requires {path}; remove --no-download to fetch {M6_ASSETS_URL} "
+            "or provide --m6-assets-path."
+        )
+    path.parent.mkdir(parents=True, exist_ok=True)
+    urllib.request.urlretrieve(M6_ASSETS_URL, path)
+    if not path.exists():
+        raise FileNotFoundError(f"failed to download M6 assets file to {path}")
+    return path
+
+
+def build_m6_daily_return_panel(raw: Any, selected_symbols: list[str]) -> Any:
+    pd = require_pandas_for_benchmark()
+    pl = require_polars()
+    symbol_codes = {symbol: index for index, symbol in enumerate(selected_symbols, start=1)}
+    pieces = []
+    for symbol in selected_symbols:
+        group = raw[raw["symbol"].astype(str) == symbol].sort_values("date")
+        if group.empty:
+            continue
+        date_index = pd.date_range(group["date"].min(), group["date"].max(), freq="D")
+        prices = (
+            group.drop_duplicates("date")
+            .set_index("date")["price"]
+            .sort_index()
+            .reindex(date_index)
+            .ffill()
+        )
+        returns = prices.pct_change().fillna(0.0)
+        code = symbol_codes[symbol]
+        pieces.append(
+            pd.DataFrame(
+                {
+                    "lane_id": symbol,
+                    "date": date_index,
+                    "loads": returns.to_numpy(dtype=float),
+                    "pickup_zone": float(code),
+                    "dropoff_zone": float((code % 11) + 1),
+                    "distance_miles": np.log1p(prices.to_numpy(dtype=float)),
+                    "airport_lane": float(code % 2),
+                    "pickup_borough_code": float((code % 5) + 1),
+                }
+            )
+        )
+    if not pieces:
+        raise ValueError("M6 assets file did not contain any selected symbols")
+    return (
+        pl.from_pandas(pd.concat(pieces, ignore_index=True))
+        .with_columns(
+            pl.col("date").cast(pl.Datetime("us")),
+            pl.col("loads").fill_nan(0.0).fill_null(0.0),
+            pl.col("distance_miles").fill_nan(0.0).fill_null(0.0),
+        )
+        .sort(["lane_id", "date"])
+    )
+
+
 def m4_horizon(group: str) -> int:
     horizons = {
         "Hourly": 48,
@@ -729,9 +1145,13 @@ def score_models(
     horizon: int,
     season_length: int,
     cartoboost_config: dict[str, Any],
+    model_names: list[str] | None = None,
+    candidate_selection: bool = True,
     cutoff: Any | None = None,
 ) -> tuple[dict[str, dict[str, float]], dict[str, Any], dict[str, Any], Any]:
     pl = require_polars()
+    if model_names is None:
+        model_names = benchmark_model_names("full")
     train, test, cutoff = train_test_split_for_cutoff(table, horizon=horizon, cutoff=cutoff)
     if train.is_empty() or test.is_empty():
         raise ValueError("benchmark split produced empty train or test data")
@@ -751,23 +1171,33 @@ def score_models(
         horizon,
         season_length=season_length,
         cartoboost_config=cartoboost_config,
+        model_names=model_names,
     )
-    predictions, selection_timing = apply_shared_candidate_selection(
-        train,
-        horizon,
-        season_length=season_length,
-        raw_predictions=predictions,
-        cartoboost_config=cartoboost_config,
-    )
+    if candidate_selection:
+        predictions, selection_timing = apply_shared_candidate_selection(
+            train,
+            horizon,
+            season_length=season_length,
+            raw_predictions=predictions,
+            cartoboost_config=cartoboost_config,
+            model_names=model_names,
+        )
+    else:
+        selection_timing = {
+            "calibration_seconds": 0.0,
+            "inner_origin_count": 0.0,
+            "selected_candidates": {model: model for model in model_names},
+            "disabled": True,
+        }
     scored = actual.join(predictions, on=["series_id", "timestamp", "horizon"], how="inner")
     if scored.height != actual.height:
         raise RuntimeError("forecast alignment dropped rows")
 
     metrics = {
         model: evaluate_metrics(scored, model, train, season_length=season_length)
-        for model in ["cartoboost_lag", *FORECASTING_LIBRARY_BASELINES]
+        for model in model_names
     }
-    quality = quality_summary(metrics)
+    quality = quality_summary(metrics, model_names=model_names)
     timing["candidate_selection"] = selection_timing
     return metrics, quality, timing, scored
 
@@ -822,6 +1252,7 @@ def score_rolling_origin_problem(
             horizon=horizon,
             season_length=season_length,
             cartoboost_config=cartoboost_config,
+            model_names=benchmark_model_names("full"),
             cutoff=cutoff,
         )
         split_results[split_name] = {
@@ -835,7 +1266,8 @@ def score_rolling_origin_problem(
 
 
 def aggregate_split_metrics(split_results: dict[str, Any]) -> dict[str, dict[str, float]]:
-    model_names = ["cartoboost_lag", *FORECASTING_LIBRARY_BASELINES]
+    first_split = next(iter(split_results.values()))
+    model_names = list(first_split["metrics"])
     aggregate: dict[str, dict[str, float]] = {}
     metric_names = ["mae", "rmse", "mase", "wape", "smape", "bias"]
     for model in model_names:
@@ -867,48 +1299,67 @@ def normalize_forecast_frame(frame: Any) -> Any:
     return frame.with_columns(pl.col("timestamp").cast(pl.Datetime("us")))
 
 
-def quality_summary(metrics: dict[str, dict[str, float]]) -> dict[str, Any]:
-    best_library_model = min(FORECASTING_LIBRARY_BASELINES, key=lambda name: metrics[name]["rmse"])
+def quality_summary(
+    metrics: dict[str, dict[str, float]],
+    *,
+    model_names: list[str] | None = None,
+) -> dict[str, Any]:
+    if model_names is None:
+        model_names = list(metrics)
+    library_models = [name for name in model_names if name != "cartoboost_lag"]
     cartoboost_rmse = metrics["cartoboost_lag"]["rmse"]
-    library_rmse = metrics[best_library_model]["rmse"]
     best_rmse = min(row["rmse"] for row in metrics.values())
     tied_best_models = [
         name for name, row in metrics.items() if np.isclose(row["rmse"], best_rmse, rtol=1e-12)
     ]
     summary: dict[str, Any] = {
-        "winner": (
-            "tie"
-            if len(tied_best_models) > 1
-            else ("cartoboost_lag" if cartoboost_rmse < library_rmse else best_library_model)
-        ),
-        "comparison_libraries": list(FORECASTING_LIBRARY_MODELS),
-        "forecasting_library_models": FORECASTING_LIBRARY_MODELS,
+        "winner": "tie" if len(tied_best_models) > 1 else tied_best_models[0],
+        "comparison_libraries": [
+            library
+            for library, names in FORECASTING_LIBRARY_MODELS.items()
+            if any(name in model_names for name in names)
+        ],
+        "forecasting_library_models": {
+            library: [name for name in names if name in model_names]
+            for library, names in FORECASTING_LIBRARY_MODELS.items()
+            if any(name in model_names for name in names)
+        },
         "model_libraries": MODEL_LIBRARIES,
-        "best_forecasting_library": MODEL_LIBRARIES[best_library_model],
-        "best_forecasting_library_model": best_library_model,
-        "best_forecasting_library_rmse": library_rmse,
-        "best_forecasting_library_mae": metrics[best_library_model]["mae"],
-        "best_forecasting_library_wape": metrics[best_library_model]["wape"],
         "best_rmse": best_rmse,
         "tied_best_models": tied_best_models,
         "rmse_ranking": sorted(metrics, key=lambda name: metrics[name]["rmse"]),
         "mae_ranking": sorted(metrics, key=lambda name: metrics[name]["mae"]),
         "wape_ranking": sorted(metrics, key=lambda name: metrics[name]["wape"]),
         "cartoboost_rmse": cartoboost_rmse,
-        "rmse_delta_vs_best_forecasting_library": cartoboost_rmse - library_rmse,
-        "rmse_ratio_vs_best_forecasting_library": cartoboost_rmse / library_rmse,
-        "rmse_reduction_vs_best_forecasting_library": 1.0 - cartoboost_rmse / library_rmse,
         "cartoboost_mae": metrics["cartoboost_lag"]["mae"],
-        "mae_delta_vs_best_forecasting_library": metrics["cartoboost_lag"]["mae"]
-        - metrics[best_library_model]["mae"],
-        "mae_reduction_vs_best_forecasting_library": 1.0
-        - metrics["cartoboost_lag"]["mae"] / metrics[best_library_model]["mae"],
         "cartoboost_wape": metrics["cartoboost_lag"]["wape"],
-        "wape_reduction_vs_best_forecasting_library": 1.0
-        - metrics["cartoboost_lag"]["wape"] / metrics[best_library_model]["wape"],
     }
-    for library, model_names in FORECASTING_LIBRARY_MODELS.items():
-        best_model = min(model_names, key=lambda name: metrics[name]["rmse"])
+    if library_models:
+        best_library_model = min(library_models, key=lambda name: metrics[name]["rmse"])
+        library_rmse = metrics[best_library_model]["rmse"]
+        summary.update(
+            {
+                "best_forecasting_library": MODEL_LIBRARIES[best_library_model],
+                "best_forecasting_library_model": best_library_model,
+                "best_forecasting_library_rmse": library_rmse,
+                "best_forecasting_library_mae": metrics[best_library_model]["mae"],
+                "best_forecasting_library_wape": metrics[best_library_model]["wape"],
+                "rmse_delta_vs_best_forecasting_library": cartoboost_rmse - library_rmse,
+                "rmse_ratio_vs_best_forecasting_library": cartoboost_rmse / library_rmse,
+                "rmse_reduction_vs_best_forecasting_library": 1.0 - cartoboost_rmse / library_rmse,
+                "mae_delta_vs_best_forecasting_library": metrics["cartoboost_lag"]["mae"]
+                - metrics[best_library_model]["mae"],
+                "mae_reduction_vs_best_forecasting_library": 1.0
+                - metrics["cartoboost_lag"]["mae"] / metrics[best_library_model]["mae"],
+                "wape_reduction_vs_best_forecasting_library": 1.0
+                - metrics["cartoboost_lag"]["wape"] / metrics[best_library_model]["wape"],
+            }
+        )
+    for library, library_model_names in FORECASTING_LIBRARY_MODELS.items():
+        available_models = [name for name in library_model_names if name in metrics]
+        if not available_models:
+            continue
+        best_model = min(available_models, key=lambda name: metrics[name]["rmse"])
         summary[f"best_{library}_method"] = best_model
         summary[f"best_{library}_rmse"] = metrics[best_model]["rmse"]
     return summary
@@ -920,54 +1371,96 @@ def forecast_model_roster(
     *,
     season_length: int,
     cartoboost_config: dict[str, Any],
+    model_names: list[str],
 ) -> tuple[Any, dict[str, Any]]:
-    cartoboost_predictions, cartoboost_timing = cartoboost_raw_forecast(
-        train,
-        horizon,
-        season_length=season_length,
-        config=cartoboost_config,
-        prediction_col="cartoboost_lag",
-    )
-    functime_predictions, functime_timing = functime_forecasts(
-        train,
-        horizon,
-        season_length=season_length,
-        lightgbm_config=cartoboost_config,
-    )
-    statsforecast_predictions, statsforecast_timing = statsforecast_forecasts(
-        train,
-        horizon,
-        season_length=season_length,
-    )
-    prophet_predictions, prophet_timing = prophet_forecasts(
-        train,
-        horizon,
-        season_length=season_length,
-    )
-    tree_predictions, tree_timing = external_tree_lag_forecasts(
-        train,
-        horizon,
-        season_length=season_length,
-        config=cartoboost_config,
-    )
-    predictions = combine_forecast_frames(
-        [
-            cartoboost_predictions,
-            functime_predictions,
-            statsforecast_predictions,
-            prophet_predictions,
-            tree_predictions,
-        ]
-    )
-    timing = {
-        "models": {
-            "cartoboost_lag": cartoboost_timing,
-            **functime_timing,
-            **statsforecast_timing,
-            **prophet_timing,
-            **tree_timing,
-        }
-    }
+    forecast_frames = []
+    model_timing: dict[str, Any] = {}
+    if "cartoboost_lag" in model_names:
+        cartoboost_predictions, cartoboost_timing = cartoboost_raw_forecast(
+            train,
+            horizon,
+            season_length=season_length,
+            config=cartoboost_config,
+            prediction_col="cartoboost_lag",
+        )
+        forecast_frames.append(cartoboost_predictions)
+        model_timing["cartoboost_lag"] = cartoboost_timing
+    if any(model in model_names for model in FUNCTIME_MODELS):
+        functime_predictions, functime_timing = functime_forecasts(
+            train,
+            horizon,
+            season_length=season_length,
+            lightgbm_config=cartoboost_config,
+        )
+        forecast_frames.append(
+            functime_predictions.select(
+                "series_id",
+                "timestamp",
+                "horizon",
+                *[model for model in FUNCTIME_MODELS if model in model_names],
+            )
+        )
+        model_timing.update(
+            {model: timing for model, timing in functime_timing.items() if model in model_names}
+        )
+    if any(model in model_names for model in STATSFORECAST_MODELS):
+        statsforecast_predictions, statsforecast_timing = statsforecast_forecasts(
+            train,
+            horizon,
+            season_length=season_length,
+        )
+        forecast_frames.append(
+            statsforecast_predictions.select(
+                "series_id",
+                "timestamp",
+                "horizon",
+                *[model for model in STATSFORECAST_MODELS if model in model_names],
+            )
+        )
+        model_timing.update(
+            {
+                model: timing
+                for model, timing in statsforecast_timing.items()
+                if model in model_names
+            }
+        )
+    if any(model in model_names for model in PROPHET_MODELS):
+        prophet_predictions, prophet_timing = prophet_forecasts(
+            train,
+            horizon,
+            season_length=season_length,
+        )
+        forecast_frames.append(
+            prophet_predictions.select(
+                "series_id",
+                "timestamp",
+                "horizon",
+                *[model for model in PROPHET_MODELS if model in model_names],
+            )
+        )
+        model_timing.update(
+            {model: timing for model, timing in prophet_timing.items() if model in model_names}
+        )
+    if any(model in model_names for model in EXTERNAL_TREE_MODELS):
+        tree_predictions, tree_timing = external_tree_lag_forecasts(
+            train,
+            horizon,
+            season_length=season_length,
+            config=cartoboost_config,
+        )
+        forecast_frames.append(
+            tree_predictions.select(
+                "series_id",
+                "timestamp",
+                "horizon",
+                *[model for model in EXTERNAL_TREE_MODELS if model in model_names],
+            )
+        )
+        model_timing.update(
+            {model: timing for model, timing in tree_timing.items() if model in model_names}
+        )
+    predictions = combine_forecast_frames(forecast_frames)
+    timing = {"models": model_timing}
     return predictions, timing
 
 
@@ -978,9 +1471,9 @@ def apply_shared_candidate_selection(
     season_length: int,
     raw_predictions: Any,
     cartoboost_config: dict[str, Any],
+    model_names: list[str],
 ) -> tuple[Any, dict[str, Any]]:
     pl = require_polars()
-    model_names = ["cartoboost_lag", *FORECASTING_LIBRARY_BASELINES]
     started = perf_counter()
     timestamps = train.select(pl.col("date").unique().sort()).to_series().to_list()
     if len(timestamps) <= horizon + 2:
@@ -999,6 +1492,7 @@ def apply_shared_candidate_selection(
             horizon,
             season_length=season_length,
             cartoboost_config=cartoboost_config,
+            model_names=model_names,
         )
     except Exception:
         return raw_predictions, {
@@ -2361,7 +2855,9 @@ def evaluate_metrics(
     }
 
 
-def write_forecast_plots(scored: Any, plot_dir: Path, *, prefix: str) -> list[str]:
+def write_forecast_plots(
+    scored: Any, plot_dir: Path, *, prefix: str, models: list[str] | None = None
+) -> list[str]:
     try:
         import matplotlib
 
@@ -2373,7 +2869,8 @@ def write_forecast_plots(scored: Any, plot_dir: Path, *, prefix: str) -> list[st
         ) from exc
 
     plot_dir.mkdir(parents=True, exist_ok=True)
-    models = ["cartoboost_lag", *FORECASTING_LIBRARY_BASELINES]
+    if models is None:
+        models = benchmark_model_names("full")
     frame = scored.sort(["series_id", "timestamp"]).to_pandas()
     paths: list[Path] = []
 
