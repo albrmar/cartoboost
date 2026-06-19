@@ -1,32 +1,56 @@
 # Benchmarks
 
-Use these pages to answer one question: can this result guide model choice?
-Real taxi results can, if the split, features, baselines, metrics, and command
-are clear. Synthetic results are useful for debugging, but they are not evidence
-for real taxi deployment.
+These pages are the benchmark report hub. Each report should answer the same
+reader questions:
 
-## Reports
+- What data was used?
+- What split was used?
+- Which models saw which features?
+- What command produced the artifact?
+- What did the metric table say?
+- Which plots should I inspect?
+- What claim is allowed, and what claim is not allowed?
 
-| Page | Purpose |
+CartoBoost is strongest when the task has taxi-shaped structure: pickup and
+dropoff zones, route distance, periodic hour/day effects, repeated IDs,
+pickup/dropoff topology, or lane-demand history. The benchmark docs therefore
+separate real NYC TLC evidence from synthetic mechanism checks.
+
+## Report Map
+
+| Report | Evidence type | What to inspect first |
+| --- | --- | --- |
+| [NYC Taxi Benchmarks](nyc-taxi.md) | Real TLC fare, duration, and pickup-demand regression. | Metric summary, predicted-vs-actual plots, throughput plots. |
+| [Forecasting Tool Benchmark](forecasting.md) | Real taxi lane demand, synthetic taxi-shaped forecasting, and M4 sample. | RMSE/WAPE tables, horizon plot, forecast-line plot. |
+| [Model Benchmark Suite](model-suite.md) | Synthetic dense, repeated-ID, and graph diagnostics. | MAE-by-model plot and workload table. |
+| [Taxi Zone Acceptance](taxi-zone.md) | Deterministic taxi-lane feature acceptance. | Lane heatmap, hour profile, route midpoint geometry. |
+| [Neural Embedding Strategy](neural-embedding-strategy.md) | Method rules for neural residual rows. | Safeguards and split-specific claim boundary. |
+| [Neural Embedding Benchmark](neural-embedding-benchmark-latest.md) | Synthetic repeated-ID/cold-ID diagnostic. | Scenario table showing random/tail wins and cold-origin failure. |
+| [Fair Benchmarking Program](fair-benchmarking.md) | Governance contract. | Equal-budget, split, baseline, and uncertainty rules. |
+
+## Current Maintained Artifacts
+
+| Artifact | Path |
 | --- | --- |
-| [NYC Taxi Benchmarks](nyc-taxi.md) | Real TLC fare, duration, and demand tasks. |
-| [Forecasting Tool Benchmark](forecasting.md) | Rolling-origin taxi lane demand and public forecasting datasets. |
-| [Model Benchmark Suite](model-suite.md) | Synthetic checks for dense, repeated-ID, and graph behavior. |
-| [Taxi Zone Acceptance](taxi-zone.md) | Deterministic acceptance checks for lane membership, route geometry, and cyclic hour behavior. |
-| [Neural Embedding Strategy](neural-embedding-strategy.md) | Rules for evaluating leakage-aware residual embeddings. |
-| [Neural Embedding Benchmark](neural-embedding-benchmark-latest.md) | Synthetic repeated-ID and cold-ID checks. |
+| NYC regression JSON | `docs/assets/nyc_taxi_benchmarks/results.json` |
+| NYC regression report | `docs/assets/nyc_taxi_benchmarks/results.md` |
+| NYC repeated speed report | `docs/assets/nyc_taxi_benchmarks/repeated_results.md` |
+| NYC forecasting JSON | `docs/assets/nyc_taxi_benchmarks/forecasting_library_benchmark_real.json` |
+| Synthetic forecasting suite JSON | `docs/assets/nyc_taxi_benchmarks/forecasting_library_suite_synthetic.json` |
+| M4 sample suite JSON | `docs/assets/nyc_taxi_benchmarks/forecasting_m4_suite_sample.json` |
+| Model diagnostic suite JSON | `docs/assets/model_benchmarks/results.json` |
+| Lane acceptance JSON | `docs/assets/lane_level_tests/acceptance_metrics.json` |
 
 ## Claim Rules
 
-A CartoBoost claim requires the CartoBoost row to satisfy the primary metric
-threshold under the same split, comparable feature access, comparable tuning
-budget, and complete baseline set. A missing required baseline makes the
-benchmark incomplete.
+A result is usable as benchmark evidence when it names the dataset, command,
+split, feature policy, models, metrics, and artifact path. It is only a public
+quality claim when the comparison also satisfies the fairness rules in the
+[Fair Benchmarking Program](fair-benchmarking.md): complete required baselines,
+same rows, comparable feature access, no test-set peeking, equal tuning budget,
+and uncertainty or repeatability evidence.
 
-Random splits can show interpolation quality. Public claims about taxi
-deployment need the split that matches deployment risk: out-of-time for future
-demand, spatial holdout for new pickup zones, grouped holdout for new routes or
-lanes, and cold-ID splits when IDs will be unseen.
+Random splits show interpolation. Spatial, grouped, cold-ID, or out-of-time
+splits are the evidence for deployment risk. Synthetic fixtures are useful for
+debugging and feature acceptance, not for real-world superiority claims.
 
-Synthetic fixtures can prove a feature family is wired correctly or catch a
-regression. They cannot prove broad accuracy.

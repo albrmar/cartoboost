@@ -14,7 +14,7 @@
 - Benchmark and validation code should hard-fail when required real inputs are missing or invalid. Avoid silent fallback behavior for geo assets, graph/neural inputs, or benchmark data when that would weaken the claim being tested.
 - Quality claims must come from real runs with exact commands, fixed comparable settings, and recorded metrics. Compare against serious baselines such as LightGBM/XGBoost with the same train/test split and comparable estimator settings.
 - Benchmark-driven model improvements belong in reusable implementation: shared feature generation, validation, training behavior, and native model code. Keep benchmark datasets, split boundaries, model lists, metrics, and acceptance gates stable across reruns.
-- Benchmark refreshes must include the writeup. When committing benchmark artifacts or changed benchmark behavior, update the maintained docs/report narrative in the same commit so readers understand the command, data source, metrics, winner, and why the result is structurally meaningful.
+- Benchmark refreshes must include a real writeup, not just protocol notes. When committing benchmark artifacts or changed benchmark behavior, update the maintained docs/report narrative in the same commit with the exact command, data source, sample size, task/split definitions, model roster, comparable settings, metric breakdown tables, timing breakdown, artifact paths, relevant plots/images, winner or tie interpretation, limitations, and why the result is structurally meaningful.
 
 ## Testing instructions
 - Run `just validate` for full local validation.

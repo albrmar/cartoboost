@@ -1,35 +1,14 @@
 # Model Benchmark Suite
 
-## What It Tests
+## Bottom Line
 
-The model benchmark suite verifies CartoBoost mechanisms on controlled
-workloads before using those mechanisms in real-data benchmarks.
+The model suite is a synthetic diagnostic. It verifies that dense splitters,
+repeated-ID residual features, and graph features are wired and measurable
+before spending time on real taxi benchmarks.
 
-Do not use this page for broad model-superiority claims. Synthetic fixtures
-answer mechanism questions, not deployment questions.
-
-## Diagnostic Questions
-
-| Workload | Question |
-| --- | --- |
-| Dense numeric regression | Does the base booster handle ordinary nonlinear tabular signal? |
-| Repeated-ID regression | Do residual embeddings help only when IDs recur, and do they degrade honestly on cold IDs? |
-| Directed graph regression | Do graph-derived features help when source-target topology is part of the data-generating mechanism? |
-
-## Report
-
-Report:
-
-- generator version and seed list;
-- row count, target definition, and feature families;
-- split type, including random, grouped, cold-ID, or cold-edge variants;
-- every model family attempted and every skipped optional dependency;
-- MAE, RMSE, R2, fit time, prediction time, and prediction throughput;
-- repeated seeds when a result is used to justify a design decision.
-
-Do not compare the best CartoBoost-family row against a single baseline row as
-a public claim. If a report includes a "best-of-family" summary, label it as
-model exploration and also report the individual rows.
+The current maintained run uses seed 42, 2,400 rows, and an 80/20 split. It is
+not a public model-superiority benchmark because it is synthetic and reports a
+best-of-CartoBoost-family comparison.
 
 ## Reproduce
 
@@ -38,22 +17,41 @@ uv run --group bench python scripts/run_model_benchmark_suite.py \
   --output-dir docs/assets/model_benchmarks
 ```
 
-Commit generated artifacts only when they are intentional evidence. Temporary
-runs should write to `target/`.
+Artifacts:
 
-## Allowed Conclusions
+- `docs/assets/model_benchmarks/results.json`
+- `docs/assets/model_benchmarks/results.md`
+- `docs/assets/model_benchmarks/mae_by_model.png`
+- `docs/assets/model_benchmarks/train_time_by_model.png`
+- `docs/assets/model_benchmarks/prediction_throughput_by_model.png`
 
-Allowed:
+## Workload Breakdown
 
-- "The repeated-ID fixture shows embedding gains only on repeated-ID splits."
-- "The graph fixture detects whether train-side topology features are wired."
-- "The dense fixture catches regressions in ordinary tabular behavior."
+| Workload / split | Best diagnostic row | RMSE | LightGBM RMSE | R2 delta vs LightGBM | Read |
+| --- | --- | ---: | ---: | ---: | --- |
+| Dense / random | `cartoboost` | 0.4625 | 0.5080 | +0.0095 | Dense numeric control passes. |
+| Repeated-ID / random | `cartoboost_neural` | 0.4584 | 0.5368 | +0.0265 | Embeddings help when IDs recur. |
+| Repeated-ID / group holdout | `cartoboost` | 0.5387 | 0.5677 | +0.0112 | Cold-ID split favors base behavior. |
+| Graph / random | `graphsage_regressor` | 0.4495 | 0.4987 | +0.0196 | Graph signal is learnable in fixture. |
+| Graph / group holdout | `cartoboost` | 0.5210 | 0.5343 | +0.0057 | Group holdout reduces graph advantage. |
 
-Not allowed:
+## Plots
 
-- "CartoBoost is generally preferable to LightGBM or XGBoost."
-- "The best CartoBoost-family row proves a public benchmark claim."
-- "Synthetic timing predicts production throughput."
+![MAE by model and workload](../assets/model_benchmarks/mae_by_model.png)
 
-Use this suite to decide which model families deserve real-data runs. Do not
-use it as evidence for real-world accuracy.
+![Training time by model and workload](../assets/model_benchmarks/train_time_by_model.png)
+
+![Prediction throughput by model and workload](../assets/model_benchmarks/prediction_throughput_by_model.png)
+
+## Interpretation
+
+Use this page to diagnose mechanisms:
+
+- Dense numeric behavior should be healthy before adding structure.
+- Repeated-ID gains should shrink or disappear on cold-ID holdouts.
+- Graph rows should only help when the target contains graph topology.
+
+Do not use this suite to claim that CartoBoost is generally better than
+LightGBM or XGBoost. That claim requires public datasets, repeated splits,
+equal HPO budgets, and uncertainty estimates.
+
