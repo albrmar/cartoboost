@@ -1,0 +1,12 @@
+{
+  "datasets": [
+    {
+      "id": "ogb_public_graph_tasks_v1",
+      "source": "Open Graph Benchmark task family",
+      "hash": "to_be_frozen",
+      "datasheet": "benchmarks/reports/dataset_card_template.md",
+      "notes": "Use public fixed splits and evaluators where dependency constraints permit."
+    }
+  ]
+}
+

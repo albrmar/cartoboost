@@ -21,6 +21,33 @@ known taxi pickup count. The seasonal naive baseline answers whether a model
 beats yesterday's same-hour pickup pattern, which is often the stronger
 comparison for taxi demand.
 
+## Scientific Role
+
+These models are not weak because they are simple; they are the control group.
+They encode two clear hypotheses:
+
+| Hypothesis | Model | What a scientist learns |
+| --- | --- | --- |
+| Demand persists from the most recent observation. | Naive | Whether short-horizon inertia explains the target. |
+| Demand repeats by a fixed cycle. | Seasonal naive | Whether the calendar phase explains the target without learned parameters. |
+
+Choose naive or seasonal naive when you need an auditable baseline, a leakage
+check, or a minimum bar for a richer model. A model that cannot beat seasonal
+naive on hourly taxi pickup demand is usually not adding useful science; it may
+only be restating a daily cycle with more machinery.
+
+## Assumptions And Failure Modes
+
+Naive assumes the level is locally stable over the forecast horizon. It fails
+when demand is moving into or out of a peak, when a disruption shifts the level,
+or when the last point is an outlier.
+
+Seasonal naive assumes the last completed cycle is representative of the next
+cycle. It fails when the same hour yesterday is not comparable because of
+holidays, weather, airport disruption, event schedules, or a real regime change
+in a pickup or dropoff zone. It also fails quietly when `season_length` does not
+match the data cadence.
+
 ## Single-Series Example
 
 ```python

@@ -1,9 +1,14 @@
 # Neural Embedding Strategy Benchmark
 
-## Research Question
+## Decision Question
 
 Can residual embeddings improve repeated-ID prediction while reducing leakage
 and avoiding false cold-start claims?
+
+The intended answer is narrow. Neural residual embeddings are a specialist
+tool for repeated pickup zones, dropoff zones, lanes, or route IDs that recur
+in production. They are not the default CartoBoost recommendation and they are
+not a substitute for cold-ID validation.
 
 ## Motivation
 
@@ -12,15 +17,13 @@ table. That inflated repeated-ID validation and did not translate cleanly to
 spatial holdouts. The revised strategy adds out-of-fold training, shrinkage,
 multi-key IDs, hierarchical fallback, and graph-aware neighbor fallback.
 
-## Dataset Context
+## Benchmark Context
 
 The strategy is evaluated on two families of benchmarks:
 
 - NYC taxi tasks: duration, fare, and pickup demand with pickup/dropoff zone
   context and spatial holdouts.
 - Synthetic neural-ID tasks: controlled repeated-ID and group-holdout splits.
-
-## Target
 
 The target depends on the benchmark:
 
@@ -38,6 +41,10 @@ The current neural path supports:
 - Multi-key embeddings such as pickup zone, dropoff zone, and lane.
 - Hierarchical fallback IDs.
 - Neighbor-based fallback for graph or spatial adjacency.
+
+These choices make the benchmark more conservative. They should reduce
+train-to-validation leakage even if the headline random-split score gets
+smaller.
 
 ## Results: Before vs After
 
@@ -63,20 +70,19 @@ The current neural path supports:
 | Synthetic neural ID | random | Neural `0.9217` | `0.9217` | Neural still wins where IDs repeat. |
 | Synthetic neural ID | group holdout | LightGBM `0.8875` | `0.7834` | Neural still loses on true cold IDs. |
 
-## Interpretation
+## Scientific Read
 
 The revised strategy reduces leakage risk. The synthetic random score falls
 slightly because out-of-fold embeddings remove some in-sample residual
-memorization. That is a better quality signal, not a regression in the
-benchmark design.
+memorization. That is a better evidence standard, not a benchmark regression.
 
 Use neural embeddings when IDs repeat, residual structure remains after base
 features, and there is a meaningful fallback hierarchy or graph. Do not use
 them as the default when the production problem is true cold-ID prediction.
 
-## Decision
+## Model Choice
 
-Plain CartoBoost remains the safest default. Neural embeddings are an optional
-strategy for repeated-ID residual signal and zone-demand style tasks. Report
-neural results with the split protocol because repeated-ID gains are not
-cold-start generalization.
+Plain CartoBoost remains the safest default. Neural embeddings are optional for
+repeated-ID residual signal and zone-demand style tasks. Report neural results
+with the split protocol because repeated-ID gains are not cold-start
+generalization.

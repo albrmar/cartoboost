@@ -77,12 +77,6 @@ dev = [
     "ruff>=0.6",
     "ty>=0.0.50",
 ]
-docs = [
-    "mkdocs>=1.6,<2",
-    "mkdocs-material>=9.5",
-    "pymdown-extensions>=10.0",
-]
-
 [project.urls]
 Homepage = "https://github.com/theculliganman/cartoboost"
 Repository = "https://github.com/theculliganman/cartoboost"

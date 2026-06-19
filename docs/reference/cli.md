@@ -1,5 +1,14 @@
 # CLI Reference
 
+The `cartoboost` CLI is a dense numeric CSV interface for reproducible training,
+prediction, inspection, and simple evaluation. Use it for command-line evidence
+when the data is already encoded into comparable columns for CartoBoost and
+baseline tools.
+
+The CLI is intentionally narrower than the Python API. For taxi-zone sparse
+sets, graph features, neural residual embeddings, rolling-origin forecasting,
+or leakage-aware split generation, use the Python API and benchmark scripts.
+
 ## `train`
 
 ```sh
@@ -38,6 +47,9 @@ cartoboost eval --model <path> --data <csv> [--output json|csv]
 Computes mean absolute error against the target column stored in the model, or
 the last data column when the model has no target name.
 
+Use `eval` only on a named holdout file. It does not create random,
+out-of-time, spatial, or grouped splits for you.
+
 ## `inspect`
 
 ```sh
@@ -56,6 +68,35 @@ Summarizes model, config, and data inputs without training.
 | `inspect` | `--model`, `--config`, `--data`, `--output`, `--help` |
 
 Unknown options fail fast.
+
+## Reproducible Evaluation Flow
+
+For a CLI-backed comparison, create train and validation CSVs once, then reuse
+them for every model:
+
+```sh
+cartoboost train \
+  --data taxi_train.csv \
+  --config configs/regression.toml \
+  --model-out target/evidence/cartoboost-model.json \
+  --output json
+
+cartoboost predict \
+  --model target/evidence/cartoboost-model.json \
+  --input taxi_validation_features.csv \
+  --predictions-out target/evidence/cartoboost-predictions.csv \
+  --output csv
+
+cartoboost eval \
+  --model target/evidence/cartoboost-model.json \
+  --data taxi_validation_with_target.csv \
+  --output json
+```
+
+Record the split definition, target transformation, row counts, feature
+columns, config file, and output paths with the reported metrics. If LightGBM,
+XGBoost, or another baseline uses a different feature file or split, the result
+is not a fair model-choice comparison.
 
 ## Forecasting Script
 
@@ -104,3 +145,8 @@ Forecast CSVs include `series_id`, `timestamp`, `model`, `horizon`,
 `forecast`, `lower_80`, and `upper_80`. Invalid configs, missing columns,
 unknown model names, and missing artifact directories exit nonzero with a
 message on stderr.
+
+For scientific forecasting comparisons, prefer `compare` or `backtest` over
+manually fitting separate models. Those commands keep the forecast rows aligned
+by `series_id`, `timestamp`, and `horizon`, which is required for honest
+pickup/dropoff lane demand metrics.

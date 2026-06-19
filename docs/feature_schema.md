@@ -1,11 +1,23 @@
 # Feature Schema
 
-Feature schemas tell CartoBoost which columns are ordinary numeric features,
-which dense columns wrap around like time, and which columns are list-valued
-sparse memberships. They are especially useful for temporal-spatial models where
-column roles matter.
+Feature schemas tell CartoBoost what each input column means. That matters for
+taxi-trip science because the same numeric array can contain scalar variables,
+cyclic time, and list-valued geographic memberships. Without a schema, the model
+can still fit, but saved artifacts and future prediction calls have less
+evidence about which feature semantics were intended.
+
+Use a schema when:
+
+- hour, weekday, or season should wrap around rather than behave like a line;
+- pickup/dropoff zones, H3 cells, S2 cells, ZIPs, or route memberships are
+  supplied as sparse lists;
+- you need saved artifacts to validate feature roles at prediction time;
+- you are comparing models and need the feature-generation contract to stay
+  fixed across runs.
 
 ## Compact Python Format
+
+Declare dense features and sparse-set columns separately:
 
 ```python
 schema = {
@@ -34,6 +46,22 @@ model.fit(
 )
 ```
 
+## Modeling Effects
+
+Periodic declarations let splitters treat values near the cycle boundary as
+neighbors. For taxi trips, `hour_of_day=23` and `hour_of_day=0` can be adjacent
+late-night behavior rather than opposite ends of a numeric line.
+
+Sparse-set declarations tell the model that a row can belong to multiple
+scientific groups at once, such as pickup zone, dropoff zone, parent borough,
+grid cell, or route corridor. The model checks membership in the sparse row
+instead of treating those IDs as continuous quantities.
+
+Numeric dense columns remain eligible for numeric and spatial split candidates.
+The current schema does not express named latitude/longitude pairs or richer
+spatial roles; diagonal and Gaussian splitters still work from dense numeric
+feature pairs according to the current candidate search.
+
 ## Saved Schema Format
 
 CartoBoost stores supported schema dictionaries in a compact artifact payload:
@@ -49,32 +77,25 @@ CartoBoost stores supported schema dictionaries in a compact artifact payload:
 
 - Schema length must equal dense feature count plus sparse-set column count.
 - `kind` must be numeric, periodic, or sparse-set.
-- Geographic sparse identifiers can be declared with
-  `zip_sparse_set`, `zip3_sparse_set`, `zone_sparse_set`, `region_sparse_set`,
-  `h3_sparse_set`, or equivalent aliases (`ZipSparseSet`, `ZoneSparseSet`,
-  `RegionSparseSet`, `H3SparseSet`, `GeoSparseSet`, `GeoAbstractSparseSet`).
-  This is suitable for state, zone, county, market, region, and similar ID fields.
-  All listed alias kinds resolve to the underlying sparse-set feature type.
 - Periodic entries require a positive period.
 - Sparse-set entries correspond to sparse columns supplied through
   `sparse_sets=`.
+- Geographic sparse identifiers can be declared with `zip_sparse_set`,
+  `zip3_sparse_set`, `zone_sparse_set`, `region_sparse_set`, `h3_sparse_set`, or
+  equivalent aliases (`ZipSparseSet`, `ZoneSparseSet`, `RegionSparseSet`,
+  `H3SparseSet`, `GeoSparseSet`, `GeoAbstractSparseSet`). These aliases resolve
+  to the underlying sparse-set feature type.
 
 ## Training Behavior
 
 When a schema is present:
 
-- Periodic splitters use declared periods and do not rely on observed values
-  covering a full cycle.
-- Sparse splitters prefer schema-declared sparse-set columns.
-- Numeric dense columns remain eligible for numeric/spatial split candidates.
+- periodic splitters use declared periods and do not rely on observed values
+  covering a full cycle;
+- sparse splitters prefer schema-declared sparse-set columns;
+- numeric dense columns remain eligible for numeric and spatial split
+  candidates.
 
-For example, declaring `hour_of_day` with `period=24` lets `periodic:24` treat
-late-night and early-morning rows as neighboring values. Declaring
-`taxi_zones` as sparse-set tells CartoBoost to use list membership instead of
-expecting a scalar numeric feature.
-
-## Limitations
-
-The current schema does not express named latitude/longitude pairs or richer
-spatial roles. Diagonal and Gaussian splitters still work from dense numeric
-feature pairs according to the current candidate search.
+Keep schema changes out of benchmark reruns unless the feature contract itself
+is the tested change. A changed schema can change the scientific comparison even
+when the raw matrix values are unchanged.

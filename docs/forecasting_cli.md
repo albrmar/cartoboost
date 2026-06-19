@@ -1,6 +1,14 @@
 # Forecasting CLI
 
-The Forecasting V1 CLI is available through:
+The Forecasting V1 CLI is the reproducible command-line surface for taxi
+forecast experiments. Use it when you want the input path, timestamp column,
+target column, panel column, model, horizon, frequency, and artifact directory
+captured in a shell command that can be rerun by another reviewer.
+
+The CLI validates configuration and input shape, then delegates to the Python
+wrapper for the selected Rust native model. It does not run Python fallback
+forecasters. Missing native bindings, unavailable zero-argument wrappers, and
+missing optional dependencies fail clearly.
 
 ```bash
 PYTHONPATH=python uv run python -m cartoboost.forecasting.cli fit \
@@ -20,7 +28,20 @@ Commands are `fit`, `predict`, `backtest`, and `compare`. The script accepts
 `--model`, `--horizon`, `--season-length`, `--output`, `--artifact-dir`, and
 `--config`.
 
-Accepted CLI model names are:
+## Choosing A CLI Workflow
+
+Use `fit` for a single declared model and artifact. Use `backtest` when the
+question is comparative evidence across rolling-origin folds. Use `compare`
+when several accepted model names should be evaluated under the same command
+shape. Use `predict` when reading an existing artifact or model state through
+the supported native path.
+
+For benchmark-style claims, keep the command stable and record the exact command
+with RMSE, MAE, R2 when applicable, training time, prediction time, sample size,
+task name, split name, and whether the data were synthetic, generated acceptance
+data, or real taxi benchmark data.
+
+## Accepted Model Names
 
 | Model | CLI coverage |
 | --- | --- |
@@ -54,13 +75,14 @@ provided, but it is not a zero-argument CLI model.
 comma-separated list such as `--model theta,sarimax,conformal_forecaster` is
 also valid for `compare`.
 
-The CLI does not run Python fallback forecasters. It validates configuration and
-input shape, then delegates to the Python wrapper for the selected Rust native
-model. If the corresponding `cartoboost._native` binding is not present, the
-command exits nonzero and prints a `Rust binding ... is not available` error.
-If the model name is accepted for Forecasting V1 but has no zero-argument CLI
-wrapper yet, `fit` exits nonzero and reports that the CLI wrapper is unavailable.
+## Failure Semantics
 
-`predict`, `backtest`, and `compare` also require Rust-side forecasting artifact,
-backtest, and comparison bindings. If a required binding is absent, these
-commands fail clearly rather than writing synthetic forecast CSVs or metrics.
+If the corresponding `cartoboost._native` binding is not present, the command
+exits nonzero and prints a `Rust binding ... is not available` error. If the
+model name is accepted for Forecasting V1 but has no zero-argument CLI wrapper
+yet, `fit` exits nonzero and reports that the CLI wrapper is unavailable.
+
+`predict`, `backtest`, and `compare` also require Rust-side forecasting
+artifact, backtest, and comparison bindings. If a required binding is absent,
+these commands fail clearly rather than writing synthetic forecast CSVs or
+metrics.

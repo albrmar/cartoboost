@@ -1,7 +1,23 @@
 # Python API Reference
 
 This page lists the public Python entry points used to fit, evaluate, explain,
-and save CartoBoost regression, standalone graph, and standalone neural models.
+and save CartoBoost regression, forecasting, standalone graph, and standalone
+neural models.
+
+Use it with the [Evaluation Protocol](../evaluation_protocol.md). The API is
+organized around scientific model choice: fit the same train split as the
+baselines, predict the same validation rows, compute the same metrics, and keep
+artifacts that make the comparison reproducible.
+
+## Model-Choice Map
+
+| Need | Primary entry points | Evidence to collect |
+| --- | --- | --- |
+| Taxi fare or duration regression | `CartoBoostRegressor`, `FeatureSchema`, sparse zone sets | RMSE, MAE, R2 on random and spatial pickup-zone holdouts. |
+| Pickup/dropoff demand forecasting | `ForecastFrame`, `CartoBoostLagForecaster`, splitters, backtester | Rolling-origin or out-of-time RMSE, MAE, WAPE, horizon metrics. |
+| Repeated-ID residual signal | `NeuralEmbeddingRegressor`, `benchmark_neural_vs_cartoboost` | Repeated-ID and cold-ID splits, with out-of-fold embeddings when possible. |
+| Pickup/dropoff topology | `cartoboost.graph`, standalone graph regressors, graph feature transformers | Same train-side graph construction for all rows, plus grouped or cold-source validation. |
+| Diagnostics and intervals | evaluation helpers, SHAP helpers, kriging diagnostics | Residual spatial autocorrelation, interval coverage, and residual summaries by zone/hour. |
 
 ## `cartoboost.CartoBoostRegressor`
 
@@ -51,10 +67,18 @@ CartoBoostRegressor(
 dataframe-style objects. Install `cartoboost[duckdb]` to pass DuckDB relations
 directly, or `cartoboost[polars]` for Polars inputs.
 
+For benchmark comparisons, call `fit` only on the training indices from the
+chosen split and call `predict` only on the matching validation indices. If
+CartoBoost receives pickup/dropoff zone, hour, distance, or target-mean
+features, provide comparable encoded columns to LightGBM, XGBoost, or other
+baselines before interpreting a quality delta.
+
 ## `cartoboost.forecasting`
 
 Forecasting APIs validate timestamped inputs, produce deterministic forecast
 tables, and provide leakage-safe evaluation for single-series and panel data.
+Use these APIs when the question is future pickup/dropoff demand rather than
+row-level fare or duration prediction.
 
 Core schema:
 
@@ -90,6 +114,11 @@ Evaluation and persistence:
 | `ForecastArtifact` / `ForecastArtifactManifest` | JSON manifest plus CSV or Parquet forecast persistence. |
 | `ForecastingConfig` | Strict TOML config parsing for forecast runs. |
 
+For honest forecasting evidence, prefer `RollingOriginBacktester` or an
+explicit future holdout over random row splits. Keep `series_id`, `timestamp`,
+and `horizon` in the forecast table so CartoBoost and external tools can be
+scored on the same lane/date rows.
+
 ## `cartoboost.NeuralEmbeddingRegressor`
 
 ```python
@@ -121,12 +150,18 @@ features and trains a tabular model on the expanded matrix.
 
 Set `oof_folds > 1` to train final-model embedding columns out of fold. Use
 `support_prior_strength` to shrink rare IDs more strongly toward their prior.
+Report neural results with both repeated-ID and cold-ID validation. A random
+split gain is not evidence of cold pickup-zone, dropoff-zone, lane, or route
+generalization.
 
 ## General Utilities
 
 Rust-backed utilities independent of the regressor and forecasting model APIs:
 
 See [General Utilities](../general_utilities.md) for complete examples.
+These helpers are useful for diagnostics and baselines, but quality claims
+still need the same split, target transformation, and metric definitions as the
+main model comparison.
 
 | Entry point | Purpose |
 | --- | --- |
@@ -170,6 +205,11 @@ The `cartoboost.graph` package contains standalone graph models, link
 predictors, and graph-feature helpers. Use standalone classes for direct
 modeling; use `GraphFeatureTransformer` only when you want dense and sparse
 graph inputs for another estimator.
+
+For taxi source-target modeling, build graph features from train-side
+pickup/dropoff relationships when validation lanes or timestamps must remain
+unseen. If validation edges leak into topology construction, label the result as
+transductive rather than a deployment holdout.
 
 | Entry point | Purpose |
 | --- | --- |
@@ -245,6 +285,8 @@ Returns:
 - `neural_predict_ms` (reported as `hybrid_predict_ms` in the current helper payload)
 
 Use this helper for quick, deterministic smoke comparisons on a held-out split.
+For publishable evidence, replace the helper's simple split with the blocked
+or cold-ID split that matches the deployment question.
 
 ## `cartoboost.FeatureSchema`
 
@@ -286,6 +328,10 @@ recent training rows immediately before the validation window.
 Use these helpers to evaluate temporal-spatial generalization: future periods,
 withheld locations, or held-out route groups often reveal failure modes that a
 random split hides.
+
+Use the returned indices for every model in the comparison. The split is part
+of the experiment definition and should be stored with benchmark artifacts or
+reconstructed from a named command and seed.
 
 ## I/O Helpers
 

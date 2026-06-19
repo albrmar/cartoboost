@@ -1,12 +1,14 @@
 # Taxi Zone Acceptance Benchmark
 
-## Research Question
+## Decision Question
 
-Can the model recover the four taxi-lane signals it is designed to represent:
-lane membership, route geometry, hour-of-day periodicity, and combined
-geographic-temporal structure?
+Before using real NYC taxi metrics as evidence, can the implementation express
+the taxi-lane structures it claims to model: lane membership, route geometry,
+hour-of-day periodicity, and combined geographic-temporal effects?
 
-This is an acceptance test, not a production accuracy benchmark.
+This is an acceptance test. It is useful for catching feature regressions and
+for explaining why a model family is plausible. It is not evidence that
+CartoBoost is more accurate on real TLC data.
 
 ## Dataset
 
@@ -19,12 +21,10 @@ The fixture is deterministic and shaped like a small taxi-lane dataset:
   hour, route midpoint, and trip distance.
 - No hidden simulator metadata is passed into training.
 
-## Targets
-
 The target is synthetic lane demand or route intensity. Each phase isolates a
 different source of signal so the result can be attributed to a feature family.
 
-## Features Tested
+## Feature Contracts
 
 | Phase | Feature family | Question |
 | --- | --- | --- |
@@ -33,7 +33,7 @@ different source of signal so the result can be attributed to a feature family.
 | Wraparound lane hour | Hour-of-day periodicity. | Can 23:00 and 01:00 be treated as close in time? |
 | Regional lane boosting | Combined lane, spatial, temporal features. | Does the combined feature set improve holdout RMSE? |
 
-## Command
+## Reproduce
 
 ```sh
 uv run python scripts/run_lane_level_acceptance_metrics.py
@@ -53,7 +53,7 @@ Each phase reports an RMSE or inspection margin specific to the signal being
 tested. Acceptance gates are binary checks that the targeted feature family
 behaves as expected.
 
-## Results
+## Current Result
 
 The generated acceptance report shows:
 
@@ -65,12 +65,16 @@ The generated acceptance report shows:
 - The combined lane/spatial/temporal model reduces holdout RMSE from 12.68 to
   4.86 on the deterministic regional lane fixture.
 
-## Interpretation
+## Scientific Read
 
-The check proves that the model can express the specific feature contracts
-needed by taxi-lane data. It does not prove real-world forecast accuracy. Use
-the NYC taxi benchmark for real-data evidence and this acceptance fixture for
-debugging whether the feature families work at all.
+This fixture validates feature contracts, not production accuracy. Passing it
+means the model can represent structures that appear in pickup/dropoff lane
+data. Failing it means a real-data benchmark result would be hard to interpret,
+because the implementation could be missing the very feature family being
+tested.
+
+Use the NYC taxi benchmark for real-data model choice. Use this page to debug
+why a taxi-zone feature family is or is not working.
 
 ## Limitations
 

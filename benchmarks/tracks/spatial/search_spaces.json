@@ -1,0 +1,8 @@
+{
+  "search_spaces": [
+    {"model_family": "cartoboost", "budget": "standard", "parameters": ["n_estimators", "learning_rate", "max_depth", "min_samples_leaf", "splitters", "zone_treatment"]},
+    {"model_family": "gbdt_spatial_baseline", "budget": "standard", "parameters": ["n_estimators", "learning_rate", "max_depth", "subsample", "train_only_target_encodings"]},
+    {"model_family": "deep_or_metric_baseline", "budget": "standard", "parameters": ["embedding_dim", "layers", "dropout", "learning_rate", "weight_decay"]}
+  ]
+}
+

@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 560">
+  <rect width="760" height="560" fill="#111A2B"/>
+  <g stroke="#9DB0C9" stroke-width="1" opacity=".22">
+    <path d="M40 80h680M40 160h680M40 240h680M40 320h680M40 400h680M40 480h680"/>
+    <path d="M80 40v480M160 40v480M240 40v480M320 40v480M400 40v480M480 40v480M560 40v480M640 40v480"/>
+  </g>
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M94 415C170 300 248 340 318 230S468 80 638 150" stroke="#27C2B5" stroke-width="12"/>
+    <path d="M118 210C220 130 320 172 392 292S545 450 654 352" stroke="#65C9FF" stroke-width="7" opacity=".75"/>
+    <path d="M140 472C265 395 300 420 388 352S515 260 628 276" stroke="#FFB454" stroke-width="6" opacity=".8"/>
+  </g>
+  <g font-family="JetBrains Mono, monospace" font-size="22">
+    <text x="52" y="60" fill="#9DB0C9">PULocationID</text>
+    <text x="522" y="520" fill="#9DB0C9">DOLocationID</text>
+    <text x="388" y="118" fill="#27C2B5">periodic:24</text>
+    <text x="90" y="516" fill="#FFB454">rolling holdout</text>
+  </g>
+  <g>
+    <circle cx="94" cy="415" r="13" fill="#FFB454"/>
+    <circle cx="318" cy="230" r="11" fill="#27C2B5"/>
+    <circle cx="638" cy="150" r="13" fill="#65C9FF"/>
+    <circle cx="392" cy="292" r="10" fill="#65C9FF"/>
+    <circle cx="628" cy="276" r="10" fill="#FFB454"/>
+  </g>
+  <rect x="34" y="34" width="692" height="492" rx="8" fill="none" stroke="#9DB0C9" opacity=".24"/>
+</svg>

@@ -1,9 +1,15 @@
 # Forecasting Models
 
-CartoBoost forecasting models are owned by the Rust implementation. The Python
-classes under `cartoboost.forecasting.local`,
+CartoBoost forecasting models are native Rust implementations exposed through
+thin Python wrappers. Use this page as the compact implementation map. For
+model-selection guidance, scientific assumptions, failure modes, taxi examples,
+and validation patterns, use the standalone
+[forecasting model guides](user-guide/forecasting-models/index.md).
+
+Python classes under `cartoboost.forecasting.local`,
 `cartoboost.forecasting.global_models`, and `cartoboost.forecasting.ensemble`
 validate parameters and delegate model execution to `cartoboost._native`.
+Python does not provide fallback forecasting algorithms for unsupported modes.
 
 The Forecasting V1 Python surface has native PyO3 training/prediction bindings
 for these model names:
@@ -20,20 +26,40 @@ for these model names:
 - `cartoboost_lag`
 - `weighted_ensemble`
 
-Implemented scope:
+## Implemented Scope
 
-- `ets` is Rust additive ETS with optional additive seasonality.
-- `arima` is Rust ARIMA(p,d,q) over bounded non-seasonal orders.
-- `auto_arima` is Rust AutoARIMA over bounded ARIMA(p,d,q) candidates.
-- `kalman` is a Rust local-linear-trend state-space model.
-- `kriging` is a Rust ordinary-kriging panel forecaster over explicit series
-  coordinates.
-- `weighted_ensemble` is a native PyO3 class that requires explicit native
-  component models; it is not a zero-argument CLI/default-registry model.
+| Native model | Guide | Implemented scope | Choose scientifically when |
+| --- | --- | --- | --- |
+| `naive` | [Naive And Seasonal Naive](user-guide/forecasting-models/naive-seasonal.md) | Repeats the latest observed value. | Persistence is the control hypothesis. |
+| `seasonal_naive` | [Naive And Seasonal Naive](user-guide/forecasting-models/naive-seasonal.md) | Repeats values from the latest completed season. | Same-hour or same-weekday repetition is the control hypothesis. |
+| `theta` | [Theta](user-guide/forecasting-models/theta.md) | Manual theta and smoothing parameters, with optional seasonal adjustment. | Level and trend extrapolation should explain the next horizons. |
+| `optimized_theta` | [Theta](user-guide/forecasting-models/theta.md) | Deterministic native grid search over theta and alpha candidates. | A small reproducible trend grid is preferable to manual settings. |
+| `ets` | [ETS](user-guide/forecasting-models/ets.md) | Additive ETS with optional additive seasonality. | Smoothed level, additive trend, and additive seasonal state are interpretable. |
+| `arima` | [ARIMA And AutoARIMA](user-guide/forecasting-models/arima.md) | ARIMA(p,d,q) over bounded non-seasonal orders. | Recent autocorrelation and differencing explain one local series. |
+| `auto_arima` | [ARIMA And AutoARIMA](user-guide/forecasting-models/arima.md) | Deterministic bounded search over non-seasonal ARIMA(p,d,q) candidates. | You need reproducible local order search before held-out validation. |
+| `kalman` | [Kalman](user-guide/forecasting-models/kalman.md) | Local-linear-trend state-space model. | Observations are noisy measurements of latent level and trend. |
+| `kriging` | [Kriging](user-guide/forecasting-models/kriging.md) | Ordinary-kriging panel forecaster over explicit series coordinates. | Nearby zones or route coordinates should borrow spatial signal. |
+| `cartoboost_lag` | [CartoBoost Lag](user-guide/forecasting-models/cartoboost-lag.md) | Supervised native lag, rolling, calendar, trend, and CartoBoost regressor workflow. | Many related panels should share one leakage-safe lag model. |
+| `weighted_ensemble` | [Weighted Ensembles](user-guide/forecasting-models/ensembles.md) | Native PyO3 class requiring explicit native component models and weights. | Validated components make complementary errors under the same split. |
 
-Python does not provide fallback forecasting algorithms for unsupported modes.
 Unsupported multiplicative ETS, damped ETS, and seasonal AutoARIMA fail
 explicitly.
+
+`weighted_ensemble` is not a zero-argument CLI/default-registry model. Its
+component models and weights must be named explicitly.
+
+## Validation Expectations
+
+For forecasting claims, use time-ordered or rolling-origin splits with the same
+train/test rows across candidates. Start with naive and seasonal naive
+baselines, add the local or global model whose assumptions match the signal,
+and report RMSE, MAE, horizon, split dates, training time, prediction time,
+model settings, sample size, and whether the data is real taxi data, generated
+acceptance data, or synthetic.
+
+Do not treat deterministic examples, generated visualization fixtures, or
+Criterion speed benchmarks as real quality evidence. They are useful for API,
+plotting, and implementation smoke checks.
 
 General utilities now exposed outside `cartoboost.forecasting`:
 
@@ -55,6 +81,7 @@ wrappers can be exposed:
 - `dynamic_regression`: no Rust/PyO3 forecasting class is exposed.
 - `mstl_ets`, `stl_arima`: no Rust/PyO3 decomposition-hybrid forecasting
   classes are exposed.
+
 Example:
 
 ```python

@@ -18,6 +18,32 @@ pickup-zone geometry, dropoff-zone relationships, road distance, or graph
 structure. Compare it against seasonal naive and lag-feature models on the same
 rolling-origin folds before using it as a production benchmark.
 
+## Scientific Role
+
+Theta is a low-dimensional extrapolator. It asks whether the future can be
+explained by a smoothed level plus a controlled trend component, optionally
+after applying a simple seasonal adjustment. That makes it useful when a
+scientist wants a transparent trend baseline before moving to richer
+autocorrelation, state-space, or supervised lag models.
+
+Choose theta when the research question is close to: "Does recent taxi demand
+continue its local direction?" It is especially useful for short windows where
+a large lag model would have too few examples, but where naive persistence is
+too flat.
+
+## Assumptions And Failure Modes
+
+Theta assumes that extrapolated level and trend are meaningful over the chosen
+horizon. It can fail when demand changes because of known future events,
+weather, operational disruptions, or spatial spillover that is not present in
+the univariate history. Seasonal theta also assumes the configured season length
+matches the row cadence and that enough full cycles exist to estimate a stable
+seasonal adjustment.
+
+Failure is usually visible as a forecast that keeps climbing after a plateau,
+stays too flat during a ramp, or reproduces the wrong seasonal phase. Treat
+those patterns as evidence about model mismatch, not as reasons to tune by eye.
+
 ## Models
 
 | Model | Use when |

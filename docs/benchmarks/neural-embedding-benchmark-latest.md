@@ -1,9 +1,13 @@
 # Neural Embedding Benchmark
 
-## Research Question
+## Decision Question
 
 When does neural residual embedding improve prediction quality, and when does
 it fail because validation IDs were not observed during training?
+
+This benchmark isolates ID behavior in a controlled geographic-ID fixture. Use
+it to decide whether neural residual embeddings deserve a real taxi benchmark,
+not to make broad geographic modeling claims.
 
 ## Dataset
 
@@ -18,8 +22,6 @@ The benchmark uses a deterministic synthetic geographic-ID regression fixture:
 - Split modes: random, temporal blocked, geographic blocked, tail, cold origin,
   and cold destination.
 
-## Target
-
 The target is a continuous regression outcome with dense feature signal plus an
 ID-specific residual component. The residual component is intentionally useful
 when IDs repeat and unreliable when IDs are cold.
@@ -30,7 +32,7 @@ The baseline model receives dense numeric features. The hybrid model receives
 the same dense features plus neural residual embeddings keyed by origin or
 destination ID depending on the scenario.
 
-## Command
+## Reproduce
 
 ```sh
 uv run python scripts/run_neural_embedding_benchmark.py \
@@ -42,7 +44,7 @@ uv run python scripts/run_neural_embedding_benchmark.py \
 MAE is the primary quality metric. Fit and prediction milliseconds are reported
 as operating-cost context.
 
-## Results
+## Current Result
 
 | Scenario | ID key | Train | Test | Base MAE | Hybrid MAE | MAE improvement |
 | --- | --- | ---: | ---: | ---: | ---: | ---: |
@@ -62,15 +64,22 @@ Aggregate summary:
 - Best improvement: `0.2322`
 - Worst change: `-0.0157`
 
-## Interpretation
+## Scientific Read
 
 The hybrid model improves strongly when validation rows reuse useful ID
 structure: random, tail, temporal-blocked, and geo-blocked splits. The cold
-origin split is the warning case. When the validation IDs have no training
-history, embeddings can underperform the structured baseline.
+origin split is the warning case. When validation IDs have no training history,
+embeddings can underperform the structured baseline.
 
 The correct conclusion is split-specific: neural residual embeddings are useful
 for repeated-ID residual signal, not a guarantee of cold-start generalization.
+
+## Model Choice
+
+Use neural residual embeddings only when the production problem resembles the
+repeated-ID splits: recurring pickup zones, dropoff zones, lanes, drivers,
+routes, or cells with enough training support. Require cold-origin or
+cold-destination validation when deployment will see unseen IDs.
 
 ## Limitations
 

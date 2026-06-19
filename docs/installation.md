@@ -2,6 +2,12 @@
 
 CartoBoost is published on PyPI as `cartoboost`.
 
+Install CartoBoost when you need to compare temporal-spatial regressors,
+native forecasting models, graph/neural variants, or reproducible benchmark
+workflows in a Python environment. The core package is enough for NumPy and
+pandas-style modeling; optional extras add integrations without changing the
+Rust-backed modeling contracts.
+
 ## Install From PyPI
 
 ```sh
@@ -19,7 +25,7 @@ the project build toolchain.
 
 ## Optional Extras
 
-Install optional integrations with extras:
+Install optional integrations only when the scientific workflow needs them:
 
 ```sh
 uv add "cartoboost[explain]"
@@ -31,15 +37,15 @@ uv add "cartoboost[polars]"
 uv add "cartoboost[onnx]"
 ```
 
-| Extra | Adds |
-| --- | --- |
-| `explain` | SHAP explanations. |
-| `h3` | Optional H3 latitude/longitude encoder. |
-| `s2` | Optional S2 latitude/longitude encoder. |
-| `duckdb` | DuckDB relation/query-result input support. |
-| `optuna` | Hyperparameter tuning examples and workflows. |
-| `polars` | Polars input support. |
-| `onnx` | ONNX export for the supported dense axis-tree subset. |
+| Extra | Adds | Use when |
+| --- | --- | --- |
+| `explain` | SHAP explanations. | You need feature-attribution diagnostics for a fitted regressor. |
+| `h3` | Optional H3 latitude/longitude encoder. | Spatial cells are part of the tested feature design. |
+| `s2` | Optional S2 latitude/longitude encoder. | S2 cells match the existing geography pipeline. |
+| `duckdb` | DuckDB relation/query-result input support. | Taxi training data already lives in DuckDB queries. |
+| `optuna` | Hyperparameter tuning examples and workflows. | You are tuning under a fixed validation protocol. |
+| `polars` | Polars input support. | Data preparation uses Polars tables. |
+| `onnx` | ONNX export for the supported dense axis-tree subset. | Deployment requires ONNX and the model stays inside the supported subset. |
 
 ## Verify The Install
 

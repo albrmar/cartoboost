@@ -31,6 +31,35 @@ coordinates should smooth nearby pickup zones. Prefer seasonal naive, ETS, or
 Theta when daily or weekly seasonality dominates and the non-seasonal ARIMA
 scope is too narrow.
 
+## Scientific Role
+
+ARIMA is a local serial-dependence model. It is the right scientific choice
+when the hypothesis is that a single taxi series can be forecast from its own
+recent values, its recent errors, and a bounded amount of differencing. It does
+not explain the series with geography, shared panel behavior, or known future
+covariates.
+
+Choose fixed ARIMA when the order is part of the experiment or has already been
+validated. Choose AutoARIMA when you want a reproducible bounded search over
+non-seasonal `(p, d, q)` candidates, then still choose the deployed model by
+held-out or rolling-origin error.
+
+## Assumptions And Failure Modes
+
+ARIMA assumes the differenced series is stable enough for short-range
+autoregressive and moving-average terms to be useful. It can fail when the
+dominant signal is deterministic seasonality, known calendar effects, sudden
+interventions, spatial spillover, or cross-series learning.
+
+Common failure modes in taxi data are easy to diagnose:
+
+| Failure mode | Scientific interpretation | Comparison to run |
+| --- | --- | --- |
+| Forecast is too flat across a ramp. | Differencing/order choice is not preserving local movement. | Kalman, theta, or `d=1` candidates. |
+| Residuals repeat by hour of day. | Non-seasonal ARIMA is missing a seasonal mechanism. | Seasonal naive, ETS, or lag features with calendar terms. |
+| One lane fits well and another fails. | Local orders do not transfer across lane regimes. | Per-lane validation or a global lag model. |
+| AutoARIMA metadata wins but holdout loses. | Fitted residual scoring is not the deployment objective. | Fixed rolling-origin splits. |
+
 ## Model Surface
 
 | Model | Import | Use when |

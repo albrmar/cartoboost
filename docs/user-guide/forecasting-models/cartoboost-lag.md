@@ -19,6 +19,32 @@ Kalman instead. The lag model is most useful when repeated structure across
 zones or lanes gives the global regressor more examples than any one series can
 provide.
 
+## Scientific Role
+
+`CartoBoostLagForecaster` is a supervised panel model. It tests whether a
+shared nonlinear mapping from historical lags, rolling summaries, calendar
+features, trend features, and panel identity can forecast many related taxi
+series better than local models fit one series at a time.
+
+Choose it when the scientific unit is a system of related zones or lanes, not a
+single isolated sequence. It is appropriate when repeated behavior across
+`PULocationID`, `DOLocationID`, or pickup/dropoff lanes gives the model more
+evidence than any one series contains.
+
+## Assumptions And Failure Modes
+
+The model assumes historical features are constructed strictly before the
+forecast row and that panel histories are aligned at the declared frequency.
+It also assumes the configured lags and rolling windows represent mechanisms a
+scientist is willing to defend, such as same-hour-yesterday demand, recent
+pickup pressure, or weekly recurrence.
+
+Failure modes are usually leakage, under-specified features, or overfit tree
+settings. Random row splits leak future taxi patterns. Lags that do not match
+the cadence can look plausible while answering the wrong question. A global
+model can also hide poor behavior for sparse or atypical zones, so report
+error by horizon and by zone or lane in addition to aggregate RMSE and MAE.
+
 ## DataFrame Example
 
 ```python

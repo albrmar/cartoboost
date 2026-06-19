@@ -1,15 +1,30 @@
 # Sparse Features
 
-CartoBoost supports list-valued sparse columns. Each row can contain zero or
-more non-negative integer IDs for pickup zones, dropoff zones, encoded H3 cells,
-grid cells, corridors, or other memberships.
+Sparse features are list-valued columns. Each row can contain zero or more
+non-negative integer IDs for pickup zones, dropoff zones, H3 cells, S2 cells,
+ZIP hierarchies, route corridors, or other memberships.
 
-This is useful when a temporal-spatial row belongs to several places at once,
-such as both pickup and dropoff zones for a taxi trip. A generic tabular model usually
-needs a wide one-hot or hashing step for this data; CartoBoost can consume the
-lists directly.
+They help when a taxi observation belongs to several scientific groups at once.
+A trip can be a member of a pickup zone, a dropoff zone, a pickup borough, a
+dropoff borough, an airport corridor, and a spatial cell hierarchy. Treating
+those memberships as a scalar numeric value would imply an artificial ordering;
+expanding them into a large one-hot matrix can be wasteful. CartoBoost consumes
+the lists directly.
 
-## Python API
+Use sparse sets for:
+
+- pickup/dropoff zone membership;
+- route or corridor tags;
+- parent geographic hierarchies such as ZIP5 to ZIP3 or H3/S2 parents;
+- multi-scale spatial context around pickup and dropoff coordinates;
+- experimental feature blocks that should remain distinct from dense numeric
+  coordinates or distances.
+
+Sparse sets are feature generation, not standalone models. They become part of
+the `CartoBoostRegressor` training data and must be supplied again at prediction
+time if the fitted model learned sparse-list splits.
+
+## Basic API
 
 ```python
 taxi_zones = [[132, 138], [161], [236], []]
@@ -26,47 +41,21 @@ pred = model.predict(
 )
 ```
 
-Zone features can be expanded into geographic sparse-columns with explicit
-pickup/dropoff roles:
+Routing checks membership in the sparse row, not a dense one-hot expansion:
 
-```python
-from cartoboost import build_zip_sparse_sets
-
-zip_sparse_sets = build_zip_sparse_sets(
-    origin_zip=["11430", "10019"],  # pickup ZIP
-    destination_zip=["10001", "11371"],  # dropoff ZIP
-    parent_prefixes=(3, 2),
-)
-
-schema = {
-    "dense": [{"name": "distance_m", "kind": "numeric"}],
-    "sparse_sets": [
-        {"name": "ozip_zip5", "kind": "zip_sparse_set"},  # pickup ZIP
-        {"name": "ozip_zip_p3", "kind": "zip_sparse_set"},  # pickup ZIP3
-        {"name": "dzip_zip5", "kind": "zip_sparse_set"},  # dropoff ZIP
-        {"name": "dzip_zip_p3", "kind": "zip3_sparse_set"},  # dropoff ZIP3
-    ],
-}
-
-model.fit(
-    X_dense,
-    y,
-    sparse_sets=zip_sparse_sets,
-    feature_schema=schema,
-)
-
-# Emit only ZIP3 hierarchy columns
-zip3_only_sparse_sets = build_zip_sparse_sets(
-    origin_zip=["11430", "10019"],  # pickup ZIP
-    destination_zip=["10001", "11371"],  # dropoff ZIP
-    zip3_only=True,
-)
+```mermaid
+flowchart TD
+    R["Sparse row IDs"] --> Q{"Contains any split ID?"}
+    Q -- yes --> L["Route left"]
+    Q -- no --> N["Route right"]
 ```
 
-## Abstract Geo IDs
+Empty rows and unseen IDs route as no match. Duplicate row IDs are sorted and
+deduplicated before training, so duplicates do not change the route.
 
-Arbitrary geo-id features like pickup/dropoff zones can be mapped directly into
-sparse columns:
+## Geographic IDs
+
+Arbitrary geographic labels can be mapped into stable sparse IDs:
 
 ```python
 from cartoboost import build_geo_sparse_sets
@@ -76,47 +65,55 @@ geo_sparse_sets = build_geo_sparse_sets(
         "pickup_zone": ["Z1", "Z2", "Z3"],
         "dropoff_zone": ["D1", "D2", "D3"],
     },
-    namespace="market_a",
+    namespace="nyc_taxi",
 )
-```
-
-State, county, region, market, and zone features use the same path:
-
-```python
-state_geo_sparse_sets = build_geo_sparse_sets(
-    {
-        "state": ["CA", "NY", "CA", "TX"],
-        "region": ["NORTH", "NORTHEAST", "WEST", "SOUTH"],
-    },
-    namespace="policy",
-)
-```
-
-Pass these through `sparse_sets=` and declare each column as a sparse-set kind:
-
-```python
-schema = {
-    "dense": [{"name": "distance_m", "kind": "numeric"}],
-    "sparse_sets": [
-        {"name": "pickup_zone", "kind": "zone_sparse_set"},
-        {"name": "delivery_zone", "kind": "region_sparse_set"},
-        {"name": "state", "kind": "geo_sparse_set"},
-        {"name": "region", "kind": "zone_sparse_set"},
-    ],
-}
 ```
 
 `build_geo_sparse_sets` is deterministic: the `(namespace, column_name, value)`
 triple is hashed to a stable non-negative feature ID, so repeated labels map to
 the same ID.
 
-Validation rules:
+Declare each sparse column in the schema so artifacts preserve the intended
+role:
 
-- Each sparse column must have the same row count as `X` and `y` during fit.
-- Each sparse prediction column must have the same row count as `X`.
-- IDs must be non-negative integers.
-- Duplicate IDs in a row are sorted and deduplicated before training.
-- A model that learned sparse-list splits requires `sparse_sets=` for prediction.
+```python
+schema = {
+    "dense": [{"name": "distance_m", "kind": "numeric"}],
+    "sparse_sets": [
+        {"name": "pickup_zone", "kind": "zone_sparse_set"},
+        {"name": "dropoff_zone", "kind": "zone_sparse_set"},
+    ],
+}
+```
+
+## ZIP And Hierarchy Features
+
+Zone features can be expanded into geographic sparse columns with explicit
+pickup/dropoff roles:
+
+```python
+from cartoboost import build_zip_sparse_sets
+
+zip_sparse_sets = build_zip_sparse_sets(
+    origin_zip=["11430", "10019"],
+    destination_zip=["10001", "11371"],
+    parent_prefixes=(3, 2),
+)
+```
+
+Example schema:
+
+```python
+schema = {
+    "dense": [{"name": "distance_m", "kind": "numeric"}],
+    "sparse_sets": [
+        {"name": "ozip_zip5", "kind": "zip_sparse_set"},
+        {"name": "ozip_zip_p3", "kind": "zip_sparse_set"},
+        {"name": "dzip_zip5", "kind": "zip_sparse_set"},
+        {"name": "dzip_zip_p3", "kind": "zip3_sparse_set"},
+    ],
+}
+```
 
 ## H3 Sparse Helpers
 
@@ -127,27 +124,9 @@ CartoBoost:
 uv add "cartoboost[h3]"
 ```
 
-`FeatureSchema` accepts sparse entries with `kind="h3_sparse_set"` plus H3
-metadata:
-
-```python
-schema = FeatureSchema(
-    dense=[("distance_m", "numeric")],
-    sparse_sets=[
-        {
-            "name": "pickup_h3",
-            "kind": "h3_sparse_set",
-            "resolution": 9,
-            "parent_resolutions": [5, 7],
-        },
-    ],
-)
-```
-
-Saved schema metadata keeps the H3 resolution fields for callers and fitted
-estimator metadata.
-
-Use `build_h3_sparse_sets` to produce sparse-set rows from coordinate columns:
+Use H3 when the scientific feature should be a spatial cell hierarchy rather
+than a named taxi zone. This is useful for pickup/dropoff coordinates, dense
+urban hotspots, and multi-resolution neighborhood effects.
 
 ```python
 from cartoboost import build_h3_sparse_sets
@@ -160,8 +139,22 @@ h3_sparse_sets = build_h3_sparse_sets(
     resolution=9,
     parent_resolutions=[5, 7],
 )
+```
 
-model.fit(X_dense, y, sparse_sets=h3_sparse_sets, feature_schema=schema)
+`FeatureSchema` accepts H3 sparse entries with resolution metadata:
+
+```python
+schema = {
+    "dense": [{"name": "distance_m", "kind": "numeric"}],
+    "sparse_sets": [
+        {
+            "name": "pickup_h3",
+            "kind": "h3_sparse_set",
+            "resolution": 9,
+            "parent_resolutions": [5, 7],
+        },
+    ],
+}
 ```
 
 `cartoboost.h3.normalize_h3_id` accepts non-negative integer IDs plus decimal or
@@ -192,6 +185,9 @@ Install the optional S2 extra for S2 cell encoding:
 uv add "cartoboost[s2]"
 ```
 
+Use S2 for spatial cell features when your data pipeline or scientific
+comparison is already based on S2 cell IDs.
+
 ```python
 from cartoboost import build_s2_sparse_sets
 
@@ -221,32 +217,15 @@ Rust-backed S2 rules:
 - Sparse rows are sorted and deduplicated natively before they are returned to
   the estimator.
 
-## Routing Semantics
+## Validation Rules
 
-The dataset stores dense values and sparse-set columns separately. Sparse split
-candidates check membership against the sparse row, not a dense one-hot
-expansion.
+- Each sparse column must have the same row count as `X` and `y` during fit.
+- Each sparse prediction column must have the same row count as `X`.
+- IDs must be non-negative integers.
+- Duplicate IDs in a row are sorted and deduplicated before training.
+- A model that learned sparse-list splits requires `sparse_sets=` for
+  prediction.
 
-Routing is:
-
-```mermaid
-flowchart TD
-    R["Sparse row IDs"] --> Q{"Contains any split ID?"}
-    Q -- yes --> L["Route left"]
-    Q -- no --> N["Route right"]
-```
-
-Empty rows and unseen IDs route as no match. Duplicate row IDs do not change the
-route.
-
-## CLI Scope
-
-The CLI dense CSV workflow does not accept mixed sparse rows. Use the Python
-estimator for sparse taxi-zone training and prediction.
-
-## Limitations
-
-- Candidate search currently considers one sparse ID per candidate.
-- Sparse sets accept non-negative integer IDs in the model interface; helper utilities
-  can map abstract geo labels (for example zone IDs) to stable numeric IDs.
-- Sparse support is regression-only.
+Keep optional dependency boundaries explicit. Core geographic sparse helpers are
+available in the core package. H3 auto-encoding requires `cartoboost[h3]`; S2
+auto-encoding requires `cartoboost[s2]`.

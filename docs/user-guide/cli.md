@@ -6,6 +6,12 @@ baselines and scripted checks. Use the Python API for list-valued sparse route
 features, feature schemas, SHAP explanations, and richer temporal-spatial
 workflows.
 
+Use the CLI when the scientific question can be represented as a dense,
+auditable CSV experiment: fixed taxi-trip features, a declared target, a saved
+model artifact, and a repeatable evaluation command. It is not the richest
+CartoBoost interface, but it is a good way to make a baseline or regression
+check easy to rerun.
+
 ## Commands
 
 Install from PyPI to get both the Python estimator and the `cartoboost` command:

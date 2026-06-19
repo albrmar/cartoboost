@@ -11,8 +11,8 @@
 ## Testing instructions
 - Cross-check examples against current Python, CLI, and Rust contracts.
 - Update the specific contract page when implementation behavior changes, not only the README.
-- Run `uv run --group docs mkdocs build --strict` after navigation changes, renamed pages, or public API docs changes.
-- Search docs before finishing terminology cleanup for old non-taxi terminology in `docs`, `README.md`, and `mkdocs.yml`.
+- Run `npm run typecheck` and `npm run build` after navigation changes, renamed pages, public API docs changes, or Docusaurus component edits.
+- Search docs before finishing terminology cleanup for old non-taxi terminology in `docs`, `README.md`, `docusaurus.config.ts`, and `sidebars.ts`.
 
 ## PR instructions
 - Identify which public contract or guide changed.

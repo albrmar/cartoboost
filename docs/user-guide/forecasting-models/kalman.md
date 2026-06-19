@@ -10,6 +10,31 @@ observations should update the level and trend without requiring a fixed
 seasonal cycle. It is often a good baseline for short horizons and noisy
 single-zone series.
 
+## Scientific Role
+
+Kalman forecasting is a state-space choice. It represents observed taxi counts
+as noisy measurements of an unobserved level and trend. The model is useful
+when the research question is: "What latent demand state best explains these
+noisy observations, and how should that state move into the next few horizons?"
+
+Choose Kalman when measurement noise and gradual state movement are central to
+the problem. It is more scientifically appropriate than naive when the last
+point may be noisy, and more direct than ARIMA when you want explicit latent
+level and trend diagnostics.
+
+## Assumptions And Failure Modes
+
+The native forecasting class is a local-linear-trend model. It assumes the
+latent level and trend evolve smoothly according to the configured process
+variances, while observations deviate according to the observation variance.
+
+Kalman can fail when a fixed seasonal cycle dominates, when known future
+events drive the forecast, or when abrupt structural breaks are too large for
+the process variance settings. A very reactive filter can chase noise; a very
+stiff filter can miss real pickup-demand shifts. Use standardized innovations,
+forecast intervals, and rolling-origin error to decide whether the variance
+settings match the taxi series.
+
 ## Example
 
 ```python

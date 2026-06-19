@@ -1,14 +1,23 @@
 # Forecasting API
 
-CartoBoost forecasting starts with explicit time-series contracts. The Python
-objects in `cartoboost.forecasting` validate pandas inputs, describe forecasting
-metadata, and standardize forecast outputs. Model-specific estimators are thin
-wrappers over Rust bindings exposed through `cartoboost._native`.
+The forecasting API defines the experiment boundary before a model sees any
+data. `ForecastFrame` records what the panel is, which timestamps are valid,
+which column is the target, which covariates are allowed at forecast time, and
+whether the data are regular enough for the selected workflow. `ForecastResult`
+records predictions in stable columns so outputs can be compared, serialized,
+and scored without relying on model-specific shapes.
+
+These classes are wrapper concerns. They do not decide whether theta, ETS,
+ARIMA, lag boosting, or an ensemble is scientifically appropriate. They make
+sure every model receives the same taxi panel contract and emits auditable
+forecast rows.
 
 ## ForecastFrame
 
-Use `ForecastFrame.from_pandas` for both single-series and panel taxi demand or
-fare-duration datasets.
+Use `ForecastFrame.from_pandas` when turning taxi trip aggregates into a
+forecasting panel. A common demand panel has one series per pickup zone, hourly
+timestamps, and a target such as `pickup_trips`. A fare or duration panel might
+use pickup to dropoff lanes as the series identity.
 
 ```python
 from cartoboost.forecasting import ForecastFrame
@@ -25,22 +34,24 @@ frame = ForecastFrame.from_pandas(
 )
 ```
 
-The constructor:
+The constructor makes the dataset contract explicit:
 
-- parses timestamps with pandas and rejects unparseable or null values;
-- validates that targets are finite numeric values;
-- sorts deterministically by `series_id_col`, then timestamp for panels, or by
+- timestamps are parsed with pandas and null or unparseable values are rejected;
+- targets must be finite numeric values;
+- rows are sorted deterministically by series id and timestamp for panels, or by
   timestamp for single-series data;
-- rejects duplicate timestamps within a series;
-- infers frequency when possible, or validates an explicit frequency;
-- rejects irregular data unless `allow_irregular=True`;
-- records static, known-future, and historical covariate column roles.
+- duplicate timestamps are rejected within each series;
+- frequency is inferred when possible, or an explicit frequency is validated;
+- irregular data are rejected unless `allow_irregular=True`;
+- static, known-future, and historical covariate roles are recorded.
 
 Panel validation is isolated per series. Duplicate timestamps are only compared
-within each pickup or route series, and every regular panel must use one shared
-frequency.
+within each pickup zone or pickup/dropoff lane, and every regular panel must use
+one shared frequency. This matters for scientific comparison: two models should
+not be scored on subtly different panel definitions.
 
-`ForecastFrame.to_metadata()` returns a JSON-friendly summary:
+`ForecastFrame.to_metadata()` returns a JSON-friendly summary that can be saved
+with a run, logged beside a benchmark, or embedded in an artifact manifest:
 
 ```python
 {
@@ -58,9 +69,28 @@ frequency.
 }
 ```
 
+Treat this metadata as part of the result. If a later run changes
+`series_id_col`, `freq`, horizon, or covariate roles, it is a different
+forecasting experiment even when the model name stays the same.
+
+## Covariate Roles
+
+CartoBoost separates covariates by when they are knowable:
+
+- static covariates do not change within a series, such as a fixed taxi-zone or
+  route descriptor;
+- known-future covariates are available for future timestamps before prediction,
+  such as hour, day-of-week, holiday flags, or published dispatch plans;
+- historical covariates are observed only after the fact, such as realized trip
+  distance, queue length, or completed fare totals.
+
+Use these roles to prevent accidental leakage. A historical value from the
+validation horizon should not be used as if it were known at forecast creation
+time.
+
 ## ForecastResult
 
-`ForecastResult` standardizes model predictions into deterministic columns:
+`ForecastResult` standardizes predictions into deterministic columns:
 
 ```python
 from cartoboost.forecasting import ForecastResult, PredictionInterval
@@ -80,15 +110,20 @@ Panel outputs are sorted by series id and timestamp. Columns are stable:
 by interval level, such as `prediction_lower_90` and `prediction_upper_90`.
 
 Use `to_json()` and `ForecastResult.from_json(...)` for deterministic roundtrips
-through API boundaries.
+through API boundaries. Use `to_pandas()` when pandas is installed and the next
+step is row-level scoring, plotting, or artifact writing.
 
 `PredictionInterval` validates that levels are unique and between 0 and 1, that
 lower and upper bounds have the same length as the predictions, and that all
-bounds are finite with `lower <= upper`.
+bounds are finite with `lower <= upper`. Interval validity is part of the
+forecast contract, not a plotting detail.
 
 ## Base Classes
 
 `BaseForecaster` provides shared fitted-state and positive-integer horizon
 validation. `SingleSeriesForecasterMixin` rejects panel frames, and
 `PanelForecasterMixin` rejects single-series frames so estimator implementations
-can fail before training state is mutated.
+fail before training state is mutated.
+
+Those checks keep wrapper behavior predictable: a model either accepts the
+declared experiment shape or fails before producing evidence.

@@ -1,0 +1,11 @@
+{
+  "metrics": [
+    {"id": "average_precision", "direction": "higher"},
+    {"id": "auroc", "direction": "higher"},
+    {"id": "rmse", "direction": "lower"},
+    {"id": "degree_slice_gap", "direction": "lower"},
+    {"id": "cold_node_gap", "direction": "lower"},
+    {"id": "calibration_error", "direction": "lower"}
+  ]
+}
+

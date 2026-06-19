@@ -1,0 +1,8 @@
+{
+  "search_spaces": [
+    {"model_family": "cartoboost", "budget": "standard", "parameters": ["n_estimators", "learning_rate", "max_depth", "lag_windows", "seasonal_lags"]},
+    {"model_family": "cartoboost_lag", "budget": "standard", "parameters": ["n_estimators", "learning_rate", "max_depth", "lag_windows", "seasonal_lags", "interval_method"]},
+    {"model_family": "statistical_forecaster", "budget": "standard", "parameters": ["model", "season_length", "trend", "damped", "auto_order"]},
+    {"model_family": "global_forecaster", "budget": "standard", "parameters": ["architecture", "context_length", "layers", "learning_rate", "dropout"]}
+  ]
+}

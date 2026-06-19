@@ -30,6 +30,31 @@ single-zone rush-hour pattern. In that case, compare against seasonal naive,
 Kalman, ARIMA, or a lag model with hour/day features. Kriging is strongest when
 spatial borrowing adds information that a per-series temporal model cannot see.
 
+## Scientific Role
+
+Kriging is a spatial covariance model. It asks whether differences between taxi
+series are related to coordinate distance after the chosen temporal summary has
+been formed. A scientist should choose it when geography is part of the
+mechanism being tested, not merely because zones have coordinates.
+
+For pickup-zone demand, a defensible kriging claim is: nearby zones or route
+midpoints have correlated residual demand, and the variogram plus neighbor
+rules make that borrowing explicit. The model is weaker as a pure time-series
+forecaster because it does not learn hour-of-day dynamics by itself.
+
+## Assumptions And Failure Modes
+
+Kriging assumes the coordinate system, variogram, and neighbor controls describe
+how spatial similarity decays. It also assumes that every series id has a
+stable, meaningful coordinate and that missing coordinates are input errors,
+not values to invent.
+
+Failure modes include smooth surfaces that hide sharp airport or venue effects,
+edge predictions unsupported by nearby observations, variograms with no clear
+distance pattern, and zones whose demand is driven more by calendar or route
+mix than by geometric proximity. Use leave-one-out diagnostics and
+time-ordered validation before treating a spatial surface as forecast evidence.
+
 ## Example With Panel Dict
 
 ```python

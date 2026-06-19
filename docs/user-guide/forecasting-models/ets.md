@@ -22,6 +22,30 @@ If the main signal is a sudden intervention, a moving event calendar, or
 zone-to-zone spatial spillover, compare ETS against a lag model with calendar
 features and against spatial models where appropriate.
 
+## Scientific Role
+
+ETS is appropriate when the scientist can explain the series as an evolving
+baseline, a gradual drift, and a repeatable additive seasonal effect. For taxi
+data, that means questions like: "How much of this pickup count is the current
+zone baseline, how much is a slow movement in that baseline, and how much is
+the hour-of-day lift or drag?"
+
+Choose ETS when component interpretability matters. The fitted level, trend,
+seasonal component, fitted values, and residuals let you inspect whether the
+model is explaining a stable cycle or merely smoothing over missing causes.
+
+## Assumptions And Failure Modes
+
+The current native ETS surface is additive. It assumes seasonal effects add or
+subtract roughly fixed amounts from the level, not fixed percentages. It also
+requires enough complete seasonal cycles to estimate the seasonal state.
+
+ETS can fail when taxi demand is dominated by sudden shocks, sparse panels,
+structural breaks, or effects that are known before the forecast but absent
+from the model, such as holidays, weather, airport operations, or event
+schedules. If residuals cluster by hour, zone, or route, compare against
+CartoBoost lag/calendar features or a spatial model where appropriate.
+
 ## Example
 
 ```python

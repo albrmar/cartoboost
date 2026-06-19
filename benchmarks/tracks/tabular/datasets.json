@@ -1,0 +1,12 @@
+{
+  "datasets": [
+    {
+      "id": "openml_tabular_regression_v1",
+      "source": "OpenML-style public tabular tasks",
+      "hash": "to_be_frozen",
+      "datasheet": "benchmarks/reports/dataset_card_template.md",
+      "notes": "Curated public tasks with immutable task IDs and hashes before release runs."
+    }
+  ]
+}
+

@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import warnings
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from time import perf_counter
@@ -58,20 +59,31 @@ STATSFORECAST_MODELS = [
     "statsforecast_autoets",
     "statsforecast_autoarima",
     "statsforecast_autotheta",
+    "statsforecast_autoces",
+    "statsforecast_dynamic_optimized_theta",
+    "statsforecast_autotbats",
 ]
 PROPHET_MODELS = ["prophet_additive"]
+EXTERNAL_TREE_MODELS = ["xgboost_lag", "lightgbm_lag"]
 FORECASTING_LIBRARY_MODELS = {
     "functime": FUNCTIME_MODELS,
     "statsforecast": STATSFORECAST_MODELS,
     "prophet": PROPHET_MODELS,
+    "external_trees": EXTERNAL_TREE_MODELS,
 }
 MODEL_LIBRARIES = {
     "cartoboost_lag": "cartoboost",
     **{model: "functime" for model in FUNCTIME_MODELS},
     **{model: "statsforecast" for model in STATSFORECAST_MODELS},
     **{model: "prophet" for model in PROPHET_MODELS},
+    **{model: "external_trees" for model in EXTERNAL_TREE_MODELS},
 }
-FORECASTING_LIBRARY_BASELINES = [*FUNCTIME_MODELS, *STATSFORECAST_MODELS, *PROPHET_MODELS]
+FORECASTING_LIBRARY_BASELINES = [
+    *FUNCTIME_MODELS,
+    *STATSFORECAST_MODELS,
+    *PROPHET_MODELS,
+    *EXTERNAL_TREE_MODELS,
+]
 AIRPORT_ZONE_IDS = {1, 132, 138}
 M4_GROUPS = ["Hourly", "Daily", "Weekly", "Monthly", "Quarterly", "Yearly"]
 SYNTHETIC_PROBLEMS = [
@@ -927,13 +939,24 @@ def forecast_model_roster(
         horizon,
         season_length=season_length,
     )
-    prophet_predictions, prophet_timing = prophet_forecasts(train, horizon)
+    prophet_predictions, prophet_timing = prophet_forecasts(
+        train,
+        horizon,
+        season_length=season_length,
+    )
+    tree_predictions, tree_timing = external_tree_lag_forecasts(
+        train,
+        horizon,
+        season_length=season_length,
+        config=cartoboost_config,
+    )
     predictions = combine_forecast_frames(
         [
             cartoboost_predictions,
             functime_predictions,
             statsforecast_predictions,
             prophet_predictions,
+            tree_predictions,
         ]
     )
     timing = {
@@ -942,6 +965,7 @@ def forecast_model_roster(
             **functime_timing,
             **statsforecast_timing,
             **prophet_timing,
+            **tree_timing,
         }
     }
     return predictions, timing
@@ -1544,6 +1568,135 @@ def cartoboost_raw_forecast(
     return predictions, timing
 
 
+def external_tree_lag_forecasts(
+    train: Any,
+    horizon: int,
+    *,
+    season_length: int,
+    config: dict[str, Any],
+) -> tuple[Any, dict[str, dict[str, float]]]:
+    try:
+        import lightgbm as lgb
+        import xgboost as xgb
+    except ImportError as exc:
+        raise ImportError(
+            "external tree lag baselines require xgboost and lightgbm; run `uv sync --group bench`."
+        ) from exc
+
+    tree_params = cartoboost_tree_regularization(season_length, horizon, config)
+    model_specs = {
+        "xgboost_lag": xgb.XGBRegressor(
+            n_estimators=config["n_estimators"],
+            learning_rate=config["learning_rate"],
+            max_depth=tree_params["max_depth"],
+            min_child_weight=tree_params["min_samples_leaf"],
+            objective="reg:squarederror",
+            tree_method="hist",
+            n_jobs=1,
+            verbosity=0,
+            random_state=0,
+        ),
+        "lightgbm_lag": lgb.LGBMRegressor(
+            n_estimators=config["n_estimators"],
+            learning_rate=config["learning_rate"],
+            max_depth=tree_params["max_depth"],
+            min_child_samples=tree_params["min_samples_leaf"],
+            verbosity=-1,
+            random_state=0,
+            n_jobs=1,
+        ),
+    }
+    forecasts = []
+    timings = {}
+    for name, model in model_specs.items():
+        forecast, timing = external_tree_lag_forecast(
+            train,
+            horizon,
+            season_length=season_length,
+            model=model,
+            prediction_col=name,
+        )
+        forecasts.append(forecast)
+        timings[name] = timing
+    return combine_forecast_frames(forecasts), timings
+
+
+def external_tree_lag_forecast(
+    train: Any,
+    horizon: int,
+    *,
+    season_length: int,
+    model: Any,
+    prediction_col: str,
+) -> tuple[Any, dict[str, float]]:
+    pl = require_polars()
+    feature_start = perf_counter()
+    history_features = build_history_features(train, season_length=season_length)
+    feature_columns = select_cartoboost_feature_columns(
+        history_features,
+        season_length=season_length,
+    )
+    feature_frame = history_features.drop_nulls(feature_columns)
+    x = feature_frame.select(feature_columns).to_numpy()
+    target_mode = cartoboost_target_mode(season_length, horizon)
+    if target_mode == "delta_from_last":
+        y = (feature_frame["loads"] - feature_frame["loads_lag_1"]).to_numpy()
+    else:
+        y = feature_frame.select("loads").to_numpy().ravel()
+    feature_seconds = perf_counter() - feature_start
+
+    fit_start = perf_counter()
+    model.fit(x, y)
+    fit_seconds = perf_counter() - fit_start
+
+    predict_start = perf_counter()
+    history = train.clone()
+    history_schema = history.schema
+    forecast_frames = []
+    for step in range(1, horizon + 1):
+        future = next_future_rows(history)
+        future_features = build_future_features(
+            history,
+            future,
+            season_length=season_length,
+        ).drop_nulls(feature_columns)
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                message="X does not have valid feature names.*",
+                category=UserWarning,
+            )
+            raw_predictions = model.predict(future_features.select(feature_columns).to_numpy())
+        if target_mode == "delta_from_last":
+            predictions = raw_predictions + future_features["loads_lag_1"].to_numpy()
+        else:
+            predictions = raw_predictions
+        step_forecast = future_features.select(
+            pl.col("lane_id").alias("series_id"),
+            pl.col("date").alias("timestamp"),
+            pl.lit(step).alias("horizon"),
+        ).with_columns(pl.Series(prediction_col, predictions))
+        forecast_frames.append(step_forecast)
+        predicted_future = future_features.with_columns(pl.Series(prediction_col, predictions))
+        append_frame = predicted_future.select(
+            pl.col("lane_id").cast(history_schema["lane_id"]),
+            pl.col("date").cast(history_schema["date"]),
+            pl.col(prediction_col).alias("loads").cast(history_schema["loads"]),
+            *[pl.col(column).cast(history_schema[column]) for column in STATIC_COVARIATES],
+        )
+        history = pl.concat([history, append_frame], how="vertical")
+    predict_seconds = perf_counter() - predict_start
+    return pl.concat(forecast_frames, how="vertical"), {
+        "feature_seconds": feature_seconds,
+        "fit_seconds": fit_seconds,
+        "predict_seconds": predict_seconds,
+        "fit_predict_seconds": fit_seconds + predict_seconds,
+        "total_seconds": feature_seconds + fit_seconds + predict_seconds,
+        "feature_count": float(len(feature_columns)),
+        "target_mode_delta": float(target_mode == "delta_from_last"),
+    }
+
+
 def cartoboost_native_forecaster_params(
     season_length: int,
     horizon: int,
@@ -1946,6 +2099,14 @@ def build_future_features(history: Any, future: Any, *, season_length: int) -> A
     return pl.DataFrame(pieces)
 
 
+def external_autoreg_lag_depth(*, season_length: int, min_series_length: int) -> int:
+    max_supported = max(1, min_series_length - 1)
+    structural_lags = [28]
+    if season_length > 1:
+        structural_lags.extend([season_length, 2 * season_length])
+    return min(max_supported, max(structural_lags))
+
+
 def functime_forecasts(
     train: Any,
     horizon: int,
@@ -1967,7 +2128,10 @@ def functime_forecasts(
         pl.col("loads").alias("target"),
     )
     min_series_length = int(train.group_by("lane_id").len().select(pl.col("len").min()).item())
-    autoreg_lags = min(28, max(1, min_series_length // 2))
+    autoreg_lags = external_autoreg_lag_depth(
+        season_length=season_length,
+        min_series_length=min_series_length,
+    )
     model_specs = {
         "functime_snaive": snaive(freq="1d", sp=season_length),
         "functime_ridge": ridge(freq="1d", lags=autoreg_lags),
@@ -2006,6 +2170,19 @@ def functime_forecasts(
     return combine_forecast_frames(forecasts), timings
 
 
+def configure_prophet_seasonality(model: Any, *, season_length: int) -> None:
+    if season_length <= 1 or season_length == 7:
+        return
+    fourier_order = min(10, max(3, season_length // 2))
+    model.add_seasonality(
+        name=f"structural_period_{season_length}",
+        period=float(season_length),
+        fourier_order=fourier_order,
+        prior_scale=10.0,
+        mode="additive",
+    )
+
+
 def statsforecast_forecasts(
     train: Any,
     horizon: int,
@@ -2016,7 +2193,15 @@ def statsforecast_forecasts(
     pd = require_pandas_for_benchmark()
     try:
         from statsforecast import StatsForecast
-        from statsforecast.models import AutoARIMA, AutoETS, AutoTheta, SeasonalNaive
+        from statsforecast.models import (
+            AutoARIMA,
+            AutoCES,
+            AutoETS,
+            AutoTBATS,
+            AutoTheta,
+            DynamicOptimizedTheta,
+            SeasonalNaive,
+        )
     except ImportError as exc:
         raise ImportError(
             "forecasting library benchmark requires statsforecast; run `uv sync --group bench`."
@@ -2036,6 +2221,9 @@ def statsforecast_forecasts(
         "statsforecast_autoets": AutoETS(season_length=season_length, model="ZZZ"),
         "statsforecast_autoarima": AutoARIMA(season_length=season_length),
         "statsforecast_autotheta": AutoTheta(season_length=season_length),
+        "statsforecast_autoces": AutoCES(season_length=season_length),
+        "statsforecast_dynamic_optimized_theta": DynamicOptimizedTheta(season_length=season_length),
+        "statsforecast_autotbats": AutoTBATS(season_length=season_length),
     }
     forecasts = []
     timings = {}
@@ -2073,7 +2261,12 @@ def statsforecast_forecasts(
     return combine_forecast_frames(forecasts), timings
 
 
-def prophet_forecasts(train: Any, horizon: int) -> tuple[Any, dict[str, dict[str, float]]]:
+def prophet_forecasts(
+    train: Any,
+    horizon: int,
+    *,
+    season_length: int,
+) -> tuple[Any, dict[str, dict[str, float]]]:
     pl = require_polars()
     pd = require_pandas_for_benchmark()
     prophet_class = ensure_prophet_class()
@@ -2089,12 +2282,13 @@ def prophet_forecasts(train: Any, horizon: int) -> tuple[Any, dict[str, dict[str
         ).to_pandas()
         fit_start = perf_counter()
         model = prophet_class(
-            weekly_seasonality=True,
+            weekly_seasonality=season_length == 7,
             daily_seasonality=False,
             yearly_seasonality=False,
             seasonality_mode="additive",
             stan_backend="CMDSTANPY",
         )
+        configure_prophet_seasonality(model, season_length=season_length)
         model.fit(series_frame)
         fit_seconds += perf_counter() - fit_start
         future = model.make_future_dataframe(periods=horizon, freq="D", include_history=False)

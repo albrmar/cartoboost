@@ -1,14 +1,49 @@
 # Getting Started
 
-This guide installs CartoBoost from PyPI, trains a small regression model, and
-checks prediction from Python and the CLI.
+This guide starts with the modeling decisions that matter for CartoBoost:
+target, place/time structure, validation, and baselines. The code snippets show
+the mechanics after those choices are clear.
 
-## Requirements
+## 1. Frame The Scientific Question
 
-- Python 3.10 or newer.
-- `uv`.
+CartoBoost is meant for regression and forecasting tasks where temporal or
+spatial structure is part of the hypothesis. In the NYC taxi domain, typical
+questions include:
 
-## Install
+- Can pickup hour, weekday, pickup zone, dropoff zone, and trip distance explain
+  transformed trip duration better than a dense tabular baseline?
+- Does route direction, such as `PULocationID -> DOLocationID`, improve fare or
+  duration estimates beyond treating the two zones as unordered IDs?
+- Can daily pickup-zone or pickup/dropoff-lane demand be forecast from lagged
+  demand, calendar features, airport-lane indicators, and borough context?
+- Do spatial splitters or sparse zone memberships recover signal that an
+  axis-only model misses?
+
+Define the target and evaluation split before selecting model features. For
+temporal-spatial data, random splits can overstate quality when near-duplicate
+times, zones, or route patterns appear in both train and validation data.
+
+## 2. Choose Features For Place And Time
+
+A first taxi regression table might include:
+
+- dense numeric columns: trip distance, pickup longitude/latitude, dropoff
+  longitude/latitude, pickup hour, weekday, passenger count;
+- periodic columns: hour-of-day with period `24`, day-of-week with period `7`;
+- sparse-set columns: taxi zones, route cells, or memberships derived from
+  `PULocationID` and `DOLocationID`;
+- graph context: directed pickup-to-dropoff flows when source and target roles
+  should remain distinct.
+
+Match splitters to the scientific structure you want to test:
+
+- use `axis` as the dense baseline splitter;
+- add `periodic:24` for hour-of-day effects;
+- add `diagonal_2d` or `gaussian_2d` when coordinates or projected zone
+  centroids are central to the question;
+- add `sparse_set` when rows carry list-valued zone or route memberships.
+
+## 3. Install
 
 ```sh
 uv add cartoboost
@@ -21,46 +56,79 @@ python -c "import cartoboost; print(cartoboost.__version__)"
 cartoboost --help
 ```
 
-## Train From Python
+Optional packages are installed only when needed. For example, use
+`cartoboost[polars]` for Polars inputs, `cartoboost[optuna]` for Optuna tuning,
+or `cartoboost[onnx]` for the supported ONNX export subset.
+
+## 4. Fit A Taxi-Style Regression Model
+
+The snippet below assumes you have already built `X_train`, `X_validation`,
+`y_train`, and `y_validation` from a leakage-aware split, such as holding out
+the latest pickup dates.
 
 ```python
 from cartoboost import CartoBoostRegressor
 
-X = [[0.0], [1.0], [2.0], [3.0]]
-y = [0.0, 1.0, 2.0, 3.0]
-
 model = CartoBoostRegressor(
-    n_estimators=20,
-    learning_rate=0.1,
-    max_depth=2,
-    min_samples_leaf=1,
-    splitters=["axis"],
+    n_estimators=200,
+    learning_rate=0.04,
+    max_depth=5,
+    min_samples_leaf=30,
+    splitters=["axis", "periodic:24", "diagonal_2d", "gaussian_2d"],
 )
-model.fit(X, y)
 
-predictions = model.predict([[1.5], [2.5]])
+model.fit(X_train, y_train)
+predictions = model.predict(X_validation)
 ```
 
-For a temporal-spatial model, add splitters that match the feature structure:
+Start with a smaller splitter set if the study only needs dense numeric
+features. Add spatial, periodic, sparse, neural, or graph structure only when it
+matches the modeling question and improves validation performance on the same
+split.
+
+## 5. Use Sparse Taxi-Zone Memberships
+
+Use sparse-set features when a trip belongs to multiple route or zone-derived
+sets and a wide one-hot matrix would be awkward or unstable.
 
 ```python
+schema = {
+    "dense": [
+        {"name": "trip_distance", "kind": "numeric"},
+        {"name": "pickup_hour", "kind": "periodic", "period": 24},
+        {"name": "pickup_x", "kind": "numeric"},
+        {"name": "pickup_y", "kind": "numeric"},
+    ],
+    "sparse_sets": [
+        {"name": "taxi_zones", "kind": "sparse_set"},
+    ],
+}
+
 model = CartoBoostRegressor(
-    n_estimators=100,
-    learning_rate=0.05,
-    max_depth=4,
-    splitters=["axis", "diagonal_2d", "gaussian_2d", "periodic:24"],
+    n_estimators=200,
+    learning_rate=0.04,
+    max_depth=5,
+    min_samples_leaf=30,
+    splitters=["axis", "periodic:24", "sparse_set"],
+)
+
+model.fit(
+    X_train_dense,
+    y_train,
+    sparse_sets={"taxi_zones": taxi_zones_train},
+    feature_schema=schema,
 )
 ```
 
-Use `periodic:24` for hour-of-day, diagonal or Gaussian 2D splitters for
-coordinate pairs, and `sparse_set` when rows have taxi-zone or zone
-memberships.
+See [Spatial Modeling](spatial_modeling.md) and
+[Sparse Features](sparse_features.md) for zone membership examples and blocked
+evaluation patterns.
 
-## Forecast A Time Series
+## 6. Forecast Taxi Demand
 
 Use `ForecastFrame` when the target is future demand, fare, duration, or another
-time-indexed quantity. Single-series data omits `series_id_col`; panel data uses
-one row per series and timestamp.
+time-indexed quantity. Panel data should identify the series, such as
+pickup/dropoff lane or pickup zone.
 
 ```python
 import pandas as pd
@@ -71,15 +139,17 @@ daily_lanes = pd.DataFrame(
     {
         "lane_id": ["JFK->LGA"] * 10 + ["LGA->EWR"] * 10,
         "date": list(pd.date_range("2026-01-01", periods=10, freq="D")) * 2,
-        "loads": [20, 21, 24, 23, 25, 28, 29, 27, 30, 31,
-                  35, 36, 38, 37, 40, 42, 43, 41, 45, 46],
+        "pickup_trips": [
+            20, 21, 24, 23, 25, 28, 29, 27, 30, 31,
+            35, 36, 38, 37, 40, 42, 43, 41, 45, 46,
+        ],
     }
 )
 
 frame = ForecastFrame.from_pandas(
     daily_lanes,
     timestamp_col="date",
-    target_col="loads",
+    target_col="pickup_trips",
     series_id_col="lane_id",
     freq="D",
 )
@@ -91,168 +161,10 @@ forecast = model.predict(horizon=3).to_pandas()
 
 Forecast tables are deterministic: `series_id`, `timestamp`, `horizon`,
 `model`, `mean`, and interval columns such as `lower_80` and `upper_80`.
-Use [Forecasting](forecasting.md) for model selection, rolling-origin
-backtesting, CartoBoost lag features, artifact persistence, and CLI workflows.
+Use [Forecasting](forecasting.md) for rolling-origin backtesting, CartoBoost lag
+features, artifact persistence, CLI workflows, and model selection.
 
-## Add Neural Features (Hybrid)
-
-Use `NeuralEmbeddingRegressor` for neural features: learn a small ID-based
-embedding table from residuals, then append those dense vectors to your model
-input.
-
-```python
-import numpy as np
-from cartoboost import NeuralEmbeddingRegressor
-
-X_train = np.array(
-    [
-        [0.2, 8.0],
-        [1.4, 9.0],
-        [2.1, 17.0],
-        [3.3, 18.0],
-    ]
-)
-y_train = np.array([10.5, 11.0, 12.4, 13.2], dtype=float)
-ids_train = np.array([101, 102, 101, 103], dtype=np.uint64)
-
-X_test = np.array([[1.0, 16.0], [3.0, 19.0]])
-ids_test = np.array([101, 104], dtype=np.uint64)
-
-neural_model = NeuralEmbeddingRegressor(
-    dim=8,
-    base_model_kwargs=dict(
-        n_estimators=40,
-        learning_rate=0.08,
-        max_depth=3,
-        min_samples_leaf=2,
-        splitters=["axis"],
-    ),
-    final_model_kwargs=dict(
-        n_estimators=120,
-        learning_rate=0.05,
-        max_depth=4,
-        min_samples_leaf=4,
-        splitters=["axis", "periodic:24"],
-    ),
-)
-
-neural_model.fit(X_train, y_train, ids=ids_train)
-predictions = neural_model.predict(X_test, ids=ids_test)
-```
-
-Pass `ids` directly as shown above, or pass `id_column="cell_id"` with a pandas
-dataframe input. Neural features are added as additional numeric columns before
-training and inference.
-
-See [Neural Features](neural-features.md) for full pipeline details, artifact
-format, and benchmarks.
-
-## Add Graph Features
-
-Use graph features when rows depend on relationships between entities, places,
-or source-target pairs.
-
-```python
-from cartoboost.graph import (
-    DirectionalFeature,
-    DirectionalityConfig,
-    GraphEmbeddingsConfig,
-    GraphEncoderConfig,
-    GraphEncoderFamily,
-    GraphFeatureTransformer,
-)
-
-config = GraphEmbeddingsConfig(
-    encoder=GraphEncoderConfig(
-        family=GraphEncoderFamily.HINSAGE,
-        input_dim=2,
-        node_type_count=2,
-        edge_type_triples=((0, 0, 1), (1, 1, 0)),
-        neighbor_samples=(10, 10),
-    ),
-    directionality=DirectionalityConfig(
-        preserve_source_target_roles=True,
-        compute_asymmetry_features=True,
-        directional_features=(DirectionalFeature.SOURCE_TARGET_EMBEDDING,),
-    ),
-)
-
-transformer = GraphFeatureTransformer.from_config(config)
-bundle = transformer.fit_transform(
-    node_features,
-    edges=typed_edges,
-    node_types=node_types,
-)
-```
-
-The resulting `GraphFeatureBundle` contains dense graph columns and provenance
-metadata that can be appended to your model input. See
-[Graph Features](graph-features.md) for node2vec, GraphSAGE,
-HeteroGraphSAGE, HinSAGE, directional features, and directed metapaths.
-
-## Train From Dense CSV
-
-Create a small file named `train.csv`:
-
-```csv
-distance,hour,target
-1.0,8,10.0
-2.0,9,12.0
-3.0,17,18.0
-4.0,18,20.0
-```
-
-Create `config.toml`:
-
-```toml
-target = "target"
-n_estimators = 20
-learning_rate = 0.1
-max_depth = 2
-min_samples_leaf = 1
-splitter = "axis"
-```
-
-Run:
-
-```sh
-cartoboost train --data train.csv --config config.toml --model-out model.json
-cartoboost predict --model model.json --input train.csv --predictions-out predictions.csv
-```
-
-The CLI expects dense numeric CSV input. Use the Python estimator for sparse-set
-taxi-zone features.
-
-## Save And Reload
-
-```python
-model.save("model.cartoboost.json")
-loaded = CartoBoostRegressor.load("model.cartoboost.json")
-
-model.save_weights("model.weights.json")
-weights_loaded = CartoBoostRegressor.load_weights("model.weights.json")
-```
-
-Use `save` for CartoBoost JSON model artifacts and `save_weights` for portable
-prediction artifacts. ONNX export is available only for dense axis-tree
-constant-leaf models when the optional `onnx` dependency is installed.
-
-## Run Local Checks
-
-For a source checkout, run the full local validation suite with:
-
-```sh
-just validate
-```
-
-For a faster Python-focused loop:
-
-```sh
-uv run pre-commit run --all-files
-uv run pytest
-```
-
-## Out-Of-Time Validation
+## 7. Validate Against Real Baselines
 
 For temporal-spatial problems, hold out the latest rows before trusting model
 quality:
@@ -265,10 +177,71 @@ train_idx, validation_idx = out_of_time_split(
     validation_fraction=0.2,
 )
 
-model.fit(X_train_all[train_idx], y_all[train_idx])
-prediction = model.predict(X_train_all[validation_idx])
+model.fit(X_all[train_idx], y_all[train_idx])
+predictions = model.predict(X_all[validation_idx])
 ```
 
-See [Evaluation Protocol](evaluation_protocol.md#out-of-time-validation) for
-cutoff dates, exact validation sizes, gaps, pandas indexing, and sparse-set
-examples.
+Report the split design, target transform, feature set, RMSE, MAE, R2, training
+time, prediction time, and model settings. Compare against serious baselines on
+the same train/validation rows, such as LightGBM or XGBoost for tabular
+regression and appropriate local or external forecasting models for demand
+forecasting.
+
+See [Evaluation Protocol](evaluation_protocol.md) for out-of-time,
+spatial-blocked, grouped, and leakage-aware validation.
+
+## 8. Add Neural Or Graph Structure When Justified
+
+Use learned embeddings when high-cardinality IDs carry stable signal that is not
+captured by dense features alone.
+
+```python
+from cartoboost import NeuralEmbeddingRegressor
+
+neural_model = NeuralEmbeddingRegressor(
+    dim=16,
+    base_model_kwargs={"n_estimators": 80, "splitters": ["axis"]},
+    final_model_kwargs={
+        "n_estimators": 120,
+        "splitters": ["axis", "periodic:24"],
+    },
+)
+
+neural_model.fit(X_train, y_train, ids=pickup_zone_ids_train)
+predictions = neural_model.predict(X_validation, ids=pickup_zone_ids_validation)
+```
+
+Use graph features or standalone graph models when the observed units are
+connected entities, such as directed pickup/dropoff lanes, borough-zone
+hierarchies, or repeated OD-pair flow patterns. See
+[Graph Models And Features](graph-features.md) and
+[Neural Embedding Models And Features](neural-features.md).
+
+## 9. Save Reproducible Artifacts
+
+```python
+model.save("taxi-duration.cartoboost.json")
+loaded = CartoBoostRegressor.load("taxi-duration.cartoboost.json")
+
+model.save_weights("taxi-duration.weights.json")
+weights_loaded = CartoBoostRegressor.load_weights("taxi-duration.weights.json")
+```
+
+Use `save` for CartoBoost JSON model artifacts and `save_weights` for portable
+prediction artifacts. ONNX export is available only for dense axis-tree
+constant-leaf models when the optional `onnx` dependency is installed.
+
+## 10. Source Checkout Checks
+
+For a source checkout, run the full local validation suite with:
+
+```sh
+just validate
+```
+
+For a faster Python-focused loop:
+
+```sh
+uv run --group dev pre-commit run --all-files
+uv run --group dev pytest
+```

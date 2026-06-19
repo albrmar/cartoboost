@@ -7,48 +7,128 @@
 [![Publish](https://github.com/TheCulliganMan/CartoBoost/actions/workflows/publish-pypi.yml/badge.svg)](https://github.com/TheCulliganMan/CartoBoost/actions/workflows/publish-pypi.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/TheCulliganMan/CartoBoost/blob/main/LICENSE)
 
-CartoBoost is a Python regression toolkit for temporal, spatial, geotemporal,
-and graph-derived prediction problems. It is built for teams that want a
-familiar estimator workflow while giving the model explicit structure for place,
-time, sparse route membership, source-target directionality, and learned graph
-context.
+CartoBoost is a Rust-backed Python modeling toolkit for regression problems
+where place and time are part of the signal, not just columns in a table. It is
+designed for temporal-spatial work such as NYC taxi trip duration, fare amount,
+pickup-zone demand, dropoff-zone demand, and pickup-to-dropoff lane forecasting.
+
+Use CartoBoost when your scientific question depends on structure that ordinary
+tabular models only see after extensive manual feature engineering:
+
+- time has cycles, such as hour-of-day or day-of-week demand;
+- location has neighborhoods, corridors, hotspots, and boundaries;
+- rows can belong to multiple places, such as pickup zones, dropoff zones, or
+  route cells;
+- direction matters, such as `PULocationID -> DOLocationID`;
+- validation must respect time, space, groups, and leakage risks;
+- claims need comparison against serious baselines such as LightGBM, XGBoost,
+  local forecasting models, or external forecasting libraries.
+
+CartoBoost is not a replacement for careful study design. It gives scientists a
+set of model primitives, validation tools, artifacts, and benchmark workflows
+that make temporal-spatial comparisons easier to run and easier to explain.
+
+## Scientific Fit
+
+CartoBoost is a good fit for taxi-domain studies such as:
+
+- estimating fare or trip duration from pickup/dropoff zones, trip distance,
+  pickup hour, weekday, and route context;
+- modeling pickup-zone or dropoff-zone demand over time;
+- forecasting daily demand for pickup/dropoff lanes such as JFK airport trips;
+- measuring whether zone membership, route geometry, periodic hour behavior, or
+  graph directionality adds signal beyond dense numeric features;
+- producing reproducible model artifacts and benchmark reports from fixed train
+  and validation splits.
+
+It is less useful when the data have no meaningful place/time structure, when a
+simple linear model already answers the scientific question, or when the study
+cannot define a leakage-aware validation design.
+
+## Modeling Ideas
+
+Standard boosters are strong baselines for tabular regression. CartoBoost keeps
+that workflow but adds splitters and feature contracts that match common
+temporal-spatial structure:
+
+- `periodic:24` keeps hour `23` and hour `0` adjacent instead of treating
+  midnight as a hard break.
+- `diagonal_2d` can represent oblique spatial boundaries that axis-only trees
+  approximate indirectly.
+- `gaussian_2d` can isolate local hotspots, depots, airports, or service areas.
+- `sparse_set` can use list-valued taxi-zone or route-cell memberships without a
+  wide one-hot matrix.
+- fuzzy routing can reduce hard jumps around nearby places or times.
+- graph encoders and graph regressors can preserve pickup/dropoff roles and
+  source-target asymmetry.
+
+These choices should be tested against simpler alternatives. In a taxi study,
+that usually means holding the latest trips or demand windows out of training,
+comparing the same split against LightGBM or XGBoost for regression, and using
+rolling-origin backtests for forecasting.
+
+## First Model
+
+Code is intentionally secondary to the modeling decision: choose a target,
+choose leakage-aware splits, define place/time features, then compare against a
+baseline.
+
+```python
+from cartoboost import CartoBoostRegressor
+
+model = CartoBoostRegressor(
+    n_estimators=200,
+    learning_rate=0.04,
+    max_depth=5,
+    min_samples_leaf=30,
+    splitters=["axis", "periodic:24", "diagonal_2d", "gaussian_2d"],
+)
+
+model.fit(X_train, y_train)
+predictions = model.predict(X_validation)
+```
+
+For NYC taxi data, `X_train` might contain trip distance, pickup-hour,
+day-of-week, pickup coordinates, dropoff coordinates, `PULocationID`,
+`DOLocationID`, airport-lane flags, or route-derived features. The target might
+be transformed trip duration, fare amount, or future pickup-zone demand.
 
 ## Start Here
 
 - [Installation](installation.md): PyPI installs, optional extras, source
   development, and troubleshooting.
-- [Getting Started](getting-started.md): train a first model, use neural
-  embeddings, save artifacts, and run local checks.
-- [Feature Catalog](feature_catalog.md): complete map of public modeling,
-  forecasting, graph, neural, sparse, artifact, CLI, and benchmark features.
-- [Python Estimator](user-guide/python-estimator.md): sklearn-style fit,
-  predict, save, load, and explanation workflow.
-- [Model Types](user-guide/model-types.md): choose between the tabular
-  regressor, local forecasting models, CartoBoost lag forecasting, kriging,
-  neural embedding models, graph models, and ensembles.
-- [Parameters](user-guide/parameters.md): estimator controls and supported
-  splitters.
+- [Getting Started](getting-started.md): modeling-oriented first steps for taxi
+  regression, forecasting, validation, baselines, and artifacts.
+- [Choose A Model](user-guide/model-types.md): task-first router for the
+  tabular regressor, local forecasting models, CartoBoost lag forecasting,
+  kriging, neural embedding models, graph models, and utilities.
+- [Evaluation Protocol](evaluation_protocol.md): out-of-time, spatial-blocked,
+  grouped, leakage-aware validation, and public benchmark claim rules.
 - [Spatial Modeling](spatial_modeling.md): coordinate features, taxi-zone
   sparse sets, fuzzy routing, and blocked evaluation.
+- [Forecasting Wrapper](forecasting.md): `ForecastFrame`, rolling-origin
+  backtests, leakage checks, CLI runs, and portable forecast artifacts.
+- [Benchmarks](benchmarks/index.md): fair benchmark protocol, reproducible
+  comparison reports, and acceptance metrics.
+
+## Deeper References
+
+- [Feature Catalog](feature_catalog.md): public modeling, forecasting, graph,
+  neural, sparse, artifact, CLI, and benchmark features.
+- [Python API](reference/python-api.md): sklearn-style estimator methods,
+  forecasting classes, utility functions, save/load behavior, and explanation
+  workflow.
+- [Parameters](user-guide/parameters.md): estimator controls and supported
+  splitters.
 - [Graph Models And Features](graph-features.md): standalone graph regressors,
   standalone link predictors, Node2Vec, GraphSAGE, HeteroGraphSAGE, HinSAGE,
   directed source-target features, metapaths, and graph feature bundles.
 - [Neural Embedding Models And Features](neural-features.md): standalone ID
   embedding regression, neural artifacts, fallback behavior, and optional
   feature-generation workflows.
-- [Evaluation Protocol](evaluation_protocol.md): out-of-time, spatial-blocked,
-  grouped, and leakage-aware validation.
-- [Forecasting](forecasting.md): geographic and temporal forecasting for
-  pickup zones, dropoff zones, and lane-level demand with `ForecastFrame`,
-  theta/local baselines, CartoBoost lag forecasting, rolling-origin backtests,
-  ensembles, CLI runs, and portable forecast artifacts.
-- [Forecasting Model Guides](user-guide/forecasting-models/index.md):
-  per-model examples for naive, seasonal naive, theta, ETS, ARIMA, AutoARIMA,
-  Kalman, kriging, CartoBoost lag, and weighted ensembles. The Kalman guide
-  includes taxi-demand examples, state diagnostics, and Matplotlib
-  visualization examples.
-- [Benchmarks](benchmarks/index.md): reproducible comparison reports and
-  acceptance metrics.
+- [Model Guides](user-guide/forecasting-models/index.md): per-model examples
+  for naive, seasonal naive, theta, ETS, ARIMA, AutoARIMA, Kalman, kriging,
+  CartoBoost lag, and weighted ensembles.
 
 ## What CartoBoost Supports
 
@@ -63,7 +143,7 @@ context.
 - Versioned JSON model and weights artifacts.
 - Forecasting workflows for pickup-zone, dropoff-zone, and lane-level demand,
   including deterministic forecast tables, leakage-safe rolling-origin
-  evaluation, and synthetic geographic-temporal benchmark fixtures.
+  evaluation, and geographic-temporal benchmark fixtures.
 - Optional SHAP explanations, Optuna tuning, Polars input support, and ONNX
   export for the supported dense axis-tree subset.
 - Neural embedding features.
@@ -71,25 +151,6 @@ context.
   encoders plus standalone graph regressors and link predictors.
 
 For a complete feature-by-feature map, see [Feature Catalog](feature_catalog.md).
-
-## Why It Helps Temporal-Spatial Models
-
-Standard tabular boosters are strong baselines, but they usually see location,
-time, and graph relationships as ordinary scalar columns unless you pre-engineer
-the structure. CartoBoost adds primitives that match common temporal-spatial and
-geotemporal patterns:
-
-- Periodic splitters keep wraparound time features, such as hour `23` and hour
-  `0`, adjacent.
-- Diagonal 2D splitters model oblique spatial boundaries more directly than
-  axis-only trees.
-- Gaussian/radial splitters isolate local hotspots, depots, zones, or corridors.
-- Sparse-set splitters consume taxi-zone and zone memberships without a wide
-  one-hot matrix.
-- Fuzzy routing softens hard boundaries where nearby locations or times should
-  behave similarly.
-- Directional graph features preserve pickup/dropoff semantics such as
-  `pickup_zone -> dropoff_zone`, pickup-hour demand, and reverse-trip contrast.
 
 ## Install
 
@@ -102,25 +163,3 @@ Optional extras are available for SHAP, Optuna, Polars, and ONNX:
 ```sh
 uv add "cartoboost[explain,optuna,polars,onnx]"
 ```
-
-## Typical Workflow
-
-```python
-from cartoboost import CartoBoostRegressor
-
-model = CartoBoostRegressor(
-    n_estimators=100,
-    learning_rate=0.05,
-    max_depth=4,
-    min_samples_leaf=20,
-    splitters=["axis", "periodic:24"],
-)
-
-model.fit(X_train, y_train)
-predictions = model.predict(X_test)
-model.save("model.cartoboost.json")
-```
-
-Use CartoBoost like other gradient-boosting regressors: choose features, split
-the data correctly, fit the estimator, compare against baselines, inspect
-residuals, and save the fitted artifact.

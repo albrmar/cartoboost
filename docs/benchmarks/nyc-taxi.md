@@ -1,16 +1,16 @@
 # NYC Taxi Benchmarks
 
-## Research Question
+## Decision Question
 
-On real NYC taxi data, do geographic and temporal feature families improve
-prediction quality for trip duration, fare amount, and pickup-zone demand under
-both random validation and pickup-zone spatial holdout?
+On real NYC taxi data, should a scientist choose CartoBoost instead of
+LightGBM or XGBoost for trip duration, fare amount, or pickup-zone demand?
 
-The study is designed to answer where the signal comes from. Fare and duration
-are trip-row targets. Pickup demand is a zone-time target. Those are different
-prediction problems and should not be interpreted as one generic benchmark.
+This benchmark is the main real-data evidence page for CartoBoost's
+taxi-domain regression claims. It asks whether geographic, temporal, sparse
+zone, neural, and graph feature families improve quality under comparable
+settings and leakage-aware splits.
 
-## Dataset
+## Data And Reproduction
 
 The maintained single-run artifact uses cached NYC TLC yellow taxi trip records
 for January 2024:
@@ -34,9 +34,10 @@ fails instead of falling back to synthetic data. Raw TLC files are cached under
 | `fare` | Log total fare amount. | Individual taxi trip. |
 | `pickup_demand` | Log pickup trip count. | Pickup zone x hour x weekday bucket. |
 
-Quality metrics are computed on transformed regression targets.
+Quality metrics are computed on transformed regression targets, so the numbers
+compare model fit on the benchmark target rather than raw dollars or seconds.
 
-## Features
+## Comparable Features
 
 All learned models receive comparable cleaned trip, zone, passenger, and time
 features. The maintained comparison uses `--zone-treatment target_mean`, which
@@ -106,14 +107,13 @@ LightGBM on RMSE and R2:
 Full result tables and plots are stored in
 `docs/assets/nyc_taxi_benchmarks/`.
 
-## Interpretation
+## Scientific Read
 
 Fare and duration are geotemporal row-level targets. The winning row is base
-CartoBoost, not a neural or graph variant. That means the useful signal is
-mostly explained by hour/day periodicity, pickup/dropoff geometry, and zone
-membership. LightGBM receives comparable target-mean zone features but still
-has to approximate route geometry and cyclic time with axis-aligned tabular
-splits.
+CartoBoost, not a neural or graph variant. The useful signal is mostly explained
+by hour/day periodicity, pickup/dropoff geometry, and zone membership. LightGBM
+receives comparable target-mean zone features but still has to approximate
+route geometry and cyclic time with ordinary tabular splits.
 
 Pickup demand is a zone-time graph problem. The best random-split row is
 `cartoboost_graph_node2vec`, which adds topology learned from observed pickup
@@ -123,6 +123,18 @@ case where graph structure contributes signal beyond the base feature set.
 Neural and graph rows are not universal upgrades. They are useful only when
 the target contains repeated-ID residual structure or source-target topology
 that ordinary dense columns do not expose.
+
+## Model Choice
+
+Choose plain CartoBoost for taxi fare and duration when comparable validation
+shows gains from cyclic time, route geometry, and zone membership. Consider
+graph-augmented CartoBoost for pickup/dropoff demand when route topology exists
+in training and deployment will reuse that topology. Do not choose the neural
+or graph variant merely because it is available.
+
+If prediction latency or training throughput dominates the product constraint,
+weigh the quality gain against the repeated speed study before selecting a
+model.
 
 ## Repeated-Run Speed Study
 

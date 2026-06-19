@@ -7,11 +7,16 @@ temporal, spatial, geotemporal, graph, and neural-embedding modeling.
 
 - README: ./README.md
 - Documentation home: ./docs/index.md
+- Docusaurus config: ./docusaurus.config.ts
+- Docusaurus sidebar: ./sidebars.ts
+- Docs homepage component: ./src/pages/index.tsx
+- Docs theme stylesheet: ./src/css/custom.css
 - Installation: ./docs/installation.md
 - Getting started: ./docs/getting-started.md
+- Choose a model: ./docs/user-guide/model-types.md
+- Model guides: ./docs/user-guide/forecasting-models/index.md
 - ARIMA and AutoARIMA guide: ./docs/user-guide/forecasting-models/arima.md
 - ARIMA examples: ./docs/user-guide/forecasting-models/arima-examples.md
-- Python estimator: ./docs/user-guide/python-estimator.md
 - Python API reference: ./docs/reference/python-api.md
 - Parameters: ./docs/user-guide/parameters.md
 - Spatial modeling: ./docs/spatial_modeling.md
@@ -74,6 +79,10 @@ temporal, spatial, geotemporal, graph, and neural-embedding modeling.
   `theta_optimized_visualization.py`, `ets_component_visualization.py`,
   `arima_example_visualization.py`, `cartoboost_lag_visualization.py`,
   `weighted_ensemble_visualization.py`, and `kriging_example_visualization.py`.
-- Use `uv sync` for local development and
-  `uv run maturin develop` after native binding changes.
+- Use `uv sync --group dev` for local development and
+  `uv run --group dev maturin develop` after native binding changes.
+- Use `npm run typecheck` and `npm run build` for the Docusaurus docs site.
 - Run `just validate` for full validation when feasible.
+- Public benchmark claims require the evidence protocol in `docs/benchmarks/`:
+  equal settings, serious baselines, stable splits, uncertainty where
+  available, subgroup slices, and compute metadata.

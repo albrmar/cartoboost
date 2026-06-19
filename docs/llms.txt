@@ -10,6 +10,10 @@ Use this guide as the first read before making changes. Start in the relevant co
 - [Python project manifest](https://github.com/TheCulliganMan/CartoBoost/blob/main/pyproject.toml): dependency groups and Python packaging settings.
 - [Python environment lockfile](https://github.com/TheCulliganMan/CartoBoost/blob/main/uv.lock): pinned dependency state for reproducible Python builds.
 - [Docs home](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/index.md): documentation index and user-facing map.
+- [Docusaurus config](https://github.com/TheCulliganMan/CartoBoost/blob/main/docusaurus.config.ts): site metadata, navbar/footer, redirects, strict link handling, and GitHub Pages base URL.
+- [Docusaurus sidebar](https://github.com/TheCulliganMan/CartoBoost/blob/main/sidebars.ts): task-oriented documentation navigation.
+- [Docs homepage component](https://github.com/TheCulliganMan/CartoBoost/blob/main/src/pages/index.tsx): branded React landing page for the docs site.
+- [Docs theme stylesheet](https://github.com/TheCulliganMan/CartoBoost/blob/main/src/css/custom.css): Docusaurus theme tokens and visual overrides.
 - [Feature catalog](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/feature_catalog.md): complete public feature map across regression, forecasting, graph, neural, sparse, artifact, CLI, and benchmark surfaces.
 - [General utilities](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/general_utilities.md): examples and plotting snippets for Kalman filters with smoothing, residual metrics, variance/gain/likelihood diagnostics, and interval distributions, plus ordinary kriging, intermittent-demand methods, and single-series forecast helpers.
 
@@ -25,11 +29,11 @@ Use this guide as the first read before making changes. Start in the relevant co
 - [Installation guide](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/installation.md): install paths and optional extras.
 - [Getting started](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/getting-started.md): first run flow and local checks.
 - [Feature catalog](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/feature_catalog.md): full capability map and links to detailed topic pages.
-- [Python API reference](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/reference/python-api.md): authoritative API contracts.
+- [Python API reference](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/reference/python-api.md): authoritative API contracts tied to scientific model choice.
 - [CLI reference](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/reference/cli.md): argument/flag behavior and output formats.
 - [Python estimator guide](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/user-guide/python-estimator.md): estimator usage and expected semantics.
-- [Model types guide](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/user-guide/model-types.md): chooser for the tabular regressor, local forecasting models, CartoBoost lag forecasting, kriging, neural embedding models, graph models, and ensembles.
-- [Forecasting model guides](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/user-guide/forecasting-models/index.md): per-model examples for naive, seasonal naive, theta, ETS, ARIMA, AutoARIMA, Kalman, kriging, CartoBoost lag, and weighted ensembles.
+- [Choose a model guide](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/user-guide/model-types.md): task-first router for the tabular regressor, forecasting classes, CartoBoost lag forecasting, kriging, neural embedding models, graph models, and utilities.
+- [Model guides](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/user-guide/forecasting-models/index.md): model-specific examples for naive, seasonal naive, theta, ETS, ARIMA, AutoARIMA, Kalman, kriging, CartoBoost lag, and weighted ensembles; separate from the forecasting wrapper docs.
 - [Naive and seasonal naive guide](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/user-guide/forecasting-models/naive-seasonal.md): baseline last-value and seasonal-repeat forecasting examples.
 - [Theta guide](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/user-guide/forecasting-models/theta.md): manual theta, optimized theta, seasonal theta, and validation notes.
 - [ETS guide](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/user-guide/forecasting-models/ets.md): additive ETS examples, parameters, and unsupported modes.
@@ -53,15 +57,16 @@ Use this guide as the first read before making changes. Start in the relevant co
 
 ## Where to Edit by Change Type
 - For model behavior changes: update [feature schema](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/feature_schema.md) + [tests](https://github.com/TheCulliganMan/CartoBoost/blob/main/tests) as needed.
-- For forecasting model surface changes: update [Forecasting models](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/forecasting_models.md), the relevant [forecasting model guide](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/user-guide/forecasting-models/index.md), [Feature catalog](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/feature_catalog.md), [Python API reference](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/reference/python-api.md), and this file.
+- For forecasting model surface changes: update [Forecasting models](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/forecasting_models.md), the relevant [model guide](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/user-guide/forecasting-models/index.md), [Feature catalog](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/feature_catalog.md), [Python API reference](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/reference/python-api.md), and this file.
 - For CLI behavior and I/O format changes: update [CLI guide](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/user-guide/cli.md), [CLI reference](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/reference/cli.md), and integration tests under `../tests/integration`.
 - For Python API changes: edit `python/cartoboost`, update [Python API reference](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/reference/python-api.md), and add/adjust tests under `../tests/python`.
 - For reusable utility changes such as Kalman filters, kriging, or intermittent-demand helpers: update [General utilities](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/general_utilities.md), [Feature catalog](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/feature_catalog.md), and [Python API reference](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/reference/python-api.md).
 - For benchmark or acceptance behavior changes: edit `scripts`, benchmark sources in `benches`, and benchmark docs under `docs/benchmarks`.
 
 ## Validation and Runtime Checks
-- Run `uv run pre-commit run --all-files` for lint and format checks after source edits.
-- Run `uv run pytest` after changing Python APIs or estimator behavior.
+- Run `uv run --group dev pre-commit run --all-files` for lint and format checks after source edits.
+- Run `npm run typecheck` and `npm run build` after docs-site config, React, or Markdown navigation changes.
+- Run `uv run --group dev pytest` after changing Python APIs or estimator behavior.
 - Use `just validate` for full local validation only when comprehensive smoke coverage is needed.
 
 ## Optional

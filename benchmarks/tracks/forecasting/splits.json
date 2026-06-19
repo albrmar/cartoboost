@@ -1,0 +1,13 @@
+{
+  "splits": [
+    {
+      "id": "rolling_origin_fixed_horizon",
+      "kind": "rolling_origin",
+      "outer_folds": 5,
+      "seeds": "benchmark_seeds",
+      "hpo_scope": "past_train_validation_only",
+      "requires_horizon_wise_metrics": true
+    }
+  ]
+}
+

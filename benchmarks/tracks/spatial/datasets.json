@@ -1,0 +1,12 @@
+{
+  "datasets": [
+    {
+      "id": "nyc_tlc_yellow_taxi_q1_2024_v1",
+      "source": "NYC TLC yellow taxi trip records and taxi zone lookup",
+      "hash": "to_be_frozen",
+      "datasheet": "benchmarks/reports/dataset_card_template.md",
+      "notes": "Public monthly Parquet releases with extraction date, filters, transforms, and zone joins."
+    }
+  ]
+}
+

@@ -1,7 +1,16 @@
 # SHAP Support
 
-CartoBoost supports the Python `shap` package through the estimator prediction
-API. Install the optional dependency before using SHAP:
+SHAP explanations help audit fitted CartoBoost models after training. For
+taxi-trip studies, use them to ask which modeled covariates contributed to a
+prediction: distance, hour, pickup/dropoff memberships, graph-derived columns,
+neural embedding columns, or fitted tree weights.
+
+SHAP is an explanation layer, not a new model and not proof of causality. It is
+most useful after the validation design is fixed, because explanations inherit
+the same feature-generation choices, split protocol, and data limitations as
+the model being explained.
+
+Install the optional dependency before using SHAP:
 
 ```sh
 uv add "cartoboost[explain]"
@@ -13,16 +22,29 @@ For a source checkout:
 uv sync --extra explain
 ```
 
+## When To Use It
+
+Use SHAP when you need to:
+
+- compare the contribution of route distance, hour, zone memberships, and
+  spatial features for individual taxi predictions;
+- inspect whether sparse pickup/dropoff IDs dominate a model unexpectedly;
+- audit graph or neural feature-generation blocks after they have been appended
+  as dense columns;
+- verify additive prediction decomposition for debugging and reporting.
+
+Feature names matter. If graph or neural embeddings are appended as generated
+columns, SHAP explains those generated columns, not the standalone graph or
+neural training process that produced them.
+
 ## Basic Usage
 
 ```python
+import shap
 from cartoboost import CartoBoostRegressor
 
-model = CartoBoostRegressor(
-    n_estimators=50,
-    learning_rate=0.1,
-    max_depth=3,
-).fit(X_train, y_train)
+model = CartoBoostRegressor(n_estimators=50, learning_rate=0.1, max_depth=3)
+model.fit(X_train, y_train)
 
 explainer = shap.Explainer(model, X_train)
 explanation = explainer(X_test)
@@ -31,13 +53,11 @@ explanation = explainer(X_test)
 `explanation` is a `shap.Explanation`, so it works with SHAP plotting helpers:
 
 ```python
-import shap
-
 shap.plots.beeswarm(explanation)
 shap.plots.waterfall(explanation[0])
 ```
 
-CartoBoost also provides convenience helpers that call SHAP for you:
+CartoBoost also provides convenience helpers:
 
 ```python
 explanation = model.explain_shap(X_test, background=X_train)
@@ -47,7 +67,7 @@ explainer = model.make_shap_explainer(X_train)
 ## Additive Weight Decomposition
 
 By default, SHAP decomposes predictions over input features. CartoBoost can also
-decompose the fitted additive prediction weights: the initial prediction and one
+decompose fitted additive prediction weights: the initial prediction and one
 component per fitted tree.
 
 ```python
@@ -68,8 +88,10 @@ prediction = additive.sum(axis=1)
 
 ## Sparse Sets
 
-Models trained with `sparse_sets=` can be explained through the CartoBoost helper.
-Sparse IDs are exposed to SHAP as binary features named `column=id`.
+Models trained with `sparse_sets=` can be explained through the CartoBoost
+helper. Sparse IDs are exposed to SHAP as binary features named `column=id`.
+This makes pickup/dropoff memberships auditable while preserving the model's
+sparse-list training contract.
 
 ```python
 explanation = model.explain_shap(
@@ -90,7 +112,7 @@ explainer = model.make_shap_explainer(
 )
 ```
 
-## Additivity
+## Additivity Check
 
 For regression, SHAP values should add back to the model prediction:
 
@@ -106,7 +128,10 @@ explanations.
 
 - CartoBoost estimators are callable after fitting, so `shap.Explainer(model,
   background)` works directly for dense prediction workflows.
-- Dense Python, NumPy, and pandas inputs are supported through the existing
+- Dense Python, NumPy, and pandas inputs are supported through existing
   estimator input handling.
-- Sparse-set models are supported through the CartoBoost helpers because they need
+- Sparse-set models are supported through CartoBoost helpers because they need
   the sparse-ID encoding described above.
+- SHAP explains generated graph or neural columns only after those columns are
+  part of the model input; standalone graph and neural artifacts have their own
+  modeling contracts.

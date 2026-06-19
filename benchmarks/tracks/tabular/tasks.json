@@ -1,0 +1,12 @@
+{
+  "tasks": [
+    {
+      "id": "openml_regression_outer_folds",
+      "dataset_id": "openml_tabular_regression_v1",
+      "split_id": "iid_5fold_3seed",
+      "primary_metric": "rmse",
+      "required_model_families": ["cartoboost", "gbdt_baseline", "deep_tabular_baseline"]
+    }
+  ]
+}
+

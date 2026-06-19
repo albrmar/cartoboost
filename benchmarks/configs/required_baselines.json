@@ -1,0 +1,7 @@
+{
+  "tabular": ["cartoboost", "gbdt_baseline", "deep_tabular_baseline"],
+  "spatial": ["cartoboost", "gbdt_spatial_baseline", "deep_or_metric_baseline"],
+  "graph": ["cartoboost_graph", "gnn_baseline", "tabularized_graph_baseline"],
+  "forecasting": ["cartoboost_lag", "statistical_forecaster", "global_forecaster"]
+}
+

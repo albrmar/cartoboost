@@ -16,6 +16,32 @@ Do not use an ensemble just to add complexity. It should beat the best
 individual member on a fixed validation split or encode a clear operating policy
 such as "mostly seasonal, with a smaller trend correction."
 
+## Scientific Role
+
+A weighted ensemble is a fixed mixture of scientific hypotheses. Each component
+should represent a different defensible mechanism, such as persistence,
+seasonal repetition, smooth trend, state-space updating, spatial borrowing, or
+shared supervised lag structure. The ensemble is useful only when those
+mechanisms make complementary errors under the same validation design.
+
+Choose it when validation shows that no single component dominates all horizons
+or all taxi zones, and when the selected weights can be explained. The weights
+are part of the model claim; they are not learned automatically by the native
+ensemble wrapper.
+
+## Assumptions And Failure Modes
+
+The ensemble assumes component predictions are aligned to the same series ids,
+timestamps, and horizons. It cannot create a signal that none of its members
+learned. If every component misses a rush-hour disruption, averaging will miss
+it too.
+
+Failure modes include keeping a weak member because it improves one split by
+chance, changing component parameters while tuning weights, or reporting only
+ensemble metrics without component metrics. Compare against the best individual
+member and inspect horizon-specific errors before claiming that averaging adds
+scientific value.
+
 ## Example
 
 ```python

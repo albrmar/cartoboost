@@ -1,13 +1,25 @@
 # Forecasting Lag Features
 
-CartoBoost lag-based forecasting is Rust-owned. The public Python class
-`CartoBoostLagForecaster` is a thin wrapper over
-`cartoboost._native.CartoBoostLagForecaster`.
+Lag features turn a taxi forecasting problem into supervised learning while
+preserving time order. They are useful when the signal depends on recent pickup
+demand, rolling averages, route-level momentum, calendar effects, or interactions
+that a tree booster can learn across many taxi zones.
 
-Python may still expose configuration objects such as `LagFeatureConfig`,
-`RollingFeatureConfig`, and `CalendarFeatureConfig`, but supervised lag matrix
-construction, recursive prediction, model fitting, and model prediction must be
-owned by Rust.
+CartoBoost lag forecasting is Rust-owned. The public Python class
+`CartoBoostLagForecaster` is a thin wrapper over
+`cartoboost._native.CartoBoostLagForecaster`. Python may expose configuration
+objects and inspection helpers, but supervised matrix construction, recursive
+prediction, model fitting, and model prediction belong to Rust.
+
+Use this surface when you want feature-rich forecasting without letting Python
+become the source of truth for model behavior.
+
+## Feature Provenance
+
+The scientific risk with lag features is leakage. A feature named
+`target_lag_1` is only valid if it was built from a target value strictly earlier
+than the forecast row timestamp and from the same panel series. CartoBoost
+enforces that rule.
 
 The Python `LagFeatureBuilder` is available for inspection and preflight feature
 audits. Its target-derived features are panel-isolated and use only rows whose
@@ -15,32 +27,34 @@ timestamp is strictly earlier than the feature row timestamp. Rows sharing the
 same panel and timestamp do not feed each other's lag, rolling, or expanding
 features.
 
-`CartoBoostLagForecaster` delegates to the native Rust model. Python config
-objects are converted only when they match the native surface:
-
-- `LagFeatureConfig(lags=[...])` maps to native `lags`.
-- `LagFeatureConfig(difference_lags=[...], rolling_trend_windows=[...])` is
-  available in the Python inspection builder, and the native
-  `CartoBoostLagForecaster(trend_features=True)` enables the corresponding
-  leakage-safe lag-delta and rolling-trend features for forecasting.
-- `RollingFeatureConfig` maps to native `rolling_windows` only for complete
-  rolling means.
-- `CalendarFeatureConfig` maps to native `calendar_features=True` for
-  `dayofweek`, `month`, and `day`.
-- `regressor_params` maps fixed CartoBoost booster settings such as
-  `n_estimators`, `learning_rate`, `max_depth`, `min_samples_leaf`, `min_gain`,
-  and `splitters` to the native model. Unsupported regressor parameters fail
-  explicitly.
-
-Unsupported Python-only feature options, such as hourly calendar features,
-expanding summaries, non-mean rolling aggregations, static columns, known-future
-covariates, and custom booster options outside the documented native surface,
-should fail clearly instead of being silently ignored by the native wrapper.
-
 Taxi-domain lag feature contracts should use columns such as `pickup_hour`,
 `pickup_trips`, `PULocationID`, `DOLocationID`, pickup/dropoff lane identifiers,
 known-future calendar or dispatch plans, and historical-only observed queue or
 trip-distance features.
+
+## Native Mapping
+
+`CartoBoostLagForecaster` delegates to the native Rust model. Python config
+objects are converted only when they match the native surface:
+
+- `LagFeatureConfig(lags=[...])` maps to native `lags`;
+- `LagFeatureConfig(difference_lags=[...], rolling_trend_windows=[...])` is
+  available in the Python inspection builder, and the native
+  `CartoBoostLagForecaster(trend_features=True)` enables the corresponding
+  leakage-safe lag-delta and rolling-trend features for forecasting;
+- `RollingFeatureConfig` maps to native `rolling_windows` only for complete
+  rolling means;
+- `CalendarFeatureConfig` maps to native `calendar_features=True` for
+  `dayofweek`, `month`, and `day`;
+- `regressor_params` maps fixed CartoBoost booster settings such as
+  `n_estimators`, `learning_rate`, `max_depth`, `min_samples_leaf`, `min_gain`,
+  and `splitters` to the native model.
+
+Unsupported regressor parameters fail explicitly. Unsupported Python-only
+feature options, such as hourly calendar features, expanding summaries, non-mean
+rolling aggregations, static columns, known-future covariates, and custom booster
+options outside the documented native surface, should fail clearly instead of
+being silently ignored by the native wrapper.
 
 ## How The Lag Forecaster Works
 
@@ -99,4 +113,5 @@ flowchart LR
 This recursive loop is why lag forecasts for horizon 2 and beyond can depend on
 earlier forecasted values. The first step uses only observed taxi lane history;
 later steps use observed history plus the model's own prior predictions for the
-same lane.
+same lane. Report this when interpreting horizon-specific errors: later-horizon
+failures can include both model error and recursive error accumulation.

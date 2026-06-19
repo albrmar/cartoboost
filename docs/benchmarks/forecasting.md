@@ -1,22 +1,26 @@
 # Forecasting Tool Benchmark
 
-## Question
+## Decision Question
 
-On real NYC TLC yellow taxi data, how does CartoBoost lag forecasting compare
-with dedicated forecasting tools on short pickup/dropoff lane demand panels?
+For pickup/dropoff lane demand forecasting, should a scientist choose
+`cartoboost_lag`, a dedicated forecasting library, or a simple seasonal
+baseline?
 
-## Data
+This page keeps the answer split-specific. CartoBoost is useful when its
+train-only lag and residual features improve future demand forecasts. A
+seasonal-naive method is the honest choice when a short panel contains too
+little validated residual signal.
+
+## Real NYC Taxi Panel
 
 The maintained real-data artifact aggregates January 2024 yellow taxi trips
 into daily pickup/dropoff lane demand for the 24 highest-volume lanes. Raw TLC
 Parquet files stay under `data/nyc_taxi/` and are not committed. The committed
 benchmark result contains only aggregate metrics and plots.
 
-This is a different modeling problem from the row-level NYC taxi benchmark:
-each forecast row is one pickup/dropoff lane on one future date, and the target
-is the next daily trip count for that lane. The model is asked to extrapolate a
-short time series panel, not predict duration or fare for an already-observed
-trip row.
+This differs from row-level taxi fare and duration modeling. Each forecast row
+is one pickup/dropoff lane on one future date, and the target is the next daily
+trip count for that lane.
 
 | field | value |
 | --- | ---: |
@@ -27,10 +31,9 @@ trip row.
 | held-out horizon | 7 days |
 | aggregate forecast rows | 168 |
 
-The source is the NYC TLC trip-record release:
-<https://www.nyc.gov/site/tlc/about/tlc-trip-record-data.page>.
+Source: [NYC TLC trip record data](https://www.nyc.gov/site/tlc/about/tlc-trip-record-data.page).
 
-## Command
+## Reproduce Real-Data Artifact
 
 ```sh
 uv run --group bench python scripts/forecasting_library_benchmark.py \
@@ -46,6 +49,9 @@ uv run --group bench python scripts/forecasting_library_benchmark.py \
   --output docs/assets/nyc_taxi_benchmarks/forecasting_library_benchmark_real.json \
   --plot-dir docs/assets/nyc_taxi_benchmarks/forecasting_plots
 ```
+
+`--no-download` means missing real TLC inputs fail the run instead of silently
+falling back to synthetic data.
 
 ## Models
 
@@ -65,13 +71,13 @@ window. The residual correction is applied only when the raw residual model
 itself shows at least a 1% RMSE gain. Library baselines use their native panel
 forecasting inputs.
 
-## Result
+## Real-Data Result
 
-RMSE is the primary quality metric. MAE and WAPE are secondary quality metrics.
-On this short real holdout, CartoBoost ties the best seasonal-naive external
-baselines. The training window is too short for the guarded residual and
-calendar-profile selector, so CartoBoost falls back to the 7-day seasonal
-baseline instead of applying an undervalidated correction.
+RMSE is the primary metric. MAE and WAPE are secondary. On this short real
+holdout, CartoBoost ties the best seasonal-naive external baselines. The
+training window is too short for the guarded residual and calendar-profile
+selector, so CartoBoost falls back to the 7-day seasonal baseline instead of
+applying an undervalidated correction.
 
 | model | library | RMSE | MAE | WAPE |
 | --- | --- | ---: | ---: | ---: |
@@ -93,11 +99,21 @@ baseline instead of applying an undervalidated correction.
 
 ![Actual vs predicted demand by model](../assets/nyc_taxi_benchmarks/forecasting_plots/nyc-taxi_actual_vs_predicted.png)
 
+## Real-Data Interpretation
+
+The maintained NYC panel has strong weekly persistence and only 24 training
+days before the 7-day holdout. The useful conclusion is that the honest best
+model for this slice is mostly seasonal persistence. CartoBoost does not claim
+a residual gain because train-only calibration rejects the residual correction.
+
+For model choice, use `cartoboost_lag` when longer panels or richer known-future
+features show a validated residual gain. Use seasonal naive when the future
+holdout shows no validated improvement.
+
 ## Synthetic Problem Suite
 
 The script also supports a multi-problem synthetic suite modeled after common
-forecasting benchmark practice in libraries such as sktime, StatsForecast,
-Darts, GluonTS, and datasetsforecast: multiple tasks, the same model roster,
+forecasting benchmark practice: multiple tasks, the same model roster,
 rolling-origin splits, fixed horizons, and aggregate relative RMSE to each
 problem's best model.
 
@@ -131,11 +147,13 @@ and wins or ties 2 of 4 tasks.
 | `functime_ridge` | 3.098 | 0 | 0 |
 | `functime_lightgbm` | 3.402 | 0 | 0 |
 
+Use this suite for deterministic library wiring and taxi-shaped stress tests.
+Real-data claims should still point to TLC or another named dataset.
+
 ## M4 Forecasting Suite
 
-The benchmark can also run M4 through the same model roster. M4 is not a taxi
-dataset; it is included because forecasting libraries commonly use it to test
-whether a method generalizes across frequencies. The loader uses
+M4 is not a taxi dataset. It is included because forecasting libraries commonly
+use it to test whether a method generalizes across frequencies. The loader uses
 `datasetsforecast.m4.M4.load`, which downloads the real M4 train/test files
 locally when they are missing. This benchmark scores the last official horizon
 inside the training panel so every model can be evaluated through the same
@@ -203,35 +221,23 @@ mean RMSE ratio to the group winner on this maintained sample artifact.
 | Quarterly | `cartoboost_lag` | 637.616 | `statsforecast_autoets` | 1021.905 | 0.624 | `cartoboost_lag` |
 | Yearly | `tie` | 833.200 | `functime_snaive` | 833.200 | 1.000 | `shared_drift` |
 
-The M4 result is useful because it prevents a benchmark story that only
-contains taxi-shaped problems. Applying the same fixed selector to every model
-also prevents CartoBoost from receiving a private post-processing advantage.
-The shared trend candidates close the previous large Monthly failure for the
-whole roster. The remaining caveat is scope: this is the maintained
-24-series-per-group M4 sample artifact, not the full M4 corpus. Use
-`--m4-series-limit 0` before making full-corpus claims.
+The M4 result prevents a benchmark story that only contains taxi-shaped
+problems. Applying the same fixed selector to every model also prevents
+CartoBoost from receiving private post-processing. The remaining caveat is
+scope: this is the maintained 24-series-per-group M4 sample artifact, not the
+full M4 corpus. Use `--m4-series-limit 0` before making full-corpus claims.
 
 Benchmarking references used for this suite:
 
-- `datasetsforecast` M4 loader and group definitions:
-  <https://nixtlaverse.nixtla.io/datasetsforecast/m4.html>
-- StatsForecast cross-validation and baseline workflow:
-  <https://nixtlaverse.nixtla.io/statsforecast/docs/getting-started/getting_started_complete.html>
-- sktime `ForecastingBenchmark` design:
-  <https://www.sktime.net/en/latest/api_reference/auto_generated/sktime.benchmarking.forecasting.ForecastingBenchmark.html>
-- Darts historical forecasts and backtesting:
-  <https://unit8co.github.io/darts/>
-- GluonTS dataset/evaluation workflow:
-  <https://ts.gluon.ai/stable/tutorials/forecasting/extended_tutorial.html>
+- [`datasetsforecast` M4 loader and group definitions](https://nixtlaverse.nixtla.io/datasetsforecast/m4.html)
+- [StatsForecast cross-validation and baseline workflow](https://nixtlaverse.nixtla.io/statsforecast/docs/getting-started/getting_started_complete.html)
+- [sktime `ForecastingBenchmark` design](https://www.sktime.net/en/latest/api_reference/auto_generated/sktime.benchmarking.forecasting.ForecastingBenchmark.html)
+- [Darts historical forecasts and backtesting](https://unit8co.github.io/darts/)
+- [GluonTS dataset/evaluation workflow](https://ts.gluon.ai/stable/tutorials/forecasting/extended_tutorial.html)
 
-## Interpretation
+## Reporting Requirements
 
-This is a short panel with strong weekly demand structure and only 24 training
-days before the 7-day holdout. The result is useful precisely because it shows
-that the honest best model for this slice is mostly seasonal persistence. The
-CartoBoost residual path is still part of the model, but the train-only
-calibration rejects it when the residual signal is not strong enough. That
-prevents the benchmark from claiming a holdout-tuned residual gain.
-
-The synthetic fixture remains useful for deterministic library wiring checks,
-but real-data claims should use the NYC TLC artifact above.
+When refreshing this benchmark, capture RMSE, MAE, WAPE, horizon metrics,
+training time, prediction time, model settings, sample size, task names, split
+names, and whether the data is real TLC, synthetic taxi-shaped, M4 sample, or
+full M4. Update this page in the same change as the artifact.

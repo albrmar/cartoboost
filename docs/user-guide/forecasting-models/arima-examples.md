@@ -6,6 +6,20 @@ them for API familiarity, plotting, model-order interpretation, and speed smoke
 checks; do not treat their metrics as evidence that one model wins on real taxi
 demand.
 
+## Scientific Use
+
+Use these examples to understand what ARIMA and AutoARIMA are allowed to learn:
+local serial dependence, bounded differencing, and recent residual correction.
+The examples are useful for checking whether a candidate order behaves
+plausibly on a taxi-shaped lane before running a real rolling-origin
+evaluation.
+
+They are not evidence of scientific superiority. A scientist should carry only
+the interpretation pattern forward: compare fixed orders and bounded AutoARIMA
+under identical splits, inspect residual direction by horizon, and reject a
+model whose non-seasonal local structure cannot beat seasonal or lag-feature
+baselines on real or clearly labeled benchmark data.
+
 ## Runnable Example
 
 Run the example from the repository root:

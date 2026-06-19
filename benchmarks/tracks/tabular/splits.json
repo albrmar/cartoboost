@@ -1,0 +1,12 @@
+{
+  "splits": [
+    {
+      "id": "iid_5fold_3seed",
+      "kind": "repeated_outer_cv",
+      "outer_folds": 5,
+      "seeds": "benchmark_seeds",
+      "hpo_scope": "train_validation_only"
+    }
+  ]
+}
+

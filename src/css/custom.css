@@ -1,0 +1,99 @@
+:root {
+  --ifm-color-primary: #168f86;
+  --ifm-color-primary-dark: #147f78;
+  --ifm-color-primary-darker: #117168;
+  --ifm-color-primary-darkest: #0d5f58;
+  --ifm-color-primary-light: #1cb1a6;
+  --ifm-color-primary-lighter: #22c5b8;
+  --ifm-color-primary-lightest: #49d4ca;
+  --ifm-background-color: #f8fafc;
+  --ifm-font-color-base: #122033;
+  --ifm-heading-color: #0b1220;
+  --ifm-font-family-base: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --ifm-font-family-monospace: "JetBrains Mono", "SFMono-Regular", Consolas, monospace;
+  --ifm-code-font-size: 0.94rem;
+  --ifm-leading: 1.65;
+  --ifm-global-radius: 8px;
+  --cb-bg: #0b1220;
+  --cb-surface: #111a2b;
+  --cb-text: #e8eef8;
+  --cb-muted: #9db0c9;
+  --cb-primary: #27c2b5;
+  --cb-secondary: #65c9ff;
+  --cb-accent: #ffb454;
+  --cb-danger: #ff6b6b;
+  --cb-border: rgba(157, 176, 201, 0.24);
+}
+
+[data-theme='dark'] {
+  --ifm-background-color: #0b1220;
+  --ifm-navbar-background-color: #0b1220;
+  --ifm-footer-background-color: #07101e;
+  --ifm-font-color-base: #dce6f4;
+  --ifm-heading-color: #e8eef8;
+  --ifm-card-background-color: #111a2b;
+  --ifm-code-background: rgba(101, 201, 255, 0.12);
+  --ifm-toc-border-color: rgba(157, 176, 201, 0.22);
+  --ifm-menu-color-background-active: rgba(39, 194, 181, 0.12);
+}
+
+html {
+  scroll-padding-top: 5rem;
+}
+
+.navbar {
+  border-bottom: 1px solid var(--cb-border);
+  box-shadow: none;
+}
+
+.navbar__title {
+  font-weight: 800;
+}
+
+.button {
+  border-radius: 8px;
+  font-weight: 700;
+}
+
+.button--primary {
+  --ifm-button-background-color: var(--cb-primary);
+  --ifm-button-border-color: var(--cb-primary);
+  color: #06131f;
+}
+
+.button--secondary {
+  --ifm-button-background-color: transparent;
+  --ifm-button-border-color: var(--cb-border);
+  color: var(--cb-text);
+}
+
+.theme-doc-markdown h1 {
+  font-size: clamp(2.3rem, 6vw, 4.2rem);
+}
+
+.theme-doc-markdown h2 {
+  margin-top: 2.75rem;
+}
+
+.theme-doc-markdown table {
+  display: table;
+  width: 100%;
+}
+
+.theme-doc-markdown th {
+  color: var(--ifm-heading-color);
+}
+
+.theme-doc-markdown img {
+  border-radius: 8px;
+}
+
+.theme-code-block {
+  border: 1px solid var(--cb-border);
+  border-radius: 8px;
+}
+
+.menu__link,
+.table-of-contents__link {
+  border-radius: 6px;
+}

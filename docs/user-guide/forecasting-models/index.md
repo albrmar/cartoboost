@@ -1,46 +1,58 @@
-# Forecasting Model Guides
+# Model Guides
 
-These pages document the main forecasting model classes with taxi-domain
-examples. Each class is a thin Python wrapper over a Rust implementation exposed
-through `cartoboost._native`.
+These guides explain the native forecasting model classes. They are separate
+from the forecasting wrapper docs: use this section when you need to pick,
+configure, or compare a model; use the [Forecasting](../../forecasting.md)
+section when you need `ForecastFrame`, rolling-origin backtesting, artifacts,
+or CLI workflows.
 
-Start with a baseline, then move to the model that matches the series structure:
+Every class is a thin Python wrapper over Rust behavior exposed through
+`cartoboost._native`. Python does not compute fallback forecasts for unsupported
+model modes.
 
-| Model page | Use when |
-| --- | --- |
-| [Naive And Seasonal Naive](naive-seasonal.md) | You need transparent last-value or last-season baselines. |
-| [Theta](theta.md) | A lightweight trend extrapolator is appropriate. |
-| [ETS](ets.md) | Level, trend, and additive seasonality explain the series. |
-| [ARIMA And AutoARIMA](arima.md) | Autocorrelation and differencing are important. |
-| [ARIMA Examples](arima-examples.md) | You want a runnable synthetic taxi-lane visualization and ARIMA smoke check. |
-| [Kalman](kalman.md) | A noisy local level and local trend should update over time. |
-| [Kriging](kriging.md) | Nearby pickup zones or route midpoints should borrow spatial signal, with visual example plots and variogram diagnostics. |
-| [CartoBoost Lag](cartoboost-lag.md) | Many related series should share one supervised lag model. |
-| [Weighted Ensembles](ensembles.md) | Several native forecasters should be combined with explicit weights. |
+## Pick A Guide
 
-## Shared Result Shape
+| Model guide | Best first use | Notes |
+| --- | --- | --- |
+| [Naive And Seasonal Naive](naive-seasonal.md) | Establish transparent last-value and last-season baselines. | Start here for every forecast comparison. |
+| [Theta](theta.md) | Extrapolate level and trend with a lightweight deterministic model. | Includes manual and optimized theta examples. |
+| [ETS](ets.md) | Model additive level, trend, and seasonality. | Multiplicative and damped ETS modes are rejected. |
+| [ARIMA And AutoARIMA](arima.md) | Use differencing and autocorrelation in a bounded non-seasonal search. | Seasonal AutoARIMA is not exposed. |
+| [ARIMA Examples](arima-examples.md) | Run a visual ARIMA smoke check and benchmark-oriented example. | Uses deterministic taxi-lane fixtures. |
+| [Kalman](kalman.md) | Track noisy local level and local trend over time. | Includes state diagnostics and visualization examples. |
+| [Kriging](kriging.md) | Borrow signal across pickup-zone or route coordinates. | Useful for coordinate-aware panel forecasting. |
+| [CartoBoost Lag](cartoboost-lag.md) | Learn one supervised lag model across many related series. | Use for pickup-zone, dropoff-zone, and lane-level panels. |
+| [Weighted Ensembles](ensembles.md) | Combine fitted native forecasters with explicit weights. | Components and weights must be named explicitly. |
 
-Native forecasting models return a `ForecastResult` object. Use
-`predictions()` for row tuples:
+## Scientific Choice Criteria
+
+Choose the model whose assumptions match the signal you can defend:
+
+| Signal in the taxi series | First model to try | Scientific reason |
+| --- | --- | --- |
+| The latest observed level is the best short-horizon summary. | Naive | Tests whether any model adds information beyond persistence. |
+| The same hour yesterday or same weekday last week dominates. | Seasonal naive | Tests repeatable seasonality without estimated parameters. |
+| Level and trend are smooth, with optional simple seasonality. | Theta or ETS | Estimates a low-dimensional local structure that is easy to inspect. |
+| Recent autocorrelation and differencing explain the series. | ARIMA or AutoARIMA | Models local serial dependence after bounded non-seasonal differencing. |
+| The measured series is noisy and the latent level/trend should update gradually. | Kalman | Separates observation noise from latent state movement. |
+| Nearby zones, route midpoints, or residual surfaces should be spatially related. | Kriging | Uses coordinate distance and a variogram to borrow cross-series signal. |
+| Many related zones or lanes share lag, rolling, calendar, or trend structure. | CartoBoost lag | Learns one supervised model from many aligned panel examples. |
+| Validated models capture complementary errors. | Weighted ensemble | Averages explicit native components after each member proves useful. |
+
+Do not choose a richer model only because it is available. A scientist should
+be able to say which mechanism the model represents, what it ignores, and which
+baseline it must beat on a time-ordered holdout.
+
+## Shared Input Patterns
+
+For quick checks, local forecasters can fit a plain numeric sequence:
 
 ```python
-forecast = model.predict(3)
-rows = forecast.predictions()
+from cartoboost.forecasting import SeasonalNaiveForecaster
 
-for series_id, timestamp, horizon, model_name, mean in rows:
-    print(series_id, timestamp, horizon, model_name, mean)
-```
-
-The tuple columns are also available from `forecast.columns()`. Use
-`forecast.to_json()` and `cartoboost._native.ForecastResult.from_json(...)` for
-native JSON roundtrips.
-
-## Shared Input Shape
-
-For quick examples, every forecaster can fit a plain numeric list:
-
-```python
-model.fit([18.0, 21.0, 23.0, 20.0])
+model = SeasonalNaiveForecaster(season_length=24)
+model.fit(zone_hourly_counts)
+forecast = model.predict(12)
 ```
 
 For production taxi demand or fare-duration workflows, prefer a validated
@@ -60,3 +72,36 @@ frame = ForecastFrame.from_pandas(
 
 `ForecastFrame` validates timestamps, duplicate rows within each series, finite
 targets, regular frequency, panel ids, and covariate role metadata.
+
+## Shared Result Shape
+
+Native forecasting models return a `ForecastResult` object. Use
+`predictions()` for row tuples:
+
+```python
+forecast = model.predict(3)
+rows = forecast.predictions()
+
+for series_id, timestamp, horizon, model_name, mean in rows:
+    print(series_id, timestamp, horizon, model_name, mean)
+```
+
+The tuple columns are also available from `forecast.columns()`. Use
+`forecast.to_json()` and `cartoboost._native.ForecastResult.from_json(...)` for
+native JSON roundtrips.
+
+## Validation Order
+
+For forecast claims, compare models under the same rolling-origin split:
+
+1. Start with naive and seasonal naive baselines.
+2. Add a local model that matches the series structure, such as theta, ETS,
+   ARIMA, or Kalman.
+3. Use `CartoBoostLagForecaster` when many related series should share lag,
+   rolling, calendar, or trend features.
+4. Use kriging when stable coordinates are part of the forecast signal.
+5. Use weighted ensembles only after component models have been validated.
+
+Report RMSE, MAE, horizon, split dates, training time, prediction time, model
+settings, sample size, and whether the input data is real, generated acceptance
+data, or synthetic.

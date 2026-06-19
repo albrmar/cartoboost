@@ -5,6 +5,11 @@ building a `CartoBoostRegressor` or a forecasting `ForecastFrame`. Use these
 when you have a plain Python sequence, a small spatial interpolation problem, or
 an intermittent-demand sequence and want a direct result.
 
+These functions are useful for scientific checks and ablations: they let you
+compare a full estimator or forecasting wrapper against the same Rust-native
+building block on a simple taxi-zone sequence, route panel, or coordinate
+interpolation problem.
+
 ```python
 import cartoboost as cb
 ```
@@ -14,7 +19,7 @@ import cartoboost as cb
 Use local-level Kalman filtering when the signal is a noisy measurement of a
 slowly moving level and there is no explicit trend term.
 
-Example: a warehouse inventory sensor reads a stable stock level with small
+Example: a pickup-zone counter reads a stable hourly demand level with small
 noise, and you want a smoothed level plus a short flat forecast.
 
 ```python
