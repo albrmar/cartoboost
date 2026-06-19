@@ -1,0 +1,23 @@
+<svg width="960" height="240" viewBox="0 0 960 240" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">CartoBoost logo</title>
+  <desc id="desc">A hexagonal spatial cell with a boosted origin-destination route arrow next to the CartoBoost wordmark.</desc>
+  <defs>
+    <linearGradient id="boost" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#00A3E0"/>
+      <stop offset="1" stop-color="#7C3AED"/>
+    </linearGradient>
+  </defs>
+  <rect width="960" height="240" fill="#F8FAFC"/>
+  <g transform="translate(48,35)">
+    <polygon points="85,0 158,42.5 158,127.5 85,170 12,127.5 12,42.5" fill="#E0F2FE" stroke="#075985" stroke-width="8"/>
+    <polygon points="85,25 136,54 136,116 85,145 34,116 34,54" fill="none" stroke="#38BDF8" stroke-width="4" opacity="0.85"/>
+    <path d="M40 124 C64 96, 88 88, 109 68 C125 52, 135 39, 143 18" fill="none" stroke="url(#boost)" stroke-width="15" stroke-linecap="round"/>
+    <path d="M122 20 L146 16 L142 41" fill="none" stroke="#7C3AED" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="40" cy="124" r="10" fill="#075985"/>
+    <circle cx="109" cy="68" r="10" fill="#075985"/>
+  </g>
+  <g transform="translate(260,66)">
+    <text x="0" y="70" font-family="Inter, IBM Plex Sans, Arial, sans-serif" font-size="72" font-weight="800" letter-spacing="-2.5" fill="#0F172A">CartoBoost</text>
+    <text x="4" y="112" font-family="Inter, IBM Plex Sans, Arial, sans-serif" font-size="22" font-weight="500" letter-spacing="0" fill="#475569">Structured boosting for place, time, and movement.</text>
+  </g>
+</svg>
