@@ -1,11 +1,17 @@
 # CartoBoost
 
-[![PyPI](https://img.shields.io/pypi/v/cartoboost.svg)](https://pypi.org/project/cartoboost/)
-[![Python](https://img.shields.io/pypi/pyversions/cartoboost.svg)](https://pypi.org/project/cartoboost/)
-[![CI](https://github.com/TheCulliganMan/CartoBoost/actions/workflows/ci.yml/badge.svg)](https://github.com/TheCulliganMan/CartoBoost/actions/workflows/ci.yml)
-[![Docs](https://github.com/TheCulliganMan/CartoBoost/actions/workflows/pages.yml/badge.svg)](https://github.com/TheCulliganMan/CartoBoost/actions/workflows/pages.yml)
-[![Publish](https://github.com/TheCulliganMan/CartoBoost/actions/workflows/publish-pypi.yml/badge.svg)](https://github.com/TheCulliganMan/CartoBoost/actions/workflows/publish-pypi.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+<p align="center">
+  <img src="assets/brand/cartoboost-logo.svg" alt="CartoBoost: structured boosting for place, time, and movement" width="720">
+</p>
+
+<p align="center">
+  <a href="https://pypi.org/project/cartoboost/"><img src="https://img.shields.io/pypi/v/cartoboost.svg" alt="PyPI"></a>
+  <a href="https://pypi.org/project/cartoboost/"><img src="https://img.shields.io/pypi/pyversions/cartoboost.svg" alt="Python"></a>
+  <a href="https://github.com/TheCulliganMan/CartoBoost/actions/workflows/ci.yml"><img src="https://github.com/TheCulliganMan/CartoBoost/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/TheCulliganMan/CartoBoost/actions/workflows/pages.yml"><img src="https://github.com/TheCulliganMan/CartoBoost/actions/workflows/pages.yml/badge.svg" alt="Docs"></a>
+  <a href="https://github.com/TheCulliganMan/CartoBoost/actions/workflows/publish-pypi.yml"><img src="https://github.com/TheCulliganMan/CartoBoost/actions/workflows/publish-pypi.yml/badge.svg" alt="Publish"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow.svg" alt="License: MIT"></a>
+</p>
 
 CartoBoost is a Rust-backed Python modeling toolkit for regression problems
 where place, time, and movement structure matter. It is aimed at scientific and
