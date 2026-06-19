@@ -1,7 +1,11 @@
 # Kalman
 
-`KalmanForecaster` is a Rust local-linear-trend state-space forecaster. It is
-useful when the series has a noisy level and a slowly changing trend.
+CartoBoost exposes Rust Kalman forecasters for both level-only and
+local-linear-trend state-space models. Use `LocalLevelKalmanForecaster` when
+the series has a noisy stable level, `KalmanForecaster` when the latent level
+also has a slowly changing trend, and the `Auto*` variants when you want a
+deterministic native variance-grid search before refitting on all training
+rows.
 
 ## When To Use
 
@@ -24,9 +28,10 @@ level and trend diagnostics.
 
 ## Assumptions And Failure Modes
 
-The native forecasting class is a local-linear-trend model. It assumes the
-latent level and trend evolve smoothly according to the configured process
-variances, while observations deviate according to the observation variance.
+The local-level class has one latent level. The local-linear class has a latent
+level and trend. In both cases, process variances control how quickly the
+latent state moves, while observation variance controls how strongly the model
+trusts noisy measurements.
 
 Kalman can fail when a fixed seasonal cycle dominates, when known future
 events drive the forecast, or when abrupt structural breaks are too large for
@@ -38,14 +43,15 @@ settings match the taxi series.
 ## Example
 
 ```python
-from cartoboost.forecasting import KalmanForecaster
+from cartoboost.forecasting import AutoKalmanForecaster
 
 airport_pickups = [72, 75, 79, 82, 80, 86, 91, 96, 94, 99, 103, 108]
 
-model = KalmanForecaster(
-    level_process_variance=0.05,
-    trend_process_variance=0.005,
-    observation_variance=1.0,
+model = AutoKalmanForecaster(
+    level_process_variance_grid=[0.01, 0.05, 0.10],
+    trend_process_variance_grid=[0.001, 0.005, 0.010],
+    observation_variance_grid=[0.5, 1.0, 2.0],
+    validation_window=3,
 )
 model.fit(airport_pickups)
 forecast = model.predict(6)
@@ -61,8 +67,9 @@ full taxi-zone panel.
 
 | Example | Use | Why |
 | --- | --- | --- |
-| A JFK pickup sensor is noisy but the true demand level is stable. | `cartoboost.local_level_kalman_filter` | One latent level is enough; there is no explicit slope. |
-| Airport pickup demand is drifting upward through the evening rush. | `cartoboost.kalman_filter` | The local-linear model estimates both a level and a trend. |
+| A JFK pickup sensor is noisy but the true demand level is stable. | `LocalLevelKalmanForecaster` or `cartoboost.local_level_kalman_filter` | One latent level is enough; there is no explicit slope. |
+| Airport pickup demand is drifting upward through the evening rush. | `KalmanForecaster` or `cartoboost.kalman_filter` | The local-linear model estimates both a level and a trend. |
+| You want the model to choose variance settings from a small grid. | `AutoLocalLevelKalmanForecaster` or `AutoKalmanForecaster` | The Rust core scores candidates on a time-ordered tail window and refits the winner. |
 | You need a normal forecast band for a dashboard. | `forecast_distribution` from either utility | It returns mean, variance, lower, and upper for each horizon. |
 | You need to explain why a point looked unusual. | Per-step estimates and `diagnostics` | Innovations, standardized innovations, gains, and log likelihood show how surprising the observation was. |
 
@@ -106,7 +113,7 @@ print(state["diagnostics"]["rmse"], state["diagnostics"]["mae"])
 ## ForecastFrame Example
 
 ```python
-from cartoboost.forecasting import ForecastFrame, KalmanForecaster
+from cartoboost.forecasting import AutoKalmanForecaster, ForecastFrame
 
 frame = ForecastFrame.from_pandas(
     hourly_zone_demand.query("PULocationID == 132"),
@@ -115,36 +122,48 @@ frame = ForecastFrame.from_pandas(
     freq="h",
 )
 
-model = KalmanForecaster(
-    level_process_variance=0.10,
-    trend_process_variance=0.01,
-    observation_variance=2.0,
+model = AutoKalmanForecaster(
+    level_process_variance_grid=[0.02, 0.05, 0.10],
+    trend_process_variance_grid=[0.002, 0.005, 0.010],
+    observation_variance_grid=[1.0, 2.0, 4.0],
+    validation_window=24,
 )
 model.fit(frame)
 forecast = model.predict(12)
+print(model.metadata_["selected_params"])
 ```
 
 ## Parameters
 
-| Parameter | Effect |
+| Class | Parameters |
 | --- | --- |
-| `level_process_variance` | Larger values let the level change faster. |
-| `trend_process_variance` | Larger values let the trend change faster. |
-| `observation_variance` | Larger values make the model trust noisy observations less. |
+| `LocalLevelKalmanForecaster` | `level_process_variance`, `observation_variance`. |
+| `KalmanForecaster` | `level_process_variance`, `trend_process_variance`, `observation_variance`. |
+| `AutoLocalLevelKalmanForecaster` | `level_process_variance_grid`, `observation_variance_grid`, optional `validation_window`. |
+| `AutoKalmanForecaster` | `level_process_variance_grid`, `trend_process_variance_grid`, `observation_variance_grid`, optional `validation_window`. |
 
-## Tuning Pattern
+Larger process variance lets the latent level or trend move faster. Larger
+observation variance makes the model trust noisy observations less. Auto
+variants report `selected_params` and per-candidate `validation_scores` in
+`metadata_`.
 
-Start with the defaults, then evaluate a small grid:
+## Self-Tuning Pattern
 
 ```python
-candidates = [
-    {"level_process_variance": 0.02, "trend_process_variance": 0.002, "observation_variance": 1.0},
-    {"level_process_variance": 0.05, "trend_process_variance": 0.005, "observation_variance": 1.0},
-    {"level_process_variance": 0.10, "trend_process_variance": 0.010, "observation_variance": 2.0},
-]
+from cartoboost.forecasting import AutoLocalLevelKalmanForecaster
+
+model = AutoLocalLevelKalmanForecaster(
+    level_process_variance_grid=[0.005, 0.02, 0.08],
+    observation_variance_grid=[0.5, 1.0, 3.0],
+    validation_window=6,
+)
+model.fit(zone_236_readings)
+print(model.metadata_["validation_scores"])
 ```
 
-Select settings with rolling-origin validation, not in-sample fit.
+The auto forecasters use a deterministic time-ordered tail validation window
+inside Rust, choose the lowest-MSE candidate with deterministic tie-breaking,
+then refit the selected model on all training rows.
 
 ## Validation Notes
 

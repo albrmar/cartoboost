@@ -21,9 +21,12 @@ from .lag_features import (
 )
 from .local import (
     AutoARIMAForecaster,
+    AutoKalmanForecaster,
+    AutoLocalLevelKalmanForecaster,
     ETSForecaster,
     KalmanForecaster,
     KrigingForecaster,
+    LocalLevelKalmanForecaster,
     NaiveForecaster,
     OptimizedThetaForecaster,
     SeasonalNaiveForecaster,
@@ -41,6 +44,8 @@ from .splitters import (
 
 __all__ = [
     "AutoARIMAForecaster",
+    "AutoKalmanForecaster",
+    "AutoLocalLevelKalmanForecaster",
     "BacktestFoldResult",
     "BacktestResult",
     "BaseForecaster",
@@ -59,6 +64,7 @@ __all__ = [
     "ForecastingConfig",
     "infer_frequency",
     "KalmanForecaster",
+    "LocalLevelKalmanForecaster",
     "KrigingForecaster",
     "LagFeatureBuilder",
     "LagFeatureConfig",

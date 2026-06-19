@@ -1,7 +1,8 @@
 use crate::booster::BoosterConfig;
 use crate::forecasting::{
-    ArimaForecaster, AutoARIMAForecaster, CartoBoostLagForecaster, ETSForecaster, Forecaster,
-    LagFeatureConfig, NaiveForecaster, OptimizedThetaForecaster, SeasonalNaiveForecaster,
+    ArimaForecaster, AutoARIMAForecaster, AutoKalmanForecaster, AutoLocalLevelKalmanForecaster,
+    CartoBoostLagForecaster, ETSForecaster, Forecaster, KalmanForecaster, LagFeatureConfig,
+    LocalLevelKalmanForecaster, NaiveForecaster, OptimizedThetaForecaster, SeasonalNaiveForecaster,
     ThetaForecaster,
 };
 use crate::{CartoBoostError, Result};
@@ -120,6 +121,56 @@ impl ForecastRegistry {
         registry.register(
             ForecastModelSpec::new("auto_arima")?.with_params(auto_arima_params),
             create_auto_arima,
+            RegisterMode::RejectDuplicate,
+        )?;
+        let mut kalman_params = Map::new();
+        kalman_params.insert("level_process_variance".to_string(), Value::from(0.05));
+        kalman_params.insert("trend_process_variance".to_string(), Value::from(0.005));
+        kalman_params.insert("observation_variance".to_string(), Value::from(1.0));
+        registry.register(
+            ForecastModelSpec::new("kalman")?.with_params(kalman_params),
+            create_kalman,
+            RegisterMode::RejectDuplicate,
+        )?;
+        let mut local_level_kalman_params = Map::new();
+        local_level_kalman_params.insert("level_process_variance".to_string(), Value::from(0.05));
+        local_level_kalman_params.insert("observation_variance".to_string(), Value::from(1.0));
+        registry.register(
+            ForecastModelSpec::new("local_level_kalman")?.with_params(local_level_kalman_params),
+            create_local_level_kalman,
+            RegisterMode::RejectDuplicate,
+        )?;
+        let mut auto_kalman_params = Map::new();
+        auto_kalman_params.insert(
+            "level_process_variance_grid".to_string(),
+            serde_json::json!([0.001, 0.01, 0.05, 0.1]),
+        );
+        auto_kalman_params.insert(
+            "trend_process_variance_grid".to_string(),
+            serde_json::json!([0.0001, 0.001, 0.005, 0.01]),
+        );
+        auto_kalman_params.insert(
+            "observation_variance_grid".to_string(),
+            serde_json::json!([0.1, 0.5, 1.0, 2.0]),
+        );
+        registry.register(
+            ForecastModelSpec::new("auto_kalman")?.with_params(auto_kalman_params),
+            create_auto_kalman,
+            RegisterMode::RejectDuplicate,
+        )?;
+        let mut auto_local_level_kalman_params = Map::new();
+        auto_local_level_kalman_params.insert(
+            "level_process_variance_grid".to_string(),
+            serde_json::json!([0.001, 0.01, 0.05, 0.1]),
+        );
+        auto_local_level_kalman_params.insert(
+            "observation_variance_grid".to_string(),
+            serde_json::json!([0.1, 0.5, 1.0, 2.0]),
+        );
+        registry.register(
+            ForecastModelSpec::new("auto_local_level_kalman")?
+                .with_params(auto_local_level_kalman_params),
+            create_auto_local_level_kalman,
             RegisterMode::RejectDuplicate,
         )?;
         let mut lag_params = Map::new();
@@ -250,6 +301,58 @@ fn create_auto_arima(spec: &ForecastModelSpec) -> Result<Box<dyn Forecaster>> {
     )?))
 }
 
+fn create_kalman(spec: &ForecastModelSpec) -> Result<Box<dyn Forecaster>> {
+    let level_process_variance =
+        optional_f64_param(spec, "level_process_variance")?.unwrap_or(0.05);
+    let trend_process_variance =
+        optional_f64_param(spec, "trend_process_variance")?.unwrap_or(0.005);
+    let observation_variance = optional_f64_param(spec, "observation_variance")?.unwrap_or(1.0);
+    Ok(Box::new(KalmanForecaster::new(
+        level_process_variance,
+        trend_process_variance,
+        observation_variance,
+    )?))
+}
+
+fn create_local_level_kalman(spec: &ForecastModelSpec) -> Result<Box<dyn Forecaster>> {
+    let level_process_variance =
+        optional_f64_param(spec, "level_process_variance")?.unwrap_or(0.05);
+    let observation_variance = optional_f64_param(spec, "observation_variance")?.unwrap_or(1.0);
+    Ok(Box::new(LocalLevelKalmanForecaster::new(
+        level_process_variance,
+        observation_variance,
+    )?))
+}
+
+fn create_auto_kalman(spec: &ForecastModelSpec) -> Result<Box<dyn Forecaster>> {
+    let level_process_variance_grid = optional_f64_vec_param(spec, "level_process_variance_grid")?
+        .unwrap_or_else(|| vec![0.001, 0.01, 0.05, 0.1]);
+    let trend_process_variance_grid = optional_f64_vec_param(spec, "trend_process_variance_grid")?
+        .unwrap_or_else(|| vec![0.0001, 0.001, 0.005, 0.01]);
+    let observation_variance_grid = optional_f64_vec_param(spec, "observation_variance_grid")?
+        .unwrap_or_else(|| vec![0.1, 0.5, 1.0, 2.0]);
+    let validation_window = optional_usize_param(spec, "validation_window")?;
+    Ok(Box::new(AutoKalmanForecaster::with_grids(
+        level_process_variance_grid,
+        trend_process_variance_grid,
+        observation_variance_grid,
+        validation_window,
+    )?))
+}
+
+fn create_auto_local_level_kalman(spec: &ForecastModelSpec) -> Result<Box<dyn Forecaster>> {
+    let level_process_variance_grid = optional_f64_vec_param(spec, "level_process_variance_grid")?
+        .unwrap_or_else(|| vec![0.001, 0.01, 0.05, 0.1]);
+    let observation_variance_grid = optional_f64_vec_param(spec, "observation_variance_grid")?
+        .unwrap_or_else(|| vec![0.1, 0.5, 1.0, 2.0]);
+    let validation_window = optional_usize_param(spec, "validation_window")?;
+    Ok(Box::new(AutoLocalLevelKalmanForecaster::with_grids(
+        level_process_variance_grid,
+        observation_variance_grid,
+        validation_window,
+    )?))
+}
+
 fn create_cartoboost_lag(spec: &ForecastModelSpec) -> Result<Box<dyn Forecaster>> {
     let lag_config = match spec.params.get("lag_config") {
         Some(value) => serde_json::from_value::<LagFeatureConfig>(value.clone())?,
@@ -345,8 +448,12 @@ mod tests {
             vec![
                 "arima",
                 "auto_arima",
+                "auto_kalman",
+                "auto_local_level_kalman",
                 "cartoboost_lag",
                 "ets",
+                "kalman",
+                "local_level_kalman",
                 "naive",
                 "optimized_theta",
                 "seasonal_naive",

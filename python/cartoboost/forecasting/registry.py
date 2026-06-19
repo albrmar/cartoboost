@@ -118,7 +118,11 @@ def default_model_specs() -> tuple[ForecastModelSpec, ...]:
     from .global_models import CartoBoostLagForecaster
     from .local import (
         AutoARIMAForecaster,
+        AutoKalmanForecaster,
+        AutoLocalLevelKalmanForecaster,
         ETSForecaster,
+        KalmanForecaster,
+        LocalLevelKalmanForecaster,
         NaiveForecaster,
         OptimizedThetaForecaster,
         SeasonalNaiveForecaster,
@@ -132,11 +136,11 @@ def default_model_specs() -> tuple[ForecastModelSpec, ...]:
         ForecastModelSpec("optimized_theta", factory=OptimizedThetaForecaster),
         ForecastModelSpec("ets", factory=ETSForecaster),
         ForecastModelSpec("auto_arima", factory=AutoARIMAForecaster),
+        ForecastModelSpec("kalman", factory=KalmanForecaster),
+        ForecastModelSpec("local_level_kalman", factory=LocalLevelKalmanForecaster),
+        ForecastModelSpec("auto_kalman", factory=AutoKalmanForecaster),
+        ForecastModelSpec("auto_local_level_kalman", factory=AutoLocalLevelKalmanForecaster),
         ForecastModelSpec("cartoboost_lag", factory=CartoBoostLagForecaster),
-        ForecastModelSpec(
-            "local_level_kalman",
-            factory=_native_factory("LocalLevelKalmanForecaster"),
-        ),
         ForecastModelSpec(
             "local_linear_trend_kalman",
             factory=_native_factory("LocalLinearTrendKalmanForecaster"),

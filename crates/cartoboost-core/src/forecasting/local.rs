@@ -4,8 +4,8 @@ use crate::forecasting::{
     ForecastFrame, ForecastPrediction, ForecastResult, ForecastRow, Forecaster,
 };
 use crate::utilities::{
-    fit_local_linear_kalman, ordinary_kriging_predict_many, KrigingObservation,
-    LocalLinearKalmanConfig, OrdinaryKrigingConfig,
+    fit_local_level_kalman, fit_local_linear_kalman, ordinary_kriging_predict_many,
+    KrigingObservation, LocalLevelKalmanConfig, LocalLinearKalmanConfig, OrdinaryKrigingConfig,
 };
 use crate::{CartoBoostError, Result};
 use rayon::prelude::*;
@@ -78,6 +78,34 @@ pub struct KalmanForecaster {
     trend_process_variance: f64,
     observation_variance: f64,
     fitted: Option<FittedKalmanState>,
+}
+
+#[derive(Debug, Clone)]
+pub struct LocalLevelKalmanForecaster {
+    level_process_variance: f64,
+    observation_variance: f64,
+    fitted: Option<FittedLocalLevelKalmanState>,
+}
+
+#[derive(Debug, Clone)]
+pub struct AutoKalmanForecaster {
+    level_process_variance_grid: Vec<f64>,
+    trend_process_variance_grid: Vec<f64>,
+    observation_variance_grid: Vec<f64>,
+    validation_window: Option<usize>,
+    selected_params: Option<KalmanParameterSet>,
+    validation_scores: Vec<KalmanValidationScore>,
+    fitted: Option<KalmanForecaster>,
+}
+
+#[derive(Debug, Clone)]
+pub struct AutoLocalLevelKalmanForecaster {
+    level_process_variance_grid: Vec<f64>,
+    observation_variance_grid: Vec<f64>,
+    validation_window: Option<usize>,
+    selected_params: Option<LocalLevelKalmanParameterSet>,
+    validation_scores: Vec<LocalLevelKalmanValidationScore>,
+    fitted: Option<LocalLevelKalmanForecaster>,
 }
 
 #[derive(Debug, Clone)]
@@ -158,10 +186,22 @@ struct FittedKalmanState {
 }
 
 #[derive(Debug, Clone)]
+struct FittedLocalLevelKalmanState {
+    frame: ForecastFrame,
+    series: BTreeMap<String, FittedLocalLevelKalmanSeries>,
+}
+
+#[derive(Debug, Clone)]
 struct FittedKalmanSeries {
     last_timestamp: chrono::NaiveDateTime,
     level: f64,
     trend: f64,
+}
+
+#[derive(Debug, Clone)]
+struct FittedLocalLevelKalmanSeries {
+    last_timestamp: chrono::NaiveDateTime,
+    level: f64,
 }
 
 #[derive(Debug, Clone)]
@@ -199,6 +239,31 @@ pub struct ArimaValidationScore {
     pub p: usize,
     pub d: usize,
     pub q: usize,
+    pub mse: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct KalmanParameterSet {
+    pub level_process_variance: f64,
+    pub trend_process_variance: f64,
+    pub observation_variance: f64,
+}
+
+#[derive(Debug, Clone)]
+pub struct KalmanValidationScore {
+    pub params: KalmanParameterSet,
+    pub mse: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct LocalLevelKalmanParameterSet {
+    pub level_process_variance: f64,
+    pub observation_variance: f64,
+}
+
+#[derive(Debug, Clone)]
+pub struct LocalLevelKalmanValidationScore {
+    pub params: LocalLevelKalmanParameterSet,
     pub mse: f64,
 }
 
@@ -482,11 +547,125 @@ impl KalmanForecaster {
     }
 }
 
+impl LocalLevelKalmanForecaster {
+    pub fn new(level_process_variance: f64, observation_variance: f64) -> Result<Self> {
+        LocalLevelKalmanConfig::new(level_process_variance, observation_variance)?;
+        Ok(Self {
+            level_process_variance,
+            observation_variance,
+            fitted: None,
+        })
+    }
+}
+
+impl AutoKalmanForecaster {
+    pub fn new() -> Result<Self> {
+        Self::with_grids(
+            vec![0.001, 0.01, 0.05, 0.1],
+            vec![0.0001, 0.001, 0.005, 0.01],
+            vec![0.1, 0.5, 1.0, 2.0],
+            None,
+        )
+    }
+
+    pub fn with_grids(
+        level_process_variance_grid: Vec<f64>,
+        trend_process_variance_grid: Vec<f64>,
+        observation_variance_grid: Vec<f64>,
+        validation_window: Option<usize>,
+    ) -> Result<Self> {
+        validate_kalman_grid("level_process_variance_grid", &level_process_variance_grid)?;
+        validate_kalman_grid("trend_process_variance_grid", &trend_process_variance_grid)?;
+        validate_kalman_grid("observation_variance_grid", &observation_variance_grid)?;
+        if matches!(validation_window, Some(0)) {
+            return Err(CartoBoostError::InvalidInput(
+                "auto_kalman validation_window must be positive when provided".to_string(),
+            ));
+        }
+        Ok(Self {
+            level_process_variance_grid,
+            trend_process_variance_grid,
+            observation_variance_grid,
+            validation_window,
+            selected_params: None,
+            validation_scores: Vec::new(),
+            fitted: None,
+        })
+    }
+
+    pub fn selected_params(&self) -> Option<KalmanParameterSet> {
+        self.selected_params
+    }
+
+    pub fn validation_scores(&self) -> &[KalmanValidationScore] {
+        &self.validation_scores
+    }
+}
+
+impl AutoLocalLevelKalmanForecaster {
+    pub fn new() -> Result<Self> {
+        Self::with_grids(vec![0.001, 0.01, 0.05, 0.1], vec![0.1, 0.5, 1.0, 2.0], None)
+    }
+
+    pub fn with_grids(
+        level_process_variance_grid: Vec<f64>,
+        observation_variance_grid: Vec<f64>,
+        validation_window: Option<usize>,
+    ) -> Result<Self> {
+        validate_kalman_grid("level_process_variance_grid", &level_process_variance_grid)?;
+        validate_kalman_grid("observation_variance_grid", &observation_variance_grid)?;
+        if matches!(validation_window, Some(0)) {
+            return Err(CartoBoostError::InvalidInput(
+                "auto_local_level_kalman validation_window must be positive when provided"
+                    .to_string(),
+            ));
+        }
+        Ok(Self {
+            level_process_variance_grid,
+            observation_variance_grid,
+            validation_window,
+            selected_params: None,
+            validation_scores: Vec::new(),
+            fitted: None,
+        })
+    }
+
+    pub fn selected_params(&self) -> Option<LocalLevelKalmanParameterSet> {
+        self.selected_params
+    }
+
+    pub fn validation_scores(&self) -> &[LocalLevelKalmanValidationScore] {
+        &self.validation_scores
+    }
+}
+
+impl Default for AutoLocalLevelKalmanForecaster {
+    fn default() -> Self {
+        Self::new().expect("default auto_local_level_kalman grid is valid")
+    }
+}
+
+impl Default for AutoKalmanForecaster {
+    fn default() -> Self {
+        Self::new().expect("default auto_kalman grid is valid")
+    }
+}
+
 impl Default for KalmanForecaster {
     fn default() -> Self {
         Self {
             level_process_variance: 0.05,
             trend_process_variance: 0.005,
+            observation_variance: 1.0,
+            fitted: None,
+        }
+    }
+}
+
+impl Default for LocalLevelKalmanForecaster {
+    fn default() -> Self {
+        Self {
+            level_process_variance: 0.05,
             observation_variance: 1.0,
             fitted: None,
         }
@@ -887,34 +1066,7 @@ impl Forecaster for KalmanForecaster {
     }
 
     fn predict(&self, horizon: usize) -> Result<ForecastResult> {
-        validate_horizon(horizon)?;
-        let fitted = self.fitted.as_ref().ok_or_else(not_fitted)?;
-        let predictions = fitted
-            .series
-            .iter()
-            .collect::<Vec<_>>()
-            .into_par_iter()
-            .map(|(series_id, series)| {
-                (1..=horizon)
-                    .map(|step| {
-                        Ok(ForecastPrediction {
-                            series_id: series_id.clone(),
-                            timestamp: fitted
-                                .frame
-                                .frequency()
-                                .advance(series.last_timestamp, step)?,
-                            horizon: step,
-                            model: self.model_name().to_string(),
-                            mean: series.level + step as f64 * series.trend,
-                        })
-                    })
-                    .collect::<Result<Vec<_>>>()
-            })
-            .collect::<Result<Vec<_>>>()?
-            .into_iter()
-            .flatten()
-            .collect();
-        ForecastResult::new(predictions)
+        self.predict_with_model_name(horizon, self.model_name())
     }
 
     fn model_name(&self) -> &'static str {
@@ -927,6 +1079,235 @@ impl Forecaster for KalmanForecaster {
             "level_process_variance": self.level_process_variance,
             "trend_process_variance": self.trend_process_variance,
             "observation_variance": self.observation_variance,
+        })
+    }
+}
+
+impl Forecaster for LocalLevelKalmanForecaster {
+    fn fit(&mut self, frame: &ForecastFrame) -> Result<()> {
+        self.fitted = Some(FittedLocalLevelKalmanState::from_frame(
+            frame,
+            self.level_process_variance,
+            self.observation_variance,
+        )?);
+        Ok(())
+    }
+
+    fn predict(&self, horizon: usize) -> Result<ForecastResult> {
+        self.predict_with_model_name(horizon, self.model_name())
+    }
+
+    fn model_name(&self) -> &'static str {
+        "local_level_kalman"
+    }
+
+    fn metadata(&self) -> Value {
+        json!({
+            "model": self.model_name(),
+            "level_process_variance": self.level_process_variance,
+            "observation_variance": self.observation_variance,
+        })
+    }
+}
+
+impl Forecaster for AutoKalmanForecaster {
+    fn fit(&mut self, frame: &ForecastFrame) -> Result<()> {
+        let local = FittedLocalState::from_frame(frame);
+        let level_grid = self.level_process_variance_grid.clone();
+        let trend_grid = self.trend_process_variance_grid.clone();
+        let observation_grid = self.observation_variance_grid.clone();
+        let validation_window = self.validation_window;
+        let mut candidates = Vec::new();
+        for (level_idx, level_process_variance) in level_grid.iter().copied().enumerate() {
+            for (trend_idx, trend_process_variance) in trend_grid.iter().copied().enumerate() {
+                for (observation_idx, observation_variance) in
+                    observation_grid.iter().copied().enumerate()
+                {
+                    candidates.push((
+                        level_idx,
+                        trend_idx,
+                        observation_idx,
+                        KalmanParameterSet {
+                            level_process_variance,
+                            trend_process_variance,
+                            observation_variance,
+                        },
+                    ));
+                }
+            }
+        }
+        let scored = candidates
+            .into_par_iter()
+            .map(|(level_idx, trend_idx, observation_idx, params)| {
+                let mse = score_kalman_params(&local.history_by_series, params, validation_window)?;
+                Ok((
+                    level_idx,
+                    trend_idx,
+                    observation_idx,
+                    KalmanValidationScore { params, mse },
+                ))
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let mut scored = scored;
+        scored.sort_by_key(|(level_idx, trend_idx, observation_idx, _)| {
+            (*level_idx, *trend_idx, *observation_idx)
+        });
+        let scores = scored
+            .into_iter()
+            .map(|(_, _, _, score)| score)
+            .collect::<Vec<_>>();
+        let best = scores.iter().min_by_key(|score| {
+            (
+                OrderedF64(score.mse),
+                OrderedF64(score.params.level_process_variance),
+                OrderedF64(score.params.trend_process_variance),
+                OrderedF64(score.params.observation_variance),
+            )
+        });
+        let params = best
+            .ok_or_else(|| {
+                CartoBoostError::InvalidInput(
+                    "auto_kalman candidate grid must not be empty".to_string(),
+                )
+            })?
+            .params;
+        let mut fitted = KalmanForecaster::new(
+            params.level_process_variance,
+            params.trend_process_variance,
+            params.observation_variance,
+        )?;
+        fitted.fit(frame)?;
+        self.selected_params = Some(params);
+        self.validation_scores = scores;
+        self.fitted = Some(fitted);
+        Ok(())
+    }
+
+    fn predict(&self, horizon: usize) -> Result<ForecastResult> {
+        let fitted = self.fitted.as_ref().ok_or_else(not_fitted)?;
+        fitted.predict_with_model_name(horizon, self.model_name())
+    }
+
+    fn model_name(&self) -> &'static str {
+        "auto_kalman"
+    }
+
+    fn metadata(&self) -> Value {
+        json!({
+            "model": self.model_name(),
+            "validation_window": self.validation_window,
+            "selected_params": self.selected_params.map(|params| json!({
+                "level_process_variance": params.level_process_variance,
+                "trend_process_variance": params.trend_process_variance,
+                "observation_variance": params.observation_variance,
+            })),
+            "validation_scores": self.validation_scores.iter().map(|score| {
+                json!({
+                    "level_process_variance": score.params.level_process_variance,
+                    "trend_process_variance": score.params.trend_process_variance,
+                    "observation_variance": score.params.observation_variance,
+                    "mse": score.mse,
+                })
+            }).collect::<Vec<_>>(),
+        })
+    }
+}
+
+impl Forecaster for AutoLocalLevelKalmanForecaster {
+    fn fit(&mut self, frame: &ForecastFrame) -> Result<()> {
+        let local = FittedLocalState::from_frame(frame);
+        let candidates = self
+            .level_process_variance_grid
+            .iter()
+            .copied()
+            .enumerate()
+            .flat_map(|(level_idx, level_process_variance)| {
+                self.observation_variance_grid
+                    .iter()
+                    .copied()
+                    .enumerate()
+                    .map(move |(observation_idx, observation_variance)| {
+                        (
+                            level_idx,
+                            observation_idx,
+                            LocalLevelKalmanParameterSet {
+                                level_process_variance,
+                                observation_variance,
+                            },
+                        )
+                    })
+            })
+            .collect::<Vec<_>>();
+        let scored = candidates
+            .into_par_iter()
+            .map(|(level_idx, observation_idx, params)| {
+                let mse = score_local_level_kalman_params(
+                    &local.history_by_series,
+                    params,
+                    self.validation_window,
+                )?;
+                Ok((
+                    level_idx,
+                    observation_idx,
+                    LocalLevelKalmanValidationScore { params, mse },
+                ))
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let mut scored = scored;
+        scored.sort_by_key(|(level_idx, observation_idx, _)| (*level_idx, *observation_idx));
+        let scores = scored
+            .into_iter()
+            .map(|(_, _, score)| score)
+            .collect::<Vec<_>>();
+        let best = scores.iter().min_by_key(|score| {
+            (
+                OrderedF64(score.mse),
+                OrderedF64(score.params.level_process_variance),
+                OrderedF64(score.params.observation_variance),
+            )
+        });
+        let params = best
+            .ok_or_else(|| {
+                CartoBoostError::InvalidInput(
+                    "auto_local_level_kalman candidate grid must not be empty".to_string(),
+                )
+            })?
+            .params;
+        let mut fitted = LocalLevelKalmanForecaster::new(
+            params.level_process_variance,
+            params.observation_variance,
+        )?;
+        fitted.fit(frame)?;
+        self.selected_params = Some(params);
+        self.validation_scores = scores;
+        self.fitted = Some(fitted);
+        Ok(())
+    }
+
+    fn predict(&self, horizon: usize) -> Result<ForecastResult> {
+        let fitted = self.fitted.as_ref().ok_or_else(not_fitted)?;
+        fitted.predict_with_model_name(horizon, self.model_name())
+    }
+
+    fn model_name(&self) -> &'static str {
+        "auto_local_level_kalman"
+    }
+
+    fn metadata(&self) -> Value {
+        json!({
+            "model": self.model_name(),
+            "validation_window": self.validation_window,
+            "selected_params": self.selected_params.map(|params| json!({
+                "level_process_variance": params.level_process_variance,
+                "observation_variance": params.observation_variance,
+            })),
+            "validation_scores": self.validation_scores.iter().map(|score| {
+                json!({
+                    "level_process_variance": score.params.level_process_variance,
+                    "observation_variance": score.params.observation_variance,
+                    "mse": score.mse,
+                })
+            }).collect::<Vec<_>>(),
         })
     }
 }
@@ -1200,6 +1581,80 @@ impl FittedArimaState {
     }
 }
 
+impl KalmanForecaster {
+    fn predict_with_model_name(
+        &self,
+        horizon: usize,
+        model_name: &'static str,
+    ) -> Result<ForecastResult> {
+        validate_horizon(horizon)?;
+        let fitted = self.fitted.as_ref().ok_or_else(not_fitted)?;
+        let predictions = fitted
+            .series
+            .iter()
+            .collect::<Vec<_>>()
+            .into_par_iter()
+            .map(|(series_id, series)| {
+                (1..=horizon)
+                    .map(|step| {
+                        Ok(ForecastPrediction {
+                            series_id: series_id.clone(),
+                            timestamp: fitted
+                                .frame
+                                .frequency()
+                                .advance(series.last_timestamp, step)?,
+                            horizon: step,
+                            model: model_name.to_string(),
+                            mean: series.level + step as f64 * series.trend,
+                        })
+                    })
+                    .collect::<Result<Vec<_>>>()
+            })
+            .collect::<Result<Vec<_>>>()?
+            .into_iter()
+            .flatten()
+            .collect();
+        ForecastResult::new(predictions)
+    }
+}
+
+impl LocalLevelKalmanForecaster {
+    fn predict_with_model_name(
+        &self,
+        horizon: usize,
+        model_name: &'static str,
+    ) -> Result<ForecastResult> {
+        validate_horizon(horizon)?;
+        let fitted = self.fitted.as_ref().ok_or_else(not_fitted)?;
+        let predictions = fitted
+            .series
+            .iter()
+            .collect::<Vec<_>>()
+            .into_par_iter()
+            .map(|(series_id, series)| {
+                (1..=horizon)
+                    .map(|step| {
+                        Ok(ForecastPrediction {
+                            series_id: series_id.clone(),
+                            timestamp: fitted
+                                .frame
+                                .frequency()
+                                .advance(series.last_timestamp, step)?,
+                            horizon: step,
+                            model: model_name.to_string(),
+                            mean: series.level,
+                        })
+                    })
+                    .collect::<Result<Vec<_>>>()
+            })
+            .collect::<Result<Vec<_>>>()?
+            .into_iter()
+            .flatten()
+            .collect();
+        ForecastResult::new(predictions)
+    }
+}
+
 impl FittedKalmanState {
     fn from_frame(
         frame: &ForecastFrame,
@@ -1221,6 +1676,37 @@ impl FittedKalmanState {
                         history,
                         level_process_variance,
                         trend_process_variance,
+                        observation_variance,
+                    )?,
+                ))
+            })
+            .collect::<Result<BTreeMap<_, _>>>()?;
+        Ok(Self {
+            frame: frame.clone(),
+            series,
+        })
+    }
+}
+
+impl FittedLocalLevelKalmanState {
+    fn from_frame(
+        frame: &ForecastFrame,
+        level_process_variance: f64,
+        observation_variance: f64,
+    ) -> Result<Self> {
+        let local = FittedLocalState::from_frame(frame);
+        let series = local
+            .history_by_series
+            .iter()
+            .collect::<Vec<_>>()
+            .into_par_iter()
+            .map(|(series_id, history)| {
+                Ok((
+                    series_id.clone(),
+                    FittedLocalLevelKalmanSeries::fit(
+                        series_id,
+                        history,
+                        level_process_variance,
                         observation_variance,
                     )?,
                 ))
@@ -1261,6 +1747,29 @@ impl FittedKalmanSeries {
                 .timestamp,
             level: result.final_state.level,
             trend: result.final_state.trend,
+        })
+    }
+}
+
+impl FittedLocalLevelKalmanSeries {
+    fn fit(
+        series_id: &str,
+        history: &[ForecastRow],
+        level_process_variance: f64,
+        observation_variance: f64,
+    ) -> Result<Self> {
+        if history.is_empty() {
+            return Err(CartoBoostError::InvalidInput(format!(
+                "series {series_id} requires at least one row for local level kalman forecasting"
+            )));
+        }
+        let values = history.iter().map(|row| row.target).collect::<Vec<_>>();
+        let config = LocalLevelKalmanConfig::new(level_process_variance, observation_variance)?;
+        let result = fit_local_level_kalman(&values, config)
+            .map_err(|err| CartoBoostError::InvalidInput(format!("{series_id}: {err}")))?;
+        Ok(Self {
+            last_timestamp: history.last().expect("history length checked").timestamp,
+            level: result.final_level,
         })
     }
 }
@@ -1551,6 +2060,145 @@ fn validate_theta_params(theta: f64, alpha: f64) -> Result<()> {
         ));
     }
     Ok(())
+}
+
+fn validate_kalman_grid(name: &str, values: &[f64]) -> Result<()> {
+    if values.is_empty() {
+        return Err(CartoBoostError::InvalidInput(format!(
+            "auto_kalman {name} must not be empty"
+        )));
+    }
+    for &value in values {
+        if !value.is_finite() || value <= 0.0 {
+            return Err(CartoBoostError::InvalidInput(format!(
+                "auto_kalman {name} values must be positive finite numbers"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn score_kalman_params(
+    history_by_series: &BTreeMap<String, Vec<ForecastRow>>,
+    params: KalmanParameterSet,
+    validation_window: Option<usize>,
+) -> Result<f64> {
+    let config = LocalLinearKalmanConfig::new(
+        params.level_process_variance,
+        params.trend_process_variance,
+        params.observation_variance,
+    )?;
+    let (sum_squared_error, count) = history_by_series
+        .iter()
+        .collect::<Vec<_>>()
+        .into_par_iter()
+        .map(|(series_id, history)| {
+            let window = validation_window.unwrap_or_else(|| {
+                let suggested = history.len() / 5;
+                suggested.clamp(1, 12)
+            });
+            if history.len() <= window + 1 {
+                return Err(CartoBoostError::InvalidInput(format!(
+                    "series {series_id} has {} rows, but auto_kalman requires at least {} rows for validation",
+                    history.len(),
+                    window + 2
+                )));
+            }
+            let train_len = history.len() - window;
+            let train = history[..train_len]
+                .iter()
+                .map(|row| row.target)
+                .collect::<Vec<_>>();
+            let result = fit_local_linear_kalman(&train, config)
+                .map_err(|err| CartoBoostError::InvalidInput(format!("{series_id}: {err}")))?;
+            let mut sum = 0.0;
+            for (idx, row) in history[train_len..].iter().enumerate() {
+                let step = idx + 1;
+                let mean = result.final_state.level + step as f64 * result.final_state.trend;
+                let residual = row.target - mean;
+                sum += residual * residual;
+            }
+            Ok((sum, window))
+        })
+        .reduce(
+            || Ok((0.0, 0usize)),
+            |left: Result<(f64, usize)>, right: Result<(f64, usize)>| {
+                let (left_sum, left_count) = left?;
+                let (right_sum, right_count) = right?;
+                Ok((left_sum + right_sum, left_count + right_count))
+            },
+        )?;
+    if count == 0 {
+        return Err(CartoBoostError::InvalidInput(
+            "auto_kalman validation produced no scored observations".to_string(),
+        ));
+    }
+    let mse = sum_squared_error / count as f64;
+    if !mse.is_finite() {
+        return Err(CartoBoostError::InvalidInput(
+            "auto_kalman validation score must be finite".to_string(),
+        ));
+    }
+    Ok(mse)
+}
+
+fn score_local_level_kalman_params(
+    history_by_series: &BTreeMap<String, Vec<ForecastRow>>,
+    params: LocalLevelKalmanParameterSet,
+    validation_window: Option<usize>,
+) -> Result<f64> {
+    let config =
+        LocalLevelKalmanConfig::new(params.level_process_variance, params.observation_variance)?;
+    let (sum_squared_error, count) = history_by_series
+        .iter()
+        .collect::<Vec<_>>()
+        .into_par_iter()
+        .map(|(series_id, history)| {
+            let window = validation_window.unwrap_or_else(|| {
+                let suggested = history.len() / 5;
+                suggested.clamp(1, 12)
+            });
+            if history.len() <= window {
+                return Err(CartoBoostError::InvalidInput(format!(
+                    "series {series_id} has {} rows, but auto_local_level_kalman requires at least {} rows for validation",
+                    history.len(),
+                    window + 1
+                )));
+            }
+            let train_len = history.len() - window;
+            let train = history[..train_len]
+                .iter()
+                .map(|row| row.target)
+                .collect::<Vec<_>>();
+            let result = fit_local_level_kalman(&train, config)
+                .map_err(|err| CartoBoostError::InvalidInput(format!("{series_id}: {err}")))?;
+            let mut sum = 0.0;
+            for row in &history[train_len..] {
+                let residual = row.target - result.final_level;
+                sum += residual * residual;
+            }
+            Ok((sum, window))
+        })
+        .reduce(
+            || Ok((0.0, 0usize)),
+            |left: Result<(f64, usize)>, right: Result<(f64, usize)>| {
+                let (left_sum, left_count) = left?;
+                let (right_sum, right_count) = right?;
+                Ok((left_sum + right_sum, left_count + right_count))
+            },
+        )?;
+    if count == 0 {
+        return Err(CartoBoostError::InvalidInput(
+            "auto_local_level_kalman validation produced no scored observations".to_string(),
+        ));
+    }
+    let mse = sum_squared_error / count as f64;
+    if !mse.is_finite() {
+        return Err(CartoBoostError::InvalidInput(
+            "auto_local_level_kalman validation score must be finite".to_string(),
+        ));
+    }
+    Ok(mse)
 }
 
 fn validate_ets_params(
@@ -2221,6 +2869,108 @@ mod tests {
         assert!(matches!(model.selected_alpha(), Some(0.2 | 0.8)));
         assert_eq!(model.validation_scores().len(), 4);
         assert_eq!(forecast.predictions().len(), 2);
+    }
+
+    #[test]
+    fn auto_kalman_selects_variances_and_predicts_with_auto_name() {
+        let frame = ForecastFrame::new(
+            (1..=8)
+                .map(|day| ForecastRow::single(ts(day), 20.0 + 2.0 * f64::from(day)))
+                .collect(),
+            ForecastFrequency::Daily,
+        )
+        .expect("valid frame");
+        let mut model = AutoKalmanForecaster::with_grids(
+            vec![0.001, 0.01],
+            vec![0.0001, 0.001],
+            vec![0.1, 1.0],
+            Some(2),
+        )
+        .expect("valid auto kalman");
+
+        model.fit(&frame).expect("fit");
+        let forecast = model.predict(2).expect("predict");
+        let metadata = model.metadata();
+
+        assert!(model.selected_params().is_some());
+        assert_eq!(model.validation_scores().len(), 8);
+        assert_eq!(forecast.predictions().len(), 2);
+        assert_eq!(forecast.predictions()[0].model, "auto_kalman");
+        assert!(
+            metadata["validation_scores"]
+                .as_array()
+                .expect("scores")
+                .len()
+                == 8
+        );
+    }
+
+    #[test]
+    fn auto_kalman_rejects_empty_grid_and_short_validation_history() {
+        assert!(
+            AutoKalmanForecaster::with_grids(Vec::new(), vec![0.001], vec![1.0], Some(1),).is_err()
+        );
+
+        let frame = ForecastFrame::new(
+            vec![
+                ForecastRow::single(ts(1), 10.0),
+                ForecastRow::single(ts(2), 12.0),
+            ],
+            ForecastFrequency::Daily,
+        )
+        .expect("valid frame");
+        let mut model =
+            AutoKalmanForecaster::with_grids(vec![0.001], vec![0.0001], vec![1.0], Some(1))
+                .expect("valid grid");
+
+        let err = model.fit(&frame).expect_err("short history rejected");
+
+        assert!(err.to_string().contains("auto_kalman requires"));
+    }
+
+    #[test]
+    fn local_level_kalman_forecasts_flat_panel_levels() {
+        let frame = ForecastFrame::new(
+            vec![
+                ForecastRow::new("PULocationID=1", ts(1), 10.0),
+                ForecastRow::new("PULocationID=1", ts(2), 11.0),
+                ForecastRow::new("PULocationID=2", ts(1), 30.0),
+                ForecastRow::new("PULocationID=2", ts(2), 31.0),
+            ],
+            ForecastFrequency::Daily,
+        )
+        .expect("valid frame");
+        let mut model = LocalLevelKalmanForecaster::new(0.01, 0.1).expect("valid kalman");
+
+        model.fit(&frame).expect("fit");
+        let forecast = model.predict(2).expect("predict");
+
+        assert_eq!(forecast.predictions().len(), 4);
+        assert!(forecast
+            .predictions()
+            .iter()
+            .all(|prediction| prediction.model == "local_level_kalman"));
+    }
+
+    #[test]
+    fn auto_local_level_kalman_selects_variances() {
+        let frame = ForecastFrame::new(
+            (1..=6)
+                .map(|day| ForecastRow::single(ts(day), 20.0 + f64::from(day % 2)))
+                .collect(),
+            ForecastFrequency::Daily,
+        )
+        .expect("valid frame");
+        let mut model =
+            AutoLocalLevelKalmanForecaster::with_grids(vec![0.001, 0.01], vec![0.1, 1.0], Some(2))
+                .expect("valid auto kalman");
+
+        model.fit(&frame).expect("fit");
+        let forecast = model.predict(2).expect("predict");
+
+        assert!(model.selected_params().is_some());
+        assert_eq!(model.validation_scores().len(), 4);
+        assert_eq!(forecast.predictions()[0].model, "auto_local_level_kalman");
     }
 
     #[test]

@@ -14,8 +14,11 @@ def test_default_registry_contains_forecasting_v1_models():
         "optimized_theta",
         "ets",
         "auto_arima",
-        "cartoboost_lag",
+        "kalman",
         "local_level_kalman",
+        "auto_kalman",
+        "auto_local_level_kalman",
+        "cartoboost_lag",
         "local_linear_trend_kalman",
         "unobserved_components",
         "sarimax",
@@ -73,11 +76,11 @@ def test_default_registry_models_are_native_wrappers(install_fake_native):
 
 
 def test_registry_placeholder_models_delegate_to_named_native_binding(install_fake_native):
-    native = install_fake_native("LocalLevelKalmanForecaster")
+    native = install_fake_native("LocalLinearTrendKalmanForecaster")
     registry = ForecastRegistry.defaults()
 
-    model = registry.create("local_level_kalman", process_variance=0.1)
+    model = registry.create("local_linear_trend_kalman", process_variance=0.1)
 
-    assert model.native_class_name == "LocalLevelKalmanForecaster"
+    assert model.native_class_name == "LocalLinearTrendKalmanForecaster"
     assert model.fit([1.0, 2.0]).predict(1) == {"args": (1,), "kwargs": {}}
     assert native.calls[0] == ("init", {"process_variance": 0.1})

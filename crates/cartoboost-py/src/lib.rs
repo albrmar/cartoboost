@@ -1,6 +1,8 @@
 use cartoboost_core::data::{FeatureSchema, SparseSetColumn};
 use cartoboost_core::forecasting::{
     ArimaForecaster as CoreArimaForecaster, AutoARIMAForecaster as CoreAutoARIMAForecaster,
+    AutoKalmanForecaster as CoreAutoKalmanForecaster,
+    AutoLocalLevelKalmanForecaster as CoreAutoLocalLevelKalmanForecaster,
     BacktestFoldResult as CoreBacktestFoldResult, BacktestResult as CoreBacktestResult,
     CalendarFeature, CartoBoostLagForecaster as CoreCartoBoostLagForecaster,
     ETSForecaster as CoreETSForecaster, ForecastActual, ForecastFold as CoreForecastFold,
@@ -9,6 +11,7 @@ use cartoboost_core::forecasting::{
     ForecastResult as CoreForecastResult, ForecastRow as CoreForecastRow, ForecastWindow,
     Forecaster, GlobalForecastTargetMode, KalmanForecaster as CoreKalmanForecaster,
     KrigingForecaster as CoreKrigingForecaster, LagFeatureConfig,
+    LocalLevelKalmanForecaster as CoreLocalLevelKalmanForecaster,
     NaiveForecaster as CoreNaiveForecaster,
     OptimizedThetaForecaster as CoreOptimizedThetaForecaster,
     RollingOriginBacktester as CoreRollingOriginBacktester,
@@ -1308,15 +1311,46 @@ fn utility_forecaster(model: &str, params: &Value) -> cartoboost_core::Result<Bo
                 observation_variance,
             )?))
         }
+        "auto_kalman" | "self_tuning_kalman" | "self-tuning-kalman" => {
+            let level_process_variance_grid =
+                utility_f64_vec_param(params, "level_process_variance_grid")?
+                    .unwrap_or_else(|| vec![0.001, 0.01, 0.05, 0.1]);
+            let trend_process_variance_grid =
+                utility_f64_vec_param(params, "trend_process_variance_grid")?
+                    .unwrap_or_else(|| vec![0.0001, 0.001, 0.005, 0.01]);
+            let observation_variance_grid =
+                utility_f64_vec_param(params, "observation_variance_grid")?
+                    .unwrap_or_else(|| vec![0.1, 0.5, 1.0, 2.0]);
+            let validation_window = utility_usize_param(params, "validation_window")?;
+            Ok(Box::new(CoreAutoKalmanForecaster::with_grids(
+                level_process_variance_grid,
+                trend_process_variance_grid,
+                observation_variance_grid,
+                validation_window,
+            )?))
+        }
         "local_level_kalman" | "local-level-kalman" => {
             let level_process_variance =
                 utility_f64_param(params, "level_process_variance")?.unwrap_or(0.05);
             let observation_variance =
                 utility_f64_param(params, "observation_variance")?.unwrap_or(1.0);
-            Ok(Box::new(CoreKalmanForecaster::new(
+            Ok(Box::new(CoreLocalLevelKalmanForecaster::new(
                 level_process_variance,
-                1.0e-12,
                 observation_variance,
+            )?))
+        }
+        "auto_local_level_kalman" | "auto-local-level-kalman" => {
+            let level_process_variance_grid =
+                utility_f64_vec_param(params, "level_process_variance_grid")?
+                    .unwrap_or_else(|| vec![0.001, 0.01, 0.05, 0.1]);
+            let observation_variance_grid =
+                utility_f64_vec_param(params, "observation_variance_grid")?
+                    .unwrap_or_else(|| vec![0.1, 0.5, 1.0, 2.0]);
+            let validation_window = utility_usize_param(params, "validation_window")?;
+            Ok(Box::new(CoreAutoLocalLevelKalmanForecaster::with_grids(
+                level_process_variance_grid,
+                observation_variance_grid,
+                validation_window,
             )?))
         }
         other => Err(CartoBoostError::InvalidInput(format!(
@@ -1692,6 +1726,129 @@ impl NativeKalmanForecaster {
                 level_process_variance,
                 trend_process_variance,
                 observation_variance,
+            )
+            .map_err(to_py_value_error)?,
+        })
+    }
+
+    fn fit(&mut self, py: Python<'_>, frame: &NativeForecastFrame) -> PyResult<()> {
+        fit_forecaster_py(py, &mut self.model, frame)
+    }
+
+    fn predict(&self, py: Python<'_>, horizon: usize) -> PyResult<NativeForecastResult> {
+        predict_forecaster_py(py, &self.model, horizon)
+    }
+
+    fn metadata_json(&self) -> PyResult<String> {
+        serde_json::to_string(&self.model.metadata())
+            .map_err(|err| PyRuntimeError::new_err(err.to_string()))
+    }
+}
+
+#[pyclass(name = "LocalLevelKalmanForecaster")]
+#[derive(Clone, Debug)]
+struct NativeLocalLevelKalmanForecaster {
+    model: CoreLocalLevelKalmanForecaster,
+}
+
+#[pymethods]
+impl NativeLocalLevelKalmanForecaster {
+    #[new]
+    #[pyo3(signature = (level_process_variance=0.05, observation_variance=1.0))]
+    fn new(level_process_variance: f64, observation_variance: f64) -> PyResult<Self> {
+        Ok(Self {
+            model: CoreLocalLevelKalmanForecaster::new(
+                level_process_variance,
+                observation_variance,
+            )
+            .map_err(to_py_value_error)?,
+        })
+    }
+
+    fn fit(&mut self, py: Python<'_>, frame: &NativeForecastFrame) -> PyResult<()> {
+        fit_forecaster_py(py, &mut self.model, frame)
+    }
+
+    fn predict(&self, py: Python<'_>, horizon: usize) -> PyResult<NativeForecastResult> {
+        predict_forecaster_py(py, &self.model, horizon)
+    }
+
+    fn metadata_json(&self) -> PyResult<String> {
+        serde_json::to_string(&self.model.metadata())
+            .map_err(|err| PyRuntimeError::new_err(err.to_string()))
+    }
+}
+
+#[pyclass(name = "AutoKalmanForecaster")]
+#[derive(Clone, Debug)]
+struct NativeAutoKalmanForecaster {
+    model: CoreAutoKalmanForecaster,
+}
+
+#[pymethods]
+impl NativeAutoKalmanForecaster {
+    #[new]
+    #[pyo3(signature = (
+        level_process_variance_grid=None,
+        trend_process_variance_grid=None,
+        observation_variance_grid=None,
+        validation_window=None
+    ))]
+    fn new(
+        level_process_variance_grid: Option<Vec<f64>>,
+        trend_process_variance_grid: Option<Vec<f64>>,
+        observation_variance_grid: Option<Vec<f64>>,
+        validation_window: Option<usize>,
+    ) -> PyResult<Self> {
+        Ok(Self {
+            model: CoreAutoKalmanForecaster::with_grids(
+                level_process_variance_grid.unwrap_or_else(|| vec![0.001, 0.01, 0.05, 0.1]),
+                trend_process_variance_grid.unwrap_or_else(|| vec![0.0001, 0.001, 0.005, 0.01]),
+                observation_variance_grid.unwrap_or_else(|| vec![0.1, 0.5, 1.0, 2.0]),
+                validation_window,
+            )
+            .map_err(to_py_value_error)?,
+        })
+    }
+
+    fn fit(&mut self, py: Python<'_>, frame: &NativeForecastFrame) -> PyResult<()> {
+        fit_forecaster_py(py, &mut self.model, frame)
+    }
+
+    fn predict(&self, py: Python<'_>, horizon: usize) -> PyResult<NativeForecastResult> {
+        predict_forecaster_py(py, &self.model, horizon)
+    }
+
+    fn metadata_json(&self) -> PyResult<String> {
+        serde_json::to_string(&self.model.metadata())
+            .map_err(|err| PyRuntimeError::new_err(err.to_string()))
+    }
+}
+
+#[pyclass(name = "AutoLocalLevelKalmanForecaster")]
+#[derive(Clone, Debug)]
+struct NativeAutoLocalLevelKalmanForecaster {
+    model: CoreAutoLocalLevelKalmanForecaster,
+}
+
+#[pymethods]
+impl NativeAutoLocalLevelKalmanForecaster {
+    #[new]
+    #[pyo3(signature = (
+        level_process_variance_grid=None,
+        observation_variance_grid=None,
+        validation_window=None
+    ))]
+    fn new(
+        level_process_variance_grid: Option<Vec<f64>>,
+        observation_variance_grid: Option<Vec<f64>>,
+        validation_window: Option<usize>,
+    ) -> PyResult<Self> {
+        Ok(Self {
+            model: CoreAutoLocalLevelKalmanForecaster::with_grids(
+                level_process_variance_grid.unwrap_or_else(|| vec![0.001, 0.01, 0.05, 0.1]),
+                observation_variance_grid.unwrap_or_else(|| vec![0.1, 0.5, 1.0, 2.0]),
+                validation_window,
             )
             .map_err(to_py_value_error)?,
         })
@@ -5542,6 +5699,9 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<NativeArimaForecaster>()?;
     m.add_class::<NativeAutoARIMAForecaster>()?;
     m.add_class::<NativeKalmanForecaster>()?;
+    m.add_class::<NativeLocalLevelKalmanForecaster>()?;
+    m.add_class::<NativeAutoKalmanForecaster>()?;
+    m.add_class::<NativeAutoLocalLevelKalmanForecaster>()?;
     m.add_class::<NativeKrigingForecaster>()?;
     m.add_class::<NativeCartoBoostLagForecaster>()?;
     m.add_class::<NativeWeightedEnsembleForecaster>()?;

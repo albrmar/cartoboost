@@ -98,6 +98,10 @@ Forecasters:
 | `OptimizedThetaForecaster` | Deterministically selects theta/alpha from a validation grid. |
 | `ETSForecaster` | Rust-native additive ETS with optional additive seasonality. |
 | `AutoARIMAForecaster` | Rust-native AutoARIMA over bounded ARIMA(p,d,q) candidates. |
+| `LocalLevelKalmanForecaster` | Rust-native local-level Kalman model for noisy level-only series. |
+| `KalmanForecaster` | Rust-native local-linear-trend Kalman model for noisy level and trend series. |
+| `AutoLocalLevelKalmanForecaster` | Rust-native deterministic grid search over local-level process/observation variances; metadata includes `selected_params` and `validation_scores`. |
+| `AutoKalmanForecaster` | Rust-native deterministic grid search over local-linear level/trend/observation variances; metadata includes `selected_params` and `validation_scores`. |
 | `CartoBoostLagForecaster` | Global recursive forecaster using leakage-safe lag, rolling, calendar, static, and known-future features with `CartoBoostRegressor`. |
 | `WeightedEnsembleForecaster` | Combines aligned component forecasts with fixed weights. |
 | `BacktestWeightedEnsembleForecaster` | Reserved; raises clearly until Rust backtest-weight learning is implemented. |

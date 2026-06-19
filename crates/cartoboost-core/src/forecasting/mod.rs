@@ -29,9 +29,11 @@ pub use frequency::{parse_forecast_timestamp, ForecastFrequency};
 pub use global::{CartoBoostLagForecaster, GlobalForecastTargetMode};
 pub use lag_features::{CalendarFeature, LagFeatureBuilder, LagFeatureConfig, LagFeatureRow};
 pub use local::{
-    ArimaForecaster, ArimaValidationScore, AutoARIMAForecaster, ETSForecaster, KalmanForecaster,
-    KrigingForecaster, NaiveForecaster, OptimizedThetaForecaster, SeasonalNaiveForecaster,
-    ThetaForecaster, ThetaSeasonality,
+    ArimaForecaster, ArimaValidationScore, AutoARIMAForecaster, AutoKalmanForecaster,
+    AutoLocalLevelKalmanForecaster, ETSForecaster, KalmanForecaster, KalmanParameterSet,
+    KalmanValidationScore, KrigingForecaster, LocalLevelKalmanForecaster,
+    LocalLevelKalmanParameterSet, LocalLevelKalmanValidationScore, NaiveForecaster,
+    OptimizedThetaForecaster, SeasonalNaiveForecaster, ThetaForecaster, ThetaSeasonality,
 };
 pub use metrics::{
     evaluate_forecast, evaluate_forecast_with_training, ForecastActual, ForecastMetricSet,

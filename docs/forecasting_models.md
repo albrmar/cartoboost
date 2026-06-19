@@ -21,7 +21,10 @@ for these model names:
 - `ets`
 - `arima`
 - `auto_arima`
+- `local_level_kalman`
 - `kalman`
+- `auto_local_level_kalman`
+- `auto_kalman`
 - `kriging`
 - `cartoboost_lag`
 - `weighted_ensemble`
@@ -37,7 +40,10 @@ for these model names:
 | `ets` | [ETS](user-guide/forecasting-models/ets.md) | Additive ETS with optional additive seasonality. | Smoothed level, additive trend, and additive seasonal state are interpretable. |
 | `arima` | [ARIMA And AutoARIMA](user-guide/forecasting-models/arima.md) | ARIMA(p,d,q) over bounded non-seasonal orders. | Recent autocorrelation and differencing explain one local series. |
 | `auto_arima` | [ARIMA And AutoARIMA](user-guide/forecasting-models/arima.md) | Deterministic bounded search over non-seasonal ARIMA(p,d,q) candidates. | You need reproducible local order search before held-out validation. |
+| `local_level_kalman` | [Kalman](user-guide/forecasting-models/kalman.md) | Local-level state-space model. | Observations are noisy measurements of one latent level. |
 | `kalman` | [Kalman](user-guide/forecasting-models/kalman.md) | Local-linear-trend state-space model. | Observations are noisy measurements of latent level and trend. |
+| `auto_local_level_kalman` | [Kalman](user-guide/forecasting-models/kalman.md) | Deterministic native grid search over local-level variance candidates. | A small reproducible variance grid should replace manual level/noise settings. |
+| `auto_kalman` | [Kalman](user-guide/forecasting-models/kalman.md) | Deterministic native grid search over local-linear variance candidates. | A small reproducible variance grid should replace manual level/trend/noise settings. |
 | `kriging` | [Kriging](user-guide/forecasting-models/kriging.md) | Ordinary-kriging panel forecaster over explicit series coordinates. | Nearby zones or route coordinates should borrow spatial signal. |
 | `cartoboost_lag` | [CartoBoost Lag](user-guide/forecasting-models/cartoboost-lag.md) | Supervised native lag, rolling, calendar, trend, and CartoBoost regressor workflow. | Many related panels should share one leakage-safe lag model. |
 | `weighted_ensemble` | [Weighted Ensembles](user-guide/forecasting-models/ensembles.md) | Native PyO3 class requiring explicit native component models and weights. | Validated components make complementary errors under the same split. |
@@ -61,9 +67,10 @@ Do not treat deterministic examples, generated visualization fixtures, or
 Criterion speed benchmarks as real quality evidence. They are useful for API,
 plotting, and implementation smoke checks.
 
-General utilities now exposed outside `cartoboost.forecasting`:
+General utilities also exposed outside `cartoboost.forecasting`:
 
-- `local_level_kalman`: use `cartoboost.local_level_kalman_filter` or
+- `local_level_kalman`: use `LocalLevelKalmanForecaster`,
+  `cartoboost.local_level_kalman_filter`, or
   `cartoboost.local_level_kalman_forecast`.
 - `local_linear_trend_kalman`: use `cartoboost.kalman_filter` or
   `cartoboost.local_linear_trend_kalman_forecast`.
@@ -85,12 +92,12 @@ wrappers can be exposed:
 Example:
 
 ```python
-from cartoboost.forecasting.local import KalmanForecaster, SeasonalNaiveForecaster
+from cartoboost.forecasting.local import AutoKalmanForecaster, SeasonalNaiveForecaster
 
 model = SeasonalNaiveForecaster(season_length=24)
 model.fit([42.0, 37.0, 51.0])
 
-kalman = KalmanForecaster()
+kalman = AutoKalmanForecaster(validation_window=2)
 kalman.fit([40.0, 42.0, 45.0, 47.0])
 forecast = kalman.predict(2)
 ```
