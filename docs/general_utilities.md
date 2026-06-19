@@ -100,8 +100,7 @@ plt.savefig("target/examples/local_level_kalman_utility.png", dpi=160)
 ## Local-Linear-Trend Kalman
 
 Use local-linear Kalman filtering when the series has a level and a slope. This
-is usually a better match for load, traffic, or pickup counts that drift
-over time.
+matches load, traffic, or pickup counts that drift over time.
 
 Example: daily pickup demand is increasing by about two trips per day, with
 noise.

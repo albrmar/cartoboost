@@ -13,7 +13,7 @@ Use neural embeddings to study effects such as:
 - recurring pickup-dropoff pair behavior not captured by scalar route features;
 - high-cardinality spatial cells where one-hot features would be too wide;
 - repeated market behavior under random, tail, or out-of-time splits;
-- whether support-aware shrinkage improves rare-zone stability.
+- whether support-aware shrinkage changes rare-zone stability.
 
 They are weaker evidence for cold-start generalization. If a validation split
 holds out zones or routes unseen during training, the model must use fallback

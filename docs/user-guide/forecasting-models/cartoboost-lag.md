@@ -24,7 +24,7 @@ provide.
 `CartoBoostLagForecaster` is a supervised panel model. It tests whether a
 shared nonlinear mapping from historical lags, rolling summaries, calendar
 features, trend features, and panel identity can forecast many related taxi
-series better than local models fit one series at a time.
+series under the same split used for local one-series models.
 
 Choose it when the scientific unit is a system of related zones or lanes, not a
 single isolated sequence. It is appropriate when repeated behavior across
@@ -178,9 +178,9 @@ seasonality is present and the frame includes calendar or hour-cycle structure.
 Keep geographic features in the supervised frame or use panel ids to let the
 global model learn repeated zone patterns.
 
-If a model with `periodic:24` wins on a taxi split, check that it wins on later
-rolling origins too. A single split can overstate a periodic splitter when the
-holdout happens to align with the same commute pattern.
+If a model with `periodic:24` passes on a taxi split, check later rolling
+origins too. A single split can overstate a periodic splitter when the holdout
+happens to align with the same commute pattern.
 
 ## Native Feature Support
 
@@ -227,7 +227,7 @@ Interpretation:
 | Error grows quickly with horizon. | Recursive forecasts are compounding bias. | Compare direct local models or reduce horizon for this surface. |
 | Rush-hour residuals have one sign. | Calendar or trend features are not enough for commute peaks. | Add relevant lags, tune `periodic:24`, or include known future event features in the upstream frame. |
 | One zone dominates MAE. | Shared model behavior is not matching that panel. | Check sparse history, missing zone metadata, or split that zone into its own validation slice. |
-| Same-hour-yesterday beats the lag model. | The supervised model is overfitting or undertrained. | Increase data, simplify tree settings, and compare against seasonal naive before claiming improvement. |
+| Same-hour-yesterday has lower error than the lag model. | The supervised model is overfitting or undertrained. | Increase data, simplify tree settings, and compare against seasonal naive before making a claim. |
 
 ## Validation Notes
 

@@ -41,7 +41,7 @@ Choose the model whose assumptions match the signal you can defend:
 
 Do not choose a richer model only because it is available. A scientist should
 be able to say which mechanism the model represents, what it ignores, and which
-baseline it must beat on a time-ordered holdout.
+baseline threshold it must clear on a time-ordered holdout.
 
 ## Shared Input Patterns
 

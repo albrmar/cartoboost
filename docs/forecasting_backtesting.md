@@ -67,9 +67,9 @@ frames are inner-aligned on those three columns before scoring.
 
 When horizon or series identifiers are available, CartoBoost also returns
 per-horizon and per-series metric dictionaries. These breakdowns are often more
-useful than a single aggregate for taxi work. A model that improves airport
-pickup zones but fails outer-borough pickup zones should not be treated as a
-uniform win.
+useful than a single aggregate for taxi work. A model with acceptable
+airport-pickup-zone scores but weak outer-borough pickup-zone scores should not
+be treated as reliable across the panel.
 
 Quantile forecasts can be scored with pinball loss. Interval forecasts report
 empirical coverage and mean interval width. For scientific reporting, coverage

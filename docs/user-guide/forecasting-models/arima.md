@@ -58,7 +58,7 @@ Common failure modes in taxi data are easy to diagnose:
 | Forecast is too flat across a ramp. | Differencing/order choice is not preserving local movement. | Kalman, theta, or `d=1` candidates. |
 | Residuals repeat by hour of day. | Non-seasonal ARIMA is missing a seasonal mechanism. | Seasonal naive, ETS, or lag features with calendar terms. |
 | One lane fits well and another fails. | Local orders do not transfer across lane regimes. | Per-lane validation or a global lag model. |
-| AutoARIMA metadata wins but holdout loses. | Fitted residual scoring is not the deployment objective. | Fixed rolling-origin splits. |
+| AutoARIMA metadata selects one order but holdout selects another. | Fitted residual scoring is not the deployment objective. | Fixed rolling-origin splits. |
 
 ## Model Surface
 
@@ -154,7 +154,7 @@ For docs or CI smoke checks where Matplotlib is not installed, omit
 `--output`; the example still fits models and prints metrics.
 
 The example is intentionally deterministic. It is useful for checking API
-shape, plotting, and interpretation, but it is not evidence that one model wins
+shape, plotting, and interpretation, but it is not evidence for model selection
 on real TLC-derived taxi demand.
 
 ## Visual Diagnostics
@@ -165,7 +165,7 @@ In a taxi lane workflow, inspect:
 - whether the forecast follows the held-out pickup ramp or flattens too early,
 - whether residuals are mostly centered around zero,
 - whether residual magnitude grows with horizon,
-- whether one order wins by RMSE but has a directional bias that matters for the
+- whether one order has lower RMSE but has a directional bias that matters for the
   operational decision.
 
 The committed example writes that diagnostic view:
@@ -202,7 +202,7 @@ Interpretation:
 | Residuals are mostly positive. | The model is underpredicting the held-out tail. | Check recent trend, event hours, and whether differencing is needed. |
 | Residuals are mostly negative. | The model is overpredicting the held-out tail. | Check whether a temporary pickup spike entered the training window. |
 | Residual magnitude grows with horizon. | Short horizon is acceptable, but uncertainty grows quickly. | Report horizon-specific metrics and consider shorter operational horizons. |
-| AutoARIMA in-sample score wins but held-out RMSE loses. | Candidate scoring is not a substitute for out-of-sample validation. | Choose by rolling-origin or fixed held-out splits, not metadata alone. |
+| AutoARIMA in-sample score selects a different order than held-out RMSE. | Candidate scoring is not a substitute for out-of-sample validation. | Choose by rolling-origin or fixed held-out splits, not metadata alone. |
 
 ## Fixed-Order ARIMA
 

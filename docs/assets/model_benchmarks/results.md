@@ -65,7 +65,7 @@ For each benchmark split, this table compares LightGBM with the best CartoBoost-
 ### Interpretation
 
 - The normal dense workload is a baseline sanity check: CartoBoost is competitive without relying on graph or neural inputs.
-- The neural workload shows the difference between repeated-ID and cold-ID claims. `cartoboost_neural` wins the random split because held-out rows reuse train-observed IDs; the group holdout falls back to the base CartoBoost structure instead of pretending unseen IDs can be recovered from an embedding table.
+- The neural workload shows the difference between repeated-ID and cold-ID claims. `cartoboost_neural` is selected on the random split because held-out rows reuse train-observed IDs; the group holdout falls back to the base CartoBoost structure instead of pretending unseen IDs can be recovered from an embedding table.
 - The graph workload separates two surfaces. Augmented CartoBoost uses graph features as extra columns for the booster, while standalone GraphSAGE-style regressors and link predictors can score graph tasks without a boosted wrapper. The link-predictor rows report AUC/AP because they are ranking candidate source-target edges, not predicting the regression target.
 - LightGBM sees the benchmark as ordinary dense tabular columns. CartoBoost-family rows can add ID residual structure, source-target topology, and spatially shaped splitters when the workload exposes those contracts.
 

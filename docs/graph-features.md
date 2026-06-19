@@ -285,7 +285,7 @@ CartoBoost validates that:
 Use `GraphFeatureTransformer` when graph structure is a feature source for a
 separate model. This is useful for scientific ablations: fit a structured model,
 then add graph-derived columns and measure whether directed flow structure
-improves the same validation split.
+changes the same validation split.
 
 ```python
 from cartoboost.graph import GraphFeatureTransformer

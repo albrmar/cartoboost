@@ -2,9 +2,9 @@
 
 ## Research Question
 
-On real NYC taxi data, do geographic and temporal feature families improve
-prediction quality for trip duration, fare amount, and pickup-zone demand when
-compared with strong gradient-boosted tabular baselines?
+On real NYC taxi data, how do geographic and temporal feature families affect
+trip duration, fare amount, and pickup-zone demand metrics when compared with
+strong gradient-boosted tabular baselines?
 
 ## Dataset
 
@@ -59,9 +59,9 @@ For each runnable learned-model split, this table compares LightGBM with the bes
 
 ### Interpretation
 
-- Fare and duration are primarily geotemporal row tasks. The base CartoBoost candidate wins through native periodic hour/day splitters, diagonal and radial spatial splitters, and sparse-set taxi-zone membership. Those primitives let the model express pickup/dropoff geometry directly instead of asking an axis-only tabular baseline to approximate it through many rectangular cuts.
+- Fare and duration are primarily geotemporal row tasks. The base CartoBoost candidate uses native periodic hour/day splitters, diagonal and radial spatial splitters, and sparse-set taxi-zone membership. Those primitives let the model express pickup/dropoff geometry directly instead of asking an axis-only tabular baseline to approximate it through many rectangular cuts.
 - Pickup demand is a zone-time graph problem. The best row in the random split is graph-augmented CartoBoost, because node2vec adds topology learned from observed pickup-zone relationships before the booster models hour, weekday, and zone effects.
-- Graph and neural rows are not expected to improve every target. When the base geotemporal splitters already explain the signal, they match the base candidate and mainly add training cost. Their value is in workloads where ID residuals or source-target topology carry signal that ordinary dense columns do not expose.
+- Graph and neural rows are not expected to suit every target. When the base geotemporal splitters already explain the signal, they match the base candidate and mainly add training cost. Their value is in workloads where ID residuals or source-target topology carry signal that ordinary dense columns do not expose.
 - The pickup-demand cold-zone spatial holdout intentionally skips learned models. That split removes all zone demand history, so a quality comparison would collapse to priors rather than test model structure.
 
 ## Trip duration

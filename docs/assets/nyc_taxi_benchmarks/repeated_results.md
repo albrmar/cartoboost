@@ -48,9 +48,9 @@ histogram tree method.
 
 ## Interpretation
 
-The repeated runs show consistent quality improvement against XGBoost on the
-measured taxi tasks: RMSE deltas are negative and R2 deltas are positive in all
-reported task/split rows. The combined speed gate still misses because the
-candidate trains slower and predicts fewer rows per second than XGBoost on this
-run. The correct conclusion is therefore quality-positive but speed-negative,
-not an overall deployment win.
+The repeated runs show consistent metric deltas against XGBoost on the measured
+taxi tasks: RMSE deltas are negative and R2 deltas are positive in all reported
+task/split rows. The combined speed gate still misses because the candidate
+trains slower and predicts fewer rows per second than XGBoost on this run. The
+correct conclusion is therefore quality-positive but speed-negative, not an
+overall deployment recommendation.

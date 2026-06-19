@@ -1,17 +1,15 @@
 # Evaluation Protocol
 
 Use this protocol when deciding whether CartoBoost is the right model for a
-taxi-domain regression or forecasting problem. The point is not to make
-CartoBoost win every table. The point is to measure whether its spatial,
-temporal, sparse-set, graph, and residual-ID structure improves generalization
-under the same evidence standard used for serious baselines.
+taxi-domain regression or forecasting problem. The point is to test its spatial,
+temporal, sparse-set, graph, and residual-ID structure under the same evidence
+standard used for serious baselines.
 
-CartoBoost is worth choosing when it gives a reproducible quality gain on the
-deployment split that matters, or when it matches the best baseline while
-providing useful structure such as route geometry, sparse zone membership,
-native forecasting artifacts, or leakage-aware diagnostics. It is not worth
-choosing solely because it wins a random split, a synthetic fixture, or a
-benchmark where another model received weaker features.
+Choose CartoBoost when it meets the deployment-split target, or when it matches
+the selected baseline while providing useful structure such as route geometry,
+sparse zone membership, native forecasting artifacts, or leakage-aware
+diagnostics. Do not choose it solely from a random split, a synthetic fixture,
+or a benchmark where another model received weaker features.
 
 ## Evidence Standard
 
@@ -32,11 +30,9 @@ If any of those are missing, treat the result as exploratory. Do not use it as a
 quality claim in docs, releases, benchmark narratives, or model-selection
 recommendations.
 
-Public benchmark claims must use the manifest-driven program described in
-[Fair Benchmarking Program](benchmarks/fair-benchmarking.md). That program adds
-fixed public task manifests, required baseline families, equal HPO budgets,
-repeated seeds or outer folds, confidence intervals, subgroup slices, and
-compute metadata on top of the per-run evidence listed here.
+For maintained benchmark pages, also report the baseline set, tuning budget,
+repeatability evidence when available, relevant slices, and compute setup.
+Missing required baselines make the benchmark incomplete for the claim.
 
 ## Baseline Fairness
 
@@ -194,9 +190,9 @@ structure or the validation split does not match the deployment risk.
 ## Model Choice Rules
 
 Choose plain CartoBoost when dense taxi features, cyclic time, route geometry,
-and zone membership explain the gain without neural or graph additions. Choose
-neural residual embeddings only when repeated pickup/dropoff zones, lanes, or
-route IDs recur in production and the repeated-ID split improves without
+and zone membership explain the result without neural or graph additions.
+Choose neural residual embeddings only when repeated pickup/dropoff zones,
+lanes, or route IDs recur in production and the repeated-ID split passes without
 degrading the cold-ID split you care about. Choose graph features when the
 target is genuinely about pickup/dropoff topology, source-target flow, or lane
 relationships.

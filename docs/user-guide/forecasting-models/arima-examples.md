@@ -3,7 +3,7 @@
 This page gives deterministic taxi-demand examples for checking fixed ARIMA and
 AutoARIMA behavior before using real TLC-derived pickup/dropoff lane data. Use
 them for API familiarity, plotting, model-order interpretation, and speed smoke
-checks; do not treat their metrics as evidence that one model wins on real taxi
+checks; do not treat their metrics as evidence for real taxi
 demand.
 
 ## Scientific Use
@@ -17,7 +17,7 @@ evaluation.
 They are not evidence of scientific superiority. A scientist should carry only
 the interpretation pattern forward: compare fixed orders and bounded AutoARIMA
 under identical splits, inspect residual direction by horizon, and reject a
-model whose non-seasonal local structure cannot beat seasonal or lag-feature
+model whose non-seasonal local structure does not clear seasonal or lag-feature
 baselines on real or clearly labeled benchmark data.
 
 ## Runnable Example

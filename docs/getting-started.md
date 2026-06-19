@@ -11,9 +11,9 @@ spatial structure is part of the hypothesis. In the NYC taxi domain, typical
 questions include:
 
 - Can pickup hour, weekday, pickup zone, dropoff zone, and trip distance explain
-  transformed trip duration better than a dense tabular baseline?
-- Does route direction, such as `PULocationID -> DOLocationID`, improve fare or
-  duration estimates beyond treating the two zones as unordered IDs?
+  transformed trip duration under a leakage-aware split?
+- Does route direction, such as `PULocationID -> DOLocationID`, change fare or
+  duration estimates compared with treating the two zones as unordered IDs?
 - Can daily pickup-zone or pickup/dropoff-lane demand be forecast from lagged
   demand, calendar features, airport-lane indicators, and borough context?
 - Do spatial splitters or sparse zone memberships recover signal that an
@@ -83,8 +83,7 @@ predictions = model.predict(X_validation)
 
 Start with a smaller splitter set if the study only needs dense numeric
 features. Add spatial, periodic, sparse, neural, or graph structure only when it
-matches the modeling question and improves validation performance on the same
-split.
+matches the modeling question and passes the same validation split.
 
 ## 5. Use Sparse Taxi-Zone Memberships
 

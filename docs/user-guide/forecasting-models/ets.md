@@ -250,9 +250,9 @@ for params in candidates:
 print(sorted(scores, key=lambda item: item[0])[0])
 ```
 
-Prefer the simplest setting that wins on validation. If ETS and seasonal naive
+Prefer the simplest setting selected by validation. If ETS and seasonal naive
 are close, keep the seasonal naive baseline in reporting; it is a useful guard
-against overclaiming smoothing gains on strongly repeating taxi series.
+against overclaiming smoothing behavior on strongly repeating taxi series.
 
 ## Unsupported Modes
 

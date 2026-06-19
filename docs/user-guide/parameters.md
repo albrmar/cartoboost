@@ -96,7 +96,7 @@ Common temporal-spatial combinations:
 Use linear leaves when the tree can find a region, taxi zone, or time bucket
 but the remaining residual trend inside that region is still approximately
 linear. For example, a learned airport corridor may still have a distance or
-time-of-day trend that is better represented locally than globally.
+time-of-day trend represented locally rather than globally.
 
 ## Fuzzy Routing
 

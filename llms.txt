@@ -83,6 +83,5 @@ temporal, spatial, geotemporal, graph, and neural-embedding modeling.
   `uv run --group dev maturin develop` after native binding changes.
 - Use `npm run typecheck` and `npm run build` for the Docusaurus docs site.
 - Run `just validate` for full validation when feasible.
-- Public benchmark claims require the evidence protocol in `docs/benchmarks/`:
-  equal settings, serious baselines, stable splits, uncertainty where
-  available, subgroup slices, and compute metadata.
+- Benchmark claims need equal settings, serious baselines, stable splits, and
+  enough repeatability evidence to support the claim.

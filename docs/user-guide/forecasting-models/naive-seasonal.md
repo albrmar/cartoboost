@@ -16,10 +16,9 @@ with `season_length=7`.
 | `SeasonalNaiveForecaster(season_length)` | Repeats values from the most recent completed seasonal cycle. |
 
 Use both baselines before moving to ARIMA, ETS, Theta, Kalman, or lagged
-CartoBoost models. The naive baseline answers whether a model beats the latest
-known taxi pickup count. The seasonal naive baseline answers whether a model
-beats yesterday's same-hour pickup pattern, which is often the stronger
-comparison for taxi demand.
+CartoBoost models. The naive baseline compares against the latest known taxi
+pickup count. The seasonal naive baseline compares against yesterday's same-hour
+pickup pattern, which is often the stronger control for taxi demand.
 
 ## Scientific Role
 
@@ -32,9 +31,9 @@ They encode two clear hypotheses:
 | Demand repeats by a fixed cycle. | Seasonal naive | Whether the calendar phase explains the target without learned parameters. |
 
 Choose naive or seasonal naive when you need an auditable baseline, a leakage
-check, or a minimum bar for a richer model. A model that cannot beat seasonal
-naive on hourly taxi pickup demand is usually not adding useful science; it may
-only be restating a daily cycle with more machinery.
+check, or a minimum bar for a richer model. A model that does not clear seasonal
+naive on hourly taxi pickup demand may only be restating a daily cycle with more
+machinery.
 
 ## Assumptions And Failure Modes
 
@@ -67,8 +66,8 @@ Interpret the result directly:
 | Output pattern | Meaning | Typical next step |
 | --- | --- | --- |
 | Naive and seasonal naive are close. | The latest observation is already a good short-horizon summary. | Compare against Kalman or ETS before adding many lag features. |
-| Seasonal naive is much better. | Hour-of-day or day-of-week repetition dominates. | Keep the seasonal baseline in every validation table. |
-| Naive is better than seasonal naive. | The recent level shifted away from the prior cycle. | Check for events, holidays, weather disruption, or zone-level regime changes. |
+| Seasonal naive has much lower error. | Hour-of-day or day-of-week repetition dominates. | Keep the seasonal baseline in every validation table. |
+| Naive has lower error than seasonal naive. | The recent level shifted away from the prior cycle. | Check for events, holidays, weather disruption, or zone-level regime changes. |
 | Both baselines miss the same periods. | Repeated calendar cycles are not enough. | Add exogenous features, graph features, or a lagged CartoBoost model. |
 
 ## Pickup-Zone Panel Example
@@ -106,7 +105,7 @@ uv run python examples/forecasting/naive_seasonal_visualization.py
 
 It writes `target/examples/naive_seasonal_visualization.png` and prints a JSON
 summary with rows, zones, train horizon, forecast horizon, MAE, RMSE, and the
-seasonal-naive RMSE improvement over naive. The example generates deterministic
+seasonal-naive RMSE delta versus naive. The example generates deterministic
 JFK and Upper East Side pickup-zone demand, so it does not download data or
 write tracked benchmark artifacts.
 
@@ -214,15 +213,15 @@ seasonal_result = backtester.evaluate(SeasonalNaiveForecaster(season_length=24),
 ```
 
 Keep the seasonal naive score in model-selection reports for hourly taxi demand.
-If a richer model only wins against naive, it may only be learning the daily
-cycle rather than adding useful zone, graph, weather, or calendar signal.
+If a richer model only clears naive, it may only be learning the daily cycle
+rather than adding useful zone, graph, weather, or calendar signal.
 
 ## Validation Notes
 
 Seasonal naive is the minimum meaningful baseline for strongly seasonal taxi
-demand. If a more complex model cannot beat seasonal naive under rolling-origin
-backtests, inspect feature leakage, horizon alignment, and whether the model is
-overfitting repeated zones.
+demand. If a more complex model does not clear seasonal naive under
+rolling-origin backtests, inspect feature leakage, horizon alignment, and
+whether the model is overfitting repeated zones.
 
 These models do not learn trend, holiday effects, airport disruption, zone
 spillover, or pickup/dropoff graph structure. That limitation is useful: when

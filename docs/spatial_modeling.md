@@ -145,7 +145,6 @@ face in use:
 - Compare against axis-only CartoBoost, XGBoost, or LightGBM baselines with the
   same train/test split and feature set.
 
-CartoBoost can be better suited than a generic tabular booster when these
-temporal-spatial holdouts improve because the model can express the real
-structure with fewer ad hoc preprocessing steps. Keep claims tied to your data,
-features, split strategy, and metrics.
+CartoBoost is a candidate when these temporal-spatial holdouts show structure
+that the model can express with fewer ad hoc preprocessing steps. Keep claims
+tied to your data, features, split strategy, and metrics.

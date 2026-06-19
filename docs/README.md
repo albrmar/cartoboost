@@ -29,7 +29,6 @@ neural-embedding workflows.
 - [Python API Reference](reference/python-api.md)
 - [CLI Reference](reference/cli.md)
 - [Benchmarks](benchmarks/index.md)
-  - [Fair Benchmarking Program](benchmarks/fair-benchmarking.md)
   - [Neural Embedding Strategy Assessment](benchmarks/neural-embedding-strategy.md)
 
 CartoBoost is most useful when time, place, route membership, and directed
@@ -40,9 +39,9 @@ where nearby taxi zones should not leak into the holdout, and source-target
 flows where `PULocationID -> DOLocationID` is not interchangeable with the
 reverse trip.
 
-Choose CartoBoost when you want to test whether explicit temporal-spatial,
-sparse-zone, graph, or native forecasting structure improves a measured outcome
-under the same train/test split as strong baselines such as LightGBM or XGBoost.
+Choose CartoBoost when you want to test explicit temporal-spatial, sparse-zone,
+graph, or native forecasting structure under the same train/test split as
+strong baselines such as LightGBM or XGBoost.
 The docs emphasize those modeling decisions first; API details and code snippets
 exist to make the chosen workflow reproducible.
 

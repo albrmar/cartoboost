@@ -82,7 +82,6 @@ const sidebars: SidebarsConfig = {
       collapsed: false,
       items: [
         'benchmarks/index',
-        'benchmarks/fair-benchmarking',
         'benchmarks/model-suite',
         'benchmarks/nyc-taxi',
         'benchmarks/forecasting',

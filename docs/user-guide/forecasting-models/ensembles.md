@@ -12,7 +12,7 @@ pattern. For example, seasonal naive can preserve repeated hourly cycles, theta
 can adapt to a changing level, and Kalman can update a noisy level/trend from
 recent observations.
 
-Do not use an ensemble just to add complexity. It should beat the best
+Do not use an ensemble just to add complexity. It should clear the best
 individual member on a fixed validation split or encode a clear operating policy
 such as "mostly seasonal, with a smaller trend correction."
 
@@ -36,10 +36,10 @@ timestamps, and horizons. It cannot create a signal that none of its members
 learned. If every component misses a rush-hour disruption, averaging will miss
 it too.
 
-Failure modes include keeping a weak member because it improves one split by
-chance, changing component parameters while tuning weights, or reporting only
-ensemble metrics without component metrics. Compare against the best individual
-member and inspect horizon-specific errors before claiming that averaging adds
+Failure modes include keeping a weak member because one split moved by chance,
+changing component parameters while tuning weights, or reporting only ensemble
+metrics without component metrics. Compare against the best individual member
+and inspect horizon-specific errors before claiming that averaging adds
 scientific value.
 
 ## Example
@@ -169,7 +169,7 @@ A pragmatic workflow is:
 1. Score each component on the same rolling-origin splits.
 2. Remove members that are consistently worse than a simple seasonal baseline.
 3. Try a small weight grid such as seasonal-heavy, trend-heavy, and balanced.
-4. Pick the simplest blend that beats the best individual member on average and
+4. Pick the simplest blend that clears the best individual member on average and
    does not fail badly on any taxi zone or lane segment.
 
 Example grid:
@@ -206,7 +206,7 @@ patterns:
 
 | Visual pattern | Meaning | Typical next step |
 | --- | --- | --- |
-| Ensemble sits between two plausible members. | Blend is behaving as expected. | Validate that the average improves RMSE or MAE. |
+| Ensemble sits between two plausible members. | Blend is behaving as expected. | Validate the average RMSE or MAE. |
 | Ensemble follows a visibly bad member. | That member has too much weight. | Lower the weight or remove the member. |
 | All members miss the same rush-hour turn. | The ensemble cannot create a signal no member learned. | Add a model with the missing calendar, lag, or event behavior. |
 | Ensemble is smoother but less accurate. | Averaging reduced variance but added bias. | Compare by horizon and by lane before keeping the blend. |
@@ -226,5 +226,5 @@ For taxi benchmarks, include:
 - training and prediction time when making performance claims.
 
 Use rolling-origin splits and keep the exact train/test rows fixed across all
-members. If the ensemble only wins one horizon but loses most others, document
-that horizon-specific behavior instead of presenting it as a general win.
+members. If the ensemble only passes one horizon but misses most others,
+document that horizon-specific behavior instead of presenting it as general.

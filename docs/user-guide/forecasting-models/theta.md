@@ -121,8 +121,8 @@ forecast = model.predict(24)
 `seasonality` accepts `None`, `"additive"`, or `"multiplicative"` at the Python
 validation layer. Additive seasonality is usually the first choice for pickup
 counts because rush-hour lift is often a roughly fixed number of trips.
-Multiplicative seasonality requires strictly positive values and is better
-reserved for series where rush-hour effects scale with the level.
+Multiplicative seasonality requires strictly positive values and fits series
+where rush-hour effects scale with the level.
 
 ## Parameters
 

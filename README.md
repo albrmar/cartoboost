@@ -34,12 +34,12 @@ CartoBoost is most useful when the scientific question is about structured
 temporal-spatial signal:
 
 - Does pickup hour interact with airport lanes when estimating taxi duration?
-- Do pickup and dropoff zone memberships improve fare models beyond trip
-  distance and calendar features?
-- Does preserving route direction improve OD-pair predictions compared with
+- Do pickup and dropoff zone memberships change fare estimates after trip
+  distance and calendar features are included?
+- Does preserving route direction change OD-pair predictions compared with
   unordered zone IDs?
-- Do rolling-origin demand forecasts beat naive, seasonal naive, theta, ETS, or
-  supervised lag baselines on the same taxi-lane split?
+- How do rolling-origin demand forecasts compare with naive, seasonal naive,
+  theta, ETS, or supervised lag baselines on the same taxi-lane split?
 - Do spatial splitters recover zone or corridor signal that an axis-only model
   approximates poorly?
 
@@ -234,12 +234,11 @@ Quality claims should come from real runs with fixed comparable settings. Record
 RMSE, MAE, R2, training time, prediction time, model settings, sample size,
 task names, and split names.
 
-Public benchmark claims use the evidence protocol in the
-[Fair Benchmarking Program](docs/benchmarks/fair-benchmarking.md): fixed public
-tasks, stable splits, comparable settings, complete required baselines,
-uncertainty or repeatability evidence where available, subgroup slices, and
-compute metadata. If a required baseline fails or interval coverage is not
-actually computed, the benchmark is incomplete for that claim.
+Do not publish a benchmark claim unless the CartoBoost row satisfies the
+primary metric threshold under the same split, comparable feature access,
+comparable tuning budget, and complete baseline set. If a required baseline
+fails or interval coverage is not actually computed, the benchmark is
+incomplete for that claim.
 
 ## Save, Load, And Explain
 

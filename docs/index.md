@@ -108,8 +108,8 @@ be transformed trip duration, fare amount, or future pickup-zone demand.
   sparse sets, fuzzy routing, and blocked evaluation.
 - [Forecasting Wrapper](forecasting.md): `ForecastFrame`, rolling-origin
   backtests, leakage checks, CLI runs, and portable forecast artifacts.
-- [Benchmarks](benchmarks/index.md): fair benchmark protocol, reproducible
-  comparison reports, and acceptance metrics.
+- [Benchmarks](benchmarks/index.md): reproducible comparison reports,
+  acceptance checks, and claim limits.
 
 ## Deeper References
 

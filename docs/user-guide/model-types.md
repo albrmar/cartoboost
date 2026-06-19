@@ -42,16 +42,15 @@ Prefer it for experiments where you want to ask questions such as:
   many memberships are rare?
 - Does a smooth transition near a learned spatial boundary reduce localized
   residual artifacts?
-- Does an outlier-resistant or quantile objective answer the scientific target
-  better than mean regression?
+- Does an outlier-resistant or quantile objective match the scientific target
+  more closely than mean regression?
 - Can the fitted artifact preserve the schema, splitters, loss, fuzzy settings,
   sparse-set requirements, and additive values needed for later interpretation?
 
-Do not treat this as a broad claim that CartoBoost is always better than
-LightGBM, XGBoost, or a simpler baseline. Use those models as serious
-comparisons under the same train/test split and feature set. CartoBoost earns
-its place when the structured controls improve the specific holdout or
-diagnostic that matters for the study.
+Do not treat this as a broad claim about CartoBoost versus LightGBM, XGBoost,
+or a simpler baseline. Use those models as serious comparisons under the same
+train/test split and feature set. Select CartoBoost only when the structured
+controls satisfy the specific holdout or diagnostic that matters for the study.
 
 ## Tabular And Spatial Regression
 

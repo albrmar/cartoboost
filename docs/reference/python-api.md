@@ -278,7 +278,6 @@ Returns:
 
 - `structured_mae`
 - `neural_mae` (reported as `hybrid_mae` in the current helper payload)
-- `improvement`
 - `cartoboost_fit_ms`
 - `cartoboost_predict_ms`
 - `neural_fit_ms` (reported as `hybrid_fit_ms` in the current helper payload)

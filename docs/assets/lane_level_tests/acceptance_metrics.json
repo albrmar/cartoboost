@@ -154,7 +154,7 @@
       }
     ],
     "future_checks": [
-      "Combined lane, route, and hour splitters should beat an axis-only baseline.",
+      "Combined lane, route, and hour splitters should be compared with an axis-only baseline.",
       "The fixture uses only observable matrix columns documented in the artifact README."
     ]
   }
