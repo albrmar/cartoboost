@@ -2204,7 +2204,7 @@ def apply_shared_candidate_selection(
         if model not in candidate_scores:
             candidate_scores[model] = math.inf
         base_loss = candidate_scores[model]
-        best_candidate = robust_candidate_choice(candidate_scores)
+        best_candidate = candidate_choice_for_source(candidate_scores, source=source)
         lag_loss = candidate_scores.get("cartoboost_lag", math.inf)
         if (
             requires_lag_spine(source=source, season_length=season_length, horizon=horizon)
@@ -2362,6 +2362,9 @@ def selectable_candidate_names(model: str, *, source: str) -> list[str]:
             *candidates,
             "cartoboost_autostats_bank",
             "shared_m5_calendar_autostats_blend",
+            "shared_m5_phase14_total_reconciled_020",
+            "shared_m5_phase14_total_reconciled_035",
+            "shared_m5_phase14_total_reconciled_050",
             "shared_m5_total_reconciled_auto",
             "shared_m5_state_reconciled_auto",
             "shared_m5_store_reconciled_auto",
@@ -2390,6 +2393,18 @@ def robust_candidate_choice(candidate_scores: dict[str, float]) -> str:
     )
 
 
+def candidate_choice_for_source(candidate_scores: dict[str, float], *, source: str) -> str:
+    if source in {"m5", "m6"}:
+        finite_scores = {
+            candidate: loss
+            for candidate, loss in candidate_scores.items()
+            if math.isfinite(loss) and loss >= 0.0
+        }
+        if finite_scores:
+            return min(finite_scores, key=lambda candidate: (finite_scores[candidate], candidate))
+    return robust_candidate_choice(candidate_scores)
+
+
 def candidate_complexity_rank(candidate: str) -> int:
     ranks = {
         "cartoboost_lag": 0,
@@ -2405,10 +2420,13 @@ def candidate_complexity_rank(candidate: str) -> int:
         "shared_calendar_dom": 10,
         "shared_calendar_phase14": 11,
         "shared_m5_calendar_autostats_blend": 12,
-        "shared_m5_total_reconciled_auto": 14,
-        "shared_m5_state_reconciled_auto": 15,
-        "shared_m5_store_reconciled_auto": 16,
-        "cartoboost_m6_point_auto": 17,
+        "shared_m5_phase14_total_reconciled_020": 13,
+        "shared_m5_phase14_total_reconciled_035": 14,
+        "shared_m5_phase14_total_reconciled_050": 15,
+        "shared_m5_total_reconciled_auto": 16,
+        "shared_m5_state_reconciled_auto": 17,
+        "shared_m5_store_reconciled_auto": 18,
+        "cartoboost_m6_point_auto": 19,
     }
     return ranks.get(candidate, 20)
 
@@ -2520,6 +2538,11 @@ def add_shared_candidate_columns(
                     + 0.15 * pl.col("cartoboost_autostats_bank")
                 ).alias("shared_m5_calendar_autostats_blend")
             )
+            combined = add_m5_phase14_total_reconciled_candidates(
+                combined,
+                base_col="shared_m5_calendar_autostats_blend",
+                target_col="shared_calendar_phase14",
+            )
         for group_column, prediction_col in [
             (None, "shared_m5_total_reconciled_auto"),
             ("pickup_borough_code", "shared_m5_state_reconciled_auto"),
@@ -2540,6 +2563,40 @@ def add_shared_candidate_columns(
                 how="inner",
             )
     return combined
+
+
+def add_m5_phase14_total_reconciled_candidates(
+    frame: Any,
+    *,
+    base_col: str,
+    target_col: str,
+) -> Any:
+    pl = require_polars()
+    sums = frame.group_by(["timestamp", "horizon"], maintain_order=True).agg(
+        pl.col(base_col).sum().alias("__m5_phase_base_sum"),
+        pl.col(target_col).sum().alias("__m5_phase_target_sum"),
+    )
+    reconciled_col = "__m5_phase_total_reconciled"
+    with_reconciled = (
+        frame.join(sums, on=["timestamp", "horizon"], how="left")
+        .with_columns(
+            pl.when(pl.col("__m5_phase_base_sum").abs() > 1.0e-12)
+            .then(
+                pl.col(base_col) * (pl.col("__m5_phase_target_sum") / pl.col("__m5_phase_base_sum"))
+            )
+            .otherwise(pl.col(base_col))
+            .alias(reconciled_col)
+        )
+        .with_columns(
+            *[
+                ((1.0 - gamma) * pl.col(base_col) + gamma * pl.col(reconciled_col)).alias(
+                    f"shared_m5_phase14_total_reconciled_{suffix}"
+                )
+                for gamma, suffix in [(0.20, "020"), (0.35, "035"), (0.50, "050")]
+            ]
+        )
+    )
+    return with_reconciled.drop("__m5_phase_base_sum", "__m5_phase_target_sum", reconciled_col)
 
 
 def m5_autostats_reconciled_forecast_frame(

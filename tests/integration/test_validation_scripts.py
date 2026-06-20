@@ -11,6 +11,17 @@ from pathlib import Path
 import pytest
 
 
+def ordinal_word(rank: int) -> str:
+    words = {
+        1: "first",
+        2: "second",
+        3: "third",
+        4: "fourth",
+        5: "fifth",
+    }
+    return words.get(rank, f"{rank}th")
+
+
 def test_full_validation_script_uses_native_estimator_without_backend_toggle():
     repo_root = Path(__file__).resolve().parents[2]
 
@@ -297,6 +308,28 @@ def test_forecasting_benchmark_robust_selector_prefers_simple_close_candidate():
     )
 
     assert selected == "shared_seasonal_base"
+    assert (
+        benchmark.candidate_choice_for_source(
+            {
+                "cartoboost_auto_forecast": 1.00,
+                "shared_seasonal_base": 1.03,
+                "shared_calendar_dom": 0.99,
+            },
+            source="m5",
+        )
+        == "shared_calendar_dom"
+    )
+    assert (
+        benchmark.candidate_choice_for_source(
+            {
+                "cartoboost_auto_forecast": 1.00,
+                "shared_seasonal_base": 1.03,
+                "shared_calendar_dom": 0.99,
+            },
+            source="synthetic",
+        )
+        == "shared_seasonal_base"
+    )
 
 
 def test_forecasting_benchmark_autostats_candidate_targets_m4_and_m5():
@@ -316,6 +349,10 @@ def test_forecasting_benchmark_autostats_candidate_targets_m4_and_m5():
     assert benchmark.include_autostats_candidate(source="m4", season_length=4, horizon=8)
     assert not benchmark.include_autostats_candidate(source="m4", season_length=24, horizon=48)
     assert benchmark.include_autostats_candidate(source="m5", season_length=1, horizon=28)
+    assert "shared_m5_phase14_total_reconciled_035" in benchmark.selectable_candidate_names(
+        "cartoboost_auto_forecast",
+        source="m5",
+    )
 
 
 def test_forecasting_benchmark_m4_lag_spine_targets_high_frequency_risk():
@@ -417,15 +454,26 @@ def test_forecasting_benchmark_docs_match_committed_artifacts():
     m5_sample_winner = m5_sample["quality"]["winner"]
     m5_sample_winner_rmse = m5_sample["metrics"][m5_sample_winner]["rmse"]
     m5_sample_cartoboost_rmse = m5_sample["metrics"]["cartoboost_auto_forecast"]["rmse"]
+    m5_sample_rmse_ranking = sorted(
+        m5_sample["metrics"],
+        key=lambda model: m5_sample["metrics"][model]["rmse"],
+    )
+    m5_sample_cartoboost_rank = ordinal_word(
+        m5_sample_rmse_ranking.index("cartoboost_auto_forecast") + 1
+    )
     m5_wrmsse = m5_sample["official_metrics"]["m5"]
     m5_wrmsse_winner = m5_wrmsse["ranking"][0]
     m5_wrmsse_winner_score = m5_wrmsse["model_scores"][m5_wrmsse_winner]
     m5_cartoboost_wrmsse = m5_wrmsse["model_scores"]["cartoboost_auto_forecast"]
+    m5_cartoboost_wrmsse_rank = ordinal_word(
+        m5_wrmsse["ranking"].index("cartoboost_auto_forecast") + 1
+    )
     assert (
         f"`{m5_sample_winner}` remains the point-metric winner at RMSE "
-        f"{m5_sample_winner_rmse:.6f}; CartoBoost auto is third by RMSE at "
+        f"{m5_sample_winner_rmse:.6f}; CartoBoost auto is {m5_sample_cartoboost_rank} "
+        f"by RMSE at "
         f"{m5_sample_cartoboost_rmse:.6f}. `{m5_wrmsse_winner}` leads official WRMSSE at "
-        f"{m5_wrmsse_winner_score:.6f}; CartoBoost auto is third at "
+        f"{m5_wrmsse_winner_score:.6f}; CartoBoost auto is {m5_cartoboost_wrmsse_rank} at "
         f"{m5_cartoboost_wrmsse:.6f}."
     ) in docs
 

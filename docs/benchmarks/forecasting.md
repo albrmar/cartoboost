@@ -60,7 +60,7 @@ checks.
 | `forecasting_overhaul_m5_committed.json` | Refreshed with provenance fields | Protected auto beats lag on point metrics and WRMSSE 0.706687 versus 0.743721. |
 | `forecasting_overhaul_m6_committed.json` | Refreshed with provenance fields | Protected auto beats lag on point metrics and ties calibrated RPS at 0.200000. |
 | `forecasting_overhaul_committed_suite_full_roster.json` | Legacy maintained artifact; refresh attempted but `statsforecast_autotbats` did not complete in the local run window | `lightgbm_lag` remains the maintained winner at mean RMSE ratio 1.069525; CartoBoost auto is 1.187837 in that artifact. |
-| `forecasting_m5_full_roster_sample.json` | Refreshed after M5 WRMSSE selector changes | `statsforecast_autoets` remains the point-metric winner at RMSE 2.525734; CartoBoost auto is third by RMSE at 2.570107. `statsforecast_autotbats` leads official WRMSSE at 0.618397; CartoBoost auto is third at 0.630870. |
+| `forecasting_m5_full_roster_sample.json` | Refreshed after M5 WRMSSE selector changes | `statsforecast_autoets` remains the point-metric winner at RMSE 2.525734; CartoBoost auto is third by RMSE at 2.566068. `statsforecast_autotbats` leads official WRMSSE at 0.618397; CartoBoost auto is second at 0.623464. |
 | `forecasting_m5_full.json` | Legacy maintained full-corpus coverage artifact | CartoBoost lag completed the 30,490-series fast run with RMSE 2.634879; this is coverage evidence, not an external bakeoff. |
 | `forecasting_m6_full.json` | Legacy maintained artifact | `statsforecast_autoarima` remains the maintained winner at RMSE 0.013402; CartoBoost lag RMSE is 0.014348. |
 
@@ -69,7 +69,7 @@ checks.
 | Competition | Artifact | Details | Result |
 | --- | --- | --- | --- |
 | M5 committed CartoBoost sample | `docs/assets/nyc_taxi_benchmarks/forecasting_overhaul_m5_committed.json` | Committed M5-style sample, CartoBoost-only roster with auto and lag | `cartoboost_auto_forecast` beat `cartoboost_lag`: RMSE 2.530322, MAE 1.210252, WAPE 0.967338, WRMSSE 0.706687. |
-| M5 Forecasting Accuracy comparison sample | `docs/assets/nyc_taxi_benchmarks/forecasting_m5_full_roster_sample.json` | 100 item-store sample, 90 recent days, 28-day holdout, full 14-model roster with fixed no-hyperopt candidate selection | `statsforecast_autoets` won RMSE at 2.525734; CartoBoost auto was third at RMSE 2.570107. `statsforecast_autotbats` won WRMSSE at 0.618397; CartoBoost auto was third at 0.630870. |
+| M5 Forecasting Accuracy comparison sample | `docs/assets/nyc_taxi_benchmarks/forecasting_m5_full_roster_sample.json` | 100 item-store sample, 90 recent days, 28-day holdout, full 14-model roster with fixed no-hyperopt candidate selection | `statsforecast_autoets` won RMSE at 2.525734; CartoBoost auto was third at RMSE 2.566068. `statsforecast_autotbats` won WRMSSE at 0.618397; CartoBoost auto was second at 0.623464. |
 | M5 Forecasting Accuracy full-corpus check | `docs/assets/nyc_taxi_benchmarks/forecasting_m5_full.json` | 30,490 item-store full-corpus check, 90 recent days, 28-day holdout, lag-only fast roster | CartoBoost lag RMSE 2.634879, MAE 1.332997, WAPE 0.923884. |
 | M6 committed CartoBoost sample | `docs/assets/nyc_taxi_benchmarks/forecasting_overhaul_m6_committed.json` | Committed M6-style point proxy sample, CartoBoost-only roster with auto and lag | `cartoboost_auto_forecast` beat `cartoboost_lag` on point RMSE at 0.013865 and tied calibrated RPS at 0.200000. |
 | M6 financial assets | `docs/assets/nyc_taxi_benchmarks/forecasting_m6_full.json` | 100-symbol daily-return proxy, 28-day holdout, full 14-model roster without the auto alias | `statsforecast_autoarima` won RMSE at 0.013402; CartoBoost lag RMSE was 0.014348. |
@@ -221,6 +221,7 @@ uv run --group bench python scripts/forecasting_library_benchmark.py \
   --m5-data-dir data/forecasting_benchmarks/m5 \
   --m5-series-limit 100 \
   --m5-history-days 90 \
+  --no-hyperopt \
   --output docs/assets/nyc_taxi_benchmarks/forecasting_m5_full_roster_sample.json \
   --plot-dir docs/assets/nyc_taxi_benchmarks/forecasting_m5_full_roster_plots
 ```
@@ -272,14 +273,14 @@ uv run --group bench python scripts/forecasting_library_benchmark.py \
 | Horizon | 28 daily steps |
 | Roster | `full`: CartoBoost, functime, StatsForecast, Prophet, XGBoost lag, LightGBM lag |
 | Candidate selection | Enabled, shared one-origin calibration |
-| Total runtime | 124.893 seconds |
+| Total runtime | 114.968 seconds |
 | Winner | `statsforecast_autoets` |
 | Best RMSE | 2.525734 |
-| CartoBoost RMSE | 2.570107 |
-| CartoBoost MAE | 1.164633 |
-| CartoBoost WAPE | 0.939491 |
+| CartoBoost RMSE | 2.566068 |
+| CartoBoost MAE | 1.159957 |
+| CartoBoost WAPE | 0.935718 |
 | Best WRMSSE | `statsforecast_autotbats`, 0.618397 |
-| CartoBoost WRMSSE | 0.630870 |
+| CartoBoost WRMSSE | 0.623464 |
 
 ### M5 Model RMSE
 
