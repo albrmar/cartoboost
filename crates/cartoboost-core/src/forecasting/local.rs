@@ -51,7 +51,20 @@ pub struct ETSForecaster {
     beta: f64,
     gamma: Option<f64>,
     season_length: Option<usize>,
+    damping_phi: f64,
     fitted: Option<FittedETSState>,
+}
+
+#[derive(Debug, Clone)]
+pub struct AutoETSForecaster {
+    alpha_grid: Vec<f64>,
+    beta_grid: Vec<f64>,
+    gamma_grid: Vec<Option<f64>>,
+    damping_phi_grid: Vec<f64>,
+    season_length: Option<usize>,
+    selected_params: Option<ETSParameterSet>,
+    validation_scores: Vec<ETSValidationScore>,
+    fitted: Option<ETSForecaster>,
 }
 
 #[derive(Debug, Clone)]
@@ -151,6 +164,7 @@ struct FittedETSSeries {
     n_obs: usize,
     level: f64,
     trend: f64,
+    damping_phi: f64,
     seasonals: Option<Vec<f64>>,
     fitted_values: Vec<f64>,
     residuals: Vec<f64>,
@@ -239,6 +253,20 @@ pub struct ArimaValidationScore {
     pub p: usize,
     pub d: usize,
     pub q: usize,
+    pub mse: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ETSParameterSet {
+    pub alpha: f64,
+    pub beta: f64,
+    pub gamma: Option<f64>,
+    pub damping_phi: f64,
+}
+
+#[derive(Debug, Clone)]
+pub struct ETSValidationScore {
+    pub params: ETSParameterSet,
     pub mse: f64,
 }
 
@@ -411,12 +439,23 @@ impl ETSForecaster {
         gamma: Option<f64>,
         season_length: Option<usize>,
     ) -> Result<Self> {
-        validate_ets_params(alpha, beta, gamma, season_length)?;
+        Self::with_additive_damped_trend(alpha, beta, gamma, season_length, 1.0)
+    }
+
+    pub fn with_additive_damped_trend(
+        alpha: f64,
+        beta: f64,
+        gamma: Option<f64>,
+        season_length: Option<usize>,
+        damping_phi: f64,
+    ) -> Result<Self> {
+        validate_ets_params(alpha, beta, gamma, season_length, damping_phi)?;
         Ok(Self {
             alpha,
             beta,
             gamma,
             season_length,
+            damping_phi,
             fitted: None,
         })
     }
@@ -454,6 +493,87 @@ impl ETSForecaster {
             .as_ref()
             .and_then(|state| state.series.get(series_id))
             .map(|series| series.seasonal_values.as_slice())
+    }
+}
+
+impl AutoETSForecaster {
+    pub fn new(season_length: Option<usize>) -> Result<Self> {
+        Self::with_grids(
+            vec![0.1, 0.2, 0.3, 0.5, 0.8, 0.95],
+            vec![0.0, 0.05, 0.1, 0.2, 0.4],
+            match season_length {
+                Some(_) => vec![
+                    Some(0.0),
+                    Some(0.05),
+                    Some(0.1),
+                    Some(0.2),
+                    Some(0.3),
+                    Some(0.5),
+                ],
+                None => vec![None],
+            },
+            vec![0.8, 0.9, 0.95, 0.98, 1.0],
+            season_length,
+        )
+    }
+
+    pub fn with_grids(
+        alpha_grid: Vec<f64>,
+        beta_grid: Vec<f64>,
+        gamma_grid: Vec<Option<f64>>,
+        damping_phi_grid: Vec<f64>,
+        season_length: Option<usize>,
+    ) -> Result<Self> {
+        if alpha_grid.is_empty() {
+            return Err(CartoBoostError::InvalidInput(
+                "auto_ets alpha_grid must not be empty".to_string(),
+            ));
+        }
+        if beta_grid.is_empty() {
+            return Err(CartoBoostError::InvalidInput(
+                "auto_ets beta_grid must not be empty".to_string(),
+            ));
+        }
+        if gamma_grid.is_empty() {
+            return Err(CartoBoostError::InvalidInput(
+                "auto_ets gamma_grid must not be empty".to_string(),
+            ));
+        }
+        if damping_phi_grid.is_empty() {
+            return Err(CartoBoostError::InvalidInput(
+                "auto_ets damping_phi_grid must not be empty".to_string(),
+            ));
+        }
+        for &alpha in &alpha_grid {
+            validate_ets_params(alpha, 0.0, None, None, 1.0)?;
+        }
+        for &beta in &beta_grid {
+            validate_ets_params(0.5, beta, None, None, 1.0)?;
+        }
+        for &gamma in &gamma_grid {
+            validate_ets_params(0.5, 0.1, gamma, season_length, 1.0)?;
+        }
+        for &damping_phi in &damping_phi_grid {
+            validate_ets_params(0.5, 0.1, None, None, damping_phi)?;
+        }
+        Ok(Self {
+            alpha_grid,
+            beta_grid,
+            gamma_grid,
+            damping_phi_grid,
+            season_length,
+            selected_params: None,
+            validation_scores: Vec::new(),
+            fitted: None,
+        })
+    }
+
+    pub fn selected_params(&self) -> Option<ETSParameterSet> {
+        self.selected_params
+    }
+
+    pub fn validation_scores(&self) -> &[ETSValidationScore] {
+        &self.validation_scores
     }
 }
 
@@ -927,6 +1047,7 @@ impl Forecaster for ETSForecaster {
             self.beta,
             self.gamma,
             self.season_length,
+            self.damping_phi,
         )?);
         Ok(())
     }
@@ -955,7 +1076,9 @@ impl Forecaster for ETSForecaster {
                                 .advance(series.last_timestamp, step)?,
                             horizon: step,
                             model: self.model_name().to_string(),
-                            mean: series.level + step as f64 * series.trend + seasonal,
+                            mean: series.level
+                                + damped_trend_multiplier(series.damping_phi, step) * series.trend
+                                + seasonal,
                         })
                     })
                     .collect::<Result<Vec<_>>>()
@@ -978,6 +1101,145 @@ impl Forecaster for ETSForecaster {
             "beta": self.beta,
             "gamma": self.gamma,
             "season_length": self.season_length,
+            "damping_phi": self.damping_phi,
+        })
+    }
+}
+
+impl Forecaster for AutoETSForecaster {
+    fn fit(&mut self, frame: &ForecastFrame) -> Result<()> {
+        let mut candidates = Vec::new();
+        for (alpha_idx, alpha) in self.alpha_grid.iter().copied().enumerate() {
+            for (beta_idx, beta) in self.beta_grid.iter().copied().enumerate() {
+                for (gamma_idx, gamma) in self.gamma_grid.iter().copied().enumerate() {
+                    for (damping_idx, damping_phi) in
+                        self.damping_phi_grid.iter().copied().enumerate()
+                    {
+                        candidates.push((
+                            alpha_idx,
+                            beta_idx,
+                            gamma_idx,
+                            damping_idx,
+                            alpha,
+                            beta,
+                            gamma,
+                            damping_phi,
+                        ));
+                    }
+                }
+            }
+        }
+        let scored = candidates
+            .into_par_iter()
+            .map(
+                |(alpha_idx, beta_idx, gamma_idx, damping_idx, alpha, beta, gamma, damping_phi)| {
+                    let fitted = FittedETSState::from_frame(
+                        frame,
+                        alpha,
+                        beta,
+                        gamma,
+                        self.season_length,
+                        damping_phi,
+                    )?;
+                    let params = ETSParameterSet {
+                        alpha,
+                        beta,
+                        gamma,
+                        damping_phi,
+                    };
+                    Ok((
+                        alpha_idx,
+                        beta_idx,
+                        gamma_idx,
+                        damping_idx,
+                        ETSValidationScore {
+                            params,
+                            mse: fitted.mean_squared_residual(),
+                        },
+                    ))
+                },
+            )
+            .collect::<Result<Vec<_>>>()?;
+        let mut scored = scored;
+        scored.sort_by_key(|(alpha_idx, beta_idx, gamma_idx, damping_idx, _)| {
+            (*alpha_idx, *beta_idx, *gamma_idx, *damping_idx)
+        });
+        let scores = scored
+            .into_iter()
+            .map(|(_, _, _, _, score)| score)
+            .collect::<Vec<_>>();
+        let best = scores.iter().min_by(|left, right| {
+            left.mse
+                .total_cmp(&right.mse)
+                .then_with(|| left.params.alpha.total_cmp(&right.params.alpha))
+                .then_with(|| left.params.beta.total_cmp(&right.params.beta))
+                .then_with(|| left.params.damping_phi.total_cmp(&right.params.damping_phi))
+                .then_with(|| match (left.params.gamma, right.params.gamma) {
+                    (Some(left), Some(right)) => left.total_cmp(&right),
+                    (None, Some(_)) => std::cmp::Ordering::Less,
+                    (Some(_), None) => std::cmp::Ordering::Greater,
+                    (None, None) => std::cmp::Ordering::Equal,
+                })
+        });
+        let params = best.map(|score| score.params).ok_or_else(|| {
+            CartoBoostError::InvalidInput("auto_ets candidate grid must not be empty".to_string())
+        })?;
+        let mut fitted = ETSForecaster::with_additive_damped_trend(
+            params.alpha,
+            params.beta,
+            params.gamma,
+            self.season_length,
+            params.damping_phi,
+        )?;
+        fitted.fit(frame)?;
+        self.selected_params = Some(params);
+        self.validation_scores = scores;
+        self.fitted = Some(fitted);
+        Ok(())
+    }
+
+    fn predict(&self, horizon: usize) -> Result<ForecastResult> {
+        let fitted = self.fitted.as_ref().ok_or_else(not_fitted)?;
+        let result = fitted.predict(horizon)?;
+        let predictions = result
+            .predictions()
+            .iter()
+            .map(|prediction| ForecastPrediction {
+                series_id: prediction.series_id.clone(),
+                timestamp: prediction.timestamp,
+                horizon: prediction.horizon,
+                model: self.model_name().to_string(),
+                mean: prediction.mean,
+            })
+            .collect::<Vec<_>>();
+        ForecastResult::new(predictions)
+    }
+
+    fn model_name(&self) -> &'static str {
+        "auto_ets"
+    }
+
+    fn metadata(&self) -> Value {
+        json!({
+            "model": self.model_name(),
+            "season_length": self.season_length,
+            "selected_params": self.selected_params.map(|params| {
+                json!({
+                    "alpha": params.alpha,
+                    "beta": params.beta,
+                    "gamma": params.gamma,
+                    "damping_phi": params.damping_phi,
+                })
+            }),
+            "validation_scores": self.validation_scores.iter().map(|score| {
+                json!({
+                    "alpha": score.params.alpha,
+                    "beta": score.params.beta,
+                    "gamma": score.params.gamma,
+                    "damping_phi": score.params.damping_phi,
+                    "mse": score.mse,
+                })
+            }).collect::<Vec<_>>(),
         })
     }
 }
@@ -1512,6 +1774,7 @@ impl FittedETSState {
         beta: f64,
         gamma: Option<f64>,
         season_length: Option<usize>,
+        damping_phi: f64,
     ) -> Result<Self> {
         let local = FittedLocalState::from_frame(frame);
         let series = local
@@ -1522,7 +1785,15 @@ impl FittedETSState {
             .map(|(series_id, history)| {
                 Ok((
                     series_id.clone(),
-                    FittedETSSeries::fit(series_id, history, alpha, beta, gamma, season_length)?,
+                    FittedETSSeries::fit(
+                        series_id,
+                        history,
+                        alpha,
+                        beta,
+                        gamma,
+                        season_length,
+                        damping_phi,
+                    )?,
                 ))
             })
             .collect::<Result<BTreeMap<_, _>>>()?;
@@ -1530,6 +1801,32 @@ impl FittedETSState {
             frame: frame.clone(),
             series,
         })
+    }
+
+    fn mean_squared_residual(&self) -> f64 {
+        let (sum, count) = self
+            .series
+            .values()
+            .collect::<Vec<_>>()
+            .into_par_iter()
+            .map(|series| {
+                series
+                    .residuals
+                    .iter()
+                    .skip(1)
+                    .fold((0.0, 0usize), |(sum, count), residual| {
+                        (sum + residual * residual, count + 1)
+                    })
+            })
+            .reduce(
+                || (0.0, 0usize),
+                |left, right| (left.0 + right.0, left.1 + right.1),
+            );
+        if count == 0 {
+            0.0
+        } else {
+            sum / count as f64
+        }
     }
 }
 
@@ -1807,6 +2104,7 @@ impl FittedETSSeries {
         beta: f64,
         gamma: Option<f64>,
         season_length: Option<usize>,
+        damping_phi: f64,
     ) -> Result<Self> {
         if history.len() < 2 {
             return Err(CartoBoostError::InvalidInput(format!(
@@ -1851,13 +2149,13 @@ impl FittedETSSeries {
                     seasonals.as_ref().map(|seasonals| seasonals[seasonal_idx])
                 })
                 .unwrap_or(0.0);
-            let fitted = level + trend + seasonal;
+            let fitted = level + damping_phi * trend + seasonal;
             fitted_values.push(fitted);
             residuals.push(*value - fitted);
 
             let previous_level = level;
-            level = alpha * (*value - seasonal) + (1.0 - alpha) * (level + trend);
-            trend = beta * (level - previous_level) + (1.0 - beta) * trend;
+            level = alpha * (*value - seasonal) + (1.0 - alpha) * (level + damping_phi * trend);
+            trend = beta * (level - previous_level) + (1.0 - beta) * damping_phi * trend;
             if let (Some(gamma), Some(seasonal_idx), Some(seasonals)) =
                 (gamma, seasonal_idx, seasonals.as_mut())
             {
@@ -1874,6 +2172,7 @@ impl FittedETSSeries {
             n_obs: history.len(),
             level,
             trend,
+            damping_phi,
             seasonals,
             fitted_values,
             residuals,
@@ -2206,9 +2505,11 @@ fn validate_ets_params(
     beta: f64,
     gamma: Option<f64>,
     season_length: Option<usize>,
+    damping_phi: f64,
 ) -> Result<()> {
     validate_unit_interval("alpha", alpha, false)?;
     validate_unit_interval("beta", beta, true)?;
+    validate_unit_interval("damping_phi", damping_phi, false)?;
     if let Some(gamma) = gamma {
         validate_unit_interval("gamma", gamma, true)?;
     }
@@ -2224,6 +2525,14 @@ fn validate_ets_params(
         (Some(_), Some(_)) => Err(CartoBoostError::InvalidInput(
             "ETS season_length must be greater than 1".to_string(),
         )),
+    }
+}
+
+fn damped_trend_multiplier(damping_phi: f64, step: usize) -> f64 {
+    if (damping_phi - 1.0).abs() <= f64::EPSILON {
+        step as f64
+    } else {
+        damping_phi * (1.0 - damping_phi.powi(step as i32)) / (1.0 - damping_phi)
     }
 }
 

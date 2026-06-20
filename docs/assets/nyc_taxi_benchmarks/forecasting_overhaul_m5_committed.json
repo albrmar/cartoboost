@@ -11,14 +11,14 @@
       "rayon_num_threads_env": null
     }
   },
-  "cartoboost_version": "0.1.53",
+  "cartoboost_version": "0.1.54",
   "comparison_libraries": [
     "functime",
     "statsforecast",
     "prophet",
     "external_trees"
   ],
-  "created_at": "2026-06-19T20:42:24.401229+00:00",
+  "created_at": "2026-06-20T01:17:44.662388+00:00",
   "dataset": {
     "available_days": 1941,
     "available_series": 30490,
@@ -48,7 +48,7 @@
   "dataset_hash": "554e46fe8371a36fe21f03cf3bf2574aa679533d6df23d83daa41f04e48d79d7",
   "fixture_source": "m5",
   "forecasting_library_models": {},
-  "git_commit": "68c241ddf10b258e5bb9fc10386dd673f1d68284",
+  "git_commit": "61ad605bb69b4a8fe165ef66c22480f8ac5e01fa",
   "metrics": {
     "cartoboost_auto_forecast": {
       "bias": 0.1471308812335249,
@@ -59,12 +59,12 @@
       "wape": 0.9673382680091602
     },
     "cartoboost_lag": {
-      "bias": -0.01600446428571428,
-      "mae": 1.1496961805555557,
-      "mase": 0.8210449493924844,
-      "rmse": 2.455905705436328,
-      "smape": 1.4791603256621106,
-      "wape": 0.918936465457429
+      "bias": 0.15986896253828572,
+      "mae": 1.2199272678234265,
+      "mase": 0.8711998341932362,
+      "rmse": 2.5406249301322035,
+      "smape": 1.4470348288144983,
+      "wape": 0.9750712149596701
     }
   },
   "model_libraries": {
@@ -893,73 +893,73 @@
             "cartoboost_lag": {
               "series": [
                 {
-                  "contribution": 0.009194772967958816,
+                  "contribution": 0.0085813736929846,
                   "normalized_weight": 0.008064516129032258,
-                  "rmsse": 1.1401518480268933,
+                  "rmsse": 1.0640903379300903,
                   "scale": 1.7529761904761905,
                   "series_id": "1.0",
                   "weight": 27.0
                 },
                 {
-                  "contribution": 0.003643071695993208,
+                  "contribution": 0.0035277652829400377,
                   "normalized_weight": 0.005675029868578256,
-                  "rmsse": 0.6419475809571189,
+                  "rmsse": 0.621629377225434,
                   "scale": 1.3214285714285714,
                   "series_id": "10.0",
                   "weight": 19.0
                 },
                 {
-                  "contribution": 0.00014136108777522554,
+                  "contribution": 0.0002720885440773295,
                   "normalized_weight": 0.0002986857825567503,
-                  "rmsse": 0.47327692187145515,
+                  "rmsse": 0.9109524455708993,
                   "scale": 0.19940476190476192,
                   "series_id": "11.0",
                   "weight": 1.0
                 },
                 {
-                  "contribution": 0.000979990859889541,
+                  "contribution": 0.0011004113950387685,
                   "normalized_weight": 0.0014934289127837516,
-                  "rmsse": 0.6562018797820366,
+                  "rmsse": 0.7368354701179594,
                   "scale": 0.4375,
                   "series_id": "12.0",
                   "weight": 5.0
                 },
                 {
-                  "contribution": 0.0028659089456995876,
+                  "contribution": 0.0030174941915548908,
                   "normalized_weight": 0.004181600955794504,
-                  "rmsse": 0.6853616535858729,
+                  "rmsse": 0.7216121823804125,
                   "scale": 0.7321428571428571,
                   "series_id": "13.0",
                   "weight": 14.0
                 },
                 {
-                  "contribution": 0.006126432187105169,
+                  "contribution": 0.0055325203201347,
                   "normalized_weight": 0.012544802867383513,
-                  "rmsse": 0.4883641657720978,
+                  "rmsse": 0.4410209055193089,
                   "scale": 7.413690476190476,
                   "series_id": "14.0",
                   "weight": 42.0
                 },
                 {
-                  "contribution": 0.01475598786897322,
+                  "contribution": 0.015208085335277724,
                   "normalized_weight": 0.023596176821983273,
-                  "rmsse": 0.6253550301939537,
+                  "rmsse": 0.6445148063608838,
                   "scale": 32.404761904761905,
                   "series_id": "15.0",
                   "weight": 79.0
                 },
                 {
-                  "contribution": 0.032130944380178106,
+                  "contribution": 0.03216115472096232,
                   "normalized_weight": 0.0504778972520908,
-                  "rmsse": 0.636534921803765,
+                  "rmsse": 0.6371334083182358,
                   "scale": 78.85119047619048,
                   "series_id": "16.0",
                   "weight": 169.0
                 },
                 {
-                  "contribution": 0.01168783996411429,
+                  "contribution": 0.010015685295996368,
                   "normalized_weight": 0.011648745519713262,
-                  "rmsse": 1.0033561076885806,
+                  "rmsse": 0.859808060794765,
                   "scale": 3.0,
                   "series_id": "17.0",
                   "weight": 39.0
@@ -967,663 +967,663 @@
                 {
                   "contribution": 0.0,
                   "normalized_weight": 0.0,
-                  "rmsse": 0.7734474692274331,
+                  "rmsse": 1.1115227576055042,
                   "scale": 0.16071428571428573,
                   "series_id": "18.0",
                   "weight": 0.0
                 },
                 {
-                  "contribution": 0.04194100679526368,
+                  "contribution": 0.04979942166521371,
                   "normalized_weight": 0.08542413381123058,
-                  "rmsse": 0.4909737438830168,
+                  "rmsse": 0.5829666564165576,
                   "scale": 179.72321428571428,
                   "series_id": "19.0",
                   "weight": 286.0
                 },
                 {
-                  "contribution": 0.0003753397661463777,
+                  "contribution": 0.00033048683122801394,
                   "normalized_weight": 0.0005973715651135006,
-                  "rmsse": 0.6283187685290363,
+                  "rmsse": 0.5532349554756953,
                   "scale": 0.8690476190476191,
                   "series_id": "2.0",
                   "weight": 2.0
                 },
                 {
-                  "contribution": 0.0010485101571496157,
+                  "contribution": 0.0011324764462694098,
                   "normalized_weight": 0.0017921146953405018,
-                  "rmsse": 0.5850686676894855,
+                  "rmsse": 0.6319218570183307,
                   "scale": 0.6309523809523809,
                   "series_id": "20.0",
                   "weight": 6.0
                 },
                 {
-                  "contribution": 0.0033761034509244333,
+                  "contribution": 0.003832407300618466,
                   "normalized_weight": 0.0035842293906810036,
-                  "rmsse": 0.9419328628079169,
+                  "rmsse": 1.069241636872552,
                   "scale": 2.0625,
                   "series_id": "21.0",
                   "weight": 12.0
                 },
                 {
-                  "contribution": 0.002000345661817323,
+                  "contribution": 0.0030370081345694236,
                   "normalized_weight": 0.003882915173237754,
-                  "rmsse": 0.515165944289569,
+                  "rmsse": 0.7821464026568024,
                   "scale": 0.6369047619047619,
                   "series_id": "22.0",
                   "weight": 13.0
                 },
                 {
-                  "contribution": 0.007602061662844768,
+                  "contribution": 0.007663624803370231,
                   "normalized_weight": 0.011648745519713262,
-                  "rmsse": 0.65260775505652,
+                  "rmsse": 0.6578927138893214,
                   "scale": 2.6726190476190474,
                   "series_id": "23.0",
                   "weight": 39.0
                 },
                 {
-                  "contribution": 0.0005196615090843283,
+                  "contribution": 0.0006323864989659246,
                   "normalized_weight": 0.0008960573476702509,
-                  "rmsse": 0.5799422441381105,
+                  "rmsse": 0.7057433328459719,
                   "scale": 0.6071428571428571,
                   "series_id": "24.0",
                   "weight": 3.0
                 },
                 {
-                  "contribution": 0.0027729857758514026,
+                  "contribution": 0.0032488405570012214,
                   "normalized_weight": 0.005376344086021506,
-                  "rmsse": 0.5157753543083609,
+                  "rmsse": 0.6042843436022272,
                   "scale": 2.056547619047619,
                   "series_id": "25.0",
                   "weight": 18.0
                 },
                 {
-                  "contribution": 0.0029130932734073808,
+                  "contribution": 0.0034593909802040712,
                   "normalized_weight": 0.002090800477897252,
-                  "rmsse": 1.3932908970525588,
+                  "rmsse": 1.6545772859604615,
                   "scale": 0.08333333333333333,
                   "series_id": "26.0",
                   "weight": 7.0
                 },
                 {
-                  "contribution": 0.0026079135852611025,
+                  "contribution": 0.0027681216461047918,
                   "normalized_weight": 0.002986857825567503,
-                  "rmsse": 0.873129468345417,
+                  "rmsse": 0.9267671271158843,
                   "scale": 1.0863095238095237,
                   "series_id": "27.0",
                   "weight": 10.0
                 },
                 {
-                  "contribution": 0.005150233653130418,
+                  "contribution": 0.005120758271271855,
                   "normalized_weight": 0.005675029868578256,
-                  "rmsse": 0.9075253826674021,
+                  "rmsse": 0.9023315101167458,
                   "scale": 1.2827380952380953,
                   "series_id": "28.0",
                   "weight": 19.0
                 },
                 {
-                  "contribution": 0.007067530173913383,
+                  "contribution": 0.0051914834667321575,
                   "normalized_weight": 0.013739545997610514,
-                  "rmsse": 0.5143932830926523,
+                  "rmsse": 0.3778497097091144,
                   "scale": 7.059523809523809,
                   "series_id": "29.0",
                   "weight": 46.0
                 },
                 {
-                  "contribution": 0.004112379164524349,
+                  "contribution": 0.004049858942631187,
                   "normalized_weight": 0.0047789725209080045,
-                  "rmsse": 0.86051534017672,
+                  "rmsse": 0.8474329837455759,
                   "scale": 1.2410714285714286,
                   "series_id": "3.0",
                   "weight": 16.0
                 },
                 {
-                  "contribution": 0.024979141070238672,
+                  "contribution": 0.033107779339036005,
                   "normalized_weight": 0.05137395459976105,
-                  "rmsse": 0.486221885483483,
+                  "rmsse": 0.6444467745761194,
                   "scale": 84.02380952380952,
                   "series_id": "30.0",
                   "weight": 172.0
                 },
                 {
-                  "contribution": 0.0011547819278302516,
+                  "contribution": 0.0012804295606666982,
                   "normalized_weight": 0.002090800477897252,
-                  "rmsse": 0.552315699196526,
+                  "rmsse": 0.6124111670160151,
                   "scale": 0.5654761904761905,
                   "series_id": "31.0",
                   "weight": 7.0
                 },
                 {
-                  "contribution": 0.01651895400391993,
+                  "contribution": 0.0152027697567099,
                   "normalized_weight": 0.024193548387096774,
-                  "rmsse": 0.6827834321620238,
+                  "rmsse": 0.6283811499440092,
                   "scale": 75.77083333333333,
                   "series_id": "32.0",
                   "weight": 81.0
                 },
                 {
-                  "contribution": 0.000996218758817717,
+                  "contribution": 0.0009686137683163958,
                   "normalized_weight": 0.0014934289127837516,
-                  "rmsse": 0.6670680809043433,
+                  "rmsse": 0.6485837792646586,
                   "scale": 0.6785714285714286,
                   "series_id": "33.0",
                   "weight": 5.0
                 },
                 {
-                  "contribution": 0.0025808959646048363,
+                  "contribution": 0.0023466610964704942,
                   "normalized_weight": 0.0047789725209080045,
-                  "rmsse": 0.540052480593562,
+                  "rmsse": 0.49103883443645097,
                   "scale": 1.9672619047619047,
                   "series_id": "34.0",
                   "weight": 16.0
                 },
                 {
-                  "contribution": 0.0008399121032711513,
+                  "contribution": 0.0018340113653975377,
                   "normalized_weight": 0.002090800477897252,
-                  "rmsse": 0.40171796025025924,
+                  "rmsse": 0.8771814359072795,
                   "scale": 0.28869047619047616,
                   "series_id": "35.0",
                   "weight": 7.0
                 },
                 {
-                  "contribution": 0.006035049687799878,
+                  "contribution": 0.0059557557584535,
                   "normalized_weight": 0.008363201911589008,
-                  "rmsse": 0.7216195126697854,
+                  "rmsse": 0.7121382242607971,
                   "scale": 3.574404761904762,
                   "series_id": "36.0",
                   "weight": 28.0
                 },
                 {
-                  "contribution": 0.0048410156208867905,
+                  "contribution": 0.005263745643482115,
                   "normalized_weight": 0.005675029868578256,
-                  "rmsse": 0.8530379104594197,
+                  "rmsse": 0.9275273902304273,
                   "scale": 1.3869047619047619,
                   "series_id": "37.0",
                   "weight": 19.0
                 },
                 {
-                  "contribution": 0.004361574815182808,
+                  "contribution": 0.004487257735658275,
                   "normalized_weight": 0.0047789725209080045,
-                  "rmsse": 0.9126595300770027,
+                  "rmsse": 0.9389586811864942,
                   "scale": 0.8452380952380952,
                   "series_id": "38.0",
                   "weight": 16.0
                 },
                 {
-                  "contribution": 0.0006204291860901583,
+                  "contribution": 0.0011571443238046486,
                   "normalized_weight": 0.0014934289127837516,
-                  "rmsse": 0.41543938300596994,
+                  "rmsse": 0.7748238392195926,
                   "scale": 0.3333333333333333,
                   "series_id": "39.0",
                   "weight": 5.0
                 },
                 {
-                  "contribution": 0.008119546291729531,
+                  "contribution": 0.008679560799918381,
                   "normalized_weight": 0.015232974910394265,
-                  "rmsse": 0.5330243330335387,
+                  "rmsse": 0.569787638394642,
                   "scale": 9.363095238095237,
                   "series_id": "4.0",
                   "weight": 51.0
                 },
                 {
-                  "contribution": 0.005570988180842113,
+                  "contribution": 0.005251741006068109,
                   "normalized_weight": 0.008363201911589008,
-                  "rmsse": 0.6661310153378355,
+                  "rmsse": 0.6279581745827154,
                   "scale": 1.9107142857142858,
                   "series_id": "40.0",
                   "weight": 28.0
                 },
                 {
-                  "contribution": 0.001664264097853485,
+                  "contribution": 0.001815157135301161,
                   "normalized_weight": 0.0017921146953405018,
-                  "rmsse": 0.9286593666022447,
+                  "rmsse": 1.012857681498048,
                   "scale": 0.43452380952380953,
                   "series_id": "41.0",
                   "weight": 6.0
                 },
                 {
-                  "contribution": 0.004063406282571084,
+                  "contribution": 0.004022420161846058,
                   "normalized_weight": 0.0047789725209080045,
-                  "rmsse": 0.8502677646279995,
+                  "rmsse": 0.8416914188662876,
                   "scale": 0.9315476190476191,
                   "series_id": "42.0",
                   "weight": 16.0
                 },
                 {
-                  "contribution": 0.008706092078643876,
+                  "contribution": 0.008397651896203116,
                   "normalized_weight": 0.013739545997610514,
-                  "rmsse": 0.6336520930282543,
+                  "rmsse": 0.6112030119236529,
                   "scale": 27.18154761904762,
                   "series_id": "43.0",
                   "weight": 46.0
                 },
                 {
-                  "contribution": 0.0024698294593750985,
+                  "contribution": 0.002678953623137177,
                   "normalized_weight": 0.004181600955794504,
-                  "rmsse": 0.5906420735705593,
+                  "rmsse": 0.6406526235902334,
                   "scale": 1.1755952380952381,
                   "series_id": "44.0",
                   "weight": 14.0
                 },
                 {
-                  "contribution": 0.0011132014831317682,
+                  "contribution": 0.0011628110469245837,
                   "normalized_weight": 0.002090800477897252,
-                  "rmsse": 0.5324283665035943,
+                  "rmsse": 0.5561559121576438,
                   "scale": 1.1488095238095237,
                   "series_id": "45.0",
                   "weight": 7.0
                 },
                 {
-                  "contribution": 0.0063809062596369565,
+                  "contribution": 0.006740815372862215,
                   "normalized_weight": 0.008064516129032258,
-                  "rmsse": 0.7912323761949827,
+                  "rmsse": 0.8358611062349147,
                   "scale": 1.5327380952380953,
                   "series_id": "46.0",
                   "weight": 27.0
                 },
                 {
-                  "contribution": 0.014652951071525939,
+                  "contribution": 0.014329579960232363,
                   "normalized_weight": 0.009557945041816009,
-                  "rmsse": 1.5330650058584014,
+                  "rmsse": 1.4992323033393111,
                   "scale": 5.160714285714286,
                   "series_id": "47.0",
                   "weight": 32.0
                 },
                 {
-                  "contribution": 0.08517619616000571,
+                  "contribution": 0.08402107120730012,
                   "normalized_weight": 0.13142174432497014,
-                  "rmsse": 0.6481134198720434,
+                  "rmsse": 0.6393239690955472,
                   "scale": 217.0654761904762,
                   "series_id": "48.0",
                   "weight": 440.0
                 },
                 {
-                  "contribution": 0.002048449908299899,
+                  "contribution": 0.0022756101743184104,
                   "normalized_weight": 0.003882915173237754,
-                  "rmsse": 0.5275546379221586,
+                  "rmsse": 0.5860571433552337,
                   "scale": 1.1636904761904763,
                   "series_id": "49.0",
                   "weight": 13.0
                 },
                 {
-                  "contribution": 0.007796262112953772,
+                  "contribution": 0.008785742275285467,
                   "normalized_weight": 0.011350059737156512,
-                  "rmsse": 0.6868917251097165,
+                  "rmsse": 0.774070135201467,
                   "scale": 2.705357142857143,
                   "series_id": "5.0",
                   "weight": 38.0
                 },
                 {
-                  "contribution": 0.011506761375187023,
+                  "contribution": 0.014153441770594771,
                   "normalized_weight": 0.017921146953405017,
-                  "rmsse": 0.6420772847354359,
+                  "rmsse": 0.7897620507991883,
                   "scale": 3.068452380952381,
                   "series_id": "50.0",
                   "weight": 60.0
                 },
                 {
-                  "contribution": 0.0009391723296300681,
+                  "contribution": 0.0011666831570000982,
                   "normalized_weight": 0.0014934289127837516,
-                  "rmsse": 0.6288697919202936,
+                  "rmsse": 0.7812110419272658,
                   "scale": 0.47023809523809523,
                   "series_id": "51.0",
                   "weight": 5.0
                 },
                 {
-                  "contribution": 0.0015478262173542416,
+                  "contribution": 0.0019754365686198393,
                   "normalized_weight": 0.0017921146953405018,
-                  "rmsse": 0.8636870292836668,
+                  "rmsse": 1.1022936052898704,
                   "scale": 0.24404761904761904,
                   "series_id": "52.0",
                   "weight": 6.0
                 },
                 {
-                  "contribution": 0.002244796533423147,
+                  "contribution": 0.0022165373354280133,
                   "normalized_weight": 0.0017921146953405018,
-                  "rmsse": 1.252596465650116,
+                  "rmsse": 1.2368278331688314,
                   "scale": 0.5684523809523809,
                   "series_id": "53.0",
                   "weight": 6.0
                 },
                 {
-                  "contribution": 0.000336290268027719,
+                  "contribution": 0.00039453440384814675,
                   "normalized_weight": 0.0005973715651135006,
-                  "rmsse": 0.5629499086784017,
+                  "rmsse": 0.6604505920417977,
                   "scale": 0.6220238095238095,
                   "series_id": "54.0",
                   "weight": 2.0
                 },
                 {
-                  "contribution": 0.012354243890569092,
+                  "contribution": 0.011713817513154362,
                   "normalized_weight": 0.01881720430107527,
-                  "rmsse": 0.6565398181845289,
+                  "rmsse": 0.6225057306990603,
                   "scale": 6.732142857142857,
                   "series_id": "55.0",
                   "weight": 63.0
                 },
                 {
-                  "contribution": 0.009592512440467223,
+                  "contribution": 0.009083483324895001,
                   "normalized_weight": 0.011648745519713262,
-                  "rmsse": 0.8234802987354939,
+                  "rmsse": 0.7797821069679093,
                   "scale": 4.619047619047619,
                   "series_id": "56.0",
                   "weight": 39.0
                 },
                 {
-                  "contribution": 0.004725301961254181,
+                  "contribution": 0.004679639231990623,
                   "normalized_weight": 0.005376344086021506,
-                  "rmsse": 0.8789061647932775,
+                  "rmsse": 0.8704128971502558,
                   "scale": 2.5595238095238093,
                   "series_id": "57.0",
                   "weight": 18.0
                 },
                 {
-                  "contribution": 0.0013723285941926195,
+                  "contribution": 0.001870241400581465,
                   "normalized_weight": 0.002986857825567503,
-                  "rmsse": 0.459455613335689,
+                  "rmsse": 0.6261568209146745,
                   "scale": 0.9196428571428571,
                   "series_id": "58.0",
                   "weight": 10.0
                 },
                 {
-                  "contribution": 0.002613331270491152,
+                  "contribution": 0.002755679208215829,
                   "normalized_weight": 0.0032855436081242534,
-                  "rmsse": 0.7954030085094889,
+                  "rmsse": 0.838728544464236,
                   "scale": 1.1011904761904763,
                   "series_id": "59.0",
                   "weight": 11.0
                 },
                 {
-                  "contribution": 0.004953256971899857,
+                  "contribution": 0.004571540765968313,
                   "normalized_weight": 0.005077658303464755,
-                  "rmsse": 0.9755002554071013,
+                  "rmsse": 0.9003246167330538,
                   "scale": 2.9166666666666665,
                   "series_id": "6.0",
                   "weight": 17.0
                 },
                 {
-                  "contribution": 0.0005912237243278548,
+                  "contribution": 0.0006149158537695444,
                   "normalized_weight": 0.0005973715651135006,
-                  "rmsse": 0.9897085145248291,
+                  "rmsse": 1.0293691392102173,
                   "scale": 0.22916666666666666,
                   "series_id": "60.0",
                   "weight": 2.0
                 },
                 {
-                  "contribution": 0.0011651947985766025,
+                  "contribution": 0.0013596154249608272,
                   "normalized_weight": 0.0014934289127837516,
-                  "rmsse": 0.780214437126893,
+                  "rmsse": 0.9103984885537698,
                   "scale": 0.32142857142857145,
                   "series_id": "61.0",
                   "weight": 5.0
                 },
                 {
-                  "contribution": 0.0005788463054533547,
+                  "contribution": 0.0009262578027701063,
                   "normalized_weight": 0.0011947431302270011,
-                  "rmsse": 0.4844943576644579,
+                  "rmsse": 0.775277780918579,
                   "scale": 0.27380952380952384,
                   "series_id": "62.0",
                   "weight": 4.0
                 },
                 {
-                  "contribution": 0.013712569468379888,
+                  "contribution": 0.014122874978979351,
                   "normalized_weight": 0.016129032258064516,
-                  "rmsse": 0.850179307039553,
+                  "rmsse": 0.8756182486967198,
                   "scale": 3.8422619047619047,
                   "series_id": "63.0",
                   "weight": 54.0
                 },
                 {
-                  "contribution": 0.0003503642289522962,
+                  "contribution": 0.0007269391055243149,
                   "normalized_weight": 0.0005973715651135006,
-                  "rmsse": 0.5865097192661438,
+                  "rmsse": 1.2168960626477032,
                   "scale": 0.125,
                   "series_id": "64.0",
                   "weight": 2.0
                 },
                 {
-                  "contribution": 0.0016641900298774396,
+                  "contribution": 0.001624751160624751,
                   "normalized_weight": 0.005077658303464755,
-                  "rmsse": 0.32774754235468634,
+                  "rmsse": 0.31998040504539216,
                   "scale": 8.226190476190476,
                   "series_id": "65.0",
                   "weight": 17.0
                 },
                 {
-                  "contribution": 0.022623753247101985,
+                  "contribution": 0.02317372010457053,
                   "normalized_weight": 0.02867383512544803,
-                  "rmsse": 0.7890033944926818,
+                  "rmsse": 0.8081834886468973,
                   "scale": 67.68452380952381,
                   "series_id": "66.0",
                   "weight": 96.0
                 },
                 {
-                  "contribution": 0.0029097762290268957,
+                  "contribution": 0.003332071626177346,
                   "normalized_weight": 0.005376344086021506,
-                  "rmsse": 0.5412183785990026,
+                  "rmsse": 0.6197653224689863,
                   "scale": 2.5297619047619047,
                   "series_id": "67.0",
                   "weight": 18.0
                 },
                 {
-                  "contribution": 0.001249903150366751,
+                  "contribution": 0.0013824286257531674,
                   "normalized_weight": 0.002090800477897252,
-                  "rmsse": 0.5978108210611262,
+                  "rmsse": 0.6611958627173721,
                   "scale": 0.6696428571428571,
                   "series_id": "68.0",
                   "weight": 7.0
                 },
                 {
-                  "contribution": 0.0007214224316302567,
+                  "contribution": 0.0009093418953181766,
                   "normalized_weight": 0.0008960573476702509,
-                  "rmsse": 0.8051074336993664,
+                  "rmsse": 1.014825555175085,
                   "scale": 0.19642857142857142,
                   "series_id": "69.0",
                   "weight": 3.0
                 },
                 {
-                  "contribution": 0.0019925815063100353,
+                  "contribution": 0.0023959212968366556,
                   "normalized_weight": 0.0032855436081242534,
-                  "rmsse": 0.6064693530114543,
+                  "rmsse": 0.7292313183462839,
                   "scale": 0.5863095238095238,
                   "series_id": "7.0",
                   "weight": 11.0
                 },
                 {
-                  "contribution": 0.0066845341723670345,
+                  "contribution": 0.006320389629266531,
                   "normalized_weight": 0.007467144563918757,
-                  "rmsse": 0.8951928163633933,
+                  "rmsse": 0.8464265791513739,
                   "scale": 1.7232142857142858,
                   "series_id": "70.0",
                   "weight": 25.0
                 },
                 {
-                  "contribution": 0.0027521117094001435,
+                  "contribution": 0.003500581230090017,
                   "normalized_weight": 0.004181600955794504,
-                  "rmsse": 0.6581478573622629,
+                  "rmsse": 0.8371389970243841,
                   "scale": 0.7380952380952381,
                   "series_id": "71.0",
                   "weight": 14.0
                 },
                 {
-                  "contribution": 0.005129050200491952,
+                  "contribution": 0.004609419147542495,
                   "normalized_weight": 0.007467144563918757,
-                  "rmsse": 0.6868824028498821,
+                  "rmsse": 0.6172934122388909,
                   "scale": 5.523809523809524,
                   "series_id": "72.0",
                   "weight": 25.0
                 },
                 {
-                  "contribution": 0.0016654332839183504,
+                  "contribution": 0.0015472160684360534,
                   "normalized_weight": 0.002986857825567503,
-                  "rmsse": 0.5575870634558637,
+                  "rmsse": 0.5180079397123907,
                   "scale": 1.5476190476190477,
                   "series_id": "73.0",
                   "weight": 10.0
                 },
                 {
-                  "contribution": 0.003773816852567166,
+                  "contribution": 0.003331815453610234,
                   "normalized_weight": 0.0062724014336917565,
-                  "rmsse": 0.601654229637851,
+                  "rmsse": 0.5311865780327173,
                   "scale": 2.7023809523809526,
                   "series_id": "74.0",
                   "weight": 21.0
                 },
                 {
-                  "contribution": 0.004801400937348961,
+                  "contribution": 0.0044517110654771945,
                   "normalized_weight": 0.005077658303464755,
-                  "rmsse": 0.9455935493084896,
+                  "rmsse": 0.8767252145422146,
                   "scale": 0.8035714285714286,
                   "series_id": "75.0",
                   "weight": 17.0
                 },
                 {
-                  "contribution": 0.008090888841232699,
+                  "contribution": 0.006867963243552532,
                   "normalized_weight": 0.013739545997610514,
-                  "rmsse": 0.5888759965314582,
+                  "rmsse": 0.499868281291606,
                   "scale": 6.127976190476191,
                   "series_id": "76.0",
                   "weight": 46.0
                 },
                 {
-                  "contribution": 0.003752727971717457,
+                  "contribution": 0.0038525794400576505,
                   "normalized_weight": 0.0047789725209080045,
-                  "rmsse": 0.7852583280818779,
+                  "rmsse": 0.8061522478320634,
                   "scale": 1.4375,
                   "series_id": "77.0",
                   "weight": 16.0
                 },
                 {
-                  "contribution": 0.005611448302686387,
+                  "contribution": 0.00556408262284857,
                   "normalized_weight": 0.006571087216248507,
-                  "rmsse": 0.853960405336092,
+                  "rmsse": 0.8467522100589551,
                   "scale": 11.866071428571429,
                   "series_id": "78.0",
                   "weight": 22.0
                 },
                 {
-                  "contribution": 0.00380011767159922,
+                  "contribution": 0.003995810606470958,
                   "normalized_weight": 0.006869772998805257,
-                  "rmsse": 0.5531649549788777,
+                  "rmsse": 0.5816510395854247,
                   "scale": 2.1160714285714284,
                   "series_id": "79.0",
                   "weight": 23.0
                 },
                 {
-                  "contribution": 0.05195558171998293,
+                  "contribution": 0.05504606878247382,
                   "normalized_weight": 0.06810035842293907,
-                  "rmsse": 0.7629266999934334,
+                  "rmsse": 0.808308062647905,
                   "scale": 236.70833333333334,
                   "series_id": "8.0",
                   "weight": 228.0
                 },
                 {
-                  "contribution": 0.000797414044662028,
+                  "contribution": 0.000951749093994096,
                   "normalized_weight": 0.0008960573476702509,
-                  "rmsse": 0.8899140738428232,
+                  "rmsse": 1.0621519888974111,
                   "scale": 0.30357142857142855,
                   "series_id": "80.0",
                   "weight": 3.0
                 },
                 {
-                  "contribution": 0.005916668789053689,
+                  "contribution": 0.006819896688971773,
                   "normalized_weight": 0.006869772998805257,
-                  "rmsse": 0.8612611785109456,
+                  "rmsse": 0.9927397441164127,
                   "scale": 0.7886904761904762,
                   "series_id": "81.0",
                   "weight": 23.0
                 },
                 {
-                  "contribution": 0.013235010024794196,
+                  "contribution": 0.016675211454866626,
                   "normalized_weight": 0.011648745519713262,
-                  "rmsse": 1.136174706743871,
+                  "rmsse": 1.4315027679716272,
                   "scale": 0.8601190476190477,
                   "series_id": "82.0",
                   "weight": 39.0
                 },
                 {
-                  "contribution": 0.0069926313583131006,
+                  "contribution": 0.007920989817346855,
                   "normalized_weight": 0.013142174432497013,
-                  "rmsse": 0.5320756769916423,
+                  "rmsse": 0.6027153161017561,
                   "scale": 3.4851190476190474,
                   "series_id": "83.0",
                   "weight": 44.0
                 },
                 {
-                  "contribution": 0.006583221005363536,
+                  "contribution": 0.007466622963793937,
                   "normalized_weight": 0.009557945041816009,
-                  "rmsse": 0.68876949768616,
+                  "rmsse": 0.7811954275869407,
                   "scale": 2.3779761904761907,
                   "series_id": "84.0",
                   "weight": 32.0
                 },
                 {
-                  "contribution": 0.0011253411146713405,
+                  "contribution": 0.0011542747213205858,
                   "normalized_weight": 0.0011947431302270011,
-                  "rmsse": 0.941910512979912,
+                  "rmsse": 0.9661279417453303,
                   "scale": 0.5625,
                   "series_id": "85.0",
                   "weight": 4.0
                 },
                 {
-                  "contribution": 0.004615965833093834,
+                  "contribution": 0.0045609801007950495,
                   "normalized_weight": 0.0035842293906810036,
-                  "rmsse": 1.2878544674331798,
+                  "rmsse": 1.2725134481218188,
                   "scale": 2.255952380952381,
                   "series_id": "86.0",
                   "weight": 12.0
                 },
                 {
-                  "contribution": 0.009464258885416972,
+                  "contribution": 0.009713340345302227,
                   "normalized_weight": 0.016726403823178016,
-                  "rmsse": 0.5658274776495719,
+                  "rmsse": 0.5807189906441403,
                   "scale": 4.214285714285714,
                   "series_id": "87.0",
                   "weight": 56.0
                 },
                 {
-                  "contribution": 0.03107015139314589,
+                  "contribution": 0.02945045827635702,
                   "normalized_weight": 0.04360812425328554,
-                  "rmsse": 0.7124853894811811,
+                  "rmsse": 0.6753433856797486,
                   "scale": 97.41369047619048,
                   "series_id": "88.0",
                   "weight": 146.0
                 },
                 {
-                  "contribution": 0.0115806255914683,
+                  "contribution": 0.011941898402352324,
                   "normalized_weight": 0.016726403823178016,
-                  "rmsse": 0.6923559728613549,
+                  "rmsse": 0.713954925912064,
                   "scale": 10.901785714285714,
                   "series_id": "89.0",
                   "weight": 56.0
                 },
                 {
-                  "contribution": 0.012840206681197099,
+                  "contribution": 0.012129990696459847,
                   "normalized_weight": 0.007467144563918757,
-                  "rmsse": 1.7195604787459156,
+                  "rmsse": 1.6244483540699026,
                   "scale": 1.2232142857142858,
                   "series_id": "9.0",
                   "weight": 25.0
                 },
                 {
-                  "contribution": 0.00014280130447502323,
+                  "contribution": 0.0002734989239779928,
                   "normalized_weight": 0.0002986857825567503,
-                  "rmsse": 0.47809876738237783,
+                  "rmsse": 0.91567439747832,
                   "scale": 0.20238095238095238,
                   "series_id": "90.0",
                   "weight": 1.0
                 },
                 {
-                  "contribution": 0.001814041732031039,
+                  "contribution": 0.0017623322216775825,
                   "normalized_weight": 0.002090800477897252,
-                  "rmsse": 0.8676302455485598,
+                  "rmsse": 0.8428983254537923,
                   "scale": 0.6369047619047619,
                   "series_id": "91.0",
                   "weight": 7.0
                 },
                 {
-                  "contribution": 0.00020903379693982854,
+                  "contribution": 0.00024079882371304994,
                   "normalized_weight": 0.0002986857825567503,
-                  "rmsse": 0.699845152154546,
+                  "rmsse": 0.8061944617912913,
                   "scale": 1.0297619047619047,
                   "series_id": "92.0",
                   "weight": 1.0
@@ -1631,38 +1631,38 @@
                 {
                   "contribution": 0.0,
                   "normalized_weight": 0.0,
-                  "rmsse": 0.8738841369703908,
+                  "rmsse": 1.0021687670196229,
                   "scale": 0.2619047619047619,
                   "series_id": "93.0",
                   "weight": 0.0
                 },
                 {
-                  "contribution": 0.0021352795704135605,
+                  "contribution": 0.002051511001270139,
                   "normalized_weight": 0.002090800477897252,
-                  "rmsse": 1.0212737145349429,
+                  "rmsse": 0.9812084046074895,
                   "scale": 0.7291666666666666,
                   "series_id": "94.0",
                   "weight": 7.0
                 },
                 {
-                  "contribution": 0.005341152290285917,
+                  "contribution": 0.005210372455882393,
                   "normalized_weight": 0.005973715651135006,
-                  "rmsse": 0.8941088933938625,
+                  "rmsse": 0.8722163491147126,
                   "scale": 1.3630952380952381,
                   "series_id": "95.0",
                   "weight": 20.0
                 },
                 {
-                  "contribution": 0.007033363638868312,
+                  "contribution": 0.007753306030204777,
                   "normalized_weight": 0.006869772998805257,
-                  "rmsse": 1.0238131070839613,
+                  "rmsse": 1.1286116777880693,
                   "scale": 1.8005952380952381,
                   "series_id": "96.0",
                   "weight": 23.0
                 }
               ],
               "series_count": 96,
-              "wrmsse": 0.6923634668022228
+              "wrmsse": 0.7197628691942335
             }
           },
           "scored_series_count": 96,
@@ -2448,137 +2448,137 @@
             "cartoboost_lag": {
               "series": [
                 {
-                  "contribution": 0.009194772967958816,
+                  "contribution": 0.0085813736929846,
                   "normalized_weight": 0.008064516129032258,
-                  "rmsse": 1.1401518480268933,
+                  "rmsse": 1.0640903379300903,
                   "scale": 1.7529761904761905,
                   "series_id": "HOBBIES_1_001_CA_1",
                   "weight": 27.0
                 },
                 {
-                  "contribution": 0.0003753397661463777,
+                  "contribution": 0.00033048683122801394,
                   "normalized_weight": 0.0005973715651135006,
-                  "rmsse": 0.6283187685290363,
+                  "rmsse": 0.5532349554756953,
                   "scale": 0.8690476190476191,
                   "series_id": "HOBBIES_1_002_CA_1",
                   "weight": 2.0
                 },
                 {
-                  "contribution": 0.004112379164524349,
+                  "contribution": 0.004049858942631187,
                   "normalized_weight": 0.0047789725209080045,
-                  "rmsse": 0.86051534017672,
+                  "rmsse": 0.8474329837455759,
                   "scale": 1.2410714285714286,
                   "series_id": "HOBBIES_1_003_CA_1",
                   "weight": 16.0
                 },
                 {
-                  "contribution": 0.008119546291729531,
+                  "contribution": 0.008679560799918381,
                   "normalized_weight": 0.015232974910394265,
-                  "rmsse": 0.5330243330335387,
+                  "rmsse": 0.569787638394642,
                   "scale": 9.363095238095237,
                   "series_id": "HOBBIES_1_004_CA_1",
                   "weight": 51.0
                 },
                 {
-                  "contribution": 0.007796262112953772,
+                  "contribution": 0.008785742275285467,
                   "normalized_weight": 0.011350059737156512,
-                  "rmsse": 0.6868917251097165,
+                  "rmsse": 0.774070135201467,
                   "scale": 2.705357142857143,
                   "series_id": "HOBBIES_1_005_CA_1",
                   "weight": 38.0
                 },
                 {
-                  "contribution": 0.004953256971899857,
+                  "contribution": 0.004571540765968313,
                   "normalized_weight": 0.005077658303464755,
-                  "rmsse": 0.9755002554071013,
+                  "rmsse": 0.9003246167330538,
                   "scale": 2.9166666666666665,
                   "series_id": "HOBBIES_1_006_CA_1",
                   "weight": 17.0
                 },
                 {
-                  "contribution": 0.0019925815063100353,
+                  "contribution": 0.0023959212968366556,
                   "normalized_weight": 0.0032855436081242534,
-                  "rmsse": 0.6064693530114543,
+                  "rmsse": 0.7292313183462839,
                   "scale": 0.5863095238095238,
                   "series_id": "HOBBIES_1_007_CA_1",
                   "weight": 11.0
                 },
                 {
-                  "contribution": 0.05195558171998293,
+                  "contribution": 0.05504606878247382,
                   "normalized_weight": 0.06810035842293907,
-                  "rmsse": 0.7629266999934334,
+                  "rmsse": 0.808308062647905,
                   "scale": 236.70833333333334,
                   "series_id": "HOBBIES_1_008_CA_1",
                   "weight": 228.0
                 },
                 {
-                  "contribution": 0.012840206681197099,
+                  "contribution": 0.012129990696459847,
                   "normalized_weight": 0.007467144563918757,
-                  "rmsse": 1.7195604787459156,
+                  "rmsse": 1.6244483540699026,
                   "scale": 1.2232142857142858,
                   "series_id": "HOBBIES_1_009_CA_1",
                   "weight": 25.0
                 },
                 {
-                  "contribution": 0.003643071695993208,
+                  "contribution": 0.0035277652829400377,
                   "normalized_weight": 0.005675029868578256,
-                  "rmsse": 0.6419475809571189,
+                  "rmsse": 0.621629377225434,
                   "scale": 1.3214285714285714,
                   "series_id": "HOBBIES_1_010_CA_1",
                   "weight": 19.0
                 },
                 {
-                  "contribution": 0.00014136108777522554,
+                  "contribution": 0.0002720885440773295,
                   "normalized_weight": 0.0002986857825567503,
-                  "rmsse": 0.47327692187145515,
+                  "rmsse": 0.9109524455708993,
                   "scale": 0.19940476190476192,
                   "series_id": "HOBBIES_1_011_CA_1",
                   "weight": 1.0
                 },
                 {
-                  "contribution": 0.000979990859889541,
+                  "contribution": 0.0011004113950387685,
                   "normalized_weight": 0.0014934289127837516,
-                  "rmsse": 0.6562018797820366,
+                  "rmsse": 0.7368354701179594,
                   "scale": 0.4375,
                   "series_id": "HOBBIES_1_012_CA_1",
                   "weight": 5.0
                 },
                 {
-                  "contribution": 0.0028659089456995876,
+                  "contribution": 0.0030174941915548908,
                   "normalized_weight": 0.004181600955794504,
-                  "rmsse": 0.6853616535858729,
+                  "rmsse": 0.7216121823804125,
                   "scale": 0.7321428571428571,
                   "series_id": "HOBBIES_1_013_CA_1",
                   "weight": 14.0
                 },
                 {
-                  "contribution": 0.006126432187105169,
+                  "contribution": 0.0055325203201347,
                   "normalized_weight": 0.012544802867383513,
-                  "rmsse": 0.4883641657720978,
+                  "rmsse": 0.4410209055193089,
                   "scale": 7.413690476190476,
                   "series_id": "HOBBIES_1_014_CA_1",
                   "weight": 42.0
                 },
                 {
-                  "contribution": 0.01475598786897322,
+                  "contribution": 0.015208085335277724,
                   "normalized_weight": 0.023596176821983273,
-                  "rmsse": 0.6253550301939537,
+                  "rmsse": 0.6445148063608838,
                   "scale": 32.404761904761905,
                   "series_id": "HOBBIES_1_015_CA_1",
                   "weight": 79.0
                 },
                 {
-                  "contribution": 0.032130944380178106,
+                  "contribution": 0.03216115472096232,
                   "normalized_weight": 0.0504778972520908,
-                  "rmsse": 0.636534921803765,
+                  "rmsse": 0.6371334083182358,
                   "scale": 78.85119047619048,
                   "series_id": "HOBBIES_1_016_CA_1",
                   "weight": 169.0
                 },
                 {
-                  "contribution": 0.01168783996411429,
+                  "contribution": 0.010015685295996368,
                   "normalized_weight": 0.011648745519713262,
-                  "rmsse": 1.0033561076885806,
+                  "rmsse": 0.859808060794765,
                   "scale": 3.0,
                   "series_id": "HOBBIES_1_017_CA_1",
                   "weight": 39.0
@@ -2586,599 +2586,599 @@
                 {
                   "contribution": 0.0,
                   "normalized_weight": 0.0,
-                  "rmsse": 0.7734474692274331,
+                  "rmsse": 1.1115227576055042,
                   "scale": 0.16071428571428573,
                   "series_id": "HOBBIES_1_018_CA_1",
                   "weight": 0.0
                 },
                 {
-                  "contribution": 0.04194100679526368,
+                  "contribution": 0.04979942166521371,
                   "normalized_weight": 0.08542413381123058,
-                  "rmsse": 0.4909737438830168,
+                  "rmsse": 0.5829666564165576,
                   "scale": 179.72321428571428,
                   "series_id": "HOBBIES_1_019_CA_1",
                   "weight": 286.0
                 },
                 {
-                  "contribution": 0.0010485101571496157,
+                  "contribution": 0.0011324764462694098,
                   "normalized_weight": 0.0017921146953405018,
-                  "rmsse": 0.5850686676894855,
+                  "rmsse": 0.6319218570183307,
                   "scale": 0.6309523809523809,
                   "series_id": "HOBBIES_1_020_CA_1",
                   "weight": 6.0
                 },
                 {
-                  "contribution": 0.0033761034509244333,
+                  "contribution": 0.003832407300618466,
                   "normalized_weight": 0.0035842293906810036,
-                  "rmsse": 0.9419328628079169,
+                  "rmsse": 1.069241636872552,
                   "scale": 2.0625,
                   "series_id": "HOBBIES_1_021_CA_1",
                   "weight": 12.0
                 },
                 {
-                  "contribution": 0.002000345661817323,
+                  "contribution": 0.0030370081345694236,
                   "normalized_weight": 0.003882915173237754,
-                  "rmsse": 0.515165944289569,
+                  "rmsse": 0.7821464026568024,
                   "scale": 0.6369047619047619,
                   "series_id": "HOBBIES_1_022_CA_1",
                   "weight": 13.0
                 },
                 {
-                  "contribution": 0.007602061662844768,
+                  "contribution": 0.007663624803370231,
                   "normalized_weight": 0.011648745519713262,
-                  "rmsse": 0.65260775505652,
+                  "rmsse": 0.6578927138893214,
                   "scale": 2.6726190476190474,
                   "series_id": "HOBBIES_1_023_CA_1",
                   "weight": 39.0
                 },
                 {
-                  "contribution": 0.0005196615090843283,
+                  "contribution": 0.0006323864989659246,
                   "normalized_weight": 0.0008960573476702509,
-                  "rmsse": 0.5799422441381105,
+                  "rmsse": 0.7057433328459719,
                   "scale": 0.6071428571428571,
                   "series_id": "HOBBIES_1_024_CA_1",
                   "weight": 3.0
                 },
                 {
-                  "contribution": 0.0027729857758514026,
+                  "contribution": 0.0032488405570012214,
                   "normalized_weight": 0.005376344086021506,
-                  "rmsse": 0.5157753543083609,
+                  "rmsse": 0.6042843436022272,
                   "scale": 2.056547619047619,
                   "series_id": "HOBBIES_1_025_CA_1",
                   "weight": 18.0
                 },
                 {
-                  "contribution": 0.0029130932734073808,
+                  "contribution": 0.0034593909802040712,
                   "normalized_weight": 0.002090800477897252,
-                  "rmsse": 1.3932908970525588,
+                  "rmsse": 1.6545772859604615,
                   "scale": 0.08333333333333333,
                   "series_id": "HOBBIES_1_026_CA_1",
                   "weight": 7.0
                 },
                 {
-                  "contribution": 0.0026079135852611025,
+                  "contribution": 0.0027681216461047918,
                   "normalized_weight": 0.002986857825567503,
-                  "rmsse": 0.873129468345417,
+                  "rmsse": 0.9267671271158843,
                   "scale": 1.0863095238095237,
                   "series_id": "HOBBIES_1_027_CA_1",
                   "weight": 10.0
                 },
                 {
-                  "contribution": 0.005150233653130418,
+                  "contribution": 0.005120758271271855,
                   "normalized_weight": 0.005675029868578256,
-                  "rmsse": 0.9075253826674021,
+                  "rmsse": 0.9023315101167458,
                   "scale": 1.2827380952380953,
                   "series_id": "HOBBIES_1_028_CA_1",
                   "weight": 19.0
                 },
                 {
-                  "contribution": 0.007067530173913383,
+                  "contribution": 0.0051914834667321575,
                   "normalized_weight": 0.013739545997610514,
-                  "rmsse": 0.5143932830926523,
+                  "rmsse": 0.3778497097091144,
                   "scale": 7.059523809523809,
                   "series_id": "HOBBIES_1_029_CA_1",
                   "weight": 46.0
                 },
                 {
-                  "contribution": 0.024979141070238672,
+                  "contribution": 0.033107779339036005,
                   "normalized_weight": 0.05137395459976105,
-                  "rmsse": 0.486221885483483,
+                  "rmsse": 0.6444467745761194,
                   "scale": 84.02380952380952,
                   "series_id": "HOBBIES_1_030_CA_1",
                   "weight": 172.0
                 },
                 {
-                  "contribution": 0.0011547819278302516,
+                  "contribution": 0.0012804295606666982,
                   "normalized_weight": 0.002090800477897252,
-                  "rmsse": 0.552315699196526,
+                  "rmsse": 0.6124111670160151,
                   "scale": 0.5654761904761905,
                   "series_id": "HOBBIES_1_031_CA_1",
                   "weight": 7.0
                 },
                 {
-                  "contribution": 0.01651895400391993,
+                  "contribution": 0.0152027697567099,
                   "normalized_weight": 0.024193548387096774,
-                  "rmsse": 0.6827834321620238,
+                  "rmsse": 0.6283811499440092,
                   "scale": 75.77083333333333,
                   "series_id": "HOBBIES_1_032_CA_1",
                   "weight": 81.0
                 },
                 {
-                  "contribution": 0.000996218758817717,
+                  "contribution": 0.0009686137683163958,
                   "normalized_weight": 0.0014934289127837516,
-                  "rmsse": 0.6670680809043433,
+                  "rmsse": 0.6485837792646586,
                   "scale": 0.6785714285714286,
                   "series_id": "HOBBIES_1_033_CA_1",
                   "weight": 5.0
                 },
                 {
-                  "contribution": 0.0025808959646048363,
+                  "contribution": 0.0023466610964704942,
                   "normalized_weight": 0.0047789725209080045,
-                  "rmsse": 0.540052480593562,
+                  "rmsse": 0.49103883443645097,
                   "scale": 1.9672619047619047,
                   "series_id": "HOBBIES_1_034_CA_1",
                   "weight": 16.0
                 },
                 {
-                  "contribution": 0.0008399121032711513,
+                  "contribution": 0.0018340113653975377,
                   "normalized_weight": 0.002090800477897252,
-                  "rmsse": 0.40171796025025924,
+                  "rmsse": 0.8771814359072795,
                   "scale": 0.28869047619047616,
                   "series_id": "HOBBIES_1_035_CA_1",
                   "weight": 7.0
                 },
                 {
-                  "contribution": 0.006035049687799878,
+                  "contribution": 0.0059557557584535,
                   "normalized_weight": 0.008363201911589008,
-                  "rmsse": 0.7216195126697854,
+                  "rmsse": 0.7121382242607971,
                   "scale": 3.574404761904762,
                   "series_id": "HOBBIES_1_036_CA_1",
                   "weight": 28.0
                 },
                 {
-                  "contribution": 0.0048410156208867905,
+                  "contribution": 0.005263745643482115,
                   "normalized_weight": 0.005675029868578256,
-                  "rmsse": 0.8530379104594197,
+                  "rmsse": 0.9275273902304273,
                   "scale": 1.3869047619047619,
                   "series_id": "HOBBIES_1_037_CA_1",
                   "weight": 19.0
                 },
                 {
-                  "contribution": 0.004361574815182808,
+                  "contribution": 0.004487257735658275,
                   "normalized_weight": 0.0047789725209080045,
-                  "rmsse": 0.9126595300770027,
+                  "rmsse": 0.9389586811864942,
                   "scale": 0.8452380952380952,
                   "series_id": "HOBBIES_1_038_CA_1",
                   "weight": 16.0
                 },
                 {
-                  "contribution": 0.0006204291860901583,
+                  "contribution": 0.0011571443238046486,
                   "normalized_weight": 0.0014934289127837516,
-                  "rmsse": 0.41543938300596994,
+                  "rmsse": 0.7748238392195926,
                   "scale": 0.3333333333333333,
                   "series_id": "HOBBIES_1_039_CA_1",
                   "weight": 5.0
                 },
                 {
-                  "contribution": 0.005570988180842113,
+                  "contribution": 0.005251741006068109,
                   "normalized_weight": 0.008363201911589008,
-                  "rmsse": 0.6661310153378355,
+                  "rmsse": 0.6279581745827154,
                   "scale": 1.9107142857142858,
                   "series_id": "HOBBIES_1_040_CA_1",
                   "weight": 28.0
                 },
                 {
-                  "contribution": 0.001664264097853485,
+                  "contribution": 0.001815157135301161,
                   "normalized_weight": 0.0017921146953405018,
-                  "rmsse": 0.9286593666022447,
+                  "rmsse": 1.012857681498048,
                   "scale": 0.43452380952380953,
                   "series_id": "HOBBIES_1_041_CA_1",
                   "weight": 6.0
                 },
                 {
-                  "contribution": 0.004063406282571084,
+                  "contribution": 0.004022420161846058,
                   "normalized_weight": 0.0047789725209080045,
-                  "rmsse": 0.8502677646279995,
+                  "rmsse": 0.8416914188662876,
                   "scale": 0.9315476190476191,
                   "series_id": "HOBBIES_1_042_CA_1",
                   "weight": 16.0
                 },
                 {
-                  "contribution": 0.008706092078643876,
+                  "contribution": 0.008397651896203116,
                   "normalized_weight": 0.013739545997610514,
-                  "rmsse": 0.6336520930282543,
+                  "rmsse": 0.6112030119236529,
                   "scale": 27.18154761904762,
                   "series_id": "HOBBIES_1_043_CA_1",
                   "weight": 46.0
                 },
                 {
-                  "contribution": 0.0024698294593750985,
+                  "contribution": 0.002678953623137177,
                   "normalized_weight": 0.004181600955794504,
-                  "rmsse": 0.5906420735705593,
+                  "rmsse": 0.6406526235902334,
                   "scale": 1.1755952380952381,
                   "series_id": "HOBBIES_1_044_CA_1",
                   "weight": 14.0
                 },
                 {
-                  "contribution": 0.0011132014831317682,
+                  "contribution": 0.0011628110469245837,
                   "normalized_weight": 0.002090800477897252,
-                  "rmsse": 0.5324283665035943,
+                  "rmsse": 0.5561559121576438,
                   "scale": 1.1488095238095237,
                   "series_id": "HOBBIES_1_045_CA_1",
                   "weight": 7.0
                 },
                 {
-                  "contribution": 0.0063809062596369565,
+                  "contribution": 0.006740815372862215,
                   "normalized_weight": 0.008064516129032258,
-                  "rmsse": 0.7912323761949827,
+                  "rmsse": 0.8358611062349147,
                   "scale": 1.5327380952380953,
                   "series_id": "HOBBIES_1_046_CA_1",
                   "weight": 27.0
                 },
                 {
-                  "contribution": 0.014652951071525939,
+                  "contribution": 0.014329579960232363,
                   "normalized_weight": 0.009557945041816009,
-                  "rmsse": 1.5330650058584014,
+                  "rmsse": 1.4992323033393111,
                   "scale": 5.160714285714286,
                   "series_id": "HOBBIES_1_047_CA_1",
                   "weight": 32.0
                 },
                 {
-                  "contribution": 0.08517619616000571,
+                  "contribution": 0.08402107120730012,
                   "normalized_weight": 0.13142174432497014,
-                  "rmsse": 0.6481134198720434,
+                  "rmsse": 0.6393239690955472,
                   "scale": 217.0654761904762,
                   "series_id": "HOBBIES_1_048_CA_1",
                   "weight": 440.0
                 },
                 {
-                  "contribution": 0.002048449908299899,
+                  "contribution": 0.0022756101743184104,
                   "normalized_weight": 0.003882915173237754,
-                  "rmsse": 0.5275546379221586,
+                  "rmsse": 0.5860571433552337,
                   "scale": 1.1636904761904763,
                   "series_id": "HOBBIES_1_049_CA_1",
                   "weight": 13.0
                 },
                 {
-                  "contribution": 0.011506761375187023,
+                  "contribution": 0.014153441770594771,
                   "normalized_weight": 0.017921146953405017,
-                  "rmsse": 0.6420772847354359,
+                  "rmsse": 0.7897620507991883,
                   "scale": 3.068452380952381,
                   "series_id": "HOBBIES_1_050_CA_1",
                   "weight": 60.0
                 },
                 {
-                  "contribution": 0.0009391723296300681,
+                  "contribution": 0.0011666831570000982,
                   "normalized_weight": 0.0014934289127837516,
-                  "rmsse": 0.6288697919202936,
+                  "rmsse": 0.7812110419272658,
                   "scale": 0.47023809523809523,
                   "series_id": "HOBBIES_1_051_CA_1",
                   "weight": 5.0
                 },
                 {
-                  "contribution": 0.0015478262173542416,
+                  "contribution": 0.0019754365686198393,
                   "normalized_weight": 0.0017921146953405018,
-                  "rmsse": 0.8636870292836668,
+                  "rmsse": 1.1022936052898704,
                   "scale": 0.24404761904761904,
                   "series_id": "HOBBIES_1_052_CA_1",
                   "weight": 6.0
                 },
                 {
-                  "contribution": 0.002244796533423147,
+                  "contribution": 0.0022165373354280133,
                   "normalized_weight": 0.0017921146953405018,
-                  "rmsse": 1.252596465650116,
+                  "rmsse": 1.2368278331688314,
                   "scale": 0.5684523809523809,
                   "series_id": "HOBBIES_1_053_CA_1",
                   "weight": 6.0
                 },
                 {
-                  "contribution": 0.000336290268027719,
+                  "contribution": 0.00039453440384814675,
                   "normalized_weight": 0.0005973715651135006,
-                  "rmsse": 0.5629499086784017,
+                  "rmsse": 0.6604505920417977,
                   "scale": 0.6220238095238095,
                   "series_id": "HOBBIES_1_054_CA_1",
                   "weight": 2.0
                 },
                 {
-                  "contribution": 0.012354243890569092,
+                  "contribution": 0.011713817513154362,
                   "normalized_weight": 0.01881720430107527,
-                  "rmsse": 0.6565398181845289,
+                  "rmsse": 0.6225057306990603,
                   "scale": 6.732142857142857,
                   "series_id": "HOBBIES_1_055_CA_1",
                   "weight": 63.0
                 },
                 {
-                  "contribution": 0.009592512440467223,
+                  "contribution": 0.009083483324895001,
                   "normalized_weight": 0.011648745519713262,
-                  "rmsse": 0.8234802987354939,
+                  "rmsse": 0.7797821069679093,
                   "scale": 4.619047619047619,
                   "series_id": "HOBBIES_1_056_CA_1",
                   "weight": 39.0
                 },
                 {
-                  "contribution": 0.004725301961254181,
+                  "contribution": 0.004679639231990623,
                   "normalized_weight": 0.005376344086021506,
-                  "rmsse": 0.8789061647932775,
+                  "rmsse": 0.8704128971502558,
                   "scale": 2.5595238095238093,
                   "series_id": "HOBBIES_1_057_CA_1",
                   "weight": 18.0
                 },
                 {
-                  "contribution": 0.0013723285941926195,
+                  "contribution": 0.001870241400581465,
                   "normalized_weight": 0.002986857825567503,
-                  "rmsse": 0.459455613335689,
+                  "rmsse": 0.6261568209146745,
                   "scale": 0.9196428571428571,
                   "series_id": "HOBBIES_1_058_CA_1",
                   "weight": 10.0
                 },
                 {
-                  "contribution": 0.002613331270491152,
+                  "contribution": 0.002755679208215829,
                   "normalized_weight": 0.0032855436081242534,
-                  "rmsse": 0.7954030085094889,
+                  "rmsse": 0.838728544464236,
                   "scale": 1.1011904761904763,
                   "series_id": "HOBBIES_1_060_CA_1",
                   "weight": 11.0
                 },
                 {
-                  "contribution": 0.0005912237243278548,
+                  "contribution": 0.0006149158537695444,
                   "normalized_weight": 0.0005973715651135006,
-                  "rmsse": 0.9897085145248291,
+                  "rmsse": 1.0293691392102173,
                   "scale": 0.22916666666666666,
                   "series_id": "HOBBIES_1_061_CA_1",
                   "weight": 2.0
                 },
                 {
-                  "contribution": 0.0011651947985766025,
+                  "contribution": 0.0013596154249608272,
                   "normalized_weight": 0.0014934289127837516,
-                  "rmsse": 0.780214437126893,
+                  "rmsse": 0.9103984885537698,
                   "scale": 0.32142857142857145,
                   "series_id": "HOBBIES_1_062_CA_1",
                   "weight": 5.0
                 },
                 {
-                  "contribution": 0.0005788463054533547,
+                  "contribution": 0.0009262578027701063,
                   "normalized_weight": 0.0011947431302270011,
-                  "rmsse": 0.4844943576644579,
+                  "rmsse": 0.775277780918579,
                   "scale": 0.27380952380952384,
                   "series_id": "HOBBIES_1_063_CA_1",
                   "weight": 4.0
                 },
                 {
-                  "contribution": 0.013712569468379888,
+                  "contribution": 0.014122874978979351,
                   "normalized_weight": 0.016129032258064516,
-                  "rmsse": 0.850179307039553,
+                  "rmsse": 0.8756182486967198,
                   "scale": 3.8422619047619047,
                   "series_id": "HOBBIES_1_064_CA_1",
                   "weight": 54.0
                 },
                 {
-                  "contribution": 0.0003503642289522962,
+                  "contribution": 0.0007269391055243149,
                   "normalized_weight": 0.0005973715651135006,
-                  "rmsse": 0.5865097192661438,
+                  "rmsse": 1.2168960626477032,
                   "scale": 0.125,
                   "series_id": "HOBBIES_1_065_CA_1",
                   "weight": 2.0
                 },
                 {
-                  "contribution": 0.0016641900298774396,
+                  "contribution": 0.001624751160624751,
                   "normalized_weight": 0.005077658303464755,
-                  "rmsse": 0.32774754235468634,
+                  "rmsse": 0.31998040504539216,
                   "scale": 8.226190476190476,
                   "series_id": "HOBBIES_1_066_CA_1",
                   "weight": 17.0
                 },
                 {
-                  "contribution": 0.022623753247101985,
+                  "contribution": 0.02317372010457053,
                   "normalized_weight": 0.02867383512544803,
-                  "rmsse": 0.7890033944926818,
+                  "rmsse": 0.8081834886468973,
                   "scale": 67.68452380952381,
                   "series_id": "HOBBIES_1_067_CA_1",
                   "weight": 96.0
                 },
                 {
-                  "contribution": 0.0029097762290268957,
+                  "contribution": 0.003332071626177346,
                   "normalized_weight": 0.005376344086021506,
-                  "rmsse": 0.5412183785990026,
+                  "rmsse": 0.6197653224689863,
                   "scale": 2.5297619047619047,
                   "series_id": "HOBBIES_1_068_CA_1",
                   "weight": 18.0
                 },
                 {
-                  "contribution": 0.001249903150366751,
+                  "contribution": 0.0013824286257531674,
                   "normalized_weight": 0.002090800477897252,
-                  "rmsse": 0.5978108210611262,
+                  "rmsse": 0.6611958627173721,
                   "scale": 0.6696428571428571,
                   "series_id": "HOBBIES_1_069_CA_1",
                   "weight": 7.0
                 },
                 {
-                  "contribution": 0.0007214224316302567,
+                  "contribution": 0.0009093418953181766,
                   "normalized_weight": 0.0008960573476702509,
-                  "rmsse": 0.8051074336993664,
+                  "rmsse": 1.014825555175085,
                   "scale": 0.19642857142857142,
                   "series_id": "HOBBIES_1_070_CA_1",
                   "weight": 3.0
                 },
                 {
-                  "contribution": 0.0066845341723670345,
+                  "contribution": 0.006320389629266531,
                   "normalized_weight": 0.007467144563918757,
-                  "rmsse": 0.8951928163633933,
+                  "rmsse": 0.8464265791513739,
                   "scale": 1.7232142857142858,
                   "series_id": "HOBBIES_1_072_CA_1",
                   "weight": 25.0
                 },
                 {
-                  "contribution": 0.0027521117094001435,
+                  "contribution": 0.003500581230090017,
                   "normalized_weight": 0.004181600955794504,
-                  "rmsse": 0.6581478573622629,
+                  "rmsse": 0.8371389970243841,
                   "scale": 0.7380952380952381,
                   "series_id": "HOBBIES_1_073_CA_1",
                   "weight": 14.0
                 },
                 {
-                  "contribution": 0.005129050200491952,
+                  "contribution": 0.004609419147542495,
                   "normalized_weight": 0.007467144563918757,
-                  "rmsse": 0.6868824028498821,
+                  "rmsse": 0.6172934122388909,
                   "scale": 5.523809523809524,
                   "series_id": "HOBBIES_1_074_CA_1",
                   "weight": 25.0
                 },
                 {
-                  "contribution": 0.0016654332839183504,
+                  "contribution": 0.0015472160684360534,
                   "normalized_weight": 0.002986857825567503,
-                  "rmsse": 0.5575870634558637,
+                  "rmsse": 0.5180079397123907,
                   "scale": 1.5476190476190477,
                   "series_id": "HOBBIES_1_075_CA_1",
                   "weight": 10.0
                 },
                 {
-                  "contribution": 0.003773816852567166,
+                  "contribution": 0.003331815453610234,
                   "normalized_weight": 0.0062724014336917565,
-                  "rmsse": 0.601654229637851,
+                  "rmsse": 0.5311865780327173,
                   "scale": 2.7023809523809526,
                   "series_id": "HOBBIES_1_076_CA_1",
                   "weight": 21.0
                 },
                 {
-                  "contribution": 0.004801400937348961,
+                  "contribution": 0.0044517110654771945,
                   "normalized_weight": 0.005077658303464755,
-                  "rmsse": 0.9455935493084896,
+                  "rmsse": 0.8767252145422146,
                   "scale": 0.8035714285714286,
                   "series_id": "HOBBIES_1_077_CA_1",
                   "weight": 17.0
                 },
                 {
-                  "contribution": 0.008090888841232699,
+                  "contribution": 0.006867963243552532,
                   "normalized_weight": 0.013739545997610514,
-                  "rmsse": 0.5888759965314582,
+                  "rmsse": 0.499868281291606,
                   "scale": 6.127976190476191,
                   "series_id": "HOBBIES_1_078_CA_1",
                   "weight": 46.0
                 },
                 {
-                  "contribution": 0.003752727971717457,
+                  "contribution": 0.0038525794400576505,
                   "normalized_weight": 0.0047789725209080045,
-                  "rmsse": 0.7852583280818779,
+                  "rmsse": 0.8061522478320634,
                   "scale": 1.4375,
                   "series_id": "HOBBIES_1_079_CA_1",
                   "weight": 16.0
                 },
                 {
-                  "contribution": 0.005611448302686387,
+                  "contribution": 0.00556408262284857,
                   "normalized_weight": 0.006571087216248507,
-                  "rmsse": 0.853960405336092,
+                  "rmsse": 0.8467522100589551,
                   "scale": 11.866071428571429,
                   "series_id": "HOBBIES_1_080_CA_1",
                   "weight": 22.0
                 },
                 {
-                  "contribution": 0.00380011767159922,
+                  "contribution": 0.003995810606470958,
                   "normalized_weight": 0.006869772998805257,
-                  "rmsse": 0.5531649549788777,
+                  "rmsse": 0.5816510395854247,
                   "scale": 2.1160714285714284,
                   "series_id": "HOBBIES_1_081_CA_1",
                   "weight": 23.0
                 },
                 {
-                  "contribution": 0.000797414044662028,
+                  "contribution": 0.000951749093994096,
                   "normalized_weight": 0.0008960573476702509,
-                  "rmsse": 0.8899140738428232,
+                  "rmsse": 1.0621519888974111,
                   "scale": 0.30357142857142855,
                   "series_id": "HOBBIES_1_082_CA_1",
                   "weight": 3.0
                 },
                 {
-                  "contribution": 0.005916668789053689,
+                  "contribution": 0.006819896688971773,
                   "normalized_weight": 0.006869772998805257,
-                  "rmsse": 0.8612611785109456,
+                  "rmsse": 0.9927397441164127,
                   "scale": 0.7886904761904762,
                   "series_id": "HOBBIES_1_083_CA_1",
                   "weight": 23.0
                 },
                 {
-                  "contribution": 0.013235010024794196,
+                  "contribution": 0.016675211454866626,
                   "normalized_weight": 0.011648745519713262,
-                  "rmsse": 1.136174706743871,
+                  "rmsse": 1.4315027679716272,
                   "scale": 0.8601190476190477,
                   "series_id": "HOBBIES_1_084_CA_1",
                   "weight": 39.0
                 },
                 {
-                  "contribution": 0.0069926313583131006,
+                  "contribution": 0.007920989817346855,
                   "normalized_weight": 0.013142174432497013,
-                  "rmsse": 0.5320756769916423,
+                  "rmsse": 0.6027153161017561,
                   "scale": 3.4851190476190474,
                   "series_id": "HOBBIES_1_085_CA_1",
                   "weight": 44.0
                 },
                 {
-                  "contribution": 0.006583221005363536,
+                  "contribution": 0.007466622963793937,
                   "normalized_weight": 0.009557945041816009,
-                  "rmsse": 0.68876949768616,
+                  "rmsse": 0.7811954275869407,
                   "scale": 2.3779761904761907,
                   "series_id": "HOBBIES_1_086_CA_1",
                   "weight": 32.0
                 },
                 {
-                  "contribution": 0.0011253411146713405,
+                  "contribution": 0.0011542747213205858,
                   "normalized_weight": 0.0011947431302270011,
-                  "rmsse": 0.941910512979912,
+                  "rmsse": 0.9661279417453303,
                   "scale": 0.5625,
                   "series_id": "HOBBIES_1_087_CA_1",
                   "weight": 4.0
                 },
                 {
-                  "contribution": 0.004615965833093834,
+                  "contribution": 0.0045609801007950495,
                   "normalized_weight": 0.0035842293906810036,
-                  "rmsse": 1.2878544674331798,
+                  "rmsse": 1.2725134481218188,
                   "scale": 2.255952380952381,
                   "series_id": "HOBBIES_1_088_CA_1",
                   "weight": 12.0
                 },
                 {
-                  "contribution": 0.009464258885416972,
+                  "contribution": 0.009713340345302227,
                   "normalized_weight": 0.016726403823178016,
-                  "rmsse": 0.5658274776495719,
+                  "rmsse": 0.5807189906441403,
                   "scale": 4.214285714285714,
                   "series_id": "HOBBIES_1_089_CA_1",
                   "weight": 56.0
                 },
                 {
-                  "contribution": 0.03107015139314589,
+                  "contribution": 0.02945045827635702,
                   "normalized_weight": 0.04360812425328554,
-                  "rmsse": 0.7124853894811811,
+                  "rmsse": 0.6753433856797486,
                   "scale": 97.41369047619048,
                   "series_id": "HOBBIES_1_090_CA_1",
                   "weight": 146.0
                 },
                 {
-                  "contribution": 0.0115806255914683,
+                  "contribution": 0.011941898402352324,
                   "normalized_weight": 0.016726403823178016,
-                  "rmsse": 0.6923559728613549,
+                  "rmsse": 0.713954925912064,
                   "scale": 10.901785714285714,
                   "series_id": "HOBBIES_1_091_CA_1",
                   "weight": 56.0
                 },
                 {
-                  "contribution": 0.00014280130447502323,
+                  "contribution": 0.0002734989239779928,
                   "normalized_weight": 0.0002986857825567503,
-                  "rmsse": 0.47809876738237783,
+                  "rmsse": 0.91567439747832,
                   "scale": 0.20238095238095238,
                   "series_id": "HOBBIES_1_092_CA_1",
                   "weight": 1.0
                 },
                 {
-                  "contribution": 0.001814041732031039,
+                  "contribution": 0.0017623322216775825,
                   "normalized_weight": 0.002090800477897252,
-                  "rmsse": 0.8676302455485598,
+                  "rmsse": 0.8428983254537923,
                   "scale": 0.6369047619047619,
                   "series_id": "HOBBIES_1_093_CA_1",
                   "weight": 7.0
                 },
                 {
-                  "contribution": 0.00020903379693982854,
+                  "contribution": 0.00024079882371304994,
                   "normalized_weight": 0.0002986857825567503,
-                  "rmsse": 0.699845152154546,
+                  "rmsse": 0.8061944617912913,
                   "scale": 1.0297619047619047,
                   "series_id": "HOBBIES_1_094_CA_1",
                   "weight": 1.0
@@ -3186,38 +3186,38 @@
                 {
                   "contribution": 0.0,
                   "normalized_weight": 0.0,
-                  "rmsse": 0.8738841369703908,
+                  "rmsse": 1.0021687670196229,
                   "scale": 0.2619047619047619,
                   "series_id": "HOBBIES_1_095_CA_1",
                   "weight": 0.0
                 },
                 {
-                  "contribution": 0.0021352795704135605,
+                  "contribution": 0.002051511001270139,
                   "normalized_weight": 0.002090800477897252,
-                  "rmsse": 1.0212737145349429,
+                  "rmsse": 0.9812084046074895,
                   "scale": 0.7291666666666666,
                   "series_id": "HOBBIES_1_097_CA_1",
                   "weight": 7.0
                 },
                 {
-                  "contribution": 0.005341152290285917,
+                  "contribution": 0.005210372455882393,
                   "normalized_weight": 0.005973715651135006,
-                  "rmsse": 0.8941088933938625,
+                  "rmsse": 0.8722163491147126,
                   "scale": 1.3630952380952381,
                   "series_id": "HOBBIES_1_098_CA_1",
                   "weight": 20.0
                 },
                 {
-                  "contribution": 0.007033363638868312,
+                  "contribution": 0.007753306030204777,
                   "normalized_weight": 0.006869772998805257,
-                  "rmsse": 1.0238131070839613,
+                  "rmsse": 1.1286116777880693,
                   "scale": 1.8005952380952381,
                   "series_id": "HOBBIES_1_099_CA_1",
                   "weight": 23.0
                 }
               ],
               "series_count": 96,
-              "wrmsse": 0.6923634668022228
+              "wrmsse": 0.7197628691942335
             }
           },
           "scored_series_count": 96,
@@ -3243,16 +3243,16 @@
             "cartoboost_lag": {
               "series": [
                 {
-                  "contribution": 0.47949660226358565,
+                  "contribution": 0.7596935250181245,
                   "normalized_weight": 1.0,
-                  "rmsse": 0.47949660226358565,
+                  "rmsse": 0.7596935250181245,
                   "scale": 1636.4136904761904,
                   "series_id": "1.0",
                   "weight": 3348.0
                 }
               ],
               "series_count": 1,
-              "wrmsse": 0.47949660226358565
+              "wrmsse": 0.7596935250181245
             }
           },
           "scored_series_count": 1,
@@ -3278,16 +3278,16 @@
             "cartoboost_lag": {
               "series": [
                 {
-                  "contribution": 0.47949660226358565,
+                  "contribution": 0.7596935250181245,
                   "normalized_weight": 1.0,
-                  "rmsse": 0.47949660226358565,
+                  "rmsse": 0.7596935250181245,
                   "scale": 1636.4136904761904,
                   "series_id": "1.0",
                   "weight": 3348.0
                 }
               ],
               "series_count": 1,
-              "wrmsse": 0.47949660226358565
+              "wrmsse": 0.7596935250181245
             }
           },
           "scored_series_count": 1,
@@ -3313,16 +3313,16 @@
             "cartoboost_lag": {
               "series": [
                 {
-                  "contribution": 0.47949660226358565,
+                  "contribution": 0.7596935250181245,
                   "normalized_weight": 1.0,
-                  "rmsse": 0.47949660226358565,
+                  "rmsse": 0.7596935250181245,
                   "scale": 1636.4136904761904,
                   "series_id": "total",
                   "weight": 3348.0
                 }
               ],
               "series_count": 1,
-              "wrmsse": 0.47949660226358565
+              "wrmsse": 0.7596935250181245
             }
           },
           "scored_series_count": 1,
@@ -3332,15 +3332,15 @@
       },
       "model_scores": {
         "cartoboost_auto_forecast": 0.7066873602791929,
-        "cartoboost_lag": 0.5646433480790406
+        "cartoboost_lag": 0.743721262688568
       },
       "notes": [
         "Weights use recent unit-sales volume from the benchmark panel because sell prices are not present in the shared forecasting frame.",
         "Flat zero-scale series are reported under skipped_zero_scale_series rather than assigned an artificial denominator."
       ],
       "ranking": [
-        "cartoboost_lag",
-        "cartoboost_auto_forecast"
+        "cartoboost_auto_forecast",
+        "cartoboost_lag"
       ],
       "seasonal_period": 1
     },
@@ -3349,16 +3349,16 @@
   },
   "plots": [],
   "quality": {
-    "best_cartoboost_model": "cartoboost_lag",
-    "best_rmse": 2.455905705436328,
-    "cartoboost_mae": 1.1496961805555557,
-    "cartoboost_rmse": 2.455905705436328,
-    "cartoboost_wape": 0.918936465457429,
+    "best_cartoboost_model": "cartoboost_auto_forecast",
+    "best_rmse": 2.530322488321401,
+    "cartoboost_mae": 1.2102524536141392,
+    "cartoboost_rmse": 2.530322488321401,
+    "cartoboost_wape": 0.9673382680091602,
     "comparison_libraries": [],
     "forecasting_library_models": {},
     "mae_ranking": [
-      "cartoboost_lag",
-      "cartoboost_auto_forecast"
+      "cartoboost_auto_forecast",
+      "cartoboost_lag"
     ],
     "model_libraries": {
       "cartoboost_auto_forecast": "cartoboost",
@@ -3378,21 +3378,21 @@
       "xgboost_lag": "external_trees"
     },
     "rmse_ranking": [
-      "cartoboost_lag",
-      "cartoboost_auto_forecast"
-    ],
-    "tied_best_models": [
+      "cartoboost_auto_forecast",
       "cartoboost_lag"
     ],
-    "wape_ranking": [
-      "cartoboost_lag",
+    "tied_best_models": [
       "cartoboost_auto_forecast"
     ],
-    "winner": "cartoboost_lag"
+    "wape_ranking": [
+      "cartoboost_auto_forecast",
+      "cartoboost_lag"
+    ],
+    "winner": "cartoboost_auto_forecast"
   },
   "resource_usage": {
-    "peak_rss_mb": 375.34375,
-    "process_cpu_seconds": 321.74823100000003
+    "peak_rss_mb": 373.03125,
+    "process_cpu_seconds": 978.687128
   },
   "source_file_hashes": {
     "calendar_file": "568d0fe5f41790142379698732908e4e57432c1c6396f3f59fb880a9c2b54231",
@@ -3400,24 +3400,43 @@
   },
   "timing": {
     "candidate_selection": {
-      "calibration_seconds": 31.778754917002516,
-      "inner_origin_count": 1.0,
-      "inner_rmse": {
+      "calibration_seconds": 198.19277066699578,
+      "inner_candidate_losses": {
         "cartoboost_auto_forecast": {
-          "raw": 2.618750832898688,
-          "selected": 2.618750832898688
+          "cartoboost_auto_forecast": 0.7123331355731589,
+          "cartoboost_lag": 0.8614922961503919,
+          "shared_calendar_dom": 0.783748068641077,
+          "shared_calendar_phase14": 0.7025115263668934,
+          "shared_drift": 1.9152547080193514,
+          "shared_half_drift": 1.2716032061183853,
+          "shared_seasonal_base": 0.9475578502670022,
+          "shared_seasonal_cycle_drift_050": 1.5626391858222382,
+          "shared_seasonal_cycle_drift_075": 4.15243602237823,
+          "shared_seasonal_drift": 0.94838518642037
         },
         "cartoboost_lag": {
-          "raw": 2.739509160317139,
-          "selected": 2.6802668642066165
+          "cartoboost_lag": 0.8614922961503919
         }
       },
+      "inner_losses": {
+        "cartoboost_auto_forecast": {
+          "raw": 0.7123331355731589,
+          "selected": 0.7123331355731589
+        },
+        "cartoboost_lag": {
+          "raw": 0.8614922961503919,
+          "selected": 0.8614922961503919
+        }
+      },
+      "inner_origin_count": 3.0,
+      "inner_rmse": {},
+      "objective": "wrmsse",
       "selected_candidates": {
         "cartoboost_auto_forecast": "cartoboost_auto_forecast",
-        "cartoboost_lag": "shared_calendar_phase14"
+        "cartoboost_lag": "cartoboost_lag"
       }
     },
-    "load_seconds": 0.15401399999973364,
+    "load_seconds": 0.17312233298434876,
     "models": {
       "cartoboost_auto_forecast": {
         "auto_config": {
@@ -3430,14 +3449,14 @@
             "periodic:7"
           ]
         },
-        "calibration_seconds": 8.387824667006498,
+        "calibration_seconds": 22.808259417011868,
         "ensemble_weights": {
           "cartoboost_raw": 1.0
         },
         "feature_count": 22.0,
-        "feature_seconds": 0.0012246670085005462,
-        "fit_predict_seconds": 1.415312042023288,
-        "fit_seconds": 1.402300167013891,
+        "feature_seconds": 0.0015106670034583658,
+        "fit_predict_seconds": 12.311155458999565,
+        "fit_seconds": 12.242482917004963,
         "inner_base_rmse": 3.611221762651474,
         "inner_blended_relative_rmse_gain": 0.0,
         "inner_blended_rmse": 2.680310273308337,
@@ -3453,20 +3472,20 @@
         "inner_seasonal_drift_rmse": 3.5999443434678264,
         "inner_selected_relative_rmse_gain": 0.022892831722811646,
         "inner_validation_ensemble_rmse": 2.6189503812565658,
-        "predict_seconds": 0.013011875009397045,
+        "predict_seconds": 0.06867254199460149,
         "residual_alpha": 1.0,
         "selected_candidate": "cartoboost_raw",
-        "total_seconds": 9.804361376038287
+        "total_seconds": 35.12092554301489
       },
       "cartoboost_lag": {
         "feature_count": 22.0,
-        "feature_seconds": 0.002013250021263957,
-        "fit_predict_seconds": 0.5646479589631781,
-        "fit_seconds": 0.5557061669824179,
-        "predict_seconds": 0.008941791980760172,
-        "total_seconds": 0.566661208984442
+        "feature_seconds": 0.004872167017310858,
+        "fit_predict_seconds": 5.762866541976109,
+        "fit_seconds": 5.719352499989327,
+        "predict_seconds": 0.043514041986782104,
+        "total_seconds": 5.76773870899342
       }
     },
-    "total_seconds": 49.378724875015905
+    "total_seconds": 250.44591629100614
   }
 }

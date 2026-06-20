@@ -3,13 +3,13 @@ use cartoboost_core::forecasting::{
     ArimaForecaster as CoreArimaForecaster, AutoARIMAForecaster as CoreAutoARIMAForecaster,
     AutoKalmanForecaster as CoreAutoKalmanForecaster,
     AutoLocalLevelKalmanForecaster as CoreAutoLocalLevelKalmanForecaster,
-    BacktestFoldResult as CoreBacktestFoldResult, BacktestResult as CoreBacktestResult,
-    CalendarFeature, CartoBoostLagForecaster as CoreCartoBoostLagForecaster,
-    ETSForecaster as CoreETSForecaster, ForecastActual, ForecastFold as CoreForecastFold,
-    ForecastFrame as CoreForecastFrame, ForecastFrameMetadata, ForecastFrequency,
-    ForecastMetricSet as CoreForecastMetricSet, ForecastPrediction,
-    ForecastResult as CoreForecastResult, ForecastRow as CoreForecastRow, ForecastWindow,
-    Forecaster, GlobalForecastTargetMode, KalmanForecaster as CoreKalmanForecaster,
+    AutoStatsBank as CoreAutoStatsBank, BacktestFoldResult as CoreBacktestFoldResult,
+    BacktestResult as CoreBacktestResult, CalendarFeature,
+    CartoBoostLagForecaster as CoreCartoBoostLagForecaster, ETSForecaster as CoreETSForecaster,
+    ForecastActual, ForecastFold as CoreForecastFold, ForecastFrame as CoreForecastFrame,
+    ForecastFrameMetadata, ForecastFrequency, ForecastMetricSet as CoreForecastMetricSet,
+    ForecastPrediction, ForecastResult as CoreForecastResult, ForecastRow as CoreForecastRow,
+    ForecastWindow, Forecaster, GlobalForecastTargetMode, KalmanForecaster as CoreKalmanForecaster,
     KrigingForecaster as CoreKrigingForecaster, LagFeatureConfig,
     LocalLevelKalmanForecaster as CoreLocalLevelKalmanForecaster,
     NaiveForecaster as CoreNaiveForecaster,
@@ -1706,6 +1706,36 @@ impl NativeAutoARIMAForecaster {
     }
 }
 
+#[pyclass(name = "AutoStatsBank")]
+struct NativeAutoStatsBank {
+    model: CoreAutoStatsBank,
+}
+
+#[pymethods]
+impl NativeAutoStatsBank {
+    #[new]
+    #[pyo3(signature = (season_length, validation_window=None))]
+    fn new(season_length: usize, validation_window: Option<usize>) -> PyResult<Self> {
+        Ok(Self {
+            model: CoreAutoStatsBank::with_validation_window(season_length, validation_window)
+                .map_err(to_py_value_error)?,
+        })
+    }
+
+    fn fit(&mut self, py: Python<'_>, frame: &NativeForecastFrame) -> PyResult<()> {
+        fit_forecaster_py(py, &mut self.model, frame)
+    }
+
+    fn predict(&self, py: Python<'_>, horizon: usize) -> PyResult<NativeForecastResult> {
+        predict_forecaster_py(py, &self.model, horizon)
+    }
+
+    fn metadata_json(&self) -> PyResult<String> {
+        serde_json::to_string(&self.model.metadata())
+            .map_err(|err| PyRuntimeError::new_err(err.to_string()))
+    }
+}
+
 #[pyclass(name = "KalmanForecaster")]
 #[derive(Clone, Debug)]
 struct NativeKalmanForecaster {
@@ -2119,6 +2149,11 @@ fn boxed_forecaster_from_py(py: Python<'_>, model: &Py<PyAny>) -> PyResult<Box<d
     }
     if let Ok(model) = model.extract::<PyRef<'_, NativeAutoARIMAForecaster>>() {
         return Ok(Box::new(model.model.clone()));
+    }
+    if let Ok(_model) = model.extract::<PyRef<'_, NativeAutoStatsBank>>() {
+        return Err(PyValueError::new_err(
+            "AutoStatsBank cannot be cloned into WeightedEnsembleForecaster",
+        ));
     }
     if let Ok(model) = model.extract::<PyRef<'_, NativeKalmanForecaster>>() {
         return Ok(Box::new(model.model.clone()));
@@ -5698,6 +5733,7 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<NativeETSForecaster>()?;
     m.add_class::<NativeArimaForecaster>()?;
     m.add_class::<NativeAutoARIMAForecaster>()?;
+    m.add_class::<NativeAutoStatsBank>()?;
     m.add_class::<NativeKalmanForecaster>()?;
     m.add_class::<NativeLocalLevelKalmanForecaster>()?;
     m.add_class::<NativeAutoKalmanForecaster>()?;

@@ -60,11 +60,12 @@ pub use horizon::{ForecastOutput, ForecastRequest, ForecastStrategy, QuantileFor
 pub use intermittent::{adida_forecast, croston_forecast, sba_forecast, tsb_forecast};
 pub use lag_features::{CalendarFeature, LagFeatureBuilder, LagFeatureConfig, LagFeatureRow};
 pub use local::{
-    ArimaForecaster, ArimaValidationScore, AutoARIMAForecaster, AutoKalmanForecaster,
-    AutoLocalLevelKalmanForecaster, ETSForecaster, KalmanForecaster, KalmanParameterSet,
-    KalmanValidationScore, KrigingForecaster, LocalLevelKalmanForecaster,
-    LocalLevelKalmanParameterSet, LocalLevelKalmanValidationScore, NaiveForecaster,
-    OptimizedThetaForecaster, SeasonalNaiveForecaster, ThetaForecaster, ThetaSeasonality,
+    ArimaForecaster, ArimaValidationScore, AutoARIMAForecaster, AutoETSForecaster,
+    AutoKalmanForecaster, AutoLocalLevelKalmanForecaster, ETSForecaster, ETSParameterSet,
+    ETSValidationScore, KalmanForecaster, KalmanParameterSet, KalmanValidationScore,
+    KrigingForecaster, LocalLevelKalmanForecaster, LocalLevelKalmanParameterSet,
+    LocalLevelKalmanValidationScore, NaiveForecaster, OptimizedThetaForecaster,
+    SeasonalNaiveForecaster, ThetaForecaster, ThetaSeasonality,
 };
 pub use metrics::{
     evaluate_forecast, evaluate_forecast_with_training, ForecastActual, ForecastMetricSet,

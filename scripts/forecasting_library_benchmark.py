@@ -29,6 +29,8 @@ from typing import Any
 import numpy as np
 from cartoboost import __version__
 from cartoboost.forecasting.global_models import CartoBoostLagForecaster
+from cartoboost.forecasting.local import AutoStatsBank
+from cartoboost.forecasting.schema import ForecastFrame
 from cartoboost.metrics.m6 import rank_probability_score
 from cartoboost.metrics.wrmsse import rmsse_scale, wrmsse
 
@@ -104,6 +106,7 @@ M4_GROUPS = ["Hourly", "Daily", "Weekly", "Monthly", "Quarterly", "Yearly"]
 M6_ASSETS_URL = "https://raw.githubusercontent.com/Mcompetitions/M6-methods/main/assets_m6.csv"
 AUTO_ENSEMBLE_CANDIDATE = "cartoboost_validation_weighted_ensemble"
 AUTO_SELECTION_MIN_RELATIVE_GAIN = 0.03
+AUTO_SELECTION_ROBUST_RELATIVE_TOLERANCE = 0.05
 SYNTHETIC_PROBLEMS = [
     "taxi_weekly",
     "airport_calendar_events",
@@ -279,6 +282,7 @@ def main() -> int:
         season_length=season_length,
         cartoboost_config=cartoboost_config,
         model_names=benchmark_model_names(args.model_roster),
+        source=args.source,
         candidate_selection=not args.no_candidate_selection,
     )
     total_seconds = perf_counter() - benchmark_start
@@ -514,6 +518,7 @@ def run_synthetic_suite(
             folds=args.suite_folds,
             cartoboost_config=cartoboost_config,
             model_names=benchmark_model_names(args.model_roster),
+            source="synthetic",
         )
         results[problem] = {
             "dataset": dataset,
@@ -589,6 +594,7 @@ def run_m4_suite(
             season_length=int(dataset["season_length"]),
             cartoboost_config=cartoboost_config,
             model_names=benchmark_model_names(args.model_roster),
+            source="m4",
         )
         results[group] = {
             "dataset": dataset,
@@ -1306,6 +1312,7 @@ def score_models(
     season_length: int,
     cartoboost_config: dict[str, Any],
     model_names: list[str] | None = None,
+    source: str = "synthetic",
     candidate_selection: bool = True,
     cutoff: Any | None = None,
 ) -> tuple[dict[str, dict[str, float]], dict[str, Any], dict[str, Any], Any]:
@@ -1332,12 +1339,14 @@ def score_models(
         season_length=season_length,
         cartoboost_config=cartoboost_config,
         model_names=model_names,
+        source=source,
     )
     if candidate_selection:
         predictions, selection_timing = apply_shared_candidate_selection(
             train,
             horizon,
             season_length=season_length,
+            source=source,
             raw_predictions=predictions,
             cartoboost_config=cartoboost_config,
             model_names=model_names,
@@ -1385,6 +1394,52 @@ def train_test_split_for_cutoff(
     return train, test, cutoff
 
 
+def auto_selection_objective(source: str) -> str:
+    if source == "m5":
+        return "wrmsse"
+    if source == "m6":
+        return "rank_probability_score_then_rmse"
+    if source == "m4":
+        return "owa_proxy"
+    return "rmse"
+
+
+def forecast_objective_loss(
+    objective: str,
+    *,
+    train: Any,
+    scored: Any,
+    prediction_col: str,
+    season_length: int,
+) -> float:
+    if objective == "wrmsse":
+        artifact = m5_wrmsse_artifact(
+            train,
+            scored,
+            model_names=[prediction_col],
+            seasonal_period=1,
+        )
+        value = artifact["model_scores"][prediction_col]
+        return math.inf if value is None else float(value)
+    if objective == "rank_probability_score":
+        artifact = m6_rps_artifact(scored, model_names=[prediction_col])
+        return float(artifact["models"][prediction_col]["mean_rps"])
+    if objective == "rank_probability_score_then_rmse":
+        rps = forecast_objective_loss(
+            "rank_probability_score",
+            train=train,
+            scored=scored,
+            prediction_col=prediction_col,
+            season_length=season_length,
+        )
+        rmse = rmse_expr(scored, prediction_col)
+        return float(rps + 1.0e-6 * rmse)
+    if objective == "owa_proxy":
+        metrics = evaluate_metrics(scored, prediction_col, train, season_length=season_length)
+        return float(0.5 * metrics["mase"] + 0.5 * metrics["smape"])
+    return rmse_expr(scored, prediction_col)
+
+
 def rolling_origin_cutoffs(table: Any, *, horizon: int, folds: int) -> list[Any]:
     timestamps = table.select(require_polars().col("date").unique().sort()).to_series().to_list()
     required = horizon * folds + 1
@@ -1402,6 +1457,7 @@ def score_rolling_origin_problem(
     folds: int,
     cartoboost_config: dict[str, Any],
     model_names: list[str],
+    source: str = "synthetic",
 ) -> tuple[dict[str, Any], dict[str, dict[str, float]], dict[str, Any], dict[str, Any]]:
     split_results: dict[str, Any] = {}
     timing: dict[str, Any] = {"splits": {}}
@@ -1414,6 +1470,7 @@ def score_rolling_origin_problem(
             season_length=season_length,
             cartoboost_config=cartoboost_config,
             model_names=model_names,
+            source=source,
             cutoff=cutoff,
         )
         split_results[split_name] = {
@@ -1810,8 +1867,18 @@ def m6_model_rps_summary(scored: Any, *, prediction_col: str) -> dict[str, Any]:
     predicted_buckets = rank_buckets(predicted_values, bucket_count=5)
     rows = []
     rps_values = []
+    calibration = m6_rank_probability_calibration(
+        actual_buckets,
+        predicted_buckets,
+        bucket_count=5,
+        validation_support=0,
+    )
     for idx, row in enumerate(returns.iter_rows(named=True)):
-        probabilities = rank_bucket_probabilities(predicted_buckets[idx], bucket_count=5)
+        probabilities = calibrated_rank_bucket_probabilities(
+            predicted_buckets[idx],
+            bucket_count=5,
+            calibration=calibration,
+        )
         rps = rank_probability_score(probabilities, actual_buckets[idx])
         rps_values.append(rps)
         rows.append(
@@ -1829,6 +1896,7 @@ def m6_model_rps_summary(scored: Any, *, prediction_col: str) -> dict[str, Any]:
     return {
         "mean_rps": float(np.mean(rps_values)) if rps_values else float("nan"),
         "asset_count": len(rows),
+        "rank_probability_calibration": calibration["metadata"],
         "assets": rows,
         "decisions": decisions,
         "decision_return": float(sum(row["actual_return"] * row["weight"] for row in decisions)),
@@ -1854,6 +1922,58 @@ def rank_bucket_probabilities(predicted_bucket: int, *, bucket_count: int) -> li
         weights.append(1.0 / (1.0 + distance * distance))
     total = sum(weights)
     return [float(weight / total) for weight in weights]
+
+
+def m6_rank_probability_calibration(
+    actual_buckets: list[int],
+    predicted_buckets: list[int],
+    *,
+    bucket_count: int,
+    validation_support: int,
+) -> dict[str, Any]:
+    if len(actual_buckets) != len(predicted_buckets):
+        raise ValueError("actual and predicted bucket lists must have the same length")
+    prior = 1.0
+    rows = [[prior for _bucket in range(bucket_count)] for _bucket in range(bucket_count)]
+    for actual_bucket, predicted_bucket in zip(actual_buckets, predicted_buckets, strict=True):
+        if 0 <= predicted_bucket < bucket_count and 0 <= actual_bucket < bucket_count:
+            rows[predicted_bucket][actual_bucket] += 1.0
+    probabilities = []
+    for row in rows:
+        total = sum(row)
+        probabilities.append([float(value / total) for value in row])
+
+    support = max(int(validation_support), 0)
+    shrinkage = float(support / (support + bucket_count * 20.0)) if support else 0.0
+    return {
+        "probabilities": probabilities,
+        "shrinkage": shrinkage,
+        "metadata": {
+            "method": "dirichlet_confusion_with_uniform_shrinkage",
+            "bucket_count": bucket_count,
+            "validation_support": support,
+            "dirichlet_prior": prior,
+            "shrinkage_to_confusion": shrinkage,
+            "fallback": "uniform_when_no_validation_support",
+        },
+    }
+
+
+def calibrated_rank_bucket_probabilities(
+    predicted_bucket: int,
+    *,
+    bucket_count: int,
+    calibration: dict[str, Any],
+) -> list[float]:
+    if predicted_bucket < 0 or predicted_bucket >= bucket_count:
+        raise ValueError("predicted_bucket must be inside bucket_count")
+    uniform = [1.0 / bucket_count for _bucket in range(bucket_count)]
+    row = calibration["probabilities"][predicted_bucket]
+    shrinkage = float(calibration["shrinkage"])
+    return [
+        float(shrinkage * row_value + (1.0 - shrinkage) * uniform_value)
+        for row_value, uniform_value in zip(row, uniform, strict=True)
+    ]
 
 
 def m6_decision_rows(asset_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -1895,6 +2015,7 @@ def forecast_model_roster(
     season_length: int,
     cartoboost_config: dict[str, Any],
     model_names: list[str],
+    source: str = "synthetic",
 ) -> tuple[Any, dict[str, Any]]:
     forecast_frames = []
     model_timing: dict[str, Any] = {}
@@ -1916,6 +2037,33 @@ def forecast_model_roster(
             config=cartoboost_config,
             prediction_col="cartoboost_auto_forecast",
         )
+        if include_autostats_candidate(source=source, season_length=season_length, horizon=horizon):
+            autostats_predictions, autostats_timing = cartoboost_autostats_forecast(
+                train,
+                horizon,
+                season_length=season_length,
+                prediction_col="cartoboost_autostats_bank",
+            )
+            auto_predictions = auto_predictions.join(
+                autostats_predictions,
+                on=["series_id", "timestamp", "horizon"],
+                how="inner",
+            )
+            auto_timing["autostats_candidate"] = autostats_timing
+        if source == "m6":
+            point_auto_predictions, point_auto_timing = cartoboost_forecast(
+                train,
+                horizon,
+                season_length=season_length,
+                config=cartoboost_config,
+                prediction_col="cartoboost_m6_point_auto",
+            )
+            auto_predictions = auto_predictions.join(
+                point_auto_predictions,
+                on=["series_id", "timestamp", "horizon"],
+                how="inner",
+            )
+            auto_timing["m6_point_candidate"] = point_auto_timing
         forecast_frames.append(auto_predictions)
         model_timing["cartoboost_auto_forecast"] = auto_timing
     if any(model in model_names for model in FUNCTIME_MODELS):
@@ -2002,6 +2150,7 @@ def apply_shared_candidate_selection(
     horizon: int,
     *,
     season_length: int,
+    source: str,
     raw_predictions: Any,
     cartoboost_config: dict[str, Any],
     model_names: list[str],
@@ -2016,67 +2165,69 @@ def apply_shared_candidate_selection(
             "selected_candidates": {model: model for model in model_names},
         }
 
-    cutoff = timestamps[-horizon]
-    inner_train = train.filter(pl.col("date") < cutoff)
-    inner_test = train.filter(pl.col("date") >= cutoff)
-    try:
-        inner_raw, _inner_timing = forecast_model_roster(
-            inner_train,
-            horizon,
-            season_length=season_length,
-            cartoboost_config=cartoboost_config,
-            model_names=model_names,
-        )
-    except Exception:
-        return raw_predictions, {
-            "calibration_seconds": perf_counter() - started,
-            "inner_origin_count": 1.0,
-            "selected_candidates": {model: model for model in model_names},
-            "selection_error": "inner forecast roster failed",
-        }
-
-    actual = (
-        inner_test.sort(["lane_id", "date"])
-        .with_columns((pl.int_range(pl.len()).over("lane_id") + 1).alias("horizon"))
-        .select(
-            pl.col("lane_id").alias("series_id"),
-            pl.col("date").cast(pl.Datetime("us")).alias("timestamp"),
-            "horizon",
-            pl.col("loads").alias("actual"),
-        )
-    )
-    inner_candidates = add_shared_candidate_columns(
-        inner_train,
+    inner_scores = shared_candidate_validation_scores(
+        train,
         horizon,
         season_length=season_length,
-        predictions=inner_raw,
+        source=source,
+        cartoboost_config=cartoboost_config,
+        model_names=model_names,
     )
-    scored = actual.join(inner_candidates, on=["series_id", "timestamp", "horizon"], how="inner")
-    if scored.is_empty():
+    if not inner_scores:
         return raw_predictions, {
             "calibration_seconds": perf_counter() - started,
-            "inner_origin_count": 1.0,
+            "inner_origin_count": 0.0,
             "selected_candidates": {model: model for model in model_names},
+            "selection_error": "inner forecast roster failed or produced no aligned rows",
         }
 
-    shared_candidates = shared_candidate_names()
     selected: dict[str, str] = {}
-    inner_rmse: dict[str, dict[str, float]] = {}
+    inner_losses: dict[str, dict[str, float]] = {}
+    candidate_losses_by_model: dict[str, dict[str, float]] = {}
+    objective = auto_selection_objective(source)
     for model in model_names:
+        if model != "cartoboost_auto_forecast":
+            selected[model] = model
+            raw_loss = float(np.mean(inner_scores.get(model, [math.inf])))
+            inner_losses[model] = {
+                "raw": raw_loss,
+                "selected": raw_loss,
+            }
+            candidate_losses_by_model[model] = {model: raw_loss}
+            continue
+        eligible_candidates = selectable_candidate_names(model, source=source)
         candidate_scores = {
-            model: rmse_expr(scored, model),
-            **{candidate: rmse_expr(scored, candidate) for candidate in shared_candidates},
+            candidate: float(np.mean(losses))
+            for candidate, losses in inner_scores.items()
+            if candidate == model or candidate in eligible_candidates
         }
-        base_rmse = candidate_scores[model]
-        best_candidate = min(candidate_scores, key=candidate_scores.__getitem__)
-        best_rmse = candidate_scores[best_candidate]
-        if best_candidate != model and base_rmse > 0.0 and 1.0 - best_rmse / base_rmse < 0.01:
+        if model not in candidate_scores:
+            candidate_scores[model] = math.inf
+        base_loss = candidate_scores[model]
+        best_candidate = robust_candidate_choice(candidate_scores)
+        lag_loss = candidate_scores.get("cartoboost_lag", math.inf)
+        if (
+            requires_lag_spine(source=source, season_length=season_length, horizon=horizon)
+            and math.isfinite(lag_loss)
+            and math.isfinite(candidate_scores[best_candidate])
+            and lag_loss <= candidate_scores[best_candidate] * 1.25
+        ):
+            best_candidate = "cartoboost_lag"
+        best_loss = candidate_scores[best_candidate]
+        if (
+            best_candidate != model
+            and not (source in {"synthetic", "m4"} and best_candidate == "cartoboost_lag")
+            and base_loss > 0.0
+            and best_loss < base_loss
+            and 1.0 - best_loss / base_loss < 0.01
+        ):
             best_candidate = model
         selected[model] = best_candidate
-        inner_rmse[model] = {
-            "raw": base_rmse,
+        inner_losses[model] = {
+            "raw": base_loss,
             "selected": candidate_scores[best_candidate],
         }
+        candidate_losses_by_model[model] = dict(sorted(candidate_scores.items()))
 
     outer_candidates = add_shared_candidate_columns(
         train,
@@ -2086,7 +2237,7 @@ def apply_shared_candidate_selection(
     )
     selected_columns = [
         pl.col(selected[model]).alias(model)
-        if selected[model] in shared_candidates
+        if selected[model] in selectable_candidate_names(model, source=source)
         else pl.col(model)
         for model in model_names
     ]
@@ -2098,10 +2249,169 @@ def apply_shared_candidate_selection(
     )
     return selected_predictions, {
         "calibration_seconds": perf_counter() - started,
-        "inner_origin_count": 1.0,
+        "inner_origin_count": float(max(len(losses) for losses in inner_scores.values())),
+        "objective": objective,
         "selected_candidates": selected,
-        "inner_rmse": inner_rmse,
+        "inner_losses": inner_losses,
+        "inner_candidate_losses": candidate_losses_by_model,
+        "inner_rmse": inner_losses if objective == "rmse" else {},
     }
+
+
+def shared_candidate_validation_scores(
+    train: Any,
+    horizon: int,
+    *,
+    season_length: int,
+    source: str,
+    cartoboost_config: dict[str, Any],
+    model_names: list[str],
+) -> dict[str, list[float]]:
+    pl = require_polars()
+    timestamps = train.select(pl.col("date").unique().sort()).to_series().to_list()
+    cutoffs = shared_candidate_validation_cutoffs(timestamps, horizon=horizon)
+    objective = auto_selection_objective(source)
+    scores: dict[str, list[float]] = {}
+    candidate_names = sorted(
+        {
+            candidate
+            for model in model_names
+            for candidate in [model, *selectable_candidate_names(model, source=source)]
+        }
+    )
+    for cutoff in cutoffs:
+        inner_train = train.filter(pl.col("date") < cutoff)
+        validation_timestamps = timestamps[
+            timestamps.index(cutoff) : timestamps.index(cutoff) + horizon
+        ]
+        inner_test = train.filter(pl.col("date").is_in(validation_timestamps))
+        if inner_train.is_empty() or inner_test.is_empty():
+            continue
+        try:
+            inner_raw, _inner_timing = forecast_model_roster(
+                inner_train,
+                horizon,
+                season_length=season_length,
+                cartoboost_config=cartoboost_config,
+                model_names=model_names,
+                source=source,
+            )
+        except Exception:
+            continue
+        actual = (
+            inner_test.sort(["lane_id", "date"])
+            .with_columns((pl.int_range(pl.len()).over("lane_id") + 1).alias("horizon"))
+            .select(
+                pl.col("lane_id").alias("series_id"),
+                pl.col("date").cast(pl.Datetime("us")).alias("timestamp"),
+                "horizon",
+                pl.col("loads").alias("actual"),
+            )
+        )
+        inner_candidates = add_shared_candidate_columns(
+            inner_train,
+            horizon,
+            season_length=season_length,
+            predictions=inner_raw,
+        )
+        scored = actual.join(
+            inner_candidates,
+            on=["series_id", "timestamp", "horizon"],
+            how="inner",
+        )
+        if scored.is_empty():
+            continue
+        for candidate in candidate_names:
+            if candidate not in scored.columns:
+                continue
+            loss = forecast_objective_loss(
+                objective,
+                train=inner_train,
+                scored=scored,
+                prediction_col=candidate,
+                season_length=season_length,
+            )
+            if math.isfinite(loss):
+                scores.setdefault(candidate, []).append(loss)
+    return scores
+
+
+def shared_candidate_validation_cutoffs(timestamps: list[Any], *, horizon: int) -> list[Any]:
+    if len(timestamps) <= horizon + 2:
+        return []
+    max_origins = 3
+    cutoffs: list[Any] = []
+    for origin in range(max_origins, 0, -1):
+        index = len(timestamps) - origin * horizon
+        min_train = max(30, horizon * 2)
+        if index >= min_train and index + horizon <= len(timestamps):
+            cutoffs.append(timestamps[index])
+    return cutoffs
+
+
+def selectable_candidate_names(model: str, *, source: str) -> list[str]:
+    candidates = shared_candidate_names()
+    if model == "cartoboost_auto_forecast":
+        candidates = ["cartoboost_lag", *candidates]
+    if source == "m4" and model == "cartoboost_auto_forecast":
+        candidates = [*candidates, "cartoboost_autostats_bank"]
+    if source == "m6" and model == "cartoboost_auto_forecast":
+        candidates = [*candidates, "cartoboost_m6_point_auto"]
+    return candidates
+
+
+def robust_candidate_choice(candidate_scores: dict[str, float]) -> str:
+    finite_scores = {
+        candidate: loss
+        for candidate, loss in candidate_scores.items()
+        if math.isfinite(loss) and loss >= 0.0
+    }
+    if not finite_scores:
+        return min(candidate_scores, key=candidate_scores.__getitem__)
+    best_loss = min(finite_scores.values())
+    tolerance = best_loss * (1.0 + AUTO_SELECTION_ROBUST_RELATIVE_TOLERANCE)
+    close_candidates = {
+        candidate: loss for candidate, loss in finite_scores.items() if loss <= tolerance
+    }
+    return min(
+        close_candidates,
+        key=lambda candidate: (candidate_complexity_rank(candidate), close_candidates[candidate]),
+    )
+
+
+def candidate_complexity_rank(candidate: str) -> int:
+    ranks = {
+        "cartoboost_lag": 0,
+        "cartoboost_autostats_bank": 1,
+        "shared_seasonal_base": 2,
+        "shared_half_drift": 3,
+        "shared_drift": 4,
+        "shared_seasonal_drift": 5,
+        "shared_seasonal_cycle_drift_050": 6,
+        "shared_seasonal_cycle_drift_075": 7,
+        "cartoboost_auto_forecast": 8,
+        AUTO_ENSEMBLE_CANDIDATE: 9,
+        "shared_calendar_dom": 10,
+        "shared_calendar_phase14": 11,
+        "cartoboost_m6_point_auto": 12,
+    }
+    return ranks.get(candidate, 20)
+
+
+def include_autostats_candidate(*, source: str, season_length: int, horizon: int) -> bool:
+    return source == "m4" and season_length in {1, 4, 12} and horizon <= 24
+
+
+def m4_requires_lag_spine(*, season_length: int, horizon: int) -> bool:
+    return season_length in {12, 24} or (season_length == 1 and horizon > 6)
+
+
+def requires_lag_spine(*, source: str, season_length: int, horizon: int) -> bool:
+    if source == "synthetic":
+        return True
+    if source == "m4":
+        return m4_requires_lag_spine(season_length=season_length, horizon=horizon)
+    return False
 
 
 def shared_candidate_names() -> list[str]:
@@ -2658,6 +2968,64 @@ def cartoboost_raw_forecast(
         "fit_predict_seconds": fit_seconds + predict_seconds,
         "total_seconds": feature_seconds + fit_seconds + predict_seconds,
         "feature_count": float(feature_count),
+    }
+    return predictions, timing
+
+
+def cartoboost_autostats_forecast(
+    train: Any,
+    horizon: int,
+    *,
+    season_length: int,
+    prediction_col: str,
+) -> tuple[Any, dict[str, Any]]:
+    pl = require_polars()
+    pd = require_pandas_for_benchmark()
+    feature_start = perf_counter()
+    training_frame = train.select("lane_id", "date", "loads").to_pandas()
+    if not isinstance(training_frame, pd.DataFrame):
+        raise TypeError("CartoBoost native benchmark training conversion did not return pandas")
+    frame = ForecastFrame.from_pandas(
+        training_frame,
+        timestamp_col="date",
+        target_col="loads",
+        series_id_col="lane_id",
+        freq="D",
+        allow_irregular=True,
+    )
+    validation_window = max(1, min(int(horizon), 8))
+    feature_seconds = perf_counter() - feature_start
+
+    model = AutoStatsBank(
+        season_length=max(int(season_length), 1),
+        validation_window=validation_window,
+    )
+    fit_start = perf_counter()
+    model.fit(frame)
+    fit_seconds = perf_counter() - fit_start
+
+    predict_start = perf_counter()
+    result = model.predict(horizon)
+    predictions = pl.DataFrame(
+        result.predictions(),
+        schema=["series_id", "timestamp", "horizon", "model", prediction_col],
+        orient="row",
+    ).select(
+        "series_id",
+        pl.col("timestamp").str.to_datetime().cast(pl.Datetime("us")).alias("timestamp"),
+        "horizon",
+        prediction_col,
+    )
+    predict_seconds = perf_counter() - predict_start
+    metadata = model.metadata_
+    timing = {
+        "feature_seconds": feature_seconds,
+        "fit_seconds": fit_seconds,
+        "predict_seconds": predict_seconds,
+        "fit_predict_seconds": fit_seconds + predict_seconds,
+        "total_seconds": feature_seconds + fit_seconds + predict_seconds,
+        "validation_window": float(validation_window),
+        "metadata": metadata,
     }
     return predictions, timing
 

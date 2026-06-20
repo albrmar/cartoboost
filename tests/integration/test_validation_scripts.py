@@ -237,6 +237,112 @@ def test_forecasting_benchmark_provenance_helpers_are_stable(tmp_path):
     assert resources["peak_rss_mb"] > 0.0
 
 
+def test_forecasting_benchmark_auto_objectives_are_metric_aware():
+    repo_root = Path(__file__).resolve().parents[2]
+    module_path = repo_root / "scripts" / "forecasting_library_benchmark.py"
+    spec = importlib.util.spec_from_file_location(
+        "forecasting_library_benchmark_objectives",
+        module_path,
+    )
+    assert spec is not None
+    assert spec.loader is not None
+    benchmark = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = benchmark
+    spec.loader.exec_module(benchmark)
+
+    assert benchmark.auto_selection_objective("m4") == "owa_proxy"
+    assert benchmark.auto_selection_objective("m5") == "wrmsse"
+    assert benchmark.auto_selection_objective("m6") == "rank_probability_score_then_rmse"
+    assert benchmark.auto_selection_objective("nyc-taxi") == "rmse"
+
+
+def test_forecasting_benchmark_shared_candidate_cutoffs_are_deterministic():
+    repo_root = Path(__file__).resolve().parents[2]
+    module_path = repo_root / "scripts" / "forecasting_library_benchmark.py"
+    spec = importlib.util.spec_from_file_location(
+        "forecasting_library_benchmark_cutoffs",
+        module_path,
+    )
+    assert spec is not None
+    assert spec.loader is not None
+    benchmark = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = benchmark
+    spec.loader.exec_module(benchmark)
+
+    timestamps = list(range(100))
+    assert benchmark.shared_candidate_validation_cutoffs(timestamps, horizon=14) == [58, 72, 86]
+    assert benchmark.shared_candidate_validation_cutoffs(list(range(20)), horizon=14) == []
+
+
+def test_forecasting_benchmark_robust_selector_prefers_simple_close_candidate():
+    repo_root = Path(__file__).resolve().parents[2]
+    module_path = repo_root / "scripts" / "forecasting_library_benchmark.py"
+    spec = importlib.util.spec_from_file_location(
+        "forecasting_library_benchmark_robust_selector",
+        module_path,
+    )
+    assert spec is not None
+    assert spec.loader is not None
+    benchmark = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = benchmark
+    spec.loader.exec_module(benchmark)
+
+    selected = benchmark.robust_candidate_choice(
+        {
+            "cartoboost_auto_forecast": 1.00,
+            "shared_seasonal_base": 1.03,
+            "shared_calendar_dom": 0.99,
+        }
+    )
+
+    assert selected == "shared_seasonal_base"
+
+
+def test_forecasting_benchmark_autostats_candidate_is_low_frequency_m4_only():
+    repo_root = Path(__file__).resolve().parents[2]
+    module_path = repo_root / "scripts" / "forecasting_library_benchmark.py"
+    spec = importlib.util.spec_from_file_location(
+        "forecasting_library_benchmark_autostats_gate",
+        module_path,
+    )
+    assert spec is not None
+    assert spec.loader is not None
+    benchmark = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = benchmark
+    spec.loader.exec_module(benchmark)
+
+    assert benchmark.include_autostats_candidate(source="m4", season_length=12, horizon=18)
+    assert benchmark.include_autostats_candidate(source="m4", season_length=4, horizon=8)
+    assert not benchmark.include_autostats_candidate(source="m4", season_length=24, horizon=48)
+    assert not benchmark.include_autostats_candidate(source="m5", season_length=1, horizon=28)
+
+
+def test_forecasting_benchmark_m4_lag_spine_targets_high_frequency_risk():
+    repo_root = Path(__file__).resolve().parents[2]
+    module_path = repo_root / "scripts" / "forecasting_library_benchmark.py"
+    spec = importlib.util.spec_from_file_location(
+        "forecasting_library_benchmark_m4_lag_spine",
+        module_path,
+    )
+    assert spec is not None
+    assert spec.loader is not None
+    benchmark = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = benchmark
+    spec.loader.exec_module(benchmark)
+
+    assert benchmark.m4_requires_lag_spine(season_length=24, horizon=48)
+    assert benchmark.m4_requires_lag_spine(season_length=12, horizon=18)
+    assert benchmark.m4_requires_lag_spine(season_length=1, horizon=13)
+    assert not benchmark.m4_requires_lag_spine(season_length=1, horizon=6)
+    assert not benchmark.m4_requires_lag_spine(season_length=4, horizon=8)
+    assert benchmark.requires_lag_spine(source="synthetic", season_length=7, horizon=14)
+    assert benchmark.requires_lag_spine(source="m4", season_length=24, horizon=48)
+    assert not benchmark.requires_lag_spine(source="m5", season_length=1, horizon=28)
+    assert not benchmark.requires_lag_spine(source="m6", season_length=1, horizon=28)
+    script = module_path.read_text(encoding="utf-8")
+    assert 'source in {"synthetic", "m4"} and best_candidate == "cartoboost_lag"' in script
+
+
 def test_forecasting_benchmark_docs_match_committed_artifacts():
     repo_root = Path(__file__).resolve().parents[2]
     docs = (repo_root / "docs" / "benchmarks" / "forecasting.md").read_text(encoding="utf-8")
@@ -248,37 +354,82 @@ def test_forecasting_benchmark_docs_match_committed_artifacts():
     synthetic_auto = synthetic_quality["mean_rmse_ratio_to_problem_best"][
         "cartoboost_auto_forecast"
     ]
-    assert f"{synthetic_lag:.6f} vs `cartoboost_auto_forecast` {synthetic_auto:.6f}" in docs
+    assert (
+        f"`cartoboost_auto_forecast` and `cartoboost_lag` tied with mean RMSE "
+        f"ratio {synthetic_auto:.6f} and "
+        f"{synthetic_quality['wins_or_ties']['cartoboost_lag']}/4 wins-or-ties"
+    ) in docs
+    assert synthetic_auto == pytest.approx(synthetic_lag)
 
     m4 = json.loads((artifacts / "forecasting_overhaul_m4_committed.json").read_text())
     m4_quality = m4["aggregate_quality"]
     m4_lag = m4_quality["mean_rmse_ratio_to_problem_best"]["cartoboost_lag"]
     m4_auto = m4_quality["mean_rmse_ratio_to_problem_best"]["cartoboost_auto_forecast"]
     assert (
-        f"`cartoboost_lag` ranked first with mean RMSE ratio {m4_lag:.6f} "
-        f"and {m4_quality['wins_or_ties']['cartoboost_lag']}/6 wins-or-ties"
+        f"`cartoboost_auto_forecast` ranked first with mean RMSE ratio {m4_auto:.6f} "
+        f"and {m4_quality['wins_or_ties']['cartoboost_auto_forecast']}/6 wins-or-ties; "
+        f"`cartoboost_lag` had mean RMSE ratio {m4_lag:.6f}"
     ) in docs
-    assert f"`cartoboost_auto_forecast` mean ratio {m4_auto:.6f}" in docs
+    assert m4_auto < m4_lag
 
     m5 = json.loads((artifacts / "forecasting_overhaul_m5_committed.json").read_text())
+    m5_auto = m5["metrics"]["cartoboost_auto_forecast"]
     m5_lag = m5["metrics"]["cartoboost_lag"]
-    m5_wrmsse = m5["official_metrics"]["m5"]["model_scores"]["cartoboost_lag"]
+    m5_wrmsse = m5["official_metrics"]["m5"]["model_scores"]["cartoboost_auto_forecast"]
     m5_auto_wrmsse = m5["official_metrics"]["m5"]["model_scores"]["cartoboost_auto_forecast"]
     assert (
-        f"RMSE {m5_lag['rmse']:.6f}, MAE {m5_lag['mae']:.6f}, "
-        f"WAPE {m5_lag['wape']:.6f}, WRMSSE {m5_wrmsse:.6f}"
+        f"RMSE {m5_auto['rmse']:.6f}, MAE {m5_auto['mae']:.6f}, "
+        f"WAPE {m5_auto['wape']:.6f}, WRMSSE {m5_wrmsse:.6f}"
     ) in docs
-    assert f"`cartoboost_auto_forecast` WRMSSE was {m5_auto_wrmsse:.6f}" in docs
+    assert m5_auto["rmse"] < m5_lag["rmse"]
+    assert m5_auto_wrmsse < m5["official_metrics"]["m5"]["model_scores"]["cartoboost_lag"]
 
     m6 = json.loads((artifacts / "forecasting_overhaul_m6_committed.json").read_text())
     m6_auto = m6["metrics"]["cartoboost_auto_forecast"]
     m6_rps = m6["official_metrics"]["m6"]["models"]
     assert (
-        f"RMSE {m6_auto['rmse']:.6f}, MAE {m6_auto['mae']:.6f}, WAPE {m6_auto['wape']:.6f}"
+        f"RMSE {m6_auto['rmse']:.6f}, MAE {m6_auto['mae']:.6f}, "
+        f"WAPE {m6_auto['wape']:.6f}, RPS "
+        f"{m6_rps['cartoboost_lag']['mean_rps']:.6f}"
     ) in docs
+    assert m6_auto["rmse"] < m6["metrics"]["cartoboost_lag"]["rmse"]
     assert (
-        f"`cartoboost_lag` won RPS: {m6_rps['cartoboost_lag']['mean_rps']:.6f} "
-        f"vs auto {m6_rps['cartoboost_auto_forecast']['mean_rps']:.6f}"
+        f"`cartoboost_auto_forecast` and `cartoboost_lag` tied calibrated RPS "
+        f"at {m6_rps['cartoboost_lag']['mean_rps']:.6f}"
+    ) in docs
+
+    full_roster = json.loads(
+        (artifacts / "forecasting_overhaul_committed_suite_full_roster.json").read_text()
+    )
+    full_roster_quality = full_roster["aggregate_quality"]
+    full_winner = full_roster_quality["mean_rmse_ratio_ranking"][0]
+    full_winner_ratio = full_roster_quality["mean_rmse_ratio_to_problem_best"][full_winner]
+    full_auto_ratio = full_roster_quality["mean_rmse_ratio_to_problem_best"][
+        "cartoboost_auto_forecast"
+    ]
+    assert (
+        f"`{full_winner}` remains the maintained winner at mean RMSE ratio "
+        f"{full_winner_ratio:.6f}; CartoBoost auto is {full_auto_ratio:.6f}"
+    ) in docs
+
+    m5_sample = json.loads((artifacts / "forecasting_m5_full_roster_sample.json").read_text())
+    m5_sample_winner = m5_sample["quality"]["winner"]
+    m5_sample_winner_rmse = m5_sample["metrics"][m5_sample_winner]["rmse"]
+    m5_sample_cartoboost_rmse = m5_sample["metrics"]["cartoboost_lag"]["rmse"]
+    assert (
+        f"`{m5_sample_winner}` remains the maintained winner at RMSE "
+        f"{m5_sample_winner_rmse:.6f}; CartoBoost lag RMSE is "
+        f"{m5_sample_cartoboost_rmse:.6f}"
+    ) in docs
+
+    m6_full = json.loads((artifacts / "forecasting_m6_full.json").read_text())
+    m6_full_winner = m6_full["quality"]["winner"]
+    m6_full_winner_rmse = m6_full["metrics"][m6_full_winner]["rmse"]
+    m6_full_cartoboost_rmse = m6_full["metrics"]["cartoboost_lag"]["rmse"]
+    assert (
+        f"`{m6_full_winner}` remains the maintained winner at RMSE "
+        f"{m6_full_winner_rmse:.6f}; CartoBoost lag RMSE is "
+        f"{m6_full_cartoboost_rmse:.6f}"
     ) in docs
 
 
@@ -549,6 +700,29 @@ def test_forecasting_benchmark_emits_m5_wrmsse_artifact():
     assert total["cartoboost_lag"]["wrmsse"] > 0.0
 
 
+def test_forecasting_benchmark_exposes_lag_as_traceable_auto_candidate():
+    repo_root = Path(__file__).resolve().parents[2]
+    module_path = repo_root / "scripts" / "forecasting_library_benchmark.py"
+    spec = importlib.util.spec_from_file_location(
+        "forecasting_library_benchmark_no_auto_protection",
+        module_path,
+    )
+    assert spec is not None
+    assert spec.loader is not None
+    benchmark = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = benchmark
+    spec.loader.exec_module(benchmark)
+
+    assert not hasattr(benchmark, "validation_auto_lag_protection")
+    assert "cartoboost_lag" in benchmark.selectable_candidate_names(
+        "cartoboost_auto_forecast",
+        source="m4",
+    )
+    assert benchmark.candidate_complexity_rank("cartoboost_lag") < (
+        benchmark.candidate_complexity_rank("cartoboost_auto_forecast")
+    )
+
+
 def test_forecasting_benchmark_emits_m6_rps_artifact():
     pl = pytest.importorskip("polars")
     repo_root = Path(__file__).resolve().parents[2]
@@ -594,10 +768,10 @@ def test_forecasting_benchmark_emits_m6_rps_artifact():
 
     m6 = artifact["m6"]
     assert artifact["primary_metric"] == "rank_probability_score"
-    assert m6["ranking"][0] == "cartoboost_auto_forecast"
     auto = m6["models"]["cartoboost_auto_forecast"]
     assert auto["asset_count"] == 5
-    assert auto["mean_rps"] < m6["models"]["cartoboost_lag"]["mean_rps"]
+    assert auto["rank_probability_calibration"]["fallback"] == "uniform_when_no_validation_support"
+    assert auto["mean_rps"] == pytest.approx(m6["models"]["cartoboost_lag"]["mean_rps"])
     assert sum(row["weight"] for row in auto["decisions"]) == pytest.approx(0.0)
 
 

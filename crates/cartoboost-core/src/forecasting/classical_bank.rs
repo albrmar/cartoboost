@@ -1,8 +1,8 @@
 use crate::forecasting::lag_features::history_by_series;
 use crate::forecasting::local::{
-    AutoARIMAForecaster, AutoKalmanForecaster, AutoLocalLevelKalmanForecaster, ETSForecaster,
-    KalmanForecaster, LocalLevelKalmanForecaster, NaiveForecaster, SeasonalNaiveForecaster,
-    ThetaForecaster,
+    AutoARIMAForecaster, AutoETSForecaster, AutoKalmanForecaster, AutoLocalLevelKalmanForecaster,
+    ETSForecaster, KalmanForecaster, LocalLevelKalmanForecaster, NaiveForecaster,
+    OptimizedThetaForecaster, SeasonalNaiveForecaster, ThetaForecaster, ThetaSeasonality,
 };
 use crate::forecasting::{
     ForecastFrame, ForecastPrediction, ForecastResult, ForecastRow, Forecaster,
@@ -13,10 +13,33 @@ use serde_json::{json, Value};
 #[derive(Debug, Clone, PartialEq)]
 pub enum ClassicalExpert {
     Naive,
-    SeasonalNaive { season_length: usize },
-    Theta { theta: f64, alpha: f64 },
-    ETS { alpha: f64, beta: f64 },
-    AutoARIMA { max_p: usize, max_d: usize },
+    SeasonalNaive {
+        season_length: usize,
+    },
+    Theta {
+        theta: f64,
+        alpha: f64,
+    },
+    OptimizedTheta {
+        season_length: Option<usize>,
+    },
+    ETS {
+        alpha: f64,
+        beta: f64,
+    },
+    SeasonalETS {
+        alpha: f64,
+        beta: f64,
+        gamma: f64,
+        season_length: usize,
+    },
+    AutoETS {
+        season_length: usize,
+    },
+    AutoARIMA {
+        max_p: usize,
+        max_d: usize,
+    },
     LocalLevelKalman,
     Kalman,
     AutoLocalLevelKalman,
@@ -48,7 +71,10 @@ impl ClassicalExpert {
             Self::Naive => "naive",
             Self::SeasonalNaive { .. } => "seasonal_naive",
             Self::Theta { .. } => "theta",
+            Self::OptimizedTheta { .. } => "optimized_theta",
             Self::ETS { .. } => "ets",
+            Self::SeasonalETS { .. } => "seasonal_ets",
+            Self::AutoETS { .. } => "auto_ets",
             Self::AutoARIMA { .. } => "auto_arima",
             Self::LocalLevelKalman => "local_level_kalman",
             Self::Kalman => "kalman",
@@ -64,7 +90,29 @@ impl ClassicalExpert {
                 Ok(Box::new(SeasonalNaiveForecaster::new(season_length)?))
             }
             Self::Theta { theta, alpha } => Ok(Box::new(ThetaForecaster::new(theta, alpha)?)),
+            Self::OptimizedTheta { season_length } => {
+                let seasonality = season_length.map(ThetaSeasonality::additive).transpose()?;
+                Ok(Box::new(OptimizedThetaForecaster::with_seasonality(
+                    vec![1.0, 1.5, 2.0, 2.5, 3.0],
+                    vec![0.1, 0.2, 0.4, 0.6, 0.8],
+                    seasonality,
+                )?))
+            }
             Self::ETS { alpha, beta } => Ok(Box::new(ETSForecaster::new(alpha, beta)?)),
+            Self::SeasonalETS {
+                alpha,
+                beta,
+                gamma,
+                season_length,
+            } => Ok(Box::new(ETSForecaster::with_additive_seasonality(
+                alpha,
+                beta,
+                Some(gamma),
+                Some(season_length),
+            )?)),
+            Self::AutoETS { season_length } => {
+                Ok(Box::new(AutoETSForecaster::new(Some(season_length))?))
+            }
             Self::AutoARIMA { max_p, max_d } => {
                 Ok(Box::new(AutoARIMAForecaster::new(max_p, max_d)?))
             }
@@ -84,8 +132,28 @@ impl ClassicalExpert {
             Self::Theta { theta, alpha } => {
                 json!({"model": self.name(), "theta": theta, "alpha": alpha})
             }
+            Self::OptimizedTheta { season_length } => {
+                json!({"model": self.name(), "season_length": season_length})
+            }
             Self::ETS { alpha, beta } => {
                 json!({"model": self.name(), "alpha": alpha, "beta": beta})
+            }
+            Self::SeasonalETS {
+                alpha,
+                beta,
+                gamma,
+                season_length,
+            } => {
+                json!({
+                    "model": self.name(),
+                    "alpha": alpha,
+                    "beta": beta,
+                    "gamma": gamma,
+                    "season_length": season_length,
+                })
+            }
+            Self::AutoETS { season_length } => {
+                json!({"model": self.name(), "season_length": season_length})
             }
             Self::AutoARIMA { max_p, max_d } => {
                 json!({"model": self.name(), "max_p": max_p, "max_d": max_d})
@@ -180,7 +248,7 @@ impl Forecaster for ClassicalExpertBank {
                 score.expert.name(),
             )
         });
-        let selected = scores[0].expert.clone();
+        let selected = robust_classical_expert(&scores)?.expert.clone();
         let mut fitted = selected.build()?;
         fitted.fit(frame)?;
         self.fitted = Some(FittedClassicalBankState {
@@ -249,10 +317,43 @@ fn default_experts(season_length: usize) -> Vec<ClassicalExpert> {
             theta: 2.0,
             alpha: 0.3,
         },
+        ClassicalExpert::Theta {
+            theta: 2.0,
+            alpha: 0.5,
+        },
+        ClassicalExpert::OptimizedTheta {
+            season_length: None,
+        },
+        ClassicalExpert::OptimizedTheta {
+            season_length: Some(season_length),
+        },
         ClassicalExpert::ETS {
             alpha: 0.3,
             beta: 0.1,
         },
+        ClassicalExpert::ETS {
+            alpha: 0.5,
+            beta: 0.1,
+        },
+        ClassicalExpert::SeasonalETS {
+            alpha: 0.3,
+            beta: 0.1,
+            gamma: 0.1,
+            season_length,
+        },
+        ClassicalExpert::SeasonalETS {
+            alpha: 0.5,
+            beta: 0.1,
+            gamma: 0.1,
+            season_length,
+        },
+        ClassicalExpert::SeasonalETS {
+            alpha: 0.5,
+            beta: 0.1,
+            gamma: 0.3,
+            season_length,
+        },
+        ClassicalExpert::AutoETS { season_length },
         ClassicalExpert::AutoARIMA { max_p: 2, max_d: 1 },
         ClassicalExpert::LocalLevelKalman,
         ClassicalExpert::Kalman,
@@ -372,13 +473,32 @@ fn expert_rank(expert: &ClassicalExpert) -> usize {
         ClassicalExpert::Naive => 0,
         ClassicalExpert::SeasonalNaive { .. } => 1,
         ClassicalExpert::Theta { .. } => 2,
-        ClassicalExpert::ETS { .. } => 3,
-        ClassicalExpert::AutoARIMA { .. } => 4,
-        ClassicalExpert::LocalLevelKalman => 5,
-        ClassicalExpert::Kalman => 6,
-        ClassicalExpert::AutoLocalLevelKalman => 7,
-        ClassicalExpert::AutoKalman => 8,
+        ClassicalExpert::AutoETS { .. } => 3,
+        ClassicalExpert::OptimizedTheta { .. } => 4,
+        ClassicalExpert::ETS { .. } => 5,
+        ClassicalExpert::SeasonalETS { .. } => 6,
+        ClassicalExpert::AutoARIMA { .. } => 7,
+        ClassicalExpert::LocalLevelKalman => 8,
+        ClassicalExpert::Kalman => 9,
+        ClassicalExpert::AutoLocalLevelKalman => 10,
+        ClassicalExpert::AutoKalman => 11,
     }
+}
+
+fn robust_classical_expert(scores: &[ClassicalExpertScore]) -> Result<&ClassicalExpertScore> {
+    let best = scores.first().ok_or_else(|| {
+        CartoBoostError::InvalidInput("classical expert scores must not be empty".to_string())
+    })?;
+    let tolerance = best.mse * 1.01;
+    scores
+        .iter()
+        .filter(|score| score.mse <= tolerance)
+        .min_by_key(|score| (expert_rank(&score.expert), score.expert.name()))
+        .ok_or_else(|| {
+            CartoBoostError::InvalidInput(
+                "classical expert robust selection found no candidate".to_string(),
+            )
+        })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

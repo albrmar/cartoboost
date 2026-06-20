@@ -1,4 +1,5 @@
 from .arima import ArimaForecaster, AutoARIMAForecaster
+from .autostats import AutoStatsBank
 from .ets import ETSForecaster
 from .kalman import (
     AutoKalmanForecaster,
@@ -13,6 +14,7 @@ from .theta import OptimizedThetaForecaster, ThetaForecaster
 
 __all__ = [
     "AutoARIMAForecaster",
+    "AutoStatsBank",
     "AutoKalmanForecaster",
     "AutoLocalLevelKalmanForecaster",
     "ArimaForecaster",

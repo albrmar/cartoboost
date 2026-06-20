@@ -32,10 +32,39 @@ impl AutoStatsBank {
                         theta: 2.0,
                         alpha: 0.5,
                     },
+                    ClassicalExpert::OptimizedTheta {
+                        season_length: None,
+                    },
+                    ClassicalExpert::OptimizedTheta {
+                        season_length: Some(season_length),
+                    },
                     ClassicalExpert::ETS {
                         alpha: 0.3,
                         beta: 0.1,
                     },
+                    ClassicalExpert::ETS {
+                        alpha: 0.5,
+                        beta: 0.1,
+                    },
+                    ClassicalExpert::SeasonalETS {
+                        alpha: 0.3,
+                        beta: 0.1,
+                        gamma: 0.1,
+                        season_length,
+                    },
+                    ClassicalExpert::SeasonalETS {
+                        alpha: 0.5,
+                        beta: 0.1,
+                        gamma: 0.1,
+                        season_length,
+                    },
+                    ClassicalExpert::SeasonalETS {
+                        alpha: 0.5,
+                        beta: 0.1,
+                        gamma: 0.3,
+                        season_length,
+                    },
+                    ClassicalExpert::AutoETS { season_length },
                     ClassicalExpert::AutoARIMA { max_p: 2, max_d: 1 },
                     ClassicalExpert::LocalLevelKalman,
                     ClassicalExpert::Kalman,
