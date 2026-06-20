@@ -453,12 +453,14 @@ def test_forecasting_benchmark_docs_match_committed_artifacts():
     assert (
         f"RMSE {m6_auto['rmse']:.6f}, MAE {m6_auto['mae']:.6f}, "
         f"WAPE {m6_auto['wape']:.6f}, RPS "
-        f"{m6_rps['cartoboost_lag']['mean_rps']:.6f}"
+        f"{m6_rps['cartoboost_auto_forecast']['mean_rps']:.6f}"
     ) in docs
     assert m6_auto["rmse"] < m6["metrics"]["cartoboost_lag"]["rmse"]
+    assert m6_rps["cartoboost_auto_forecast"]["mean_rps"] < m6_rps["cartoboost_lag"]["mean_rps"]
     assert (
-        f"`cartoboost_auto_forecast` and `cartoboost_lag` tied calibrated RPS "
-        f"at {m6_rps['cartoboost_lag']['mean_rps']:.6f}"
+        f"beats lag on calibrated RPS "
+        f"{m6_rps['cartoboost_auto_forecast']['mean_rps']:.6f} versus "
+        f"{m6_rps['cartoboost_lag']['mean_rps']:.6f}"
     ) in docs
 
     full_roster = json.loads(
@@ -860,6 +862,70 @@ def test_forecasting_benchmark_emits_m6_rps_artifact():
     assert auto["rank_probability_calibration"]["fallback"] == "uniform_when_no_validation_support"
     assert auto["mean_rps"] == pytest.approx(m6["models"]["cartoboost_lag"]["mean_rps"])
     assert sum(row["weight"] for row in auto["decisions"]) == pytest.approx(0.0)
+
+
+def test_forecasting_benchmark_m6_rps_uses_validation_calibration():
+    pl = pytest.importorskip("polars")
+    repo_root = Path(__file__).resolve().parents[2]
+    module_path = repo_root / "scripts" / "forecasting_library_benchmark.py"
+    spec = importlib.util.spec_from_file_location(
+        "forecasting_library_benchmark_m6_calibrated_artifact",
+        module_path,
+    )
+    assert spec is not None
+    assert spec.loader is not None
+    benchmark = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = benchmark
+    spec.loader.exec_module(benchmark)
+
+    rows = [
+        ("AAA", -0.05),
+        ("BBB", -0.02),
+        ("CCC", 0.00),
+        ("DDD", 0.02),
+        ("EEE", 0.05),
+    ]
+    scored = pl.DataFrame(
+        [
+            {
+                "series_id": symbol,
+                "timestamp": date(2026, 2, 1) + timedelta(days=horizon),
+                "horizon": horizon + 1,
+                "actual": actual,
+                "cartoboost_auto_forecast": actual,
+                "cartoboost_lag": actual,
+            }
+            for symbol, actual in rows
+            for horizon in range(2)
+        ]
+    ).with_columns(pl.col("timestamp").cast(pl.Datetime("us")))
+    calibration_scored = pl.DataFrame(
+        [
+            {
+                "series_id": symbol,
+                "timestamp": date(2026, 1, 1) + timedelta(days=horizon),
+                "horizon": horizon + 1,
+                "actual": actual,
+                "cartoboost_auto_forecast": actual,
+                "cartoboost_lag": -actual,
+            }
+            for symbol, actual in rows
+            for horizon in range(2)
+        ]
+    ).with_columns(pl.col("timestamp").cast(pl.Datetime("us")))
+
+    artifact = benchmark.m6_rps_artifact(
+        scored,
+        model_names=["cartoboost_lag", "cartoboost_auto_forecast"],
+        calibration_scored=calibration_scored,
+    )
+
+    auto = artifact["models"]["cartoboost_auto_forecast"]
+    lag = artifact["models"]["cartoboost_lag"]
+    assert auto["rank_probability_calibration"]["validation_support"] == 5
+    assert auto["rank_probability_calibration"]["shrinkage_to_confusion"] > 0.0
+    assert auto["mean_rps"] < lag["mean_rps"]
+    assert artifact["ranking"][0] == "cartoboost_auto_forecast"
 
 
 def test_model_benchmark_suite_graph_families_smoke(tmp_path):

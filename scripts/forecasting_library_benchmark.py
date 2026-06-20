@@ -325,6 +325,7 @@ def main() -> int:
             scored=scored,
             model_names=benchmark_model_names(args.model_roster),
             season_length=season_length,
+            cartoboost_config=cartoboost_config,
         ),
         "timing": timing,
         "resource_usage": resource_usage_snapshot(),
@@ -1593,6 +1594,7 @@ def benchmark_objective_artifacts(
     scored: Any,
     model_names: list[str],
     season_length: int,
+    cartoboost_config: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     if source == "m5":
         return {
@@ -1606,10 +1608,21 @@ def benchmark_objective_artifacts(
             ),
         }
     if source == "m6":
+        calibration_scored = m6_validation_scored_frame(
+            train_table,
+            scored,
+            model_names=model_names,
+            season_length=season_length,
+            cartoboost_config=cartoboost_config,
+        )
         return {
             "primary_metric": "rank_probability_score",
             "objective": "M6-style rank-probability scoring plus deterministic decisions",
-            "m6": m6_rps_artifact(scored, model_names=model_names),
+            "m6": m6_rps_artifact(
+                scored,
+                model_names=model_names,
+                calibration_scored=calibration_scored,
+            ),
         }
     return {}
 
@@ -1835,8 +1848,83 @@ def m5_level_weights(train_level: Any, ids: list[Any]) -> dict[str, float]:
     return {str(level_id): max(weights.get(str(level_id), 0.0), 0.0) for level_id in ids}
 
 
-def m6_rps_artifact(scored: Any, *, model_names: list[str]) -> dict[str, Any]:
-    summaries = {model: m6_model_rps_summary(scored, prediction_col=model) for model in model_names}
+def m6_validation_scored_frame(
+    table: Any,
+    scored: Any,
+    *,
+    model_names: list[str],
+    season_length: int,
+    cartoboost_config: dict[str, Any] | None,
+) -> Any | None:
+    if cartoboost_config is None:
+        return None
+    pl = require_polars()
+    cutoff = scored.select(pl.col("timestamp").min()).item()
+    horizon = int(scored.select(pl.col("horizon").max()).item())
+    pre_holdout = table.filter(pl.col("date") < cutoff)
+    timestamps = pre_holdout.select(pl.col("date").unique().sort()).to_series().to_list()
+    if len(timestamps) < horizon * 2:
+        return None
+
+    validation_timestamps = timestamps[-horizon:]
+    validation_start = validation_timestamps[0]
+    validation_train = pre_holdout.filter(pl.col("date") < validation_start)
+    validation_test = pre_holdout.filter(pl.col("date").is_in(validation_timestamps))
+    if validation_train.is_empty() or validation_test.is_empty():
+        return None
+    try:
+        validation_raw, _timing = forecast_model_roster(
+            validation_train,
+            horizon,
+            season_length=season_length,
+            cartoboost_config=cartoboost_config,
+            model_names=model_names,
+            source="m6",
+        )
+        validation_predictions, _selection_timing = apply_shared_candidate_selection(
+            validation_train,
+            horizon,
+            season_length=season_length,
+            source="m6",
+            raw_predictions=validation_raw,
+            cartoboost_config=cartoboost_config,
+            model_names=model_names,
+        )
+    except Exception:
+        return None
+
+    actual = (
+        validation_test.sort(["lane_id", "date"])
+        .with_columns((pl.int_range(pl.len()).over("lane_id") + 1).alias("horizon"))
+        .select(
+            pl.col("lane_id").alias("series_id"),
+            pl.col("date").cast(pl.Datetime("us")).alias("timestamp"),
+            "horizon",
+            pl.col("loads").alias("actual"),
+        )
+    )
+    validation_scored = actual.join(
+        validation_predictions,
+        on=["series_id", "timestamp", "horizon"],
+        how="inner",
+    )
+    return None if validation_scored.is_empty() else validation_scored
+
+
+def m6_rps_artifact(
+    scored: Any,
+    *,
+    model_names: list[str],
+    calibration_scored: Any | None = None,
+) -> dict[str, Any]:
+    summaries = {
+        model: m6_model_rps_summary(
+            scored,
+            prediction_col=model,
+            calibration_scored=calibration_scored,
+        )
+        for model in model_names
+    }
     ranking = sorted(model_names, key=lambda name: (summaries[name]["mean_rps"], name))
     return {
         "rank_bucket_count": 5,
@@ -1851,7 +1939,12 @@ def m6_rps_artifact(scored: Any, *, model_names: list[str]) -> dict[str, Any]:
     }
 
 
-def m6_model_rps_summary(scored: Any, *, prediction_col: str) -> dict[str, Any]:
+def m6_model_rps_summary(
+    scored: Any,
+    *,
+    prediction_col: str,
+    calibration_scored: Any | None = None,
+) -> dict[str, Any]:
     pl = require_polars()
     returns = (
         scored.group_by("series_id", maintain_order=True)
@@ -1867,11 +1960,10 @@ def m6_model_rps_summary(scored: Any, *, prediction_col: str) -> dict[str, Any]:
     predicted_buckets = rank_buckets(predicted_values, bucket_count=5)
     rows = []
     rps_values = []
-    calibration = m6_rank_probability_calibration(
-        actual_buckets,
-        predicted_buckets,
+    calibration = m6_calibration_from_scored(
+        calibration_scored,
+        prediction_col=prediction_col,
         bucket_count=5,
-        validation_support=0,
     )
     for idx, row in enumerate(returns.iter_rows(named=True)):
         probabilities = calibrated_rank_bucket_probabilities(
@@ -1901,6 +1993,48 @@ def m6_model_rps_summary(scored: Any, *, prediction_col: str) -> dict[str, Any]:
         "decisions": decisions,
         "decision_return": float(sum(row["actual_return"] * row["weight"] for row in decisions)),
     }
+
+
+def m6_calibration_from_scored(
+    calibration_scored: Any | None,
+    *,
+    prediction_col: str,
+    bucket_count: int,
+) -> dict[str, Any]:
+    if calibration_scored is None or prediction_col not in calibration_scored.columns:
+        return m6_rank_probability_calibration(
+            [],
+            [],
+            bucket_count=bucket_count,
+            validation_support=0,
+        )
+    pl = require_polars()
+    returns = (
+        calibration_scored.group_by("series_id", maintain_order=True)
+        .agg(
+            pl.col("actual").sum().alias("actual_return"),
+            pl.col(prediction_col).sum().alias("predicted_return"),
+        )
+        .sort("series_id")
+    )
+    if returns.is_empty():
+        return m6_rank_probability_calibration(
+            [],
+            [],
+            bucket_count=bucket_count,
+            validation_support=0,
+        )
+    actual_buckets = rank_buckets(returns["actual_return"].to_list(), bucket_count=bucket_count)
+    predicted_buckets = rank_buckets(
+        returns["predicted_return"].to_list(),
+        bucket_count=bucket_count,
+    )
+    return m6_rank_probability_calibration(
+        actual_buckets,
+        predicted_buckets,
+        bucket_count=bucket_count,
+        validation_support=len(actual_buckets),
+    )
 
 
 def rank_buckets(values: list[float], *, bucket_count: int) -> list[int]:
@@ -1954,7 +2088,7 @@ def m6_rank_probability_calibration(
             "validation_support": support,
             "dirichlet_prior": prior,
             "shrinkage_to_confusion": shrinkage,
-            "fallback": "uniform_when_no_validation_support",
+            "fallback": "none" if support else "uniform_when_no_validation_support",
         },
     }
 

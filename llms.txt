@@ -89,7 +89,8 @@ temporal, spatial, geotemporal, graph, and neural-embedding modeling.
   forecasting experiments; benchmark claims must cite the maintained artifact.
 - Use `cartoboost.metrics.wrmsse`, `cartoboost.metrics.m6`, and the benchmark
   artifact `official_metrics` section for M5/M6-style checks instead of
-  treating all forecasting benchmarks as RMSE-only.
+  treating all forecasting benchmarks as RMSE-only. M6 benchmark artifacts
+  include training-window rank-probability calibration metadata.
 - New forecasting benchmark artifacts expose `git_commit`, `dataset_hash`,
   `source_file_hashes`, `benchmark_integrity`, and `resource_usage` for
   provenance checks.
