@@ -2234,6 +2234,7 @@ def apply_shared_candidate_selection(
         horizon,
         season_length=season_length,
         predictions=raw_predictions,
+        source=source,
     )
     selected_columns = [
         pl.col(selected[model]).alias(model)
@@ -2313,6 +2314,7 @@ def shared_candidate_validation_scores(
             horizon,
             season_length=season_length,
             predictions=inner_raw,
+            source=source,
         )
         scored = actual.join(
             inner_candidates,
@@ -2343,7 +2345,7 @@ def shared_candidate_validation_cutoffs(timestamps: list[Any], *, horizon: int) 
     cutoffs: list[Any] = []
     for origin in range(max_origins, 0, -1):
         index = len(timestamps) - origin * horizon
-        min_train = max(30, horizon * 2)
+        min_train = max(14, horizon)
         if index >= min_train and index + horizon <= len(timestamps):
             cutoffs.append(timestamps[index])
     return cutoffs
@@ -2355,6 +2357,15 @@ def selectable_candidate_names(model: str, *, source: str) -> list[str]:
         candidates = ["cartoboost_lag", *candidates]
     if source == "m4" and model == "cartoboost_auto_forecast":
         candidates = [*candidates, "cartoboost_autostats_bank"]
+    if source == "m5" and model == "cartoboost_auto_forecast":
+        candidates = [
+            *candidates,
+            "cartoboost_autostats_bank",
+            "shared_m5_calendar_autostats_blend",
+            "shared_m5_total_reconciled_auto",
+            "shared_m5_state_reconciled_auto",
+            "shared_m5_store_reconciled_auto",
+        ]
     if source == "m6" and model == "cartoboost_auto_forecast":
         candidates = [*candidates, "cartoboost_m6_point_auto"]
     return candidates
@@ -2393,12 +2404,18 @@ def candidate_complexity_rank(candidate: str) -> int:
         AUTO_ENSEMBLE_CANDIDATE: 9,
         "shared_calendar_dom": 10,
         "shared_calendar_phase14": 11,
-        "cartoboost_m6_point_auto": 12,
+        "shared_m5_calendar_autostats_blend": 12,
+        "shared_m5_total_reconciled_auto": 14,
+        "shared_m5_state_reconciled_auto": 15,
+        "shared_m5_store_reconciled_auto": 16,
+        "cartoboost_m6_point_auto": 17,
     }
     return ranks.get(candidate, 20)
 
 
 def include_autostats_candidate(*, source: str, season_length: int, horizon: int) -> bool:
+    if source == "m5":
+        return True
     return source == "m4" and season_length in {1, 4, 12} and horizon <= 24
 
 
@@ -2433,7 +2450,9 @@ def add_shared_candidate_columns(
     *,
     season_length: int,
     predictions: Any,
+    source: str,
 ) -> Any:
+    pl = require_polars()
     shared_frames = [
         seasonal_naive_forecast_frame(
             train,
@@ -2492,7 +2511,105 @@ def add_shared_candidate_columns(
     combined = predictions
     for frame in shared_frames:
         combined = combined.join(frame, on=["series_id", "timestamp", "horizon"], how="inner")
+    if source == "m5" and "cartoboost_auto_forecast" in combined.columns:
+        if "cartoboost_autostats_bank" in combined.columns:
+            combined = combined.with_columns(
+                (
+                    0.35 * pl.col("cartoboost_auto_forecast")
+                    + 0.50 * pl.col("shared_calendar_phase14")
+                    + 0.15 * pl.col("cartoboost_autostats_bank")
+                ).alias("shared_m5_calendar_autostats_blend")
+            )
+        for group_column, prediction_col in [
+            (None, "shared_m5_total_reconciled_auto"),
+            ("pickup_borough_code", "shared_m5_state_reconciled_auto"),
+            ("pickup_zone", "shared_m5_store_reconciled_auto"),
+        ]:
+            reconciled = m5_autostats_reconciled_forecast_frame(
+                train,
+                horizon,
+                season_length=season_length,
+                predictions=combined,
+                group_column=group_column,
+                base_col="cartoboost_auto_forecast",
+                prediction_col=prediction_col,
+            )
+            combined = combined.join(
+                reconciled,
+                on=["series_id", "timestamp", "horizon"],
+                how="inner",
+            )
     return combined
+
+
+def m5_autostats_reconciled_forecast_frame(
+    train: Any,
+    horizon: int,
+    *,
+    season_length: int,
+    predictions: Any,
+    group_column: str | None,
+    base_col: str,
+    prediction_col: str,
+) -> Any:
+    pl = require_polars()
+    group_key = "__m5_reconcile_group"
+    if group_column is None:
+        grouped_train = train.with_columns(pl.lit("total").alias(group_key))
+    else:
+        grouped_train = train.with_columns(pl.col(group_column).cast(pl.Utf8).alias(group_key))
+    aggregate_train = (
+        grouped_train.group_by([group_key, "date"], maintain_order=True)
+        .agg(pl.col("loads").sum())
+        .rename({group_key: "lane_id"})
+        .sort(["lane_id", "date"])
+    )
+    aggregate_target, _timing = cartoboost_autostats_forecast(
+        aggregate_train,
+        horizon,
+        season_length=season_length,
+        prediction_col="__m5_reconcile_target",
+    )
+    aggregate_target = aggregate_target.with_columns(
+        pl.col("series_id").cast(pl.Utf8).alias(group_key),
+        pl.max_horizontal(pl.col("__m5_reconcile_target"), pl.lit(0.0)).alias(
+            "__m5_reconcile_target"
+        ),
+    ).select(group_key, "timestamp", "horizon", "__m5_reconcile_target")
+
+    metadata = train.select("lane_id", *STATIC_COVARIATES).unique(subset=["lane_id"])
+    base = predictions.select("series_id", "timestamp", "horizon", base_col)
+    if group_column is None:
+        bottom = base.with_columns(pl.lit("total").alias(group_key))
+    else:
+        bottom = (
+            base.join(metadata, left_on="series_id", right_on="lane_id", how="left")
+            .with_columns(pl.col(group_column).cast(pl.Utf8).alias(group_key))
+            .select("series_id", "timestamp", "horizon", base_col, group_key)
+        )
+    group_sums = bottom.group_by([group_key, "timestamp", "horizon"], maintain_order=True).agg(
+        pl.col(base_col).sum().alias("__m5_reconcile_base_sum")
+    )
+    return (
+        bottom.join(group_sums, on=[group_key, "timestamp", "horizon"], how="left")
+        .join(aggregate_target, on=[group_key, "timestamp", "horizon"], how="left")
+        .with_columns(
+            pl.when(
+                pl.col("__m5_reconcile_target").is_not_null()
+                & (pl.col("__m5_reconcile_base_sum").abs() > 1.0e-12)
+            )
+            .then(pl.col("__m5_reconcile_target") / pl.col("__m5_reconcile_base_sum"))
+            .otherwise(1.0)
+            .alias("__m5_reconcile_scale")
+        )
+        .with_columns(
+            pl.max_horizontal(
+                pl.col(base_col) * pl.col("__m5_reconcile_scale"),
+                pl.lit(0.0),
+            ).alias(prediction_col)
+        )
+        .select("series_id", "timestamp", "horizon", prediction_col)
+    )
 
 
 def cartoboost_forecast(

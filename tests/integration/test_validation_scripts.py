@@ -271,6 +271,7 @@ def test_forecasting_benchmark_shared_candidate_cutoffs_are_deterministic():
 
     timestamps = list(range(100))
     assert benchmark.shared_candidate_validation_cutoffs(timestamps, horizon=14) == [58, 72, 86]
+    assert benchmark.shared_candidate_validation_cutoffs(list(range(62)), horizon=28) == [34]
     assert benchmark.shared_candidate_validation_cutoffs(list(range(20)), horizon=14) == []
 
 
@@ -298,7 +299,7 @@ def test_forecasting_benchmark_robust_selector_prefers_simple_close_candidate():
     assert selected == "shared_seasonal_base"
 
 
-def test_forecasting_benchmark_autostats_candidate_is_low_frequency_m4_only():
+def test_forecasting_benchmark_autostats_candidate_targets_m4_and_m5():
     repo_root = Path(__file__).resolve().parents[2]
     module_path = repo_root / "scripts" / "forecasting_library_benchmark.py"
     spec = importlib.util.spec_from_file_location(
@@ -314,7 +315,7 @@ def test_forecasting_benchmark_autostats_candidate_is_low_frequency_m4_only():
     assert benchmark.include_autostats_candidate(source="m4", season_length=12, horizon=18)
     assert benchmark.include_autostats_candidate(source="m4", season_length=4, horizon=8)
     assert not benchmark.include_autostats_candidate(source="m4", season_length=24, horizon=48)
-    assert not benchmark.include_autostats_candidate(source="m5", season_length=1, horizon=28)
+    assert benchmark.include_autostats_candidate(source="m5", season_length=1, horizon=28)
 
 
 def test_forecasting_benchmark_m4_lag_spine_targets_high_frequency_risk():
@@ -415,11 +416,17 @@ def test_forecasting_benchmark_docs_match_committed_artifacts():
     m5_sample = json.loads((artifacts / "forecasting_m5_full_roster_sample.json").read_text())
     m5_sample_winner = m5_sample["quality"]["winner"]
     m5_sample_winner_rmse = m5_sample["metrics"][m5_sample_winner]["rmse"]
-    m5_sample_cartoboost_rmse = m5_sample["metrics"]["cartoboost_lag"]["rmse"]
+    m5_sample_cartoboost_rmse = m5_sample["metrics"]["cartoboost_auto_forecast"]["rmse"]
+    m5_wrmsse = m5_sample["official_metrics"]["m5"]
+    m5_wrmsse_winner = m5_wrmsse["ranking"][0]
+    m5_wrmsse_winner_score = m5_wrmsse["model_scores"][m5_wrmsse_winner]
+    m5_cartoboost_wrmsse = m5_wrmsse["model_scores"]["cartoboost_auto_forecast"]
     assert (
-        f"`{m5_sample_winner}` remains the maintained winner at RMSE "
-        f"{m5_sample_winner_rmse:.6f}; CartoBoost lag RMSE is "
-        f"{m5_sample_cartoboost_rmse:.6f}"
+        f"`{m5_sample_winner}` remains the point-metric winner at RMSE "
+        f"{m5_sample_winner_rmse:.6f}; CartoBoost auto is third by RMSE at "
+        f"{m5_sample_cartoboost_rmse:.6f}. `{m5_wrmsse_winner}` leads official WRMSSE at "
+        f"{m5_wrmsse_winner_score:.6f}; CartoBoost auto is third at "
+        f"{m5_cartoboost_wrmsse:.6f}."
     ) in docs
 
     m6_full = json.loads((artifacts / "forecasting_m6_full.json").read_text())
