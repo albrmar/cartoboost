@@ -2165,13 +2165,22 @@ def apply_shared_candidate_selection(
             "selected_candidates": {model: model for model in model_names},
         }
 
+    selector_model_names = candidate_selection_model_names(model_names)
+    if not selector_model_names:
+        return raw_predictions, {
+            "calibration_seconds": perf_counter() - started,
+            "inner_origin_count": 0.0,
+            "selected_candidates": {model: model for model in model_names},
+            "selection_error": "no candidate-selectable models in roster",
+        }
+
     inner_scores = shared_candidate_validation_scores(
         train,
         horizon,
         season_length=season_length,
         source=source,
         cartoboost_config=cartoboost_config,
-        model_names=model_names,
+        model_names=selector_model_names,
     )
     if not inner_scores:
         return raw_predictions, {
@@ -2188,12 +2197,13 @@ def apply_shared_candidate_selection(
     for model in model_names:
         if model != "cartoboost_auto_forecast":
             selected[model] = model
-            raw_loss = float(np.mean(inner_scores.get(model, [math.inf])))
-            inner_losses[model] = {
-                "raw": raw_loss,
-                "selected": raw_loss,
-            }
-            candidate_losses_by_model[model] = {model: raw_loss}
+            if model in inner_scores:
+                raw_loss = float(np.mean(inner_scores[model]))
+                inner_losses[model] = {
+                    "raw": raw_loss,
+                    "selected": raw_loss,
+                }
+                candidate_losses_by_model[model] = {model: raw_loss}
             continue
         eligible_candidates = selectable_candidate_names(model, source=source)
         candidate_scores = {
@@ -2260,6 +2270,15 @@ def apply_shared_candidate_selection(
     }
 
 
+def candidate_selection_model_names(model_names: list[str]) -> list[str]:
+    if "cartoboost_auto_forecast" not in model_names:
+        return []
+    selector_models = ["cartoboost_auto_forecast"]
+    if "cartoboost_lag" in model_names:
+        selector_models.insert(0, "cartoboost_lag")
+    return selector_models
+
+
 def shared_candidate_validation_scores(
     train: Any,
     horizon: int,
@@ -2290,7 +2309,7 @@ def shared_candidate_validation_scores(
         if inner_train.is_empty() or inner_test.is_empty():
             continue
         try:
-            inner_raw, _inner_timing = forecast_model_roster(
+            inner_raw, _inner_timing = candidate_selection_forecast_roster(
                 inner_train,
                 horizon,
                 season_length=season_length,
@@ -2337,6 +2356,61 @@ def shared_candidate_validation_scores(
             if math.isfinite(loss):
                 scores.setdefault(candidate, []).append(loss)
     return scores
+
+
+def candidate_selection_forecast_roster(
+    train: Any,
+    horizon: int,
+    *,
+    season_length: int,
+    cartoboost_config: dict[str, Any],
+    model_names: list[str],
+    source: str,
+) -> tuple[Any, dict[str, Any]]:
+    if source != "m6" or "cartoboost_auto_forecast" not in model_names:
+        return forecast_model_roster(
+            train,
+            horizon,
+            season_length=season_length,
+            cartoboost_config=cartoboost_config,
+            model_names=model_names,
+            source=source,
+        )
+
+    pl = require_polars()
+    frames = []
+    timing: dict[str, Any] = {"models": {}}
+    if "cartoboost_lag" in model_names:
+        lag_predictions, lag_timing = cartoboost_raw_forecast(
+            train,
+            horizon,
+            season_length=season_length,
+            config=cartoboost_config,
+            prediction_col="cartoboost_lag",
+        )
+        frames.append(lag_predictions)
+        timing["models"]["cartoboost_lag"] = lag_timing
+    auto_config = cartoboost_auto_config(
+        cartoboost_config,
+        season_length=season_length,
+        horizon=horizon,
+    )
+    auto_predictions, auto_timing = cartoboost_raw_forecast(
+        train,
+        horizon,
+        season_length=season_length,
+        config=auto_config,
+        prediction_col="cartoboost_auto_forecast",
+    )
+    auto_predictions = auto_predictions.with_columns(
+        pl.col("cartoboost_auto_forecast").alias("cartoboost_m6_point_auto")
+    )
+    frames.append(auto_predictions)
+    timing["models"]["cartoboost_auto_forecast"] = {
+        **auto_timing,
+        "selector_mode": "raw_auto_no_nested_calibration",
+    }
+    return combine_forecast_frames(frames), timing
 
 
 def shared_candidate_validation_cutoffs(timestamps: list[Any], *, horizon: int) -> list[Any]:

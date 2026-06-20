@@ -11,14 +11,14 @@
       "rayon_num_threads_env": null
     }
   },
-  "cartoboost_version": "0.1.59",
+  "cartoboost_version": "0.1.62",
   "comparison_libraries": [
     "functime",
     "statsforecast",
     "prophet",
     "external_trees"
   ],
-  "created_at": "2026-06-20T02:38:33.272173+00:00",
+  "created_at": "2026-06-20T13:02:22.312558+00:00",
   "dataset": {
     "assets_file": "/Users/ryanculligan/Documents/GitHub/cartoboost/data/forecasting_benchmarks/m6/assets_m6.csv",
     "available_series": 100,
@@ -45,7 +45,7 @@
   "dataset_hash": "1b853601915c450255c3381502260bb7a47907888a9b54416600d549a6c9a7d9",
   "fixture_source": "m6",
   "forecasting_library_models": {},
-  "git_commit": "436a424835481e58cac2c9536334f52df1e59333",
+  "git_commit": "cfd5c49202da8feffcabe7265a01dcf631358c1a",
   "metrics": {
     "cartoboost_auto_forecast": {
       "bias": -0.00026387704643946624,
@@ -141,7 +141,7 @@
               "actual_return": 0.013102600977338397,
               "observed_rank_bucket": 3,
               "predicted_rank_bucket": 3,
-              "predicted_return": 0.00633991142902845,
+              "predicted_return": 0.006339911429028448,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -156,7 +156,7 @@
               "actual_return": 0.028317405730098,
               "observed_rank_bucket": 3,
               "predicted_rank_bucket": 1,
-              "predicted_return": -0.008419268912647155,
+              "predicted_return": -0.008419268912647156,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -171,7 +171,7 @@
               "actual_return": 0.06513916213921311,
               "observed_rank_bucket": 4,
               "predicted_rank_bucket": 2,
-              "predicted_return": -0.0029614135222770944,
+              "predicted_return": -0.002961413522277093,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -186,7 +186,7 @@
               "actual_return": 0.05991442357771526,
               "observed_rank_bucket": 4,
               "predicted_rank_bucket": 1,
-              "predicted_return": -0.008665477388654004,
+              "predicted_return": -0.008665477388654006,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -231,7 +231,7 @@
               "actual_return": 0.05313541862197391,
               "observed_rank_bucket": 4,
               "predicted_rank_bucket": 0,
-              "predicted_return": -0.022482302737282838,
+              "predicted_return": -0.02248230273728284,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -246,7 +246,7 @@
               "actual_return": -0.039990725052292175,
               "observed_rank_bucket": 0,
               "predicted_rank_bucket": 2,
-              "predicted_return": -0.0002044343715685732,
+              "predicted_return": -0.00020443437156857352,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -261,7 +261,7 @@
               "actual_return": 0.16303018139141756,
               "observed_rank_bucket": 4,
               "predicted_rank_bucket": 1,
-              "predicted_return": -0.008152058944736933,
+              "predicted_return": -0.008152058944736935,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -276,7 +276,7 @@
               "actual_return": -0.03576345878324483,
               "observed_rank_bucket": 0,
               "predicted_rank_bucket": 3,
-              "predicted_return": 0.004677410026962149,
+              "predicted_return": 0.004677410026962151,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -291,7 +291,7 @@
               "actual_return": -0.008196272091168133,
               "observed_rank_bucket": 2,
               "predicted_rank_bucket": 3,
-              "predicted_return": 0.0013566019044222023,
+              "predicted_return": 0.0013566019044222032,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -306,7 +306,7 @@
               "actual_return": -0.04004465129680146,
               "observed_rank_bucket": 0,
               "predicted_rank_bucket": 4,
-              "predicted_return": 0.01435678706153151,
+              "predicted_return": 0.014356787061531514,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -321,7 +321,7 @@
               "actual_return": -0.014838408948797066,
               "observed_rank_bucket": 1,
               "predicted_rank_bucket": 2,
-              "predicted_return": -0.0019909931890203653,
+              "predicted_return": -0.001990993189020365,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -336,7 +336,7 @@
               "actual_return": 0.06304235462847041,
               "observed_rank_bucket": 4,
               "predicted_rank_bucket": 2,
-              "predicted_return": -0.003658937728910342,
+              "predicted_return": -0.00365893772891034,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -366,7 +366,7 @@
               "actual_return": -0.014993494211788971,
               "observed_rank_bucket": 1,
               "predicted_rank_bucket": 0,
-              "predicted_return": -0.011517480908965804,
+              "predicted_return": -0.011517480908965802,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -381,7 +381,7 @@
               "actual_return": 0.0022131648120119474,
               "observed_rank_bucket": 2,
               "predicted_rank_bucket": 0,
-              "predicted_return": -0.026342766724858236,
+              "predicted_return": -0.026342766724858233,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -441,7 +441,7 @@
               "actual_return": 0.02037288589677344,
               "observed_rank_bucket": 3,
               "predicted_rank_bucket": 4,
-              "predicted_return": 0.011996428938762854,
+              "predicted_return": 0.011996428938762852,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -471,7 +471,7 @@
               "actual_return": -0.011159475803249386,
               "observed_rank_bucket": 1,
               "predicted_rank_bucket": 4,
-              "predicted_return": 0.011158805545722341,
+              "predicted_return": 0.011158805545722343,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -501,7 +501,7 @@
               "actual_return": 0.01783265051285643,
               "observed_rank_bucket": 3,
               "predicted_rank_bucket": 3,
-              "predicted_return": 0.004915138821650847,
+              "predicted_return": 0.004915138821650844,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -516,7 +516,7 @@
               "actual_return": -0.027870495424519248,
               "observed_rank_bucket": 1,
               "predicted_rank_bucket": 4,
-              "predicted_return": 0.011355146709859437,
+              "predicted_return": 0.011355146709859435,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -531,7 +531,7 @@
               "actual_return": -0.0024510696540600563,
               "observed_rank_bucket": 2,
               "predicted_rank_bucket": 2,
-              "predicted_return": -0.002763253430997666,
+              "predicted_return": -0.0027632534309976675,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -546,7 +546,7 @@
               "actual_return": 0.014220467058294717,
               "observed_rank_bucket": 3,
               "predicted_rank_bucket": 1,
-              "predicted_return": -0.005320268715448709,
+              "predicted_return": -0.005320268715448708,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -561,7 +561,7 @@
               "actual_return": -0.06211997629750676,
               "observed_rank_bucket": 0,
               "predicted_rank_bucket": 2,
-              "predicted_return": -0.0005678134782225851,
+              "predicted_return": -0.0005678134782225834,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -591,7 +591,7 @@
               "actual_return": 7.1412215048694e-05,
               "observed_rank_bucket": 2,
               "predicted_rank_bucket": 1,
-              "predicted_return": -0.00427574632553576,
+              "predicted_return": -0.004275746325535759,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -606,7 +606,7 @@
               "actual_return": 0.029146778231621817,
               "observed_rank_bucket": 3,
               "predicted_rank_bucket": 3,
-              "predicted_return": 0.0024170266492077727,
+              "predicted_return": 0.0024170266492077714,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -621,7 +621,7 @@
               "actual_return": 0.005597739391241419,
               "observed_rank_bucket": 2,
               "predicted_rank_bucket": 0,
-              "predicted_return": -0.015289493250100443,
+              "predicted_return": -0.015289493250100442,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -666,7 +666,7 @@
               "actual_return": -0.014346266801921748,
               "observed_rank_bucket": 1,
               "predicted_rank_bucket": 4,
-              "predicted_return": 0.008743434669533095,
+              "predicted_return": 0.008743434669533093,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -681,7 +681,7 @@
               "actual_return": 0.06021914163351816,
               "observed_rank_bucket": 4,
               "predicted_rank_bucket": 2,
-              "predicted_return": -0.0019499966557179004,
+              "predicted_return": -0.0019499966557179006,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -696,7 +696,7 @@
               "actual_return": -0.03798453498930576,
               "observed_rank_bucket": 0,
               "predicted_rank_bucket": 0,
-              "predicted_return": -0.019062484388825834,
+              "predicted_return": -0.019062484388825837,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -741,7 +741,7 @@
               "actual_return": 0.04558414372300279,
               "observed_rank_bucket": 4,
               "predicted_rank_bucket": 3,
-              "predicted_return": 0.0075759018550370615,
+              "predicted_return": 0.00757590185503706,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -771,7 +771,7 @@
               "actual_return": -0.035088408231497836,
               "observed_rank_bucket": 1,
               "predicted_rank_bucket": 4,
-              "predicted_return": 0.0082629069545223,
+              "predicted_return": 0.008262906954522302,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -861,7 +861,7 @@
               "actual_return": 0.03993910828916103,
               "observed_rank_bucket": 3,
               "predicted_rank_bucket": 3,
-              "predicted_return": 0.0010598719209314912,
+              "predicted_return": 0.0010598719209314914,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -876,7 +876,7 @@
               "actual_return": -0.04232044538042323,
               "observed_rank_bucket": 0,
               "predicted_rank_bucket": 1,
-              "predicted_return": -0.00793080219122156,
+              "predicted_return": -0.007930802191221564,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -936,7 +936,7 @@
               "actual_return": -0.05601729229647168,
               "observed_rank_bucket": 0,
               "predicted_rank_bucket": 1,
-              "predicted_return": -0.0042013947678378495,
+              "predicted_return": -0.004201394767837851,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -951,7 +951,7 @@
               "actual_return": -0.009449096655561928,
               "observed_rank_bucket": 2,
               "predicted_rank_bucket": 1,
-              "predicted_return": -0.006677068369365579,
+              "predicted_return": -0.00667706836936558,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -966,7 +966,7 @@
               "actual_return": 0.0323005354596565,
               "observed_rank_bucket": 3,
               "predicted_rank_bucket": 1,
-              "predicted_return": -0.006117077525113231,
+              "predicted_return": -0.006117077525113233,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -981,7 +981,7 @@
               "actual_return": 0.029261936992109105,
               "observed_rank_bucket": 3,
               "predicted_rank_bucket": 1,
-              "predicted_return": -0.006746175613717899,
+              "predicted_return": -0.006746175613717898,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -996,7 +996,7 @@
               "actual_return": 0.04415153498220048,
               "observed_rank_bucket": 4,
               "predicted_rank_bucket": 2,
-              "predicted_return": -0.002773927812721861,
+              "predicted_return": -0.0027739278127218597,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -1041,7 +1041,7 @@
               "actual_return": 0.05246057896257361,
               "observed_rank_bucket": 4,
               "predicted_rank_bucket": 2,
-              "predicted_return": -0.0015372602169994411,
+              "predicted_return": -0.0015372602169994418,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -1056,7 +1056,7 @@
               "actual_return": -0.003102405288504917,
               "observed_rank_bucket": 2,
               "predicted_rank_bucket": 3,
-              "predicted_return": 0.006141759694288077,
+              "predicted_return": 0.006141759694288074,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -1086,7 +1086,7 @@
               "actual_return": -0.08188723685382204,
               "observed_rank_bucket": 0,
               "predicted_rank_bucket": 2,
-              "predicted_return": -0.0026477897136115936,
+              "predicted_return": -0.0026477897136115997,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -1116,7 +1116,7 @@
               "actual_return": 0.01509332184486123,
               "observed_rank_bucket": 3,
               "predicted_rank_bucket": 2,
-              "predicted_return": -0.0032127267739256557,
+              "predicted_return": -0.0032127267739256544,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -1131,7 +1131,7 @@
               "actual_return": -0.17061701145409158,
               "observed_rank_bucket": 0,
               "predicted_rank_bucket": 3,
-              "predicted_return": 0.005038562398099899,
+              "predicted_return": 0.005038562398099897,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -1146,7 +1146,7 @@
               "actual_return": -0.020056595470985816,
               "observed_rank_bucket": 1,
               "predicted_rank_bucket": 1,
-              "predicted_return": -0.005906179148692018,
+              "predicted_return": -0.005906179148692015,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -1161,7 +1161,7 @@
               "actual_return": -0.016557896482591095,
               "observed_rank_bucket": 1,
               "predicted_rank_bucket": 3,
-              "predicted_return": 0.004412820324549827,
+              "predicted_return": 0.004412820324549826,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -1176,7 +1176,7 @@
               "actual_return": 0.030084653424047092,
               "observed_rank_bucket": 3,
               "predicted_rank_bucket": 2,
-              "predicted_return": -0.0027826161708799056,
+              "predicted_return": -0.002782616170879905,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -1191,7 +1191,7 @@
               "actual_return": -0.05190224888125028,
               "observed_rank_bucket": 0,
               "predicted_rank_bucket": 0,
-              "predicted_return": -0.04818734703056956,
+              "predicted_return": -0.04818734703056955,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -1236,7 +1236,7 @@
               "actual_return": 0.009507369730227255,
               "observed_rank_bucket": 2,
               "predicted_rank_bucket": 4,
-              "predicted_return": 0.016099389837832205,
+              "predicted_return": 0.01609938983783221,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -1296,7 +1296,7 @@
               "actual_return": -0.09359726159749326,
               "observed_rank_bucket": 0,
               "predicted_rank_bucket": 4,
-              "predicted_return": 0.00878091320834908,
+              "predicted_return": 0.008780913208349082,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -1311,7 +1311,7 @@
               "actual_return": 0.00024177778631795377,
               "observed_rank_bucket": 2,
               "predicted_rank_bucket": 2,
-              "predicted_return": -0.0028653384734901467,
+              "predicted_return": -0.002865338473490145,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -1341,7 +1341,7 @@
               "actual_return": 0.027680415263246827,
               "observed_rank_bucket": 3,
               "predicted_rank_bucket": 3,
-              "predicted_return": 0.005487367551056445,
+              "predicted_return": 0.005487367551056446,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -1356,7 +1356,7 @@
               "actual_return": 0.19441077380351857,
               "observed_rank_bucket": 4,
               "predicted_rank_bucket": 4,
-              "predicted_return": 0.020029120822975727,
+              "predicted_return": 0.020029120822975734,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -1371,7 +1371,7 @@
               "actual_return": -0.0005857479418950318,
               "observed_rank_bucket": 2,
               "predicted_rank_bucket": 3,
-              "predicted_return": 0.002487231798204209,
+              "predicted_return": 0.002487231798204208,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -1386,7 +1386,7 @@
               "actual_return": -0.02311085909491406,
               "observed_rank_bucket": 1,
               "predicted_rank_bucket": 2,
-              "predicted_return": -0.0036681098841206744,
+              "predicted_return": -0.003668109884120674,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -1416,7 +1416,7 @@
               "actual_return": -0.11103235539996237,
               "observed_rank_bucket": 0,
               "predicted_rank_bucket": 0,
-              "predicted_return": -0.009851682636159207,
+              "predicted_return": -0.00985168263615921,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -1431,7 +1431,7 @@
               "actual_return": -0.017133343466470552,
               "observed_rank_bucket": 1,
               "predicted_rank_bucket": 3,
-              "predicted_return": 0.002835348709663433,
+              "predicted_return": 0.002835348709663434,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -1446,7 +1446,7 @@
               "actual_return": 0.045638121610434235,
               "observed_rank_bucket": 4,
               "predicted_rank_bucket": 0,
-              "predicted_return": -0.021853913457572375,
+              "predicted_return": -0.02185391345757238,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -1476,7 +1476,7 @@
               "actual_return": 0.02949954134308519,
               "observed_rank_bucket": 3,
               "predicted_rank_bucket": 2,
-              "predicted_return": -0.004053359099747872,
+              "predicted_return": -0.004053359099747873,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -1491,7 +1491,7 @@
               "actual_return": 0.04061109221596593,
               "observed_rank_bucket": 3,
               "predicted_rank_bucket": 3,
-              "predicted_return": 0.0017703941072699661,
+              "predicted_return": 0.0017703941072699653,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -1521,7 +1521,7 @@
               "actual_return": 0.014961897544207736,
               "observed_rank_bucket": 3,
               "predicted_rank_bucket": 2,
-              "predicted_return": -0.0008325925648328978,
+              "predicted_return": -0.0008325925648328984,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -1551,7 +1551,7 @@
             },
             {
               "actual_return": -0.04004465129680146,
-              "predicted_return": 0.01435678706153151,
+              "predicted_return": 0.014356787061531514,
               "series_id": "BMY",
               "side": "long",
               "weight": 0.02631578947368421
@@ -1572,28 +1572,28 @@
             },
             {
               "actual_return": 0.02037288589677344,
-              "predicted_return": 0.011996428938762854,
+              "predicted_return": 0.011996428938762852,
               "series_id": "CTAS",
               "side": "long",
               "weight": 0.02631578947368421
             },
             {
               "actual_return": -0.011159475803249386,
-              "predicted_return": 0.011158805545722341,
+              "predicted_return": 0.011158805545722343,
               "series_id": "DG",
               "side": "long",
               "weight": 0.02631578947368421
             },
             {
               "actual_return": -0.027870495424519248,
-              "predicted_return": 0.011355146709859437,
+              "predicted_return": 0.011355146709859435,
               "series_id": "EWA",
               "side": "long",
               "weight": 0.02631578947368421
             },
             {
               "actual_return": -0.014346266801921748,
-              "predicted_return": 0.008743434669533095,
+              "predicted_return": 0.008743434669533093,
               "series_id": "EWZ",
               "side": "long",
               "weight": 0.02631578947368421
@@ -1614,7 +1614,7 @@
             },
             {
               "actual_return": -0.035088408231497836,
-              "predicted_return": 0.0082629069545223,
+              "predicted_return": 0.008262906954522302,
               "series_id": "HST",
               "side": "long",
               "weight": 0.02631578947368421
@@ -1635,7 +1635,7 @@
             },
             {
               "actual_return": 0.009507369730227255,
-              "predicted_return": 0.016099389837832205,
+              "predicted_return": 0.01609938983783221,
               "series_id": "ROL",
               "side": "long",
               "weight": 0.02631578947368421
@@ -1649,14 +1649,14 @@
             },
             {
               "actual_return": -0.09359726159749326,
-              "predicted_return": 0.00878091320834908,
+              "predicted_return": 0.008780913208349082,
               "series_id": "SLV",
               "side": "long",
               "weight": 0.02631578947368421
             },
             {
               "actual_return": 0.19441077380351857,
-              "predicted_return": 0.020029120822975727,
+              "predicted_return": 0.020029120822975734,
               "series_id": "URI",
               "side": "long",
               "weight": 0.02631578947368421
@@ -1684,21 +1684,21 @@
             },
             {
               "actual_return": 0.05313541862197391,
-              "predicted_return": -0.022482302737282838,
+              "predicted_return": -0.02248230273728284,
               "series_id": "AVB",
               "side": "short",
               "weight": -0.02631578947368421
             },
             {
               "actual_return": -0.014993494211788971,
-              "predicted_return": -0.011517480908965804,
+              "predicted_return": -0.011517480908965802,
               "series_id": "CE",
               "side": "short",
               "weight": -0.02631578947368421
             },
             {
               "actual_return": 0.0022131648120119474,
-              "predicted_return": -0.026342766724858236,
+              "predicted_return": -0.026342766724858233,
               "series_id": "CHTR",
               "side": "short",
               "weight": -0.02631578947368421
@@ -1719,14 +1719,14 @@
             },
             {
               "actual_return": 0.005597739391241419,
-              "predicted_return": -0.015289493250100443,
+              "predicted_return": -0.015289493250100442,
               "series_id": "EWT",
               "side": "short",
               "weight": -0.02631578947368421
             },
             {
               "actual_return": -0.03798453498930576,
-              "predicted_return": -0.019062484388825834,
+              "predicted_return": -0.019062484388825837,
               "series_id": "GOOG",
               "side": "short",
               "weight": -0.02631578947368421
@@ -1754,7 +1754,7 @@
             },
             {
               "actual_return": -0.05190224888125028,
-              "predicted_return": -0.04818734703056956,
+              "predicted_return": -0.04818734703056955,
               "series_id": "PYPL",
               "side": "short",
               "weight": -0.02631578947368421
@@ -1782,14 +1782,14 @@
             },
             {
               "actual_return": -0.11103235539996237,
-              "predicted_return": -0.009851682636159207,
+              "predicted_return": -0.00985168263615921,
               "series_id": "WRK",
               "side": "short",
               "weight": -0.02631578947368421
             },
             {
               "actual_return": 0.045638121610434235,
-              "predicted_return": -0.021853913457572375,
+              "predicted_return": -0.02185391345757238,
               "series_id": "XLC",
               "side": "short",
               "weight": -0.02631578947368421
@@ -1864,7 +1864,7 @@
               "actual_return": 0.028317405730098,
               "observed_rank_bucket": 3,
               "predicted_rank_bucket": 2,
-              "predicted_return": 0.10085466690353714,
+              "predicted_return": 0.10085466690353713,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -1894,7 +1894,7 @@
               "actual_return": 0.05991442357771526,
               "observed_rank_bucket": 4,
               "predicted_rank_bucket": 2,
-              "predicted_return": 0.10135211636366429,
+              "predicted_return": 0.10135211636366427,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -1909,7 +1909,7 @@
               "actual_return": 0.058024066123019025,
               "observed_rank_bucket": 4,
               "predicted_rank_bucket": 4,
-              "predicted_return": 0.13596356552556207,
+              "predicted_return": 0.13596356552556205,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -1924,7 +1924,7 @@
               "actual_return": 0.008553118630537981,
               "observed_rank_bucket": 2,
               "predicted_rank_bucket": 3,
-              "predicted_return": 0.11777742918452189,
+              "predicted_return": 0.1177774291845219,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -1984,7 +1984,7 @@
               "actual_return": -0.03576345878324483,
               "observed_rank_bucket": 0,
               "predicted_rank_bucket": 0,
-              "predicted_return": 0.04437139870888138,
+              "predicted_return": 0.044371398708881384,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -1999,7 +1999,7 @@
               "actual_return": -0.008196272091168133,
               "observed_rank_bucket": 2,
               "predicted_rank_bucket": 0,
-              "predicted_return": 0.04346607034237189,
+              "predicted_return": 0.0434660703423719,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -2029,7 +2029,7 @@
               "actual_return": -0.014838408948797066,
               "observed_rank_bucket": 1,
               "predicted_rank_bucket": 4,
-              "predicted_return": 0.13487013057177505,
+              "predicted_return": 0.13487013057177508,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -2059,7 +2059,7 @@
               "actual_return": 0.07530337407259635,
               "observed_rank_bucket": 4,
               "predicted_rank_bucket": 3,
-              "predicted_return": 0.1230097255353088,
+              "predicted_return": 0.12300972553530878,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -2089,7 +2089,7 @@
               "actual_return": 0.0022131648120119474,
               "observed_rank_bucket": 2,
               "predicted_rank_bucket": 4,
-              "predicted_return": 0.13389620080087455,
+              "predicted_return": 0.13389620080087453,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -2104,7 +2104,7 @@
               "actual_return": -0.03523030000457694,
               "observed_rank_bucket": 0,
               "predicted_rank_bucket": 1,
-              "predicted_return": 0.06364675736511892,
+              "predicted_return": 0.06364675736511893,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -2119,7 +2119,7 @@
               "actual_return": -0.022820899090628344,
               "observed_rank_bucket": 1,
               "predicted_rank_bucket": 0,
-              "predicted_return": 0.03546233578554063,
+              "predicted_return": 0.035462335785540616,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -2179,7 +2179,7 @@
               "actual_return": -0.011159475803249386,
               "observed_rank_bucket": 1,
               "predicted_rank_bucket": 0,
-              "predicted_return": 0.04042116923626365,
+              "predicted_return": 0.040421169236263654,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -2209,7 +2209,7 @@
               "actual_return": 0.01783265051285643,
               "observed_rank_bucket": 3,
               "predicted_rank_bucket": 2,
-              "predicted_return": 0.10514248557567205,
+              "predicted_return": 0.10514248557567203,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -2224,7 +2224,7 @@
               "actual_return": -0.027870495424519248,
               "observed_rank_bucket": 1,
               "predicted_rank_bucket": 4,
-              "predicted_return": 0.13240784836362174,
+              "predicted_return": 0.13240784836362177,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -2239,7 +2239,7 @@
               "actual_return": -0.0024510696540600563,
               "observed_rank_bucket": 2,
               "predicted_rank_bucket": 3,
-              "predicted_return": 0.10830230228071663,
+              "predicted_return": 0.10830230228071665,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -2254,7 +2254,7 @@
               "actual_return": 0.014220467058294717,
               "observed_rank_bucket": 3,
               "predicted_rank_bucket": 3,
-              "predicted_return": 0.12309998414357755,
+              "predicted_return": 0.12309998414357756,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -2269,7 +2269,7 @@
               "actual_return": -0.06211997629750676,
               "observed_rank_bucket": 0,
               "predicted_rank_bucket": 4,
-              "predicted_return": 0.1238389986574188,
+              "predicted_return": 0.12383899865741878,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -2299,7 +2299,7 @@
               "actual_return": 7.1412215048694e-05,
               "observed_rank_bucket": 2,
               "predicted_rank_bucket": 3,
-              "predicted_return": 0.11633271834473399,
+              "predicted_return": 0.11633271834473397,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -2314,7 +2314,7 @@
               "actual_return": 0.029146778231621817,
               "observed_rank_bucket": 3,
               "predicted_rank_bucket": 4,
-              "predicted_return": 0.12623706258268763,
+              "predicted_return": 0.12623706258268766,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -2329,7 +2329,7 @@
               "actual_return": 0.005597739391241419,
               "observed_rank_bucket": 2,
               "predicted_rank_bucket": 3,
-              "predicted_return": 0.10805853458374282,
+              "predicted_return": 0.1080585345837428,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -2359,7 +2359,7 @@
               "actual_return": -0.0355252458605535,
               "observed_rank_bucket": 0,
               "predicted_rank_bucket": 3,
-              "predicted_return": 0.11683740354357304,
+              "predicted_return": 0.11683740354357303,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -2404,7 +2404,7 @@
               "actual_return": -0.03798453498930576,
               "observed_rank_bucket": 0,
               "predicted_rank_bucket": 2,
-              "predicted_return": 0.10746018655333402,
+              "predicted_return": 0.107460186553334,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -2419,7 +2419,7 @@
               "actual_return": 0.10884127296621304,
               "observed_rank_bucket": 4,
               "predicted_rank_bucket": 0,
-              "predicted_return": 0.023956316319058014,
+              "predicted_return": 0.02395631631905801,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -2449,7 +2449,7 @@
               "actual_return": 0.04558414372300279,
               "observed_rank_bucket": 4,
               "predicted_rank_bucket": 1,
-              "predicted_return": 0.05126096861830305,
+              "predicted_return": 0.05126096861830306,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -2479,7 +2479,7 @@
               "actual_return": -0.035088408231497836,
               "observed_rank_bucket": 1,
               "predicted_rank_bucket": 3,
-              "predicted_return": 0.11826314192289654,
+              "predicted_return": 0.11826314192289655,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -2494,7 +2494,7 @@
               "actual_return": -0.0162096951479056,
               "observed_rank_bucket": 1,
               "predicted_rank_bucket": 1,
-              "predicted_return": 0.07096520587624326,
+              "predicted_return": 0.07096520587624325,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -2509,7 +2509,7 @@
               "actual_return": -0.04451165677881219,
               "observed_rank_bucket": 0,
               "predicted_rank_bucket": 2,
-              "predicted_return": 0.10636002279386039,
+              "predicted_return": 0.1063600227938604,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -2539,7 +2539,7 @@
               "actual_return": -0.0048613938970002435,
               "observed_rank_bucket": 2,
               "predicted_rank_bucket": 1,
-              "predicted_return": 0.049710525223712304,
+              "predicted_return": 0.0497105252237123,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -2554,7 +2554,7 @@
               "actual_return": -0.025857961076541258,
               "observed_rank_bucket": 1,
               "predicted_rank_bucket": 2,
-              "predicted_return": 0.07840270257192161,
+              "predicted_return": 0.07840270257192163,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -2569,7 +2569,7 @@
               "actual_return": 0.03993910828916103,
               "observed_rank_bucket": 3,
               "predicted_rank_bucket": 2,
-              "predicted_return": 0.07650503445084057,
+              "predicted_return": 0.07650503445084056,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -2599,7 +2599,7 @@
               "actual_return": 0.01707773484734898,
               "observed_rank_bucket": 3,
               "predicted_rank_bucket": 3,
-              "predicted_return": 0.11580547088346219,
+              "predicted_return": 0.1158054708834622,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -2614,7 +2614,7 @@
               "actual_return": 0.041209270304636836,
               "observed_rank_bucket": 3,
               "predicted_rank_bucket": 4,
-              "predicted_return": 0.130859293088825,
+              "predicted_return": 0.13085929308882502,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -2629,7 +2629,7 @@
               "actual_return": -0.017032943588857763,
               "observed_rank_bucket": 1,
               "predicted_rank_bucket": 2,
-              "predicted_return": 0.09645882993847214,
+              "predicted_return": 0.09645882993847216,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -2644,7 +2644,7 @@
               "actual_return": -0.05601729229647168,
               "observed_rank_bucket": 0,
               "predicted_rank_bucket": 1,
-              "predicted_return": 0.06121658583060806,
+              "predicted_return": 0.06121658583060805,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -2659,7 +2659,7 @@
               "actual_return": -0.009449096655561928,
               "observed_rank_bucket": 2,
               "predicted_rank_bucket": 0,
-              "predicted_return": 0.04010685053046774,
+              "predicted_return": 0.040106850530467746,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -2674,7 +2674,7 @@
               "actual_return": 0.0323005354596565,
               "observed_rank_bucket": 3,
               "predicted_rank_bucket": 1,
-              "predicted_return": 0.06389134854395576,
+              "predicted_return": 0.06389134854395577,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -2689,7 +2689,7 @@
               "actual_return": 0.029261936992109105,
               "observed_rank_bucket": 3,
               "predicted_rank_bucket": 2,
-              "predicted_return": 0.10501761248723922,
+              "predicted_return": 0.10501761248723923,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -2704,7 +2704,7 @@
               "actual_return": 0.04415153498220048,
               "observed_rank_bucket": 4,
               "predicted_rank_bucket": 3,
-              "predicted_return": 0.11041115270243199,
+              "predicted_return": 0.11041115270243201,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -2749,7 +2749,7 @@
               "actual_return": 0.05246057896257361,
               "observed_rank_bucket": 4,
               "predicted_rank_bucket": 1,
-              "predicted_return": 0.06065520514965754,
+              "predicted_return": 0.06065520514965755,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -2764,7 +2764,7 @@
               "actual_return": -0.003102405288504917,
               "observed_rank_bucket": 2,
               "predicted_rank_bucket": 0,
-              "predicted_return": 0.030589128906703924,
+              "predicted_return": 0.030589128906703927,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -2779,7 +2779,7 @@
               "actual_return": -0.02885057936883384,
               "observed_rank_bucket": 1,
               "predicted_rank_bucket": 2,
-              "predicted_return": 0.08586210066410457,
+              "predicted_return": 0.08586210066410459,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -2794,7 +2794,7 @@
               "actual_return": -0.08188723685382204,
               "observed_rank_bucket": 0,
               "predicted_rank_bucket": 4,
-              "predicted_return": 0.13036776952543314,
+              "predicted_return": 0.13036776952543316,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -2824,7 +2824,7 @@
               "actual_return": 0.01509332184486123,
               "observed_rank_bucket": 3,
               "predicted_rank_bucket": 1,
-              "predicted_return": 0.06870895069890837,
+              "predicted_return": 0.06870895069890838,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -2839,7 +2839,7 @@
               "actual_return": -0.17061701145409158,
               "observed_rank_bucket": 0,
               "predicted_rank_bucket": 3,
-              "predicted_return": 0.12092701741319212,
+              "predicted_return": 0.12092701741319209,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -2854,7 +2854,7 @@
               "actual_return": -0.020056595470985816,
               "observed_rank_bucket": 1,
               "predicted_rank_bucket": 0,
-              "predicted_return": 0.028914337791117548,
+              "predicted_return": 0.028914337791117538,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -2869,7 +2869,7 @@
               "actual_return": -0.016557896482591095,
               "observed_rank_bucket": 1,
               "predicted_rank_bucket": 1,
-              "predicted_return": 0.06187495909177905,
+              "predicted_return": 0.06187495909177906,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -2884,7 +2884,7 @@
               "actual_return": 0.030084653424047092,
               "observed_rank_bucket": 3,
               "predicted_rank_bucket": 1,
-              "predicted_return": 0.06832699141837013,
+              "predicted_return": 0.06832699141837012,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -2914,7 +2914,7 @@
               "actual_return": 0.1380510984727613,
               "observed_rank_bucket": 4,
               "predicted_rank_bucket": 2,
-              "predicted_return": 0.07699277647027106,
+              "predicted_return": 0.07699277647027107,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -2944,7 +2944,7 @@
               "actual_return": 0.009507369730227255,
               "observed_rank_bucket": 2,
               "predicted_rank_bucket": 0,
-              "predicted_return": 0.02674498347383335,
+              "predicted_return": 0.026744983473833348,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -2974,7 +2974,7 @@
               "actual_return": -0.0032334915499312444,
               "observed_rank_bucket": 2,
               "predicted_rank_bucket": 0,
-              "predicted_return": 0.03412733134083585,
+              "predicted_return": 0.03412733134083584,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -3004,7 +3004,7 @@
               "actual_return": -0.09359726159749326,
               "observed_rank_bucket": 0,
               "predicted_rank_bucket": 0,
-              "predicted_return": 0.0487844453095127,
+              "predicted_return": 0.048784445309512696,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -3019,7 +3019,7 @@
               "actual_return": 0.00024177778631795377,
               "observed_rank_bucket": 2,
               "predicted_rank_bucket": 0,
-              "predicted_return": 0.042412821419323635,
+              "predicted_return": 0.04241282141932363,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -3049,7 +3049,7 @@
               "actual_return": 0.027680415263246827,
               "observed_rank_bucket": 3,
               "predicted_rank_bucket": 0,
-              "predicted_return": 0.03140863772619396,
+              "predicted_return": 0.031408637726193955,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -3064,7 +3064,7 @@
               "actual_return": 0.19441077380351857,
               "observed_rank_bucket": 4,
               "predicted_rank_bucket": 2,
-              "predicted_return": 0.10732410949159053,
+              "predicted_return": 0.10732410949159052,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -3079,7 +3079,7 @@
               "actual_return": -0.0005857479418950318,
               "observed_rank_bucket": 2,
               "predicted_rank_bucket": 3,
-              "predicted_return": 0.10895911391880557,
+              "predicted_return": 0.10895911391880558,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -3124,7 +3124,7 @@
               "actual_return": -0.11103235539996237,
               "observed_rank_bucket": 0,
               "predicted_rank_bucket": 4,
-              "predicted_return": 0.12965995692593527,
+              "predicted_return": 0.1296599569259353,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -3154,7 +3154,7 @@
               "actual_return": 0.045638121610434235,
               "observed_rank_bucket": 4,
               "predicted_rank_bucket": 4,
-              "predicted_return": 0.13142262298202229,
+              "predicted_return": 0.1314226229820223,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -3184,7 +3184,7 @@
               "actual_return": 0.02949954134308519,
               "observed_rank_bucket": 3,
               "predicted_rank_bucket": 2,
-              "predicted_return": 0.09816096540274254,
+              "predicted_return": 0.09816096540274252,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -3199,7 +3199,7 @@
               "actual_return": 0.04061109221596593,
               "observed_rank_bucket": 3,
               "predicted_rank_bucket": 1,
-              "predicted_return": 0.05497962888498031,
+              "predicted_return": 0.0549796288849803,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -3214,7 +3214,7 @@
               "actual_return": 0.06479417496521755,
               "observed_rank_bucket": 4,
               "predicted_rank_bucket": 3,
-              "predicted_return": 0.11565862610931818,
+              "predicted_return": 0.11565862610931817,
               "rank_probabilities": [
                 0.2,
                 0.2,
@@ -3245,7 +3245,7 @@
           "decisions": [
             {
               "actual_return": 0.058024066123019025,
-              "predicted_return": 0.13596356552556207,
+              "predicted_return": 0.13596356552556205,
               "series_id": "AMP",
               "side": "long",
               "weight": 0.02631578947368421
@@ -3259,7 +3259,7 @@
             },
             {
               "actual_return": -0.014838408948797066,
-              "predicted_return": 0.13487013057177505,
+              "predicted_return": 0.13487013057177508,
               "series_id": "BR",
               "side": "long",
               "weight": 0.02631578947368421
@@ -3273,7 +3273,7 @@
             },
             {
               "actual_return": 0.0022131648120119474,
-              "predicted_return": 0.13389620080087455,
+              "predicted_return": 0.13389620080087453,
               "series_id": "CHTR",
               "side": "long",
               "weight": 0.02631578947368421
@@ -3287,21 +3287,21 @@
             },
             {
               "actual_return": -0.027870495424519248,
-              "predicted_return": 0.13240784836362174,
+              "predicted_return": 0.13240784836362177,
               "series_id": "EWA",
               "side": "long",
               "weight": 0.02631578947368421
             },
             {
               "actual_return": -0.06211997629750676,
-              "predicted_return": 0.1238389986574188,
+              "predicted_return": 0.12383899865741878,
               "series_id": "EWH",
               "side": "long",
               "weight": 0.02631578947368421
             },
             {
               "actual_return": 0.029146778231621817,
-              "predicted_return": 0.12623706258268763,
+              "predicted_return": 0.12623706258268766,
               "series_id": "EWQ",
               "side": "long",
               "weight": 0.02631578947368421
@@ -3315,7 +3315,7 @@
             },
             {
               "actual_return": 0.041209270304636836,
-              "predicted_return": 0.130859293088825,
+              "predicted_return": 0.13085929308882502,
               "series_id": "IEVL.L",
               "side": "long",
               "weight": 0.02631578947368421
@@ -3329,7 +3329,7 @@
             },
             {
               "actual_return": -0.08188723685382204,
-              "predicted_return": 0.13036776952543314,
+              "predicted_return": 0.13036776952543316,
               "series_id": "MCHI",
               "side": "long",
               "weight": 0.02631578947368421
@@ -3364,14 +3364,14 @@
             },
             {
               "actual_return": -0.11103235539996237,
-              "predicted_return": 0.12965995692593527,
+              "predicted_return": 0.1296599569259353,
               "series_id": "WRK",
               "side": "long",
               "weight": 0.02631578947368421
             },
             {
               "actual_return": 0.045638121610434235,
-              "predicted_return": 0.13142262298202229,
+              "predicted_return": 0.1314226229820223,
               "series_id": "XLC",
               "side": "long",
               "weight": 0.02631578947368421
@@ -3392,21 +3392,21 @@
             },
             {
               "actual_return": -0.03576345878324483,
-              "predicted_return": 0.04437139870888138,
+              "predicted_return": 0.044371398708881384,
               "series_id": "BDX",
               "side": "short",
               "weight": -0.02631578947368421
             },
             {
               "actual_return": -0.008196272091168133,
-              "predicted_return": 0.04346607034237189,
+              "predicted_return": 0.0434660703423719,
               "series_id": "BF-B",
               "side": "short",
               "weight": -0.02631578947368421
             },
             {
               "actual_return": -0.022820899090628344,
-              "predicted_return": 0.03546233578554063,
+              "predicted_return": 0.035462335785540616,
               "series_id": "CNP",
               "side": "short",
               "weight": -0.02631578947368421
@@ -3420,14 +3420,14 @@
             },
             {
               "actual_return": -0.011159475803249386,
-              "predicted_return": 0.04042116923626365,
+              "predicted_return": 0.040421169236263654,
               "series_id": "DG",
               "side": "short",
               "weight": -0.02631578947368421
             },
             {
               "actual_return": 0.10884127296621304,
-              "predicted_return": 0.023956316319058014,
+              "predicted_return": 0.02395631631905801,
               "series_id": "GPC",
               "side": "short",
               "weight": -0.02631578947368421
@@ -3448,35 +3448,35 @@
             },
             {
               "actual_return": -0.009449096655561928,
-              "predicted_return": 0.04010685053046774,
+              "predicted_return": 0.040106850530467746,
               "series_id": "IUMO.L",
               "side": "short",
               "weight": -0.02631578947368421
             },
             {
               "actual_return": -0.003102405288504917,
-              "predicted_return": 0.030589128906703924,
+              "predicted_return": 0.030589128906703927,
               "series_id": "KR",
               "side": "short",
               "weight": -0.02631578947368421
             },
             {
               "actual_return": -0.020056595470985816,
-              "predicted_return": 0.028914337791117548,
+              "predicted_return": 0.028914337791117538,
               "series_id": "PG",
               "side": "short",
               "weight": -0.02631578947368421
             },
             {
               "actual_return": 0.009507369730227255,
-              "predicted_return": 0.02674498347383335,
+              "predicted_return": 0.026744983473833348,
               "series_id": "ROL",
               "side": "short",
               "weight": -0.02631578947368421
             },
             {
               "actual_return": -0.0032334915499312444,
-              "predicted_return": 0.03412733134083585,
+              "predicted_return": 0.03412733134083584,
               "series_id": "SEGA.L",
               "side": "short",
               "weight": -0.02631578947368421
@@ -3490,21 +3490,21 @@
             },
             {
               "actual_return": -0.09359726159749326,
-              "predicted_return": 0.0487844453095127,
+              "predicted_return": 0.048784445309512696,
               "series_id": "SLV",
               "side": "short",
               "weight": -0.02631578947368421
             },
             {
               "actual_return": 0.00024177778631795377,
-              "predicted_return": 0.042412821419323635,
+              "predicted_return": 0.04241282141932363,
               "series_id": "SPMV.L",
               "side": "short",
               "weight": -0.02631578947368421
             },
             {
               "actual_return": 0.027680415263246827,
-              "predicted_return": 0.03140863772619396,
+              "predicted_return": 0.031408637726193955,
               "series_id": "UNH",
               "side": "short",
               "weight": -0.02631578947368421
@@ -3578,20 +3578,20 @@
     "winner": "cartoboost_auto_forecast"
   },
   "resource_usage": {
-    "peak_rss_mb": 367.609375,
-    "process_cpu_seconds": 1256.430462
+    "peak_rss_mb": 364.796875,
+    "process_cpu_seconds": 448.386627
   },
   "source_file_hashes": {
     "assets_file": "48c67aa0976ae63de3a6d7a42228ef374d39221734a433c9391572d01e85b20a"
   },
   "timing": {
     "candidate_selection": {
-      "calibration_seconds": 160.05917579200468,
+      "calibration_seconds": 33.81602845800808,
       "inner_candidate_losses": {
         "cartoboost_auto_forecast": {
-          "cartoboost_auto_forecast": 0.2006944598004853,
+          "cartoboost_auto_forecast": 0.2006944598282879,
           "cartoboost_lag": 0.2006944594483017,
-          "cartoboost_m6_point_auto": 0.2006944598004853,
+          "cartoboost_m6_point_auto": 0.2006944598282879,
           "shared_calendar_dom": 0.2006944600890427,
           "shared_calendar_phase14": 0.20069445918504777,
           "shared_drift": 0.20069447267287874,
@@ -3607,7 +3607,7 @@
       },
       "inner_losses": {
         "cartoboost_auto_forecast": {
-          "raw": 0.2006944598004853,
+          "raw": 0.2006944598282879,
           "selected": 0.20069445918504777
         },
         "cartoboost_lag": {
@@ -3623,7 +3623,7 @@
         "cartoboost_lag": "cartoboost_lag"
       }
     },
-    "load_seconds": 0.16895479199592955,
+    "load_seconds": 0.14677612500963733,
     "models": {
       "cartoboost_auto_forecast": {
         "auto_config": {
@@ -3636,7 +3636,7 @@
             "periodic:7"
           ]
         },
-        "calibration_seconds": 9.989945209003054,
+        "calibration_seconds": 8.198861583019607,
         "ensemble_weights": {
           "cartoboost_calendar_dom": 0.24805945476665806,
           "cartoboost_calendar_phase14": 0.26592297223063627,
@@ -3644,9 +3644,9 @@
           "cartoboost_residual_blend": 0.24300878650135282
         },
         "feature_count": 22.0,
-        "feature_seconds": 0.0013775410188827664,
-        "fit_predict_seconds": 2.083709498983808,
-        "fit_seconds": 2.0697209580102935,
+        "feature_seconds": 0.0013267500034999102,
+        "fit_predict_seconds": 1.80683166597737,
+        "fit_seconds": 1.7944882079900708,
         "inner_base_rmse": 0.01624456983110332,
         "inner_blended_relative_rmse_gain": 0.011998532527778605,
         "inner_blended_rmse": 0.013365852505576911,
@@ -3673,7 +3673,7 @@
               "periodic:7"
             ]
           },
-          "calibration_seconds": 9.957468833017629,
+          "calibration_seconds": 8.332339790998958,
           "ensemble_weights": {
             "cartoboost_calendar_dom": 0.24805945476665806,
             "cartoboost_calendar_phase14": 0.26592297223063627,
@@ -3681,9 +3681,9 @@
             "cartoboost_residual_blend": 0.24300878650135282
           },
           "feature_count": 22.0,
-          "feature_seconds": 0.0012742090038955212,
-          "fit_predict_seconds": 2.139833416993497,
-          "fit_seconds": 2.1261614589893725,
+          "feature_seconds": 0.0011982079886365682,
+          "fit_predict_seconds": 1.8223876660049427,
+          "fit_seconds": 1.8082906249910593,
           "inner_base_rmse": 0.01624456983110332,
           "inner_blended_relative_rmse_gain": 0.011998532527778605,
           "inner_blended_rmse": 0.013365852505576911,
@@ -3699,25 +3699,25 @@
           "inner_seasonal_drift_rmse": 0.014157547013283311,
           "inner_selected_relative_rmse_gain": 0.04504527062904162,
           "inner_validation_ensemble_rmse": 0.012763784062275345,
-          "predict_seconds": 0.013671958004124463,
+          "predict_seconds": 0.014097041013883427,
           "residual_alpha": 1.0,
           "selected_candidate": "cartoboost_validation_weighted_ensemble",
-          "total_seconds": 12.098576459015021
+          "total_seconds": 10.155925664992537
         },
-        "predict_seconds": 0.013988540973514318,
+        "predict_seconds": 0.012343457987299189,
         "residual_alpha": 1.0,
         "selected_candidate": "cartoboost_validation_weighted_ensemble",
-        "total_seconds": 12.075032249005744
+        "total_seconds": 10.007019999000477
       },
       "cartoboost_lag": {
         "feature_count": 22.0,
-        "feature_seconds": 0.004953833005856723,
-        "fit_predict_seconds": 0.6911863749846816,
-        "fit_seconds": 0.6821497920027468,
-        "predict_seconds": 0.009036582981934771,
-        "total_seconds": 0.6961402079905383
+        "feature_seconds": 0.0018931249796878546,
+        "fit_predict_seconds": 0.6840327079698909,
+        "fit_seconds": 0.6756581249937881,
+        "predict_seconds": 0.008374582976102829,
+        "total_seconds": 0.6859258329495788
       }
     },
-    "total_seconds": 201.042934875004
+    "total_seconds": 67.97225658301613
   }
 }

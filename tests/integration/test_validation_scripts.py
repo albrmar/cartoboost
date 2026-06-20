@@ -301,6 +301,18 @@ def test_forecasting_benchmark_robust_selector_prefers_simple_close_candidate():
     sys.modules[spec.name] = benchmark
     spec.loader.exec_module(benchmark)
 
+    assert benchmark.candidate_selection_model_names(
+        [
+            "cartoboost_lag",
+            "cartoboost_auto_forecast",
+            "statsforecast_autoarima",
+        ]
+    ) == ["cartoboost_lag", "cartoboost_auto_forecast"]
+    assert (
+        benchmark.candidate_selection_model_names(["cartoboost_lag", "statsforecast_autoarima"])
+        == []
+    )
+
     selected = benchmark.robust_candidate_choice(
         {
             "cartoboost_auto_forecast": 1.00,
