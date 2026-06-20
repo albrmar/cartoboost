@@ -25,6 +25,7 @@ temporal, spatial, geotemporal, graph, and neural-embedding modeling.
 - Benchmarks: ./docs/benchmarks/index.md
 - Forecasting benchmarks and M4/M5/M6 evidence: ./docs/benchmarks/forecasting.md
 - Forecasting overhaul: ./docs/forecasting_overhaul.md
+- Forecasting hybridization assessment: ./docs/forecasting_hybridization_assessment.md
 
 ## Public Python Entry Points
 
@@ -84,9 +85,11 @@ temporal, spatial, geotemporal, graph, and neural-embedding modeling.
   `theta_optimized_visualization.py`, `ets_component_visualization.py`,
   `arima_example_visualization.py`, `cartoboost_lag_visualization.py`,
   `weighted_ensemble_visualization.py`, and `kriging_example_visualization.py`.
-- Use `cartoboost.forecasting.AutoForecaster` for deterministic direct,
-  decomposition, AutoStats, reconciliation, probabilistic, neural, and ensemble
-  forecasting experiments; benchmark claims must cite the maintained artifact.
+- Use `cartoboost.forecasting.AutoForecaster` for the Rust-native guarded
+  selector over `cartoboost_lag`, `scaled_lag`, `delta_lag`,
+  `scaled_delta_lag`, dense-panel direct/rectified tree candidates,
+  `log1p_scaled_lag`, `lag_plus`, sparse-panel `intermittent_demand`, and
+  `classical_expert_bank`; benchmark claims must cite the maintained artifact.
 - Use `cartoboost.metrics.wrmsse`, `cartoboost.metrics.m6`, and the benchmark
   artifact `official_metrics` section for M5/M6-style checks instead of
   treating all forecasting benchmarks as RMSE-only. M6 benchmark artifacts

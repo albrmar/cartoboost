@@ -5,7 +5,7 @@ import json
 import subprocess
 import sys
 import types
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -286,6 +286,86 @@ def test_forecasting_benchmark_shared_candidate_cutoffs_are_deterministic():
     assert benchmark.shared_candidate_validation_cutoffs(timestamps, horizon=14) == [58, 72, 86]
     assert benchmark.shared_candidate_validation_cutoffs(list(range(62)), horizon=28) == [34]
     assert benchmark.shared_candidate_validation_cutoffs(list(range(20)), horizon=14) == []
+
+
+def test_forecasting_benchmark_metrics_include_r2():
+    pl = pytest.importorskip("polars")
+    repo_root = Path(__file__).resolve().parents[2]
+    module_path = repo_root / "scripts" / "forecasting_library_benchmark.py"
+    spec = importlib.util.spec_from_file_location(
+        "forecasting_library_benchmark_metrics",
+        module_path,
+    )
+    assert spec is not None
+    assert spec.loader is not None
+    benchmark = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = benchmark
+    spec.loader.exec_module(benchmark)
+
+    train = pl.DataFrame(
+        {
+            "lane_id": ["a"] * 4,
+            "date": [date(2026, 1, day) for day in range(1, 5)],
+            "loads": [1.0, 2.0, 3.0, 4.0],
+        }
+    )
+    scored = pl.DataFrame(
+        {
+            "series_id": ["a", "a", "a"],
+            "timestamp": [
+                datetime(2026, 1, 5),
+                datetime(2026, 1, 6),
+                datetime(2026, 1, 7),
+            ],
+            "horizon": [1, 2, 3],
+            "actual": [1.0, 2.0, 3.0],
+            "forecast": [1.0, 2.0, 4.0],
+        }
+    ).with_columns(pl.col("timestamp").cast(pl.Datetime("us")))
+
+    metrics = benchmark.evaluate_metrics(scored, "forecast", train, season_length=1)
+
+    assert metrics["rmse"] == pytest.approx((1.0 / 3.0) ** 0.5)
+    assert metrics["r2"] == pytest.approx(0.5)
+
+
+def test_forecasting_benchmark_r2_constant_target_is_finite():
+    pl = pytest.importorskip("polars")
+    repo_root = Path(__file__).resolve().parents[2]
+    module_path = repo_root / "scripts" / "forecasting_library_benchmark.py"
+    spec = importlib.util.spec_from_file_location(
+        "forecasting_library_benchmark_constant_r2",
+        module_path,
+    )
+    assert spec is not None
+    assert spec.loader is not None
+    benchmark = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = benchmark
+    spec.loader.exec_module(benchmark)
+
+    train = pl.DataFrame(
+        {
+            "lane_id": ["a"] * 4,
+            "date": [date(2026, 1, day) for day in range(1, 5)],
+            "loads": [2.0, 2.0, 2.0, 2.0],
+        }
+    )
+    scored = pl.DataFrame(
+        {
+            "series_id": ["a", "a"],
+            "timestamp": [datetime(2026, 1, 5), datetime(2026, 1, 6)],
+            "horizon": [1, 2],
+            "actual": [2.0, 2.0],
+            "perfect": [2.0, 2.0],
+            "miss": [1.0, 3.0],
+        }
+    ).with_columns(pl.col("timestamp").cast(pl.Datetime("us")))
+
+    perfect = benchmark.evaluate_metrics(scored, "perfect", train, season_length=1)
+    miss = benchmark.evaluate_metrics(scored, "miss", train, season_length=1)
+
+    assert perfect["r2"] == pytest.approx(1.0)
+    assert miss["r2"] == pytest.approx(0.0)
 
 
 def test_forecasting_benchmark_robust_selector_prefers_simple_close_candidate():

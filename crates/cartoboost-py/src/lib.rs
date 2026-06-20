@@ -1,6 +1,7 @@
 use cartoboost_core::data::{FeatureSchema, SparseSetColumn};
 use cartoboost_core::forecasting::{
     ArimaForecaster as CoreArimaForecaster, AutoARIMAForecaster as CoreAutoARIMAForecaster,
+    AutoForecastConfig as CoreAutoForecastConfig, AutoForecastModel as CoreAutoForecastModel,
     AutoKalmanForecaster as CoreAutoKalmanForecaster,
     AutoLocalLevelKalmanForecaster as CoreAutoLocalLevelKalmanForecaster,
     AutoStatsBank as CoreAutoStatsBank, BacktestFoldResult as CoreBacktestFoldResult,
@@ -8,8 +9,9 @@ use cartoboost_core::forecasting::{
     CartoBoostLagForecaster as CoreCartoBoostLagForecaster, ETSForecaster as CoreETSForecaster,
     ForecastActual, ForecastFold as CoreForecastFold, ForecastFrame as CoreForecastFrame,
     ForecastFrameMetadata, ForecastFrequency, ForecastMetricSet as CoreForecastMetricSet,
-    ForecastPrediction, ForecastResult as CoreForecastResult, ForecastRow as CoreForecastRow,
-    ForecastWindow, Forecaster, GlobalForecastTargetMode, KalmanForecaster as CoreKalmanForecaster,
+    ForecastObjective as CoreForecastObjective, ForecastPrediction,
+    ForecastResult as CoreForecastResult, ForecastRow as CoreForecastRow, ForecastWindow,
+    Forecaster, GlobalForecastTargetMode, KalmanForecaster as CoreKalmanForecaster,
     KrigingForecaster as CoreKrigingForecaster, LagFeatureConfig,
     LocalLevelKalmanForecaster as CoreLocalLevelKalmanForecaster,
     NaiveForecaster as CoreNaiveForecaster,
@@ -1974,6 +1976,143 @@ impl NativeKrigingForecaster {
 #[derive(Clone, Debug)]
 struct NativeCartoBoostLagForecaster {
     model: CoreCartoBoostLagForecaster,
+}
+
+#[pyclass(name = "AutoForecastModel", unsendable)]
+struct NativeAutoForecastModel {
+    model: CoreAutoForecastModel,
+}
+
+#[pymethods]
+impl NativeAutoForecastModel {
+    #[new]
+    #[pyo3(signature = (lags=None, rolling_windows=None, difference_lags=None, rolling_trend_windows=None, calendar_features=true, season_length=7, validation_window=None, objective="rmse", baseline_displacement_gain=0.03, hard_winner_relative_gain=0.05, min_blend_weight=0.15, max_blend_weight=0.85, max_direct_horizon=28, recursive=true, n_estimators=None, learning_rate=None, max_depth=None, min_samples_leaf=None, min_gain=None, splitters=None, trend_features=true, target_mode="level"))]
+    #[allow(clippy::too_many_arguments)]
+    fn new(
+        lags: Option<Vec<usize>>,
+        rolling_windows: Option<Vec<usize>>,
+        difference_lags: Option<Vec<usize>>,
+        rolling_trend_windows: Option<Vec<usize>>,
+        calendar_features: bool,
+        season_length: usize,
+        validation_window: Option<usize>,
+        objective: &str,
+        baseline_displacement_gain: f64,
+        hard_winner_relative_gain: f64,
+        min_blend_weight: f64,
+        max_blend_weight: f64,
+        max_direct_horizon: usize,
+        recursive: bool,
+        n_estimators: Option<usize>,
+        learning_rate: Option<f64>,
+        max_depth: Option<usize>,
+        min_samples_leaf: Option<usize>,
+        min_gain: Option<f64>,
+        splitters: Option<Vec<String>>,
+        trend_features: bool,
+        target_mode: &str,
+    ) -> PyResult<Self> {
+        if !recursive {
+            return Err(PyValueError::new_err(
+                "AutoForecastModel currently supports recursive=true only",
+            ));
+        }
+        let lags = lags.unwrap_or_else(|| vec![1, 2, 3, 7, 14, 28]);
+        let rolling_mean_windows = rolling_windows.unwrap_or_else(|| vec![7, 14, 28]);
+        let difference_lags = match difference_lags {
+            Some(values) => values,
+            None if trend_features => lags.iter().copied().filter(|lag| *lag > 1).collect(),
+            None => Vec::new(),
+        };
+        let rolling_trend_windows = match rolling_trend_windows {
+            Some(values) => values,
+            None if trend_features => rolling_mean_windows
+                .iter()
+                .copied()
+                .filter(|window| *window > 1)
+                .collect(),
+            None => Vec::new(),
+        };
+        let lag_config = LagFeatureConfig {
+            difference_lags,
+            rolling_trend_windows,
+            lags,
+            rolling_mean_windows,
+            calendar_features: if calendar_features {
+                vec![
+                    CalendarFeature::DayOfWeek,
+                    CalendarFeature::Month,
+                    CalendarFeature::Day,
+                ]
+            } else {
+                Vec::new()
+            },
+        };
+        let mut booster_config = BoosterConfig::default();
+        if let Some(value) = n_estimators {
+            booster_config.n_estimators = value;
+        }
+        if let Some(value) = learning_rate {
+            booster_config.learning_rate = value;
+        }
+        if let Some(value) = max_depth {
+            booster_config.max_depth = value;
+        }
+        if let Some(value) = min_samples_leaf {
+            booster_config.min_samples_leaf = value;
+        }
+        if let Some(value) = min_gain {
+            booster_config.min_gain = value;
+        }
+        if let Some(values) = splitters {
+            booster_config.splitters = parse_splitters(&values)?;
+        }
+        validate_params(
+            booster_config.n_estimators,
+            booster_config.learning_rate,
+            booster_config.max_depth,
+            booster_config.min_samples_leaf,
+            booster_config.min_gain,
+            booster_config.linear_lambda_l2,
+            booster_config.constant_lambda_l2,
+            booster_config.fuzzy_bandwidth,
+            0.5,
+            1.0,
+            1.0,
+        )?;
+        let target_mode = parse_global_target_mode(target_mode)?;
+        let objective = CoreForecastObjective::parse(objective).map_err(to_py_value_error)?;
+        Ok(Self {
+            model: CoreAutoForecastModel::new(CoreAutoForecastConfig {
+                lag_config,
+                booster_config,
+                target_mode,
+                season_length,
+                validation_window,
+                objective,
+                baseline_displacement_gain,
+                hard_winner_relative_gain,
+                min_blend_weight,
+                max_blend_weight,
+                max_direct_horizon,
+            })
+            .map_err(to_py_value_error)?,
+        })
+    }
+
+    fn fit(&mut self, py: Python<'_>, frame: &NativeForecastFrame) -> PyResult<()> {
+        fit_forecaster_py(py, &mut self.model, frame)
+    }
+
+    fn predict(&self, py: Python<'_>, horizon: usize) -> PyResult<NativeForecastResult> {
+        predict_forecaster_py(py, &self.model, horizon)
+    }
+
+    fn metadata_json(&self) -> PyResult<String> {
+        serde_json::to_string(&self.model.metadata()).map_err(|err| {
+            PyValueError::new_err(format!("failed to serialize forecaster metadata: {err}"))
+        })
+    }
 }
 
 #[pymethods]
@@ -5739,6 +5878,7 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<NativeAutoKalmanForecaster>()?;
     m.add_class::<NativeAutoLocalLevelKalmanForecaster>()?;
     m.add_class::<NativeKrigingForecaster>()?;
+    m.add_class::<NativeAutoForecastModel>()?;
     m.add_class::<NativeCartoBoostLagForecaster>()?;
     m.add_class::<NativeWeightedEnsembleForecaster>()?;
     m.add_class::<NativeNeuralEmbeddingFeatures>()?;
