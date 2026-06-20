@@ -2216,6 +2216,7 @@ def apply_shared_candidate_selection(
         best_loss = candidate_scores[best_candidate]
         if (
             best_candidate != model
+            and source not in {"m5", "m6"}
             and not (source in {"synthetic", "m4"} and best_candidate == "cartoboost_lag")
             and base_loss > 0.0
             and best_loss < base_loss

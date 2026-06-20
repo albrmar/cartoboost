@@ -18,6 +18,8 @@ def ordinal_word(rank: int) -> str:
         3: "third",
         4: "fourth",
         5: "fifth",
+        6: "sixth",
+        7: "seventh",
     }
     return words.get(rank, f"{rank}th")
 
@@ -322,6 +324,17 @@ def test_forecasting_benchmark_robust_selector_prefers_simple_close_candidate():
     assert (
         benchmark.candidate_choice_for_source(
             {
+                "cartoboost_auto_forecast": 0.1996633147694055,
+                "shared_calendar_phase14": 0.19966331430819997,
+                "cartoboost_lag": 0.19966331443943974,
+            },
+            source="m6",
+        )
+        == "shared_calendar_phase14"
+    )
+    assert (
+        benchmark.candidate_choice_for_source(
+            {
                 "cartoboost_auto_forecast": 1.00,
                 "shared_seasonal_base": 1.03,
                 "shared_calendar_dom": 0.99,
@@ -480,11 +493,18 @@ def test_forecasting_benchmark_docs_match_committed_artifacts():
     m6_full = json.loads((artifacts / "forecasting_m6_full.json").read_text())
     m6_full_winner = m6_full["quality"]["winner"]
     m6_full_winner_rmse = m6_full["metrics"][m6_full_winner]["rmse"]
-    m6_full_cartoboost_rmse = m6_full["metrics"]["cartoboost_lag"]["rmse"]
+    m6_full_cartoboost_rmse = m6_full["metrics"]["cartoboost_auto_forecast"]["rmse"]
+    m6_full_rmse_ranking = sorted(
+        m6_full["metrics"],
+        key=lambda model: m6_full["metrics"][model]["rmse"],
+    )
+    m6_full_cartoboost_rank = ordinal_word(
+        m6_full_rmse_ranking.index("cartoboost_auto_forecast") + 1
+    )
     assert (
         f"`{m6_full_winner}` remains the maintained winner at RMSE "
-        f"{m6_full_winner_rmse:.6f}; CartoBoost lag RMSE is "
-        f"{m6_full_cartoboost_rmse:.6f}"
+        f"{m6_full_winner_rmse:.6f}; CartoBoost auto is {m6_full_cartoboost_rank} "
+        f"by RMSE at {m6_full_cartoboost_rmse:.6f}"
     ) in docs
 
 
