@@ -1,4 +1,192 @@
+use crate::forecasting::lag_features::history_by_series;
+use crate::forecasting::{
+    ForecastFrame, ForecastObjective, ForecastPrediction, ForecastResult, Forecaster,
+};
 use crate::{CartoBoostError, Result};
+use rayon::prelude::*;
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
+use std::collections::BTreeMap;
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IntermittentDemandConfig {
+    pub alpha: f64,
+    pub beta: f64,
+    pub adida_bucket_size: usize,
+    pub validation_window: Option<usize>,
+    pub objective: ForecastObjective,
+}
+
+impl Default for IntermittentDemandConfig {
+    fn default() -> Self {
+        Self {
+            alpha: 0.2,
+            beta: 0.2,
+            adida_bucket_size: 7,
+            validation_window: None,
+            objective: ForecastObjective::Wape,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum IntermittentDemandMethod {
+    Zero,
+    Croston,
+    Sba,
+    Tsb,
+    Adida,
+}
+
+impl IntermittentDemandMethod {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Zero => "zero",
+            Self::Croston => "croston",
+            Self::Sba => "sba",
+            Self::Tsb => "tsb",
+            Self::Adida => "adida",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct IntermittentDemandForecaster {
+    config: IntermittentDemandConfig,
+    fitted: Option<FittedIntermittentDemand>,
+}
+
+#[derive(Debug, Clone)]
+struct FittedIntermittentDemand {
+    frame: ForecastFrame,
+    series: BTreeMap<String, FittedIntermittentSeries>,
+    validation_window: usize,
+}
+
+#[derive(Debug, Clone)]
+struct FittedIntermittentSeries {
+    method: IntermittentDemandMethod,
+    level: f64,
+    validation_loss: f64,
+    zero_fraction: f64,
+}
+
+impl IntermittentDemandForecaster {
+    pub fn new(config: IntermittentDemandConfig) -> Result<Self> {
+        validate_config(&config)?;
+        Ok(Self {
+            config,
+            fitted: None,
+        })
+    }
+
+    pub fn fitted_methods(&self) -> BTreeMap<String, IntermittentDemandMethod> {
+        self.fitted
+            .as_ref()
+            .map(|state| {
+                state
+                    .series
+                    .iter()
+                    .map(|(series_id, fitted)| (series_id.clone(), fitted.method))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+}
+
+impl Forecaster for IntermittentDemandForecaster {
+    fn fit(&mut self, frame: &ForecastFrame) -> Result<()> {
+        validate_nonnegative_frame(frame)?;
+        let validation_window = effective_validation_window(frame, self.config.validation_window);
+        let mut series = BTreeMap::new();
+        for (series_id, rows) in history_by_series(frame.rows()) {
+            if rows.len() <= validation_window {
+                return Err(CartoBoostError::InvalidInput(
+                    "not enough history for intermittent demand validation".to_string(),
+                ));
+            }
+            let values = rows.iter().map(|row| row.target).collect::<Vec<_>>();
+            let fitted = fit_series(&values, validation_window, &self.config)?;
+            series.insert(series_id, fitted);
+        }
+        self.fitted = Some(FittedIntermittentDemand {
+            frame: frame.clone(),
+            series,
+            validation_window,
+        });
+        Ok(())
+    }
+
+    fn predict(&self, horizon: usize) -> Result<ForecastResult> {
+        if horizon == 0 {
+            return Err(CartoBoostError::InvalidInput(
+                "forecast horizon must be positive".to_string(),
+            ));
+        }
+        let fitted = self.fitted.as_ref().ok_or_else(|| {
+            CartoBoostError::InvalidInput("intermittent demand forecaster must be fitted".into())
+        })?;
+        let histories = history_by_series(fitted.frame.rows());
+        let series_predictions = histories
+            .iter()
+            .collect::<Vec<_>>()
+            .into_par_iter()
+            .map(|(series_id, history)| {
+                let last = history.last().ok_or_else(|| {
+                    CartoBoostError::InvalidInput("empty series history".to_string())
+                })?;
+                let state = fitted.series.get(series_id).ok_or_else(|| {
+                    CartoBoostError::InvalidInput(format!(
+                        "missing intermittent fitted state for series {series_id}"
+                    ))
+                })?;
+                let mut predictions = Vec::with_capacity(horizon);
+                for step in 1..=horizon {
+                    predictions.push(ForecastPrediction {
+                        series_id: series_id.clone(),
+                        timestamp: fitted.frame.frequency().advance(last.timestamp, step)?,
+                        horizon: step,
+                        model: self.model_name().to_string(),
+                        mean: state.level.max(0.0),
+                    });
+                }
+                Ok(predictions)
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let mut predictions = Vec::with_capacity(histories.len().saturating_mul(horizon));
+        for series in series_predictions {
+            predictions.extend(series);
+        }
+        ForecastResult::new(predictions)
+    }
+
+    fn model_name(&self) -> &'static str {
+        "intermittent_demand"
+    }
+
+    fn metadata(&self) -> Value {
+        let fitted = self.fitted.as_ref();
+        json!({
+            "model": self.model_name(),
+            "alpha": self.config.alpha,
+            "beta": self.config.beta,
+            "adida_bucket_size": self.config.adida_bucket_size,
+            "objective": self.config.objective.as_str(),
+            "validation_window": fitted.map(|state| state.validation_window),
+            "series": fitted.map(|state| {
+                state.series.iter().map(|(series_id, series)| {
+                    json!({
+                        "series_id": series_id,
+                        "method": series.method.as_str(),
+                        "level": series.level,
+                        "validation_loss": series.validation_loss,
+                        "zero_fraction": series.zero_fraction,
+                    })
+                }).collect::<Vec<_>>()
+            }),
+        })
+    }
+}
 
 pub fn croston_forecast(values: &[f64], horizon: usize, alpha: f64) -> Result<Vec<f64>> {
     validate_inputs(values, horizon, alpha, None)?;
@@ -36,6 +224,161 @@ pub fn adida_forecast(
     }
     let aggregate = croston_level(&buckets, alpha)? / bucket_size as f64;
     Ok(vec![aggregate; horizon])
+}
+
+fn fit_series(
+    values: &[f64],
+    validation_window: usize,
+    config: &IntermittentDemandConfig,
+) -> Result<FittedIntermittentSeries> {
+    let split_at = values.len() - validation_window;
+    let train = &values[..split_at];
+    let validation = &values[split_at..];
+    let zero_fraction =
+        values.iter().filter(|value| **value == 0.0).count() as f64 / values.len().max(1) as f64;
+    let candidates = candidate_methods(values);
+    let mut best: Option<(IntermittentDemandMethod, f64)> = None;
+    for method in candidates {
+        let forecast = method_forecast(method, train, validation.len(), config)?;
+        let loss = objective_loss(validation, &forecast, config.objective)?;
+        if !loss.is_finite() {
+            continue;
+        }
+        let replace = best
+            .as_ref()
+            .map(|(best_method, best_loss)| {
+                loss < *best_loss || (loss == *best_loss && method < *best_method)
+            })
+            .unwrap_or(true);
+        if replace {
+            best = Some((method, loss));
+        }
+    }
+    let (method, validation_loss) = best.ok_or_else(|| {
+        CartoBoostError::InvalidInput("no intermittent demand method could validate".to_string())
+    })?;
+    let level = method_forecast(method, values, 1, config)?
+        .into_iter()
+        .next()
+        .unwrap_or(0.0)
+        .max(0.0);
+    Ok(FittedIntermittentSeries {
+        method,
+        level,
+        validation_loss,
+        zero_fraction,
+    })
+}
+
+fn candidate_methods(values: &[f64]) -> Vec<IntermittentDemandMethod> {
+    if values.iter().all(|value| *value == 0.0) {
+        return vec![IntermittentDemandMethod::Zero];
+    }
+    vec![
+        IntermittentDemandMethod::Tsb,
+        IntermittentDemandMethod::Sba,
+        IntermittentDemandMethod::Croston,
+        IntermittentDemandMethod::Adida,
+    ]
+}
+
+fn method_forecast(
+    method: IntermittentDemandMethod,
+    values: &[f64],
+    horizon: usize,
+    config: &IntermittentDemandConfig,
+) -> Result<Vec<f64>> {
+    match method {
+        IntermittentDemandMethod::Zero => Ok(vec![0.0; horizon]),
+        IntermittentDemandMethod::Croston => croston_forecast(values, horizon, config.alpha),
+        IntermittentDemandMethod::Sba => sba_forecast(values, horizon, config.alpha),
+        IntermittentDemandMethod::Tsb => tsb_forecast(values, horizon, config.alpha, config.beta),
+        IntermittentDemandMethod::Adida => {
+            adida_forecast(values, horizon, config.adida_bucket_size, config.alpha)
+        }
+    }
+}
+
+fn objective_loss(
+    actuals: &[f64],
+    predictions: &[f64],
+    objective: ForecastObjective,
+) -> Result<f64> {
+    if actuals.len() != predictions.len() {
+        return Err(CartoBoostError::InvalidInput(
+            "intermittent validation length mismatch".to_string(),
+        ));
+    }
+    match objective {
+        ForecastObjective::Rmse => {
+            let mse = actuals
+                .iter()
+                .zip(predictions)
+                .map(|(actual, predicted)| {
+                    let error = predicted - actual;
+                    error * error
+                })
+                .sum::<f64>()
+                / actuals.len().max(1) as f64;
+            Ok(mse.sqrt())
+        }
+        ForecastObjective::Wape => {
+            let denominator = actuals.iter().map(|actual| actual.abs()).sum::<f64>();
+            if denominator == 0.0 {
+                return Ok(predictions.iter().map(|prediction| prediction.abs()).sum());
+            }
+            let numerator = actuals
+                .iter()
+                .zip(predictions)
+                .map(|(actual, predicted)| (predicted - actual).abs())
+                .sum::<f64>();
+            Ok(numerator / denominator)
+        }
+    }
+}
+
+fn effective_validation_window(frame: &ForecastFrame, configured: Option<usize>) -> usize {
+    if let Some(window) = configured {
+        return window;
+    }
+    let min_history = history_by_series(frame.rows())
+        .values()
+        .map(Vec::len)
+        .min()
+        .unwrap_or(0);
+    (min_history / 5).clamp(1, 8)
+}
+
+fn validate_nonnegative_frame(frame: &ForecastFrame) -> Result<()> {
+    for (index, row) in frame.rows().iter().enumerate() {
+        if !row.target.is_finite() {
+            return Err(CartoBoostError::InvalidInput(format!(
+                "intermittent demand target at row {index} must be finite"
+            )));
+        }
+        if row.target < 0.0 {
+            return Err(CartoBoostError::InvalidInput(format!(
+                "intermittent demand target at row {index} must be non-negative"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn validate_config(config: &IntermittentDemandConfig) -> Result<()> {
+    validate_unit_interval("alpha", config.alpha)?;
+    validate_unit_interval("beta", config.beta)?;
+    if config.adida_bucket_size == 0 {
+        return Err(CartoBoostError::InvalidInput(
+            "intermittent demand ADIDA bucket_size must be positive".to_string(),
+        ));
+    }
+    if matches!(config.validation_window, Some(0)) {
+        return Err(CartoBoostError::InvalidInput(
+            "intermittent demand validation_window must be positive".to_string(),
+        ));
+    }
+    Ok(())
 }
 
 fn validate_inputs(values: &[f64], horizon: usize, alpha: f64, beta: Option<f64>) -> Result<()> {

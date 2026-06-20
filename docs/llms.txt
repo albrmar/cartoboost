@@ -44,6 +44,7 @@ Use this guide as the first read before making changes. Start in the relevant co
 - [CartoBoost lag guide](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/user-guide/forecasting-models/cartoboost-lag.md): global supervised lag forecasting examples and native feature support.
 - [Weighted ensembles guide](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/user-guide/forecasting-models/ensembles.md): explicit fixed-weight native forecasting ensembles.
 - [Forecasting overhaul](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/forecasting_overhaul.md): deterministic Rust-first direct, decomposition, AutoStats, reconciliation, probabilistic, neural, and ensemble architecture notes.
+- [Forecasting hybridization assessment](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/forecasting_hybridization_assessment.md): external forecasting-library review, production AutoForecast gap analysis, and the Rust-first auto-selector implementation roadmap.
 - [Forecasting reconciliation](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/forecasting_reconciliation.md): sparse hierarchy representation, bottom-up/top-down/middle-out/OLS/WLS/MinT-shrink reconciliation, and temporal aggregation rules.
 - [CLI guide](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/user-guide/cli.md): workflow-oriented CLI usage patterns.
 - [Feature schema](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/feature_schema.md): data schema and validation contract.

@@ -1,7 +1,9 @@
 use cartoboost_core::booster::BoosterConfig;
 use cartoboost_core::forecasting::{
-    CalendarFeature, CartoBoostLagForecaster, ForecastFrame, ForecastFrequency, ForecastRow,
-    Forecaster, GlobalForecastTargetMode, LagFeatureBuilder, LagFeatureConfig,
+    CalendarFeature, CartoBoostLagForecaster, ForecastFrame, ForecastFrequency, ForecastObjective,
+    ForecastRow, Forecaster, GlobalForecastTargetMode, IntermittentDemandConfig,
+    IntermittentDemandForecaster, LagFeatureBuilder, LagFeatureConfig, LagPlusConfig,
+    LagPlusForecaster, LocalStandardScaledForecaster, Log1pForecaster,
 };
 use chrono::{NaiveDate, NaiveDateTime};
 
@@ -191,4 +193,252 @@ fn cartoboost_lag_forecaster_can_model_delta_from_last_target() {
         forecaster.metadata()["target_mode"],
         serde_json::json!("delta_from_last")
     );
+}
+
+#[test]
+fn lag_plus_forecaster_calibrates_residual_corrections() {
+    let frame = ForecastFrame::new(
+        (1..=14)
+            .map(|day| ForecastRow::single(ts(day), 20.0 + f64::from(day * 2)))
+            .collect(),
+        ForecastFrequency::Daily,
+    )
+    .expect("valid frame");
+    let mut forecaster = LagPlusForecaster::new(LagPlusConfig {
+        lag_config: LagFeatureConfig {
+            lags: vec![1, 2],
+            rolling_mean_windows: vec![2],
+            difference_lags: vec![2],
+            rolling_trend_windows: vec![2],
+            calendar_features: Vec::new(),
+        },
+        booster_config: small_booster_config(),
+        target_mode: GlobalForecastTargetMode::Level,
+        validation_window: Some(2),
+        objective: ForecastObjective::Wape,
+        shrinkage_strength: 2.0,
+        seasonal_bucket_period: Some(7),
+    })
+    .expect("forecaster");
+
+    forecaster.fit(&frame).expect("fit");
+    let forecast = forecaster.predict(2).expect("predict");
+    let metadata = forecaster.metadata();
+
+    assert_eq!(forecast.predictions().len(), 2);
+    assert_eq!(metadata["model"], serde_json::json!("lag_plus"));
+    assert_eq!(metadata["base_model"], serde_json::json!("cartoboost_lag"));
+    assert_eq!(metadata["objective"], serde_json::json!("wape"));
+    assert!(metadata["base_rmse"]
+        .as_f64()
+        .expect("base rmse")
+        .is_finite());
+    assert!(metadata["corrected_rmse"]
+        .as_f64()
+        .expect("corrected rmse")
+        .is_finite());
+    assert!(metadata["base_wape"]
+        .as_f64()
+        .expect("base wape")
+        .is_finite());
+    assert!(metadata["corrected_wape"]
+        .as_f64()
+        .expect("corrected wape")
+        .is_finite());
+    assert_eq!(metadata["seasonal_bucket_period"], serde_json::json!(7));
+    assert!(metadata["seasonal_corrections"]
+        .as_object()
+        .expect("seasonal corrections")
+        .values()
+        .all(|value| value.as_f64().expect("correction").is_finite()));
+    assert!(forecast
+        .predictions()
+        .iter()
+        .all(|prediction| prediction.mean.is_finite()));
+}
+
+#[test]
+fn local_standard_scaled_forecaster_inverts_predictions_to_original_scale() {
+    let frame = ForecastFrame::new(
+        vec![
+            ForecastRow::new("small", ts(1), 1.0),
+            ForecastRow::new("small", ts(2), 2.0),
+            ForecastRow::new("small", ts(3), 3.0),
+            ForecastRow::new("small", ts(4), 4.0),
+            ForecastRow::new("large", ts(1), 100.0),
+            ForecastRow::new("large", ts(2), 200.0),
+            ForecastRow::new("large", ts(3), 300.0),
+            ForecastRow::new("large", ts(4), 400.0),
+        ],
+        ForecastFrequency::Daily,
+    )
+    .expect("valid frame");
+    let inner = CartoBoostLagForecaster::new(
+        LagFeatureConfig {
+            lags: vec![1],
+            rolling_mean_windows: Vec::new(),
+            difference_lags: Vec::new(),
+            rolling_trend_windows: Vec::new(),
+            calendar_features: Vec::new(),
+        },
+        small_booster_config(),
+    )
+    .expect("inner");
+    let mut forecaster = LocalStandardScaledForecaster::new(Box::new(inner), 1e-6, "scaled_lag")
+        .expect("scaled forecaster");
+
+    forecaster.fit(&frame).expect("fit");
+    let forecast = forecaster.predict(1).expect("predict");
+    let metadata = forecaster.metadata();
+
+    assert_eq!(forecast.predictions().len(), 2);
+    assert_eq!(metadata["model"], serde_json::json!("scaled_lag"));
+    assert_eq!(
+        metadata["target_transform"]["transform"],
+        serde_json::json!("local_standard_scaler")
+    );
+    assert!(forecast
+        .predictions()
+        .iter()
+        .all(|prediction| prediction.mean.is_finite()));
+    let large = forecast
+        .predictions()
+        .iter()
+        .find(|prediction| prediction.series_id == "large")
+        .expect("large forecast");
+    let small = forecast
+        .predictions()
+        .iter()
+        .find(|prediction| prediction.series_id == "small")
+        .expect("small forecast");
+    assert!(large.mean > small.mean);
+}
+
+#[test]
+fn log1p_forecaster_inverts_and_clamps_nonnegative_predictions() {
+    let frame = ForecastFrame::new(
+        vec![
+            ForecastRow::new("low", ts(1), 0.0),
+            ForecastRow::new("low", ts(2), 1.0),
+            ForecastRow::new("low", ts(3), 2.0),
+            ForecastRow::new("low", ts(4), 3.0),
+            ForecastRow::new("high", ts(1), 10.0),
+            ForecastRow::new("high", ts(2), 20.0),
+            ForecastRow::new("high", ts(3), 40.0),
+            ForecastRow::new("high", ts(4), 80.0),
+        ],
+        ForecastFrequency::Daily,
+    )
+    .expect("valid frame");
+    let inner = LocalStandardScaledForecaster::new(
+        Box::new(
+            CartoBoostLagForecaster::new(
+                LagFeatureConfig {
+                    lags: vec![1],
+                    rolling_mean_windows: Vec::new(),
+                    difference_lags: Vec::new(),
+                    rolling_trend_windows: Vec::new(),
+                    calendar_features: Vec::new(),
+                },
+                small_booster_config(),
+            )
+            .expect("inner"),
+        ),
+        1e-6,
+        "log1p_scaled_lag_transformed",
+    )
+    .expect("scaled inner");
+    let mut forecaster = Log1pForecaster::new(Box::new(inner), "log1p_scaled_lag");
+
+    forecaster.fit(&frame).expect("fit");
+    let forecast = forecaster.predict(1).expect("predict");
+    let metadata = forecaster.metadata();
+
+    assert_eq!(forecast.predictions().len(), 2);
+    assert_eq!(metadata["model"], serde_json::json!("log1p_scaled_lag"));
+    assert_eq!(
+        metadata["target_transform"]["transform"],
+        serde_json::json!("log1p")
+    );
+    assert!(forecast
+        .predictions()
+        .iter()
+        .all(|prediction| prediction.mean.is_finite() && prediction.mean >= 0.0));
+}
+
+#[test]
+fn log1p_forecaster_rejects_negative_targets() {
+    let frame = ForecastFrame::new(
+        vec![
+            ForecastRow::single(ts(1), 1.0),
+            ForecastRow::single(ts(2), -1.0),
+            ForecastRow::single(ts(3), 2.0),
+        ],
+        ForecastFrequency::Daily,
+    )
+    .expect("valid frame");
+    let inner = CartoBoostLagForecaster::new(
+        LagFeatureConfig {
+            lags: vec![1],
+            rolling_mean_windows: Vec::new(),
+            difference_lags: Vec::new(),
+            rolling_trend_windows: Vec::new(),
+            calendar_features: Vec::new(),
+        },
+        small_booster_config(),
+    )
+    .expect("inner");
+    let mut forecaster = Log1pForecaster::new(Box::new(inner), "log1p_lag");
+
+    let error = forecaster
+        .fit(&frame)
+        .expect_err("negative target rejected");
+
+    assert!(error
+        .to_string()
+        .contains("log1p target transform requires nonnegative targets"));
+}
+
+#[test]
+fn intermittent_demand_forecaster_selects_nonnegative_series_methods() {
+    let frame = ForecastFrame::new(
+        vec![
+            ForecastRow::new("sparse", ts(1), 0.0),
+            ForecastRow::new("sparse", ts(2), 0.0),
+            ForecastRow::new("sparse", ts(3), 8.0),
+            ForecastRow::new("sparse", ts(4), 0.0),
+            ForecastRow::new("sparse", ts(5), 0.0),
+            ForecastRow::new("sparse", ts(6), 10.0),
+            ForecastRow::new("sparse", ts(7), 0.0),
+            ForecastRow::new("sparse", ts(8), 0.0),
+            ForecastRow::new("zero", ts(1), 0.0),
+            ForecastRow::new("zero", ts(2), 0.0),
+            ForecastRow::new("zero", ts(3), 0.0),
+            ForecastRow::new("zero", ts(4), 0.0),
+            ForecastRow::new("zero", ts(5), 0.0),
+            ForecastRow::new("zero", ts(6), 0.0),
+            ForecastRow::new("zero", ts(7), 0.0),
+            ForecastRow::new("zero", ts(8), 0.0),
+        ],
+        ForecastFrequency::Daily,
+    )
+    .expect("valid frame");
+    let mut forecaster = IntermittentDemandForecaster::new(IntermittentDemandConfig {
+        validation_window: Some(2),
+        ..IntermittentDemandConfig::default()
+    })
+    .expect("forecaster");
+
+    forecaster.fit(&frame).expect("fit");
+    let forecast = forecaster.predict(2).expect("predict");
+    let methods = forecaster.fitted_methods();
+    let metadata = forecaster.metadata();
+
+    assert_eq!(forecast.predictions().len(), 4);
+    assert_eq!(metadata["model"], serde_json::json!("intermittent_demand"));
+    assert_eq!(methods["zero"].as_str(), "zero");
+    assert!(forecast
+        .predictions()
+        .iter()
+        .all(|prediction| prediction.mean.is_finite() && prediction.mean >= 0.0));
 }

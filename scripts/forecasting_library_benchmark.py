@@ -4179,12 +4179,19 @@ def evaluate_metrics(
     )
     mae = float(error_frame.select(pl.col("abs_error").mean()).item())
     rmse = float(error_frame.select((pl.col("error").pow(2).mean()).sqrt()).item())
-    wape = float(error_frame.select(pl.col("abs_error").sum() / pl.col("actual_abs").sum()).item())
-    smape = float(
+    sse = float(error_frame.select(pl.col("error").pow(2).sum()).item())
+    actual_mean = float(scored.select(pl.col("actual").mean()).item())
+    sst = float(scored.select((pl.col("actual") - actual_mean).pow(2).sum()).item())
+    r2 = 1.0 if sse <= 1.0e-12 else 0.0 if sst <= 1.0e-12 else 1.0 - sse / sst
+    actual_abs_sum = float(error_frame.select(pl.col("actual_abs").sum()).item())
+    abs_error_sum = float(error_frame.select(pl.col("abs_error").sum()).item())
+    wape = 0.0 if abs_error_sum <= 1.0e-12 else abs_error_sum / max(actual_abs_sum, 1.0e-12)
+    smape_value = (
         error_frame.filter(pl.col("smape_den") > 0)
         .select((2.0 * pl.col("abs_error") / pl.col("smape_den")).mean())
         .item()
     )
+    smape = 0.0 if smape_value is None else float(smape_value)
     bias = float(error_frame.select(pl.col("error").mean()).item())
     train_scale = (
         train.sort(["lane_id", "date"])
@@ -4196,10 +4203,12 @@ def evaluate_metrics(
         .select(pl.col("d").mean())
         .item()
     )
+    mase_denom = max(float(train_scale or 0.0), 1.0e-12)
     return {
         "mae": mae,
         "rmse": rmse,
-        "mase": mae / float(train_scale),
+        "r2": float(r2),
+        "mase": mae / mase_denom,
         "wape": wape,
         "smape": smape,
         "bias": bias,

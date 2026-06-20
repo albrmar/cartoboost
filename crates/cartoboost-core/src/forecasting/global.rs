@@ -10,7 +10,7 @@ use rayon::prelude::*;
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum GlobalForecastTargetMode {
     Level,
     DeltaFromLast,

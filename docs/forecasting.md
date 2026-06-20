@@ -90,7 +90,7 @@ runs:
 | Benchmark alias | Python surface | Purpose |
 | --- | --- | --- |
 | `cartoboost_lag` | `CartoBoostLagForecaster` | Existing supervised lag baseline used for continuity with prior forecasting evidence. |
-| `cartoboost_auto_forecast` | `AutoForecaster` | Deterministic hybrid default that routes through AutoStats, direct CartoBoost, decomposition, intermittent, probabilistic, reconciliation, neural, and ensemble branches when their inputs are available. |
+| `cartoboost_auto_forecast` | `AutoForecaster` | Rust-native guarded selector over `cartoboost_lag`, `scaled_lag`, `delta_lag`, `scaled_delta_lag`, dense-panel direct/rectified tree candidates, `log1p_scaled_lag`, `lag_plus`, sparse-panel `intermittent_demand`, and the classical expert bank, with lag protected unless validation clears the configured displacement threshold. |
 
 Rust ETS is additive-only in this version. Rust AutoARIMA searches bounded
 ARIMA(p,d,q) candidates with residual-lag moving-average terms; seasonal
