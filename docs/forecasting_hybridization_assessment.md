@@ -30,8 +30,9 @@ The strongest repos do not rely on one clever model.
 
 The common pattern is hybridization: local statistical experts, global tabular
 models, target transforms, validation-calibrated selection, reconciliation, and
-probabilistic calibration. A dominant CartoBoost default must compose these
-deterministically instead of exposing them as disconnected features.
+probabilistic calibration. CartoBoost exposes these capabilities through a
+deterministic Rust-first stack instead of treating them as disconnected
+features.
 
 ## Current CartoBoost Gap
 
@@ -103,7 +104,7 @@ target transforms, specialist experts, hierarchy-aware reconciliation, and
 task-specific probabilistic calibration. More models alone would make this
 worse; every added expert must pass through the guarded selector.
 
-## Dominant Architecture
+## Recommended Architecture
 
 The default production stack should be:
 
@@ -125,46 +126,26 @@ must come from the actual task: RMSE, WAPE, or `rmse_wape` for ordinary point fo
 MASE/sMAPE-style losses for heterogeneous M4-style data, WRMSSE for weighted
 hierarchical demand, and RPS for ordinal rank forecasts.
 
-## Implementation Priorities
+## Development Direction
 
-1. Extend the Rust `AutoForecastModel` roster. The current implementation
-   owns the validation split, objective, lag baseline displacement rule, blend
-   bounds, and metadata for `cartoboost_lag`, `scaled_lag`,
-   `delta_lag`, `scaled_delta_lag`, `seasonal_delta_lag`,
-   `scaled_seasonal_delta_lag`, `log1p_scaled_lag`, `lag_plus`,
-   dense-panel `cartoboost_direct` and `cartoboost_rectified_recursive`,
-   sparse-panel `intermittent_demand`, and `classical_expert_bank`. Next, add
-   decomposition and calibrated probabilistic candidates behind the same
-   guardrails.
+The production path is to keep extending the Rust `AutoForecastModel` roster
+behind the same validation and baseline-protection rules. Current candidates
+cover the lag spine, target-scaled lag variants, delta routes, direct and
+rectified-recursive tree routes, nonnegative log scaling, `lag_plus`,
+intermittent demand methods, and the classical expert bank.
 
-2. Strengthen `LagPlus`:
-   base `CartoBoostLagForecaster`, horizon-specific residual correction, and
-   reliability shrinkage are implemented. RMSE/WAPE-aware enablement is also
-   implemented. Seasonal-bucket residual correction is implemented through the
-   auto season length. Next, add additional official competition
-   objectives.
+Future additions should keep the same user-visible contract: deterministic
+validation, task-appropriate metrics, bounded blends for close races, and clear
+metadata explaining which candidate was used. Useful additions include
+decomposition candidates for strong multi-seasonality, additional target
+transforms, hierarchy-aware reconciliation, calibrated probabilistic outputs,
+and neural experts only when history length and validation support justify
+them.
 
-3. Expand MLForecast-style target transforms in Rust:
-   local mean/standard scaling, log1p for nonnegative targets, and exact
-   inverse forecasts are implemented. Next, add first/seasonal differences,
-   transform diagnostics, and validation-based transform enablement.
-
-4. Expand specialist experts, but gate them:
-   classical bank for short/local series and intermittent methods for sparse
-   nonnegative demand are implemented behind the auto selector. Dense direct
-   and rectified-recursive tree candidates are also implemented. Next, add MSTL
-   remainder models for strong multi-seasonality and neural experts only when
-   history length and validation support justify them.
-
-5. Make calibration task-specific:
-   WRMSSE-aware demand selection and reconciliation for hierarchy; RPS
-   confusion-matrix calibration for rank forecasts; conformal intervals for
-   uncertainty where point metrics are not enough.
-
-6. Treat latency as a design constraint:
-   grouped contiguous storage for feature generation, Rayon across series and
-   candidates, stable reductions, no Python hot loops in fit/predict, and
-   metadata for train time, prediction time, thread count, and peak memory.
+Latency remains part of the public contract. Forecasting improvements should
+continue to use grouped Rust data structures, Rayon parallelism, stable
+reductions, and benchmark metadata for train time, prediction time, thread
+count, and peak memory.
 
 ## Immediate Code Direction
 
@@ -181,11 +162,7 @@ demand forecasts, protect WRMSSE winners on hierarchy-aware demand, or protect
 RPS-calibrated routes in ordinal financial forecasts without dataset-name
 branches or hyperparameter search.
 
-## Non-Negotiables
-
-- Production auto behavior must be Rust-first.
-- Python may expose configuration, but cannot become the model selector.
-- More experts are useful only after the guardrail selector is in place.
-- Validation metrics must match the decision metric.
-- A default auto model that loses to `cartoboost_lag` without explaining why is
-  not acceptable.
+For production users, the practical rule is simple: compare models on the
+metric that matches the decision being made, then inspect the auto-forecast
+metadata to see whether CartoBoost chose the lag baseline, a specialist
+candidate, or a bounded blend.

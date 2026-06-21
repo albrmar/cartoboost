@@ -149,11 +149,10 @@ deterministic shared candidates first; when the cheap market-neutral candidate
 wins, the artifact records the skipped raw inner score as `null` rather than
 emitting non-finite JSON. This keeps the committed
 RMSE/WAPE/WRMSSE outputs protected while still emitting RPS artifacts for audit.
-Across shared-candidate selection, `cartoboost_auto_forecast` also keeps the
-lag spine unless a replacement candidate clears the configured minimum relative
-gain versus `cartoboost_lag`, and this guard is applied after any native
-raw-auto confidence override. This makes the lag spine a real champion route
-instead of a candidate that can be displaced by tiny, noisy validation wins.
+Across shared-candidate selection, `cartoboost_auto_forecast` keeps the lag
+spine unless a replacement candidate clears the configured minimum relative gain
+versus `cartoboost_lag`. This keeps small, noisy validation differences from
+displacing the baseline.
 After inner validation chooses the final candidate, the outer scoring path now
 builds only the selected shared columns needed for the reported forecast. That
 keeps inner validation broad while avoiding unused calendar, trend,
@@ -180,12 +179,10 @@ M4/M5/M6 artifact contracts are not changed by the non-M latency path.
 Rolling-origin suites also cache identical inner validation
 cutoffs within each problem, keyed by source, cutoff, and candidate roster, so
 overlapping folds reuse scores without changing the train/test boundary. The
-non-M outer scoring path is also lazy:
-it emits a zero-cost placeholder `cartoboost_auto_forecast` column during the
-initial roster forecast, runs shared selection, and only fits the real raw-auto
-outer forecast if validation actually selects `cartoboost_auto_forecast`. When
-validation selects lag or a deterministic shared candidate, the outer raw-auto
-fit is skipped entirely.
+non-M outer scoring path runs shared selection before fitting the most expensive
+auto path, then fits that path only when validation selects it. When validation
+selects lag or a deterministic shared candidate, the outer raw-auto fit is
+skipped entirely.
 Benchmark artifacts now record both `cartoboost_lag` and
 `cartoboost_auto_forecast` settings. The lag estimator count follows
 `--cartoboost-n-estimators`; auto keeps the maintained quality floor

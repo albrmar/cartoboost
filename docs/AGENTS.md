@@ -10,6 +10,10 @@
 - Keep forecast benchmark model tables simple and artifact-specific. For committed M4/M5/M6 CartoBoost tables, show only committed CartoBoost rows relevant to that artifact, sorted by RMSE. Do not include full-roster rows in the same model table and do not show duplicate CartoBoost rows from multiple artifacts.
 - Avoid vague public table headers such as `Scope`. Use plain, concrete headers such as `Model`, `RMSE`, `MAE`, `WAPE`, `Read`, `Artifact`, `Details`, and `Result`.
 - When benchmark code changes metric output or artifact schema, update public benchmark docs only from freshly run benchmark artifacts, not from stale remembered values.
+- Keep public forecasting docs user-facing. Internal implementation rules such as
+  Rust-first ownership, Python wrapper boundaries, and benchmark acceptance
+  gates belong in AGENTS files unless they are explaining an actual public API
+  contract.
 
 ## Testing instructions
 - Cross-check examples against current Python, CLI, and Rust contracts.

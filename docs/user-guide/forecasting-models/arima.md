@@ -48,7 +48,7 @@ held-out or rolling-origin error.
 
 ARIMA assumes the differenced series is stable enough for short-range
 autoregressive and moving-average terms to be useful. It can fail when the
-dominant signal is deterministic seasonality, known calendar effects, sudden
+strongest signal is deterministic seasonality, known calendar effects, sudden
 interventions, spatial spillover, or cross-series learning.
 
 Common failure modes in taxi data are easy to diagnose:

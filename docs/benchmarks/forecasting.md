@@ -35,16 +35,19 @@ roster, fixed seed 42, no hyperopt, and the committed benchmark sample settings.
 Artifacts are committed under `docs/assets/nyc_taxi_benchmarks/`; use each
 artifact's provenance fields for the exact command and git commit.
 
-| Suite | Command | Artifact | Result |
-| --- | --- | --- | --- |
-| Real NYC taxi lane demand | `uv run --group dev python scripts/forecasting_library_benchmark.py --source nyc-taxi --year 2024 --months 1 --taxi-type yellow --lanes 24 --horizon 7 --no-download --no-hyperopt --model-roster cartoboost --output docs/assets/nyc_taxi_benchmarks/forecasting_library_benchmark_real.json --plot-dir docs/assets/nyc_taxi_benchmarks/forecasting_plots` | `forecasting_library_benchmark_real.json` | `cartoboost_auto_forecast` beat `cartoboost_lag`: RMSE 39.033944, MAE 29.172619, WAPE 0.093742. |
-| Synthetic committed suite | `uv run --group dev python scripts/forecasting_library_benchmark.py --suite committed --no-hyperopt --model-roster cartoboost --no-candidate-selection --output docs/assets/nyc_taxi_benchmarks/forecasting_overhaul_committed_suite.json` | `forecasting_overhaul_committed_suite.json` | `cartoboost_auto_forecast` ranked first with mean RMSE ratio 1.000000 and 4/4 wins-or-ties; `cartoboost_lag` had mean RMSE ratio 1.000000. |
-| Synthetic committed suite, scalable external roster | `uv run --group dev python scripts/forecasting_library_benchmark.py --suite committed --no-hyperopt --model-roster scalable --no-candidate-selection --output docs/assets/nyc_taxi_benchmarks/forecasting_overhaul_committed_suite_scalable_roster.json` | `forecasting_overhaul_committed_suite_scalable_roster.json` | `cartoboost_auto_forecast` and `cartoboost_lag` ranked first at mean RMSE ratio 1.013744; `lightgbm_lag` was 1.279238. |
-| Synthetic committed suite, full external roster | `uv run --group dev python scripts/forecasting_library_benchmark.py --suite committed --no-hyperopt --output docs/assets/nyc_taxi_benchmarks/forecasting_overhaul_committed_suite_full_roster.json` | `forecasting_overhaul_committed_suite_full_roster.json` | Older maintained full-roster artifact: `lightgbm_lag` ranked first by mean RMSE ratio at 1.069525. A refresh was attempted after the gated-indicator change but stopped in `statsforecast_autotbats`/ARIMA optimization before producing a new artifact. |
-| Non-M scalable generalization check | `uv run --group dev python scripts/forecasting_generalization.py --compact --no-hyperopt --output docs/assets/nyc_taxi_benchmarks/forecasting_generalization_scalable_synthetic.json` | `forecasting_generalization_scalable_synthetic.json` | `cartoboost_auto_forecast` and `cartoboost_lag` tied for first at mean RMSE ratio 1.000000; `lightgbm_lag` was 1.196396 and `xgboost_lag` was 1.258816. |
-| M4 committed sample | `uv run --group dev python scripts/forecasting_m4.py --committed --no-hyperopt --output docs/assets/nyc_taxi_benchmarks/forecasting_overhaul_m4_committed.json` | `forecasting_overhaul_m4_committed.json` | `cartoboost_auto_forecast` ranked first with mean RMSE ratio 1.000000 and 6/6 wins-or-ties; `cartoboost_lag` had mean RMSE ratio 12.104570. |
-| M5 committed sample | `uv run --group dev --group bench python scripts/forecasting_m5.py --committed --official-wrmsse --no-hyperopt --output docs/assets/nyc_taxi_benchmarks/forecasting_overhaul_m5_committed.json` | `forecasting_overhaul_m5_committed.json` | `cartoboost_auto_forecast` beat `cartoboost_lag`: RMSE 2.415225, MAE 1.139285, WAPE 0.910615, WRMSSE 0.568942. |
-| M6 committed sample | `uv run --group dev --group bench python scripts/forecasting_m6.py --committed --official-style --no-hyperopt --output docs/assets/nyc_taxi_benchmarks/forecasting_overhaul_m6_committed.json` | `forecasting_overhaul_m6_committed.json` | `cartoboost_auto_forecast` selected the market-neutral return candidate and beat `cartoboost_lag` on point quality: RMSE 0.013439, MAE 0.007342, WAPE 1.000000. Calibrated RPS is audit-only here: auto 0.208171 versus lag 0.200754. |
+| Run | Artifact | Best point result |
+| --- | --- | --- |
+| Real NYC taxi lane demand | `forecasting_library_benchmark_real.json` | `cartoboost_auto_forecast` |
+| Synthetic committed suite | `forecasting_overhaul_committed_suite.json` | Auto and lag tied |
+| Synthetic scalable external roster | `forecasting_overhaul_committed_suite_scalable_roster.json` | Auto and lag tied |
+| Synthetic full external roster | `forecasting_overhaul_committed_suite_full_roster.json` | `lightgbm_lag` in the older artifact |
+| Non-M scalable generalization | `forecasting_generalization_scalable_synthetic.json` | Auto and lag tied |
+| M4 committed sample | `forecasting_overhaul_m4_committed.json` | `cartoboost_auto_forecast` |
+| M5 committed sample | `forecasting_overhaul_m5_committed.json` | `cartoboost_auto_forecast` |
+| M6 committed sample | `forecasting_overhaul_m6_committed.json` | `cartoboost_auto_forecast` |
+
+The exact commands are listed in the sections below. They are intentionally kept
+out of the summary table so the page stays readable on narrow screens.
 
 Interpretation: the protected auto route now uses the lag spine when validation
 does not justify a riskier candidate. On the committed CartoBoost-only samples,
@@ -58,18 +61,23 @@ seasonal-naive baselines still lead calibrated RPS.
 
 ## Current Benchmark Status
 
-| Artifact | Refresh status | Current read |
+| Artifact | Status | Point-quality read |
 | --- | --- | --- |
-| `forecasting_overhaul_committed_suite.json` | Refreshed after training-gated low-cardinality covariate indicators, native route-event interactions, no-selector non-M scoring, native covariate-calendar interactions, and the raw-auto lag-spine guard | Protected `cartoboost_auto_forecast` and `cartoboost_lag` tie on the CartoBoost-only synthetic suite at mean RMSE ratio 1.000000. |
-| `forecasting_overhaul_committed_suite_scalable_roster.json` | Added after the full external roster proved too slow in `statsforecast_autotbats`/ARIMA optimization; refreshed with no-selector non-M scoring | Scalable external-roster synthetic committed run with CartoBoost auto/lag, LightGBM, XGBoost, and functime baselines. CartoBoost auto and lag rank first at mean RMSE ratio 1.013744; `lightgbm_lag` is 1.279238. |
-| `forecasting_generalization_scalable_synthetic.json` | Refreshed after training-gated native low-cardinality covariate indicators, native route-event interactions, no-selector non-M scoring, native covariate-calendar interactions, rich Fourier/event calendar features, and the raw-auto lag-spine guard | Compact scalable synthetic run with CartoBoost auto/lag, LightGBM, XGBoost, and functime baselines. CartoBoost auto and lag tie for first by mean RMSE ratio at 1.000000. |
-| `forecasting_overhaul_m4_committed.json` | Refreshed with provenance fields | Protected auto wins/ties all 6 M4 groups, with mean RMSE ratio 1.000000 versus 12.104570 for lag. |
-| `forecasting_overhaul_m5_committed.json` | Refreshed after M5 point-quality selector changes | Protected auto beats lag on point metrics and WRMSSE 0.568942 versus 0.743721. |
-| `forecasting_overhaul_m6_committed.json` | Refreshed after M6 point-quality selector update | Protected auto selects the market-neutral return candidate and beats lag on point metrics. Calibrated RPS is audit-only on this point-quality route: auto 0.208171 versus lag 0.200754. |
-| `forecasting_overhaul_committed_suite_full_roster.json` | Older maintained full external-roster artifact; refresh attempted after the gated-indicator change but stopped in `statsforecast_autotbats`/ARIMA optimization before producing a new artifact | `lightgbm_lag` remains the maintained winner at mean RMSE ratio 1.069525; CartoBoost auto is 1.187837 in the older full-roster artifact. Use the scalable-roster artifact for the current external-tree/functime read. |
-| `forecasting_m5_full_roster_sample.json` | Refreshed after strict best-validation selection in the Rust classical expert bank | CartoBoost auto wins point quality: RMSE 2.511292, MAE 1.135585, WAPE 0.916059. `statsforecast_autoets` is second by RMSE at 2.525734. `statsforecast_autotbats` still leads official WRMSSE at 0.618397; CartoBoost auto WRMSSE is 0.669928. |
-| `forecasting_m5_full.json` | Maintained full-corpus coverage artifact | CartoBoost lag completed the 30,490-series fast run with RMSE 2.634879; this is coverage evidence, not an external bakeoff. |
-| `forecasting_m6_full.json` | Refreshed after M6 point-quality selector update | CartoBoost auto wins point quality: RMSE 0.013392, MAE 0.007357, WAPE 1.000000. `statsforecast_autoarima` is second by RMSE at 0.013402. Seasonal-naive baselines still lead calibrated RPS at 0.192195; CartoBoost auto RPS is 0.206007. |
+| `forecasting_overhaul_committed_suite.json` | Current | Auto and lag tie at mean RMSE ratio 1.000000. |
+| `forecasting_overhaul_committed_suite_scalable_roster.json` | Current scalable roster | Auto and lag rank first at 1.013744; `lightgbm_lag` is 1.279238. |
+| `forecasting_generalization_scalable_synthetic.json` | Current generalization check | Auto and lag tie at 1.000000. |
+| `forecasting_overhaul_m4_committed.json` | Current sample | Auto wins/ties all 6 groups at mean RMSE ratio 1.000000. |
+| `forecasting_overhaul_m5_committed.json` | Current sample | Auto beats lag on RMSE and WRMSSE. |
+| `forecasting_overhaul_m6_committed.json` | Current sample | Auto beats lag on RMSE, MAE, and WAPE. |
+| `forecasting_overhaul_committed_suite_full_roster.json` | Older full-roster artifact | `lightgbm_lag` remains first at mean RMSE ratio 1.069525. |
+| `forecasting_m5_full_roster_sample.json` | Current sample | Auto has best RMSE; `statsforecast_autotbats` has best WRMSSE. |
+| `forecasting_m5_full.json` | Coverage artifact | Lag completed the 30,490-series fast run. |
+| `forecasting_m6_full.json` | Current proxy | Auto has best RMSE; seasonal-naive baselines have best calibrated RPS. |
+
+The scalable synthetic artifacts were added because the full external roster can
+spend substantial time in AutoTBATS and ARIMA optimization. The older full-roster
+artifact remains useful historical evidence, but it is not the current scalable
+external-baseline read.
 
 ### Current Committed-Run Latency Check
 
@@ -82,22 +90,31 @@ explicit experiments and for M paths where the maintained artifacts still need
 candidate selection. M5 and M6 latency improved after removing redundant nested
 auto calibration from the M5/M6 selector paths.
 
-| Artifact | Previous runtime | Current runtime | Runtime delta | Quality read |
-| --- | ---: | ---: | ---: | --- |
-| `forecasting_overhaul_committed_suite.json` | 69.808s | 87.170s | +24.9% | Auto and lag still tie with mean RMSE ratio 1.000000. Event-flag route interactions improved mean problem RMSE to 0.687513 and WAPE to 0.016942; no-selector non-M scoring avoids calibration work that did not change quality on this artifact. |
-| `forecasting_overhaul_m4_committed.json` | 1624.469s | 648.057s | -60.1% | No metric regression; auto remains 1.000000 mean RMSE ratio. |
-| `forecasting_overhaul_m5_committed.json` | 180.293s | 81.262s | -54.9% | No metric regression; auto remains RMSE 2.415225 and WRMSSE 0.568942 with two selector origins. |
-| `forecasting_overhaul_m6_committed.json` | 127.041s | 22.316s | -82.4% | Auto keeps RMSE 0.013439 and WAPE 1.000000 after selecting the market-neutral return candidate; the selected route skips the unused outer raw-auto fit, and RPS is audit-only at 0.208171. |
+| Artifact | Previous | Current | Delta |
+| --- | ---: | ---: | ---: |
+| `forecasting_overhaul_committed_suite.json` | 69.808s | 87.170s | +24.9% |
+| `forecasting_overhaul_m4_committed.json` | 1624.469s | 648.057s | -60.1% |
+| `forecasting_overhaul_m5_committed.json` | 180.293s | 81.262s | -54.9% |
+| `forecasting_overhaul_m6_committed.json` | 127.041s | 22.316s | -82.4% |
+
+Quality did not regress on the committed M4/M5/M6 artifacts. The synthetic
+committed suite remains tied between auto and lag; event-flag route interactions
+improved mean problem RMSE to 0.687513 and WAPE to 0.016942.
 
 ## Competition Results Snapshot
 
-| Competition | Artifact | Details | Result |
-| --- | --- | --- | --- |
-| M5 committed CartoBoost sample | `docs/assets/nyc_taxi_benchmarks/forecasting_overhaul_m5_committed.json` | Committed M5-style sample, CartoBoost-only roster with auto and lag | `cartoboost_auto_forecast` beat `cartoboost_lag`: RMSE 2.415225, MAE 1.139285, WAPE 0.910615, WRMSSE 0.568942. |
-| M5 Forecasting Accuracy comparison sample | `docs/assets/nyc_taxi_benchmarks/forecasting_m5_full_roster_sample.json` | 100 item-store sample, 90 recent days, 28-day holdout, full 14-model roster with fixed no-hyperopt candidate selection | CartoBoost auto won point quality: RMSE 2.511292, MAE 1.135585, WAPE 0.916059. `statsforecast_autoets` was second by RMSE at 2.525734. `statsforecast_autotbats` won WRMSSE at 0.618397; CartoBoost auto WRMSSE was 0.669928. |
-| M5 Forecasting Accuracy full-corpus check | `docs/assets/nyc_taxi_benchmarks/forecasting_m5_full.json` | 30,490 item-store full-corpus check, 90 recent days, 28-day holdout, lag-only fast roster | CartoBoost lag RMSE 2.634879, MAE 1.332997, WAPE 0.923884. |
-| M6 committed CartoBoost sample | `docs/assets/nyc_taxi_benchmarks/forecasting_overhaul_m6_committed.json` | Committed M6-style point proxy sample, CartoBoost-only roster with auto and lag | `cartoboost_auto_forecast` beat `cartoboost_lag` on point RMSE at 0.013439; calibrated RPS is audit-only at 0.208171 versus lag 0.200754. |
-| M6 financial assets | `docs/assets/nyc_taxi_benchmarks/forecasting_m6_full.json` | 100-symbol daily-return proxy, 28-day holdout, full 15-model roster with fixed no-hyperopt candidate selection | CartoBoost auto won point quality: RMSE 0.013392, MAE 0.007357, WAPE 1.000000. `statsforecast_autoarima` was second by RMSE at 0.013402. Seasonal-naive baselines won calibrated RPS at 0.192195; CartoBoost auto RPS was 0.206007. |
+| Run | Artifact | Best point model | Key metric |
+| --- | --- | --- | ---: |
+| M5 committed sample | `forecasting_overhaul_m5_committed.json` | `cartoboost_auto_forecast` | WRMSSE 0.568942 |
+| M5 100-series comparison | `forecasting_m5_full_roster_sample.json` | `cartoboost_auto_forecast` | RMSE 2.511292 |
+| M5 full-corpus fast check | `forecasting_m5_full.json` | `cartoboost_lag` | RMSE 2.634879 |
+| M6 committed sample | `forecasting_overhaul_m6_committed.json` | `cartoboost_auto_forecast` | RMSE 0.013439 |
+| M6 100-symbol proxy | `forecasting_m6_full.json` | `cartoboost_auto_forecast` | RMSE 0.013392 |
+
+The M5 comparison sample is bounded to 100 item-store series. In that artifact,
+`statsforecast_autotbats` has the best WRMSSE at 0.618397, while CartoBoost auto
+has WRMSSE 0.669928. In M6, the point-quality proxy is led by CartoBoost auto,
+while seasonal-naive baselines still lead calibrated RPS.
 
 ## Bottom Line
 
@@ -183,13 +200,15 @@ uv run --group dev python scripts/forecasting_library_benchmark.py \
 
 ### Real Taxi Result
 
-| Model | Library | RMSE | MAE | WAPE | Read |
-| --- | --- | ---: | ---: | ---: | --- |
-| `cartoboost_auto_forecast` | CartoBoost | 39.034 | 29.173 | 0.0937 | Selected the validated seasonal-base route and skipped the unused raw-auto outer fit. |
-| `cartoboost_lag` | CartoBoost | 126.861 | 85.685 | 0.2753 | Lag spine baseline with taxi-default partial rolling mean features on the same split. |
+| Model | Library | RMSE | MAE | WAPE |
+| --- | --- | ---: | ---: | ---: |
+| `cartoboost_auto_forecast` | CartoBoost | 39.034 | 29.173 | 0.0937 |
+| `cartoboost_lag` | CartoBoost | 126.861 | 85.685 | 0.2753 |
 
 The taxi plots include `cartoboost_auto_forecast`. This table is CartoBoost-only;
-use the full-roster artifact for external-library comparisons.
+use the full-roster artifact for external-library comparisons. Auto selected the
+validated seasonal-base route; lag is the supervised lag baseline on the same
+split.
 
 ### Real Taxi Plots
 
@@ -366,10 +385,10 @@ uv run --group dev --group bench python scripts/forecasting_library_benchmark.py
 Committed CartoBoost-only rows, sorted by RMSE. Use `official_metrics.m5` for
 WRMSSE.
 
-| Model | RMSE | MAE | WAPE | Read |
-| --- | ---: | ---: | ---: | --- |
-| `cartoboost_auto_forecast` | 2.415225 | 1.139285 | 0.910615 | Best point metrics and WRMSSE, 0.568942. |
-| `cartoboost_lag` | 2.540625 | 1.219927 | 0.975071 | WRMSSE 0.743721. |
+| Model | RMSE | MAE | WAPE | WRMSSE |
+| --- | ---: | ---: | ---: | ---: |
+| `cartoboost_auto_forecast` | 2.415225 | 1.139285 | 0.910615 | 0.568942 |
+| `cartoboost_lag` | 2.540625 | 1.219927 | 0.975071 | 0.743721 |
 
 The all-series M5 artifact is a lag-only CartoBoost full-corpus check:
 
@@ -452,13 +471,13 @@ uv run --group dev --group bench python scripts/forecasting_library_benchmark.py
 | Best calibrated RPS | `functime_snaive` and `statsforecast_seasonal_naive`, 0.192195 |
 | CartoBoost calibrated RPS | 0.206007 |
 
-| Rank | Model | Read |
+| Rank | Model | Role |
 | ---: | --- | --- |
-| 1 | `cartoboost_auto_forecast` | Best RMSE, MAE, and WAPE after selecting the market-neutral return candidate. |
-| 2 | `statsforecast_autoarima` | Best forecasting-library model by RMSE. |
-| 3 | `statsforecast_autoets` | Close second forecasting-library baseline. |
-| 4 | `functime_ridge` | Best functime model by RMSE. |
-| 5 | `statsforecast_autotbats` | Strong but slower than simpler baselines. |
+| 1 | `cartoboost_auto_forecast` | Best point metrics |
+| 2 | `statsforecast_autoarima` | Best StatsForecast RMSE |
+| 3 | `statsforecast_autoets` | Close StatsForecast baseline |
+| 4 | `functime_ridge` | Best functime RMSE |
+| 5 | `statsforecast_autotbats` | Strong statistical baseline |
 
 ### M6 Calibrated RPS
 
@@ -479,10 +498,10 @@ Dirichlet-smoothed rank-bucket calibration. Lower is better.
 Committed CartoBoost-only rows, sorted by RMSE. Use `official_metrics.m6` for
 RPS.
 
-| Model | RMSE | MAE | WAPE | Read |
-| --- | ---: | ---: | ---: | --- |
-| `cartoboost_auto_forecast` | 0.013439 | 0.007342 | 1.000000 | Best point metrics; calibrated RPS 0.208171. |
-| `cartoboost_lag` | 0.014440 | 0.009290 | 1.265338 | Calibrated RPS 0.200754. |
+| Model | RMSE | MAE | WAPE | RPS |
+| --- | ---: | ---: | ---: | ---: |
+| `cartoboost_auto_forecast` | 0.013439 | 0.007342 | 1.000000 | 0.208171 |
+| `cartoboost_lag` | 0.014440 | 0.009290 | 1.265338 | 0.200754 |
 
 This is intentionally named a proxy run. The official M6 competition combined
 rank-probability forecasts and investment decisions, with RPS and investment
