@@ -31,6 +31,7 @@ class AutoForecasterConfig:
     covariate_calendar_interactions: bool = False
     rich_calendar_features: bool = False
     ewm_alpha_percents: tuple[int, ...] = ()
+    partial_rolling_mean_windows: tuple[int, ...] = ()
 
 
 class AutoForecaster(BaseForecaster):
@@ -60,6 +61,7 @@ class AutoForecaster(BaseForecaster):
         covariate_calendar_interactions: bool = False,
         rich_calendar_features: bool = False,
         ewm_alpha_percents: Sequence[int] | None = None,
+        partial_rolling_mean_windows: Sequence[int] | None = None,
         **cartoboost_params: Any,
     ) -> None:
         self.config = AutoForecasterConfig(
@@ -82,6 +84,10 @@ class AutoForecaster(BaseForecaster):
             covariate_calendar_interactions=bool(covariate_calendar_interactions),
             rich_calendar_features=bool(rich_calendar_features),
             ewm_alpha_percents=_normalize_ewm_alpha_percents(ewm_alpha_percents),
+            partial_rolling_mean_windows=_normalize_positive_ints(
+                partial_rolling_mean_windows,
+                name="partial_rolling_mean_windows",
+            ),
         )
         if self.config.validation_origin_count <= 0:
             raise ValueError("validation_origin_count must be positive")
@@ -99,6 +105,7 @@ class AutoForecaster(BaseForecaster):
         params = {
             "lags": self._default_lags(),
             "rolling_windows": self._default_windows(),
+            "partial_rolling_mean_windows": list(self.config.partial_rolling_mean_windows),
             "rolling_std_windows": self._default_windows(),
             "rolling_min_windows": self._default_windows(),
             "rolling_max_windows": self._default_windows(),
@@ -151,6 +158,7 @@ class AutoForecaster(BaseForecaster):
             "covariate_calendar_interactions": self.config.covariate_calendar_interactions,
             "rich_calendar_features": self.config.rich_calendar_features,
             "ewm_alpha_percents": list(self.config.ewm_alpha_percents),
+            "partial_rolling_mean_windows": list(self.config.partial_rolling_mean_windows),
             "effective_covariate_features": list(self._effective_covariate_features or []),
             "selected_model": "AutoForecastModel",
         }
@@ -202,6 +210,16 @@ def _normalize_ewm_alpha_percents(values: Sequence[int] | None) -> tuple[int, ..
         raise ValueError("ewm_alpha_percents must contain integers in 1..=100")
     if len(set(result)) != len(result):
         raise ValueError("ewm_alpha_percents must not contain duplicate values")
+    return result
+
+
+def _normalize_positive_ints(values: Sequence[int] | None, *, name: str) -> tuple[int, ...]:
+    raw_values = () if values is None else tuple(values)
+    result = tuple(int(value) for value in raw_values)
+    if any(value <= 0 for value in result):
+        raise ValueError(f"{name} must contain positive integers")
+    if len(set(result)) != len(result):
+        raise ValueError(f"{name} must not contain duplicate values")
     return result
 
 

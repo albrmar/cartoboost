@@ -249,6 +249,7 @@ fn auto_forecast_model_fits_guarded_hybrid_and_emits_weights() {
         lag_config: LagFeatureConfig {
             lags: vec![1, 2],
             rolling_mean_windows: vec![2],
+            partial_rolling_mean_windows: Vec::new(),
             rolling_std_windows: Vec::new(),
             rolling_min_windows: Vec::new(),
             rolling_max_windows: Vec::new(),
@@ -331,6 +332,7 @@ fn auto_forecast_model_considers_recency_weighted_lag_for_level_shifts() {
         lag_config: LagFeatureConfig {
             lags: vec![1, 2, 7],
             rolling_mean_windows: vec![2, 7],
+            partial_rolling_mean_windows: Vec::new(),
             rolling_std_windows: Vec::new(),
             rolling_min_windows: Vec::new(),
             rolling_max_windows: Vec::new(),
@@ -373,6 +375,7 @@ fn auto_forecast_model_skips_log1p_candidate_for_negative_targets() {
         lag_config: LagFeatureConfig {
             lags: vec![1, 2],
             rolling_mean_windows: vec![2],
+            partial_rolling_mean_windows: Vec::new(),
             rolling_std_windows: Vec::new(),
             rolling_min_windows: Vec::new(),
             rolling_max_windows: Vec::new(),
@@ -426,6 +429,7 @@ fn auto_forecast_model_includes_intermittent_candidate_for_sparse_demand() {
         lag_config: LagFeatureConfig {
             lags: vec![1, 2],
             rolling_mean_windows: vec![2],
+            partial_rolling_mean_windows: Vec::new(),
             rolling_std_windows: Vec::new(),
             rolling_min_windows: Vec::new(),
             rolling_max_windows: Vec::new(),
@@ -481,6 +485,7 @@ fn auto_forecast_model_uses_series_weights_for_panels() {
         lag_config: LagFeatureConfig {
             lags: vec![1, 2],
             rolling_mean_windows: vec![2],
+            partial_rolling_mean_windows: Vec::new(),
             rolling_std_windows: Vec::new(),
             rolling_min_windows: Vec::new(),
             rolling_max_windows: Vec::new(),
@@ -541,6 +546,7 @@ fn auto_forecast_model_skips_series_weights_when_validation_support_is_thin() {
         lag_config: LagFeatureConfig {
             lags: vec![1, 2],
             rolling_mean_windows: vec![2],
+            partial_rolling_mean_windows: Vec::new(),
             rolling_std_windows: Vec::new(),
             rolling_min_windows: Vec::new(),
             rolling_max_windows: Vec::new(),
@@ -588,6 +594,7 @@ fn auto_forecast_model_falls_back_when_lag_cannot_validate() {
         lag_config: LagFeatureConfig {
             lags: vec![28],
             rolling_mean_windows: Vec::new(),
+            partial_rolling_mean_windows: Vec::new(),
             rolling_std_windows: Vec::new(),
             rolling_min_windows: Vec::new(),
             rolling_max_windows: Vec::new(),

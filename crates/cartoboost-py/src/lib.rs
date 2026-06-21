@@ -2028,11 +2028,12 @@ struct NativeAutoForecastModel {
 #[pymethods]
 impl NativeAutoForecastModel {
     #[new]
-    #[pyo3(signature = (lags=None, rolling_windows=None, rolling_std_windows=None, rolling_min_windows=None, rolling_max_windows=None, ewm_alpha_percents=None, difference_lags=None, rolling_trend_windows=None, covariate_features=None, covariate_indicator_values=None, covariate_calendar_interactions=false, calendar_features=true, rich_calendar_features=false, season_length=7, validation_window=None, validation_origin_count=2, objective="rmse_wape", baseline_displacement_gain=0.03, hard_winner_relative_gain=0.05, min_blend_weight=0.15, max_blend_weight=0.85, max_direct_horizon=28, recursive=true, n_estimators=None, learning_rate=None, max_depth=None, min_samples_leaf=None, min_gain=None, splitters=None, trend_features=true, target_mode="level"))]
+    #[pyo3(signature = (lags=None, rolling_windows=None, partial_rolling_mean_windows=None, rolling_std_windows=None, rolling_min_windows=None, rolling_max_windows=None, ewm_alpha_percents=None, difference_lags=None, rolling_trend_windows=None, covariate_features=None, covariate_indicator_values=None, covariate_calendar_interactions=false, calendar_features=true, rich_calendar_features=false, season_length=7, validation_window=None, validation_origin_count=2, objective="rmse_wape", baseline_displacement_gain=0.03, hard_winner_relative_gain=0.05, min_blend_weight=0.15, max_blend_weight=0.85, max_direct_horizon=28, recursive=true, n_estimators=None, learning_rate=None, max_depth=None, min_samples_leaf=None, min_gain=None, splitters=None, trend_features=true, target_mode="level"))]
     #[allow(clippy::too_many_arguments)]
     fn new(
         lags: Option<Vec<usize>>,
         rolling_windows: Option<Vec<usize>>,
+        partial_rolling_mean_windows: Option<Vec<usize>>,
         rolling_std_windows: Option<Vec<usize>>,
         rolling_min_windows: Option<Vec<usize>>,
         rolling_max_windows: Option<Vec<usize>>,
@@ -2092,6 +2093,7 @@ impl NativeAutoForecastModel {
             rolling_trend_windows,
             lags,
             rolling_mean_windows,
+            partial_rolling_mean_windows: partial_rolling_mean_windows.unwrap_or_default(),
             rolling_std_windows,
             rolling_min_windows,
             rolling_max_windows,
@@ -2172,11 +2174,12 @@ impl NativeAutoForecastModel {
 #[pymethods]
 impl NativeCartoBoostLagForecaster {
     #[new]
-    #[pyo3(signature = (lags=None, rolling_windows=None, rolling_std_windows=None, rolling_min_windows=None, rolling_max_windows=None, ewm_alpha_percents=None, difference_lags=None, rolling_trend_windows=None, covariate_features=None, covariate_indicator_values=None, covariate_calendar_interactions=false, calendar_features=true, rich_calendar_features=false, recursive=true, prediction_interval_levels=None, n_estimators=None, learning_rate=None, max_depth=None, min_samples_leaf=None, min_gain=None, splitters=None, trend_features=true, target_mode="level"))]
+    #[pyo3(signature = (lags=None, rolling_windows=None, partial_rolling_mean_windows=None, rolling_std_windows=None, rolling_min_windows=None, rolling_max_windows=None, ewm_alpha_percents=None, difference_lags=None, rolling_trend_windows=None, covariate_features=None, covariate_indicator_values=None, covariate_calendar_interactions=false, calendar_features=true, rich_calendar_features=false, recursive=true, prediction_interval_levels=None, n_estimators=None, learning_rate=None, max_depth=None, min_samples_leaf=None, min_gain=None, splitters=None, trend_features=true, target_mode="level"))]
     #[allow(clippy::too_many_arguments)]
     fn new(
         lags: Option<Vec<usize>>,
         rolling_windows: Option<Vec<usize>>,
+        partial_rolling_mean_windows: Option<Vec<usize>>,
         rolling_std_windows: Option<Vec<usize>>,
         rolling_min_windows: Option<Vec<usize>>,
         rolling_max_windows: Option<Vec<usize>>,
@@ -2229,6 +2232,7 @@ impl NativeCartoBoostLagForecaster {
             rolling_trend_windows,
             lags,
             rolling_mean_windows,
+            partial_rolling_mean_windows: partial_rolling_mean_windows.unwrap_or_default(),
             rolling_std_windows,
             rolling_min_windows,
             rolling_max_windows,

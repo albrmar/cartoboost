@@ -41,6 +41,7 @@ fn lag_builder_is_leakage_safe_and_panel_isolated() {
     let builder = LagFeatureBuilder::new(LagFeatureConfig {
         lags: vec![1, 2],
         rolling_mean_windows: vec![2],
+        partial_rolling_mean_windows: Vec::new(),
         rolling_std_windows: vec![2],
         rolling_min_windows: vec![2],
         rolling_max_windows: vec![2],
@@ -106,6 +107,7 @@ fn lag_builder_drops_rows_without_complete_lag_history() {
     let builder = LagFeatureBuilder::new(LagFeatureConfig {
         lags: vec![2],
         rolling_mean_windows: Vec::new(),
+        partial_rolling_mean_windows: Vec::new(),
         rolling_std_windows: Vec::new(),
         rolling_min_windows: Vec::new(),
         rolling_max_windows: Vec::new(),
@@ -146,6 +148,7 @@ fn cartoboost_lag_forecaster_predicts_recursively_per_panel() {
         LagFeatureConfig {
             lags: vec![1],
             rolling_mean_windows: vec![2],
+            partial_rolling_mean_windows: Vec::new(),
             rolling_std_windows: Vec::new(),
             rolling_min_windows: Vec::new(),
             rolling_max_windows: Vec::new(),
@@ -201,6 +204,7 @@ fn cartoboost_lag_forecaster_supports_recency_sample_weights() {
         LagFeatureConfig {
             lags: vec![1, 2],
             rolling_mean_windows: vec![2],
+            partial_rolling_mean_windows: Vec::new(),
             rolling_std_windows: Vec::new(),
             rolling_min_windows: Vec::new(),
             rolling_max_windows: Vec::new(),
@@ -242,6 +246,7 @@ fn cartoboost_lag_forecaster_rejects_invalid_recency_half_life() {
         LagFeatureConfig {
             lags: vec![1],
             rolling_mean_windows: Vec::new(),
+            partial_rolling_mean_windows: Vec::new(),
             rolling_std_windows: Vec::new(),
             rolling_min_windows: Vec::new(),
             rolling_max_windows: Vec::new(),
@@ -282,6 +287,7 @@ fn cartoboost_lag_forecaster_can_model_delta_from_last_target() {
         LagFeatureConfig {
             lags: vec![1],
             rolling_mean_windows: Vec::new(),
+            partial_rolling_mean_windows: Vec::new(),
             rolling_std_windows: Vec::new(),
             rolling_min_windows: Vec::new(),
             rolling_max_windows: Vec::new(),
@@ -339,6 +345,7 @@ fn cartoboost_lag_forecaster_can_model_seasonal_delta_target() {
         LagFeatureConfig {
             lags: vec![1, 7],
             rolling_mean_windows: vec![7],
+            partial_rolling_mean_windows: Vec::new(),
             rolling_std_windows: Vec::new(),
             rolling_min_windows: Vec::new(),
             rolling_max_windows: Vec::new(),
@@ -393,6 +400,7 @@ fn lag_plus_forecaster_calibrates_residual_corrections() {
         lag_config: LagFeatureConfig {
             lags: vec![1, 2],
             rolling_mean_windows: vec![2],
+            partial_rolling_mean_windows: Vec::new(),
             rolling_std_windows: Vec::new(),
             rolling_min_windows: Vec::new(),
             rolling_max_windows: Vec::new(),
@@ -477,6 +485,7 @@ fn local_standard_scaled_forecaster_inverts_predictions_to_original_scale() {
         LagFeatureConfig {
             lags: vec![1],
             rolling_mean_windows: Vec::new(),
+            partial_rolling_mean_windows: Vec::new(),
             rolling_std_windows: Vec::new(),
             rolling_min_windows: Vec::new(),
             rolling_max_windows: Vec::new(),
@@ -543,6 +552,7 @@ fn log1p_forecaster_inverts_and_clamps_nonnegative_predictions() {
                 LagFeatureConfig {
                     lags: vec![1],
                     rolling_mean_windows: Vec::new(),
+                    partial_rolling_mean_windows: Vec::new(),
                     rolling_std_windows: Vec::new(),
                     rolling_min_windows: Vec::new(),
                     rolling_max_windows: Vec::new(),
@@ -595,6 +605,7 @@ fn log1p_forecaster_rejects_negative_targets() {
         LagFeatureConfig {
             lags: vec![1],
             rolling_mean_windows: Vec::new(),
+            partial_rolling_mean_windows: Vec::new(),
             rolling_std_windows: Vec::new(),
             rolling_min_windows: Vec::new(),
             rolling_max_windows: Vec::new(),

@@ -30,14 +30,14 @@
       "rayon_num_threads_env": null
     }
   },
-  "cartoboost_version": "0.1.66",
+  "cartoboost_version": "0.1.67",
   "comparison_libraries": [
     "functime",
     "statsforecast",
     "prophet",
     "external_trees"
   ],
-  "created_at": "2026-06-21T02:18:09.020545+00:00",
+  "created_at": "2026-06-21T02:42:04.981649+00:00",
   "dataset": {
     "days": 180,
     "domain": "synthetic NYC taxi-style forecasting problem suite",
@@ -86,7 +86,7 @@
       "statsforecast_autotbats"
     ]
   },
-  "git_commit": "3a628c0637b28d632b986cc35c9469b44eeb05e5",
+  "git_commit": "5cc35e209c9cf9012027bab18553a99f9f486073",
   "model_libraries": {
     "cartoboost_auto_forecast": "cartoboost",
     "cartoboost_lag": "cartoboost",
@@ -115,7 +115,7 @@
       "n_estimators": 180,
       "native_covariate_policy": "use route static covariates, training-gated low-cardinality integer-coded covariate indicators, and covariate-calendar interactions including event-flag interactions only when enabled by the source-specific benchmark config",
       "native_ewm_feature_policy": "EWM target features are available but disabled by default after validation showed route-mix regression without candidate gating",
-      "native_feature_policy": "season-aware lags, rolling means, lag deltas, and rolling trends capped to the shortest training series",
+      "native_feature_policy": "season-aware lags, complete rolling means, optional MLForecast-style partial rolling means, lag deltas, and rolling trends capped to the shortest training series",
       "native_target_mode_policy": "delta_from_last when season_length == 12, horizon == 13, or horizon >= 24; level otherwise",
       "native_tree_regularization_policy": "use at least max_depth=5 and at most min_samples_leaf=6 when horizon >= 24 or season_length == 4; otherwise use configured values",
       "splitters": [
@@ -132,7 +132,7 @@
       "n_estimators": 180,
       "native_covariate_policy": "use route static covariates, training-gated low-cardinality integer-coded covariate indicators, and covariate-calendar interactions including event-flag interactions only when enabled by the source-specific benchmark config",
       "native_ewm_feature_policy": "EWM target features are available but disabled by default after validation showed route-mix regression without candidate gating",
-      "native_feature_policy": "season-aware lags, rolling means, lag deltas, and rolling trends capped to the shortest training series",
+      "native_feature_policy": "season-aware lags, complete rolling means, optional MLForecast-style partial rolling means, lag deltas, and rolling trends capped to the shortest training series",
       "native_target_mode_policy": "delta_from_last when season_length == 12, horizon == 13, or horizon >= 24; level otherwise",
       "native_tree_regularization_policy": "use at least max_depth=5 and at most min_samples_leaf=6 when horizon >= 24 or season_length == 4; otherwise use configured values",
       "splitters": [
@@ -1276,18 +1276,18 @@
     }
   },
   "resource_usage": {
-    "peak_rss_mb": 382.859375,
-    "process_cpu_seconds": 205.613574
+    "peak_rss_mb": 384.234375,
+    "process_cpu_seconds": 229.92621200000002
   },
   "source_file_hashes": {},
   "timing": {
     "problems": {
       "airport_calendar_events": {
-        "load_seconds": 0.00731454198830761,
+        "load_seconds": 0.009595749987056479,
         "splits": {
           "rolling_origin_1": {
             "candidate_selection": {
-              "calibration_seconds": 2.306430750002619,
+              "calibration_seconds": 2.8055494579894003,
               "inner_candidate_losses": {
                 "cartoboost_auto_forecast": {
                   "cartoboost_auto_forecast": 22.58981605412862,
@@ -1348,17 +1348,17 @@
               },
               "cartoboost_lag": {
                 "feature_count": 120.0,
-                "feature_seconds": 0.002901458996348083,
-                "fit_predict_seconds": 2.4978993329859804,
-                "fit_seconds": 2.4928936659998726,
-                "predict_seconds": 0.005005666986107826,
-                "total_seconds": 2.5008007919823285
+                "feature_seconds": 0.004120041994610801,
+                "fit_predict_seconds": 3.1115612080029678,
+                "fit_seconds": 3.1061343750043306,
+                "predict_seconds": 0.00542683299863711,
+                "total_seconds": 3.1156812499975786
               }
             }
           },
           "rolling_origin_2": {
             "candidate_selection": {
-              "calibration_seconds": 2.546718375000637,
+              "calibration_seconds": 3.037898749986198,
               "inner_candidate_losses": {
                 "cartoboost_auto_forecast": {
                   "cartoboost_auto_forecast": 23.230103389871722,
@@ -1419,17 +1419,17 @@
               },
               "cartoboost_lag": {
                 "feature_count": 120.0,
-                "feature_seconds": 0.0031694580102339387,
-                "fit_predict_seconds": 2.614579251006944,
-                "fit_seconds": 2.6094360839924775,
-                "predict_seconds": 0.005143167014466599,
-                "total_seconds": 2.617748709017178
+                "feature_seconds": 0.0038444999954663217,
+                "fit_predict_seconds": 3.197446709003998,
+                "fit_seconds": 3.1917737089970615,
+                "predict_seconds": 0.0056730000069364905,
+                "total_seconds": 3.2012912089994643
               }
             }
           },
           "rolling_origin_3": {
             "candidate_selection": {
-              "calibration_seconds": 2.770839500008151,
+              "calibration_seconds": 3.3346741249843035,
               "inner_candidate_losses": {
                 "cartoboost_auto_forecast": {
                   "cartoboost_auto_forecast": 23.78195453111983,
@@ -1490,22 +1490,22 @@
               },
               "cartoboost_lag": {
                 "feature_count": 120.0,
-                "feature_seconds": 0.003181791980750859,
-                "fit_predict_seconds": 2.944070666038897,
-                "fit_seconds": 2.9391876660229173,
-                "predict_seconds": 0.004883000015979633,
-                "total_seconds": 2.9472524580196477
+                "feature_seconds": 0.004230916005326435,
+                "fit_predict_seconds": 3.5442266240133904,
+                "fit_seconds": 3.537938291003229,
+                "predict_seconds": 0.0062883330101612955,
+                "total_seconds": 3.548457540018717
               }
             }
           }
         }
       },
       "borough_monthly_pulses": {
-        "load_seconds": 0.011288999987300485,
+        "load_seconds": 0.009388500009663403,
         "splits": {
           "rolling_origin_1": {
             "candidate_selection": {
-              "calibration_seconds": 2.943465999996988,
+              "calibration_seconds": 3.570491457998287,
               "inner_candidate_losses": {
                 "cartoboost_auto_forecast": {
                   "cartoboost_auto_forecast": 23.130109438537428,
@@ -1566,17 +1566,17 @@
               },
               "cartoboost_lag": {
                 "feature_count": 200.0,
-                "feature_seconds": 0.0030699589988216758,
-                "fit_predict_seconds": 3.2238224580069073,
-                "fit_seconds": 3.2189685000048485,
-                "predict_seconds": 0.004853958002058789,
-                "total_seconds": 3.226892417005729
+                "feature_seconds": 0.0033639169996604323,
+                "fit_predict_seconds": 3.929936333996011,
+                "fit_seconds": 3.9243661669897847,
+                "predict_seconds": 0.0055701670062262565,
+                "total_seconds": 3.9333002509956714
               }
             }
           },
           "rolling_origin_2": {
             "candidate_selection": {
-              "calibration_seconds": 3.217938707995927,
+              "calibration_seconds": 3.9186008340038825,
               "inner_candidate_losses": {
                 "cartoboost_auto_forecast": {
                   "cartoboost_auto_forecast": 23.79137764031462,
@@ -1637,17 +1637,17 @@
               },
               "cartoboost_lag": {
                 "feature_count": 200.0,
-                "feature_seconds": 0.0033515420218463987,
-                "fit_predict_seconds": 3.5558691670012195,
-                "fit_seconds": 3.550702625012491,
-                "predict_seconds": 0.005166541988728568,
-                "total_seconds": 3.559220709023066
+                "feature_seconds": 0.003618292015744373,
+                "fit_predict_seconds": 4.2565517489856575,
+                "fit_seconds": 4.250781457987614,
+                "predict_seconds": 0.0057702909980434924,
+                "total_seconds": 4.260170041001402
               }
             }
           },
           "rolling_origin_3": {
             "candidate_selection": {
-              "calibration_seconds": 3.4964762500021607,
+              "calibration_seconds": 4.293368332990212,
               "inner_candidate_losses": {
                 "cartoboost_auto_forecast": {
                   "cartoboost_auto_forecast": 24.206308466963105,
@@ -1708,22 +1708,22 @@
               },
               "cartoboost_lag": {
                 "feature_count": 200.0,
-                "feature_seconds": 0.003159040992613882,
-                "fit_predict_seconds": 3.849588125012815,
-                "fit_seconds": 3.8443275000026915,
-                "predict_seconds": 0.005260625010123476,
-                "total_seconds": 3.852747166005429
+                "feature_seconds": 0.0039474999939557165,
+                "fit_predict_seconds": 4.658851625019452,
+                "fit_seconds": 4.652679708000505,
+                "predict_seconds": 0.00617191701894626,
+                "total_seconds": 4.662799125013407
               }
             }
           }
         }
       },
       "route_mix_shift": {
-        "load_seconds": 0.008522666990756989,
+        "load_seconds": 0.00913087499793619,
         "splits": {
           "rolling_origin_1": {
             "candidate_selection": {
-              "calibration_seconds": 2.224005042022327,
+              "calibration_seconds": 2.7660230420005973,
               "inner_candidate_losses": {
                 "cartoboost_auto_forecast": {
                   "cartoboost_auto_forecast": 23.575055152018713,
@@ -1784,17 +1784,17 @@
               },
               "cartoboost_lag": {
                 "feature_count": 120.0,
-                "feature_seconds": 0.0032689170038793236,
-                "fit_predict_seconds": 2.4692617929831613,
-                "fit_seconds": 2.4639603339892346,
-                "predict_seconds": 0.005301458993926644,
-                "total_seconds": 2.4725307099870406
+                "feature_seconds": 0.004380584025057033,
+                "fit_predict_seconds": 3.0076340420055203,
+                "fit_seconds": 3.001364541996736,
+                "predict_seconds": 0.0062695000087842345,
+                "total_seconds": 3.0120146260305773
               }
             }
           },
           "rolling_origin_2": {
             "candidate_selection": {
-              "calibration_seconds": 2.4728891249978915,
+              "calibration_seconds": 2.998081750003621,
               "inner_candidate_losses": {
                 "cartoboost_auto_forecast": {
                   "cartoboost_auto_forecast": 24.130395571491775,
@@ -1855,17 +1855,17 @@
               },
               "cartoboost_lag": {
                 "feature_count": 120.0,
-                "feature_seconds": 0.0032587080204393715,
-                "fit_predict_seconds": 2.6034174999804236,
-                "fit_seconds": 2.598397915979149,
-                "predict_seconds": 0.0050195840012747794,
-                "total_seconds": 2.606676208000863
+                "feature_seconds": 0.004335332982009277,
+                "fit_predict_seconds": 3.1693221669702325,
+                "fit_seconds": 3.1632154579856433,
+                "predict_seconds": 0.006106708984589204,
+                "total_seconds": 3.173657499952242
               }
             }
           },
           "rolling_origin_3": {
             "candidate_selection": {
-              "calibration_seconds": 2.730055458989227,
+              "calibration_seconds": 3.311567249998916,
               "inner_candidate_losses": {
                 "cartoboost_auto_forecast": {
                   "cartoboost_auto_forecast": 24.626219577070092,
@@ -1926,22 +1926,22 @@
               },
               "cartoboost_lag": {
                 "feature_count": 120.0,
-                "feature_seconds": 0.003316624992294237,
-                "fit_predict_seconds": 2.8992858329729643,
-                "fit_seconds": 2.8942893749917857,
-                "predict_seconds": 0.004996457981178537,
-                "total_seconds": 2.9026024579652585
+                "feature_seconds": 0.003724458016222343,
+                "fit_predict_seconds": 3.4884604580001906,
+                "fit_seconds": 3.482421583001269,
+                "predict_seconds": 0.0060388749989215285,
+                "total_seconds": 3.492184916016413
               }
             }
           }
         }
       },
       "taxi_weekly": {
-        "load_seconds": 0.040150957996957004,
+        "load_seconds": 0.0448947090189904,
         "splits": {
           "rolling_origin_1": {
             "candidate_selection": {
-              "calibration_seconds": 2.148455417016521,
+              "calibration_seconds": 3.0725600000005215,
               "inner_candidate_losses": {
                 "cartoboost_auto_forecast": {
                   "cartoboost_auto_forecast": 22.626913293545293,
@@ -2002,17 +2002,17 @@
               },
               "cartoboost_lag": {
                 "feature_count": 120.0,
-                "feature_seconds": 0.004397042008349672,
-                "fit_predict_seconds": 2.330772707995493,
-                "fit_seconds": 2.325681291986257,
-                "predict_seconds": 0.005091416009236127,
-                "total_seconds": 2.3351697500038426
+                "feature_seconds": 0.005453166988445446,
+                "fit_predict_seconds": 3.066656499984674,
+                "fit_seconds": 3.0605450829898473,
+                "predict_seconds": 0.006111416994826868,
+                "total_seconds": 3.0721096669731196
               }
             }
           },
           "rolling_origin_2": {
             "candidate_selection": {
-              "calibration_seconds": 4.978570875013247,
+              "calibration_seconds": 7.249187542009167,
               "inner_candidate_losses": {
                 "cartoboost_auto_forecast": {
                   "cartoboost_auto_forecast": 11.781076510601267,
@@ -2073,17 +2073,17 @@
               },
               "cartoboost_lag": {
                 "feature_count": 120.0,
-                "feature_seconds": 0.0031370000215247273,
-                "fit_predict_seconds": 2.5830262080125976,
-                "fit_seconds": 2.57792145802523,
-                "predict_seconds": 0.005104749987367541,
-                "total_seconds": 2.5861632080341224
+                "feature_seconds": 0.003755582991288975,
+                "fit_predict_seconds": 3.494562583975494,
+                "fit_seconds": 3.4878397089778446,
+                "predict_seconds": 0.006722874997649342,
+                "total_seconds": 3.498318166966783
               }
             }
           },
           "rolling_origin_3": {
             "candidate_selection": {
-              "calibration_seconds": 2.5970255410065874,
+              "calibration_seconds": 3.7860804999945685,
               "inner_candidate_losses": {
                 "cartoboost_auto_forecast": {
                   "cartoboost_auto_forecast": 23.734091937320375,
@@ -2144,17 +2144,17 @@
               },
               "cartoboost_lag": {
                 "feature_count": 120.0,
-                "feature_seconds": 0.003321416996186599,
-                "fit_predict_seconds": 2.7453685000073165,
-                "fit_seconds": 2.7402368750190362,
-                "predict_seconds": 0.005131624988280237,
-                "total_seconds": 2.748689917003503
+                "feature_seconds": 0.0041436669998802245,
+                "fit_predict_seconds": 3.853958083986072,
+                "fit_seconds": 3.847228124999674,
+                "predict_seconds": 0.006729958986397833,
+                "total_seconds": 3.858101750985952
               }
             }
           }
         }
       }
     },
-    "total_seconds": 68.9537661659997
+    "total_seconds": 87.17041558300843
   }
 }

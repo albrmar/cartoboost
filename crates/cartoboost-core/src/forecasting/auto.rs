@@ -73,6 +73,7 @@ impl Default for AutoForecastConfig {
             lag_config: LagFeatureConfig {
                 lags: vec![1, 2, 3, 7, 14, 28],
                 rolling_mean_windows: vec![7, 14, 28],
+                partial_rolling_mean_windows: Vec::new(),
                 rolling_std_windows: vec![7, 14, 28],
                 rolling_min_windows: vec![7, 14, 28],
                 rolling_max_windows: vec![7, 14, 28],
@@ -1146,6 +1147,7 @@ mod tests {
         let mut config = LagFeatureConfig {
             lags: vec![1],
             rolling_mean_windows: Vec::new(),
+            partial_rolling_mean_windows: Vec::new(),
             rolling_std_windows: Vec::new(),
             rolling_min_windows: Vec::new(),
             rolling_max_windows: Vec::new(),
@@ -1174,6 +1176,7 @@ mod tests {
         let mut config = LagFeatureConfig {
             lags: vec![1, 7],
             rolling_mean_windows: vec![7],
+            partial_rolling_mean_windows: Vec::new(),
             rolling_std_windows: vec![7],
             rolling_min_windows: vec![7],
             rolling_max_windows: vec![7],
@@ -1210,6 +1213,7 @@ mod tests {
             lag_config: LagFeatureConfig {
                 lags: vec![1, 2],
                 rolling_mean_windows: vec![2],
+                partial_rolling_mean_windows: Vec::new(),
                 rolling_std_windows: Vec::new(),
                 rolling_min_windows: Vec::new(),
                 rolling_max_windows: Vec::new(),
@@ -1322,6 +1326,7 @@ mod tests {
             lag_config: LagFeatureConfig {
                 lags: vec![1, 2],
                 rolling_mean_windows: vec![2],
+                partial_rolling_mean_windows: Vec::new(),
                 rolling_std_windows: Vec::new(),
                 rolling_min_windows: Vec::new(),
                 rolling_max_windows: Vec::new(),
@@ -1374,6 +1379,7 @@ mod tests {
             lag_config: LagFeatureConfig {
                 lags: vec![1, 2],
                 rolling_mean_windows: vec![2],
+                partial_rolling_mean_windows: Vec::new(),
                 rolling_std_windows: Vec::new(),
                 rolling_min_windows: Vec::new(),
                 rolling_max_windows: Vec::new(),

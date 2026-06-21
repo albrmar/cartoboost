@@ -55,6 +55,7 @@ def test_cartoboost_lag_converts_supported_feature_configs(install_fake_native):
             "lags": [1, 24],
             "difference_lags": [24],
             "rolling_trend_windows": [3],
+            "partial_rolling_mean_windows": [],
             "rolling_windows": [3],
             "rolling_std_windows": [3],
             "rolling_min_windows": [3],
@@ -63,6 +64,26 @@ def test_cartoboost_lag_converts_supported_feature_configs(install_fake_native):
             "target_mode": "seasonal_delta_7",
         },
     )
+
+
+def test_cartoboost_lag_maps_min_periods_one_to_partial_rolling_mean(
+    install_fake_native,
+):
+    native = install_fake_native("CartoBoostLagForecaster")
+
+    CartoBoostLagForecaster(
+        rolling_config=RollingFeatureConfig(
+            windows=[7, 14],
+            aggregations=["mean"],
+            min_periods=1,
+        ),
+        lags=[1],
+        rolling_windows=[],
+        calendar_features=False,
+    ).fit({"pickup_1": [10, 11, 12, 13]})
+
+    assert native.calls[0][1]["partial_rolling_mean_windows"] == [7, 14]
+    assert native.calls[0][1]["rolling_windows"] == []
 
 
 def test_cartoboost_lag_passes_supported_regressor_params(install_fake_native):

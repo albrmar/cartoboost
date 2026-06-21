@@ -46,6 +46,9 @@ objects are converted only when they match the native surface:
   `rolling_windows`, complete rolling standard deviations to
   `rolling_std_windows`, complete rolling minimums to `rolling_min_windows`,
   and complete rolling maximums to `rolling_max_windows`;
+- `RollingFeatureConfig(min_periods=1, aggregations=["mean"])` maps to native
+  `partial_rolling_mean_windows`, a leakage-safe partial rolling mean that uses
+  available prior history instead of waiting for a complete window;
 - `ewm_alpha_percents=[...]` adds native exponentially weighted target means,
   such as `target_ewm_alpha_090`, built from prior same-series target history
   only. EWM features are opt-in because benchmark probes showed route-mix

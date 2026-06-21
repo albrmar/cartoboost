@@ -77,9 +77,9 @@ Candidate validation is parallelized across the fixed Rust roster and collected
 back in deterministic roster order, so adding useful experts does not force a
 linear auto-fit latency penalty.
 The shared lag spine also carries rolling standard-deviation, minimum, and
-maximum features next to rolling means, deltas, trends, and calendar features,
-giving every lag-based candidate direct signals for bursty demand, instability,
-and recent local demand floors/ceilings.
+maximum features next to rolling means, optional partial rolling means, deltas,
+trends, and calendar features, giving every lag-based candidate direct signals
+for bursty demand, instability, and recent local demand floors/ceilings.
 The auto path also expands the shared lag spine with supported season-length
 multiples during fit, which is the same structural lesson used by strong
 competition systems: encode known frequency and let validation decide whether

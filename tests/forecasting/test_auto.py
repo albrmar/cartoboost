@@ -42,6 +42,7 @@ def test_auto_forecaster_delegates_to_native_auto_model(install_fake_native):
         {
             "lags": [1, 2, 3, 7, 14, 28],
             "rolling_windows": [7, 14, 28],
+            "partial_rolling_mean_windows": [],
             "rolling_std_windows": [7, 14, 28],
             "rolling_min_windows": [7, 14, 28],
             "rolling_max_windows": [7, 14, 28],
@@ -71,6 +72,34 @@ def test_auto_forecaster_rejects_invalid_ewm_alpha_percents():
         AutoForecaster(ewm_alpha_percents=[0])
     with pytest.raises(ValueError, match="duplicate"):
         AutoForecaster(ewm_alpha_percents=[90, 90])
+
+
+def test_auto_forecaster_can_opt_into_partial_rolling_means(install_fake_native):
+    native = install_fake_native("AutoForecastModel")
+    frame = ForecastFrame.from_pandas(
+        pd.DataFrame(
+            {
+                "lane_id": ["PU1-DO2"] * 8,
+                "pickup_day": pd.date_range("2026-01-01", periods=8, freq="D"),
+                "pickup_trips": [10.0, 11.0, 13.0, 16.0, 18.0, 21.0, 23.0, 26.0],
+            }
+        ),
+        timestamp_col="pickup_day",
+        target_col="pickup_trips",
+        series_id_col="lane_id",
+        freq="D",
+    )
+
+    AutoForecaster(partial_rolling_mean_windows=[7, 14]).fit(frame)
+
+    assert native.calls[0][1]["partial_rolling_mean_windows"] == [7, 14]
+
+
+def test_auto_forecaster_rejects_invalid_partial_rolling_mean_windows():
+    with pytest.raises(ValueError, match="partial_rolling_mean_windows"):
+        AutoForecaster(partial_rolling_mean_windows=[0])
+    with pytest.raises(ValueError, match="duplicate"):
+        AutoForecaster(partial_rolling_mean_windows=[7, 7])
 
 
 def test_auto_forecaster_rejects_invalid_validation_origin_count():

@@ -3681,6 +3681,7 @@ def cartoboost_source_config(config: dict[str, Any], *, source: str) -> dict[str
     native["use_static_covariates"] = use_route_context
     native["use_rich_calendar_features"] = use_route_context
     native["use_native_rolling_stat_features"] = use_route_context
+    native["use_native_partial_rolling_mean_features"] = source == "nyc-taxi"
     native["use_native_ewm_features"] = False
     native["use_covariate_calendar_interactions"] = use_route_context
     return native
@@ -4224,6 +4225,11 @@ def cartoboost_native_forecaster_params(
     rolling_windows = [
         window for window in cartoboost_rolling_windows(season_length) if window <= max_window
     ]
+    partial_rolling_mean_windows = (
+        cartoboost_partial_rolling_mean_windows(rolling_windows)
+        if config.get("use_native_partial_rolling_mean_features", False)
+        else []
+    )
     difference_lags = [
         lag for lag in cartoboost_difference_lags(season_length) if lag <= max_lag - 1
     ]
@@ -4239,6 +4245,7 @@ def cartoboost_native_forecaster_params(
     return {
         "lags": lags,
         "rolling_windows": rolling_windows,
+        "partial_rolling_mean_windows": partial_rolling_mean_windows,
         "rolling_std_windows": rolling_stat_windows,
         "rolling_min_windows": rolling_stat_windows,
         "rolling_max_windows": rolling_stat_windows,
@@ -4362,8 +4369,8 @@ def cartoboost_benchmark_settings(config: dict[str, Any]) -> dict[str, Any]:
         "horizon >= 24 or season_length == 4; otherwise use configured values"
     )
     settings["native_feature_policy"] = (
-        "season-aware lags, rolling means, lag deltas, and rolling trends capped to "
-        "the shortest training series"
+        "season-aware lags, complete rolling means, optional MLForecast-style partial "
+        "rolling means, lag deltas, and rolling trends capped to the shortest training series"
     )
     return settings
 
@@ -4394,6 +4401,10 @@ def cartoboost_rolling_stat_windows(rolling_windows: list[int]) -> list[int]:
     if not rolling_windows:
         return []
     return sorted({rolling_windows[0], rolling_windows[-1]})
+
+
+def cartoboost_partial_rolling_mean_windows(rolling_windows: list[int]) -> list[int]:
+    return [window for window in rolling_windows if window in {7, 14, 28}]
 
 
 def cartoboost_tree_regularization(

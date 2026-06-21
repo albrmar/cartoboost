@@ -28,6 +28,8 @@ pub struct LagFeatureConfig {
     pub lags: Vec<usize>,
     pub rolling_mean_windows: Vec<usize>,
     #[serde(default)]
+    pub partial_rolling_mean_windows: Vec<usize>,
+    #[serde(default)]
     pub rolling_std_windows: Vec<usize>,
     #[serde(default)]
     pub rolling_min_windows: Vec<usize>,
@@ -67,6 +69,7 @@ impl Default for LagFeatureConfig {
         Self {
             lags: vec![1],
             rolling_mean_windows: Vec::new(),
+            partial_rolling_mean_windows: Vec::new(),
             rolling_std_windows: Vec::new(),
             rolling_min_windows: Vec::new(),
             rolling_max_windows: Vec::new(),
@@ -87,6 +90,7 @@ impl LagFeatureBuilder {
         let mut feature_names = Vec::with_capacity(
             config.lags.len()
                 + config.rolling_mean_windows.len()
+                + config.partial_rolling_mean_windows.len()
                 + config.rolling_std_windows.len()
                 + config.rolling_min_windows.len()
                 + config.rolling_max_windows.len()
@@ -109,6 +113,12 @@ impl LagFeatureBuilder {
                 .rolling_mean_windows
                 .iter()
                 .map(|window| format!("target_roll_mean_{window}")),
+        );
+        feature_names.extend(
+            config
+                .partial_rolling_mean_windows
+                .iter()
+                .map(|window| format!("target_partial_roll_mean_{window}")),
         );
         feature_names.extend(
             config
@@ -331,6 +341,20 @@ impl LagFeatureBuilder {
             }
             features.push(mean);
         }
+        for window in &self.config.partial_rolling_mean_windows {
+            if prior_len == 0 {
+                return Ok(None);
+            }
+            let effective_window = (*window).min(prior_len);
+            let sum = cache.window_sum(prior_len, effective_window);
+            let mean = sum / effective_window as f64;
+            if !mean.is_finite() {
+                return Err(CartoBoostError::InvalidInput(format!(
+                    "partial rolling mean for series {series_id} is not finite"
+                )));
+            }
+            features.push(mean);
+        }
         for window in &self.config.rolling_std_windows {
             if prior_len < *window {
                 return Ok(None);
@@ -523,6 +547,21 @@ impl LagFeatureBuilder {
             if !mean.is_finite() {
                 return Err(CartoBoostError::InvalidInput(format!(
                     "rolling mean for series {series_id} is not finite"
+                )));
+            }
+            features.push(mean);
+        }
+        for window in &self.config.partial_rolling_mean_windows {
+            if prior.is_empty() {
+                return Ok(None);
+            }
+            let effective_window = (*window).min(prior.len());
+            let start = prior.len() - effective_window;
+            let sum = prior[start..].iter().map(|row| row.target).sum::<f64>();
+            let mean = sum / effective_window as f64;
+            if !mean.is_finite() {
+                return Err(CartoBoostError::InvalidInput(format!(
+                    "partial rolling mean for series {series_id} is not finite"
                 )));
             }
             features.push(mean);
@@ -771,6 +810,7 @@ pub(crate) fn history_by_series(rows: &[ForecastRow]) -> BTreeMap<String, Vec<Fo
 fn validate_config(config: &LagFeatureConfig) -> Result<()> {
     if config.lags.is_empty()
         && config.rolling_mean_windows.is_empty()
+        && config.partial_rolling_mean_windows.is_empty()
         && config.rolling_std_windows.is_empty()
         && config.rolling_min_windows.is_empty()
         && config.rolling_max_windows.is_empty()
@@ -793,6 +833,11 @@ fn validate_config(config: &LagFeatureConfig) -> Result<()> {
     if config.rolling_mean_windows.contains(&0) {
         return Err(CartoBoostError::InvalidInput(
             "rolling mean windows must be positive".to_string(),
+        ));
+    }
+    if config.partial_rolling_mean_windows.contains(&0) {
+        return Err(CartoBoostError::InvalidInput(
+            "partial rolling mean windows must be positive".to_string(),
         ));
     }
     if config.rolling_std_windows.contains(&0) {
@@ -1061,6 +1106,7 @@ mod tests {
         let builder = LagFeatureBuilder::new(LagFeatureConfig {
             lags: vec![1],
             rolling_mean_windows: vec![2],
+            partial_rolling_mean_windows: Vec::new(),
             rolling_std_windows: vec![3],
             rolling_min_windows: Vec::new(),
             rolling_max_windows: Vec::new(),
@@ -1103,10 +1149,56 @@ mod tests {
     }
 
     #[test]
+    fn partial_rolling_mean_uses_available_prior_history() {
+        let frame = ForecastFrame::new(
+            vec![
+                ForecastRow::single(ts(1), 10.0),
+                ForecastRow::single(ts(2), 16.0),
+                ForecastRow::single(ts(3), 22.0),
+            ],
+            crate::forecasting::ForecastFrequency::Daily,
+        )
+        .expect("frame");
+        let builder = LagFeatureBuilder::new(LagFeatureConfig {
+            lags: Vec::new(),
+            rolling_mean_windows: Vec::new(),
+            partial_rolling_mean_windows: vec![5],
+            rolling_std_windows: Vec::new(),
+            rolling_min_windows: Vec::new(),
+            rolling_max_windows: Vec::new(),
+            ewm_alpha_percents: Vec::new(),
+            calendar_features: Vec::new(),
+            difference_lags: Vec::new(),
+            rolling_trend_windows: Vec::new(),
+            covariate_features: Vec::new(),
+            covariate_indicator_values: Default::default(),
+            covariate_calendar_interactions: false,
+        })
+        .expect("builder");
+
+        assert_eq!(
+            builder.feature_names(),
+            &["target_partial_roll_mean_5".to_string()]
+        );
+        let rows = builder.transform_frame(&frame).expect("features");
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].timestamp, ts(2));
+        assert_eq!(rows[0].features, vec![10.0]);
+        assert_eq!(rows[1].timestamp, ts(3));
+        assert_eq!(rows[1].features, vec![13.0]);
+
+        let next = builder
+            .transform_next(&rows[0].series_id, frame.rows(), ts(4))
+            .expect("next features");
+        assert_eq!(next, vec![16.0]);
+    }
+
+    #[test]
     fn trend_and_ewm_feature_windows_are_validated() {
         assert!(LagFeatureBuilder::new(LagFeatureConfig {
             lags: Vec::new(),
             rolling_mean_windows: Vec::new(),
+            partial_rolling_mean_windows: Vec::new(),
             rolling_std_windows: Vec::new(),
             rolling_min_windows: Vec::new(),
             rolling_max_windows: Vec::new(),
@@ -1122,6 +1214,23 @@ mod tests {
         assert!(LagFeatureBuilder::new(LagFeatureConfig {
             lags: Vec::new(),
             rolling_mean_windows: Vec::new(),
+            partial_rolling_mean_windows: vec![0],
+            rolling_std_windows: Vec::new(),
+            rolling_min_windows: Vec::new(),
+            rolling_max_windows: Vec::new(),
+            ewm_alpha_percents: Vec::new(),
+            calendar_features: Vec::new(),
+            difference_lags: Vec::new(),
+            rolling_trend_windows: Vec::new(),
+            covariate_features: Vec::new(),
+            covariate_indicator_values: Default::default(),
+            covariate_calendar_interactions: false,
+        })
+        .is_err());
+        assert!(LagFeatureBuilder::new(LagFeatureConfig {
+            lags: Vec::new(),
+            rolling_mean_windows: Vec::new(),
+            partial_rolling_mean_windows: Vec::new(),
             rolling_std_windows: vec![0],
             rolling_min_windows: Vec::new(),
             rolling_max_windows: Vec::new(),
@@ -1137,6 +1246,7 @@ mod tests {
         assert!(LagFeatureBuilder::new(LagFeatureConfig {
             lags: Vec::new(),
             rolling_mean_windows: Vec::new(),
+            partial_rolling_mean_windows: Vec::new(),
             rolling_std_windows: Vec::new(),
             rolling_min_windows: vec![0],
             rolling_max_windows: Vec::new(),
@@ -1152,6 +1262,7 @@ mod tests {
         assert!(LagFeatureBuilder::new(LagFeatureConfig {
             lags: Vec::new(),
             rolling_mean_windows: Vec::new(),
+            partial_rolling_mean_windows: Vec::new(),
             rolling_std_windows: Vec::new(),
             rolling_min_windows: Vec::new(),
             rolling_max_windows: vec![0],
@@ -1167,6 +1278,7 @@ mod tests {
         assert!(LagFeatureBuilder::new(LagFeatureConfig {
             lags: Vec::new(),
             rolling_mean_windows: Vec::new(),
+            partial_rolling_mean_windows: Vec::new(),
             rolling_std_windows: Vec::new(),
             rolling_min_windows: Vec::new(),
             rolling_max_windows: Vec::new(),
@@ -1182,6 +1294,7 @@ mod tests {
         assert!(LagFeatureBuilder::new(LagFeatureConfig {
             lags: Vec::new(),
             rolling_mean_windows: Vec::new(),
+            partial_rolling_mean_windows: Vec::new(),
             rolling_std_windows: Vec::new(),
             rolling_min_windows: Vec::new(),
             rolling_max_windows: Vec::new(),
@@ -1197,6 +1310,7 @@ mod tests {
         assert!(LagFeatureBuilder::new(LagFeatureConfig {
             lags: Vec::new(),
             rolling_mean_windows: Vec::new(),
+            partial_rolling_mean_windows: Vec::new(),
             rolling_std_windows: Vec::new(),
             rolling_min_windows: Vec::new(),
             rolling_max_windows: Vec::new(),
@@ -1228,6 +1342,7 @@ mod tests {
         let builder = LagFeatureBuilder::new(LagFeatureConfig {
             lags: vec![1, 2],
             rolling_mean_windows: vec![2],
+            partial_rolling_mean_windows: Vec::new(),
             rolling_std_windows: Vec::new(),
             rolling_min_windows: Vec::new(),
             rolling_max_windows: Vec::new(),
@@ -1272,6 +1387,7 @@ mod tests {
         let builder = LagFeatureBuilder::new(LagFeatureConfig {
             lags: vec![1, 2, 4],
             rolling_mean_windows: vec![2, 4],
+            partial_rolling_mean_windows: Vec::new(),
             rolling_std_windows: vec![3],
             rolling_min_windows: vec![3],
             rolling_max_windows: vec![3],
@@ -1333,6 +1449,7 @@ mod tests {
         let builder = LagFeatureBuilder::new(LagFeatureConfig {
             lags: vec![1],
             rolling_mean_windows: Vec::new(),
+            partial_rolling_mean_windows: Vec::new(),
             rolling_std_windows: Vec::new(),
             rolling_min_windows: Vec::new(),
             rolling_max_windows: Vec::new(),
@@ -1386,6 +1503,7 @@ mod tests {
         let builder = LagFeatureBuilder::new(LagFeatureConfig {
             lags: vec![1],
             rolling_mean_windows: Vec::new(),
+            partial_rolling_mean_windows: Vec::new(),
             rolling_std_windows: Vec::new(),
             rolling_min_windows: Vec::new(),
             rolling_max_windows: Vec::new(),
@@ -1434,6 +1552,7 @@ mod tests {
         let builder = LagFeatureBuilder::new(LagFeatureConfig {
             lags: vec![1],
             rolling_mean_windows: Vec::new(),
+            partial_rolling_mean_windows: Vec::new(),
             rolling_std_windows: Vec::new(),
             rolling_min_windows: Vec::new(),
             rolling_max_windows: Vec::new(),
@@ -1470,6 +1589,7 @@ mod tests {
         let builder = LagFeatureBuilder::new(LagFeatureConfig {
             lags: Vec::new(),
             rolling_mean_windows: Vec::new(),
+            partial_rolling_mean_windows: Vec::new(),
             rolling_std_windows: Vec::new(),
             rolling_min_windows: Vec::new(),
             rolling_max_windows: Vec::new(),
@@ -1536,6 +1656,7 @@ mod tests {
         let builder = LagFeatureBuilder::new(LagFeatureConfig {
             lags: vec![1],
             rolling_mean_windows: Vec::new(),
+            partial_rolling_mean_windows: Vec::new(),
             rolling_std_windows: Vec::new(),
             rolling_min_windows: Vec::new(),
             rolling_max_windows: Vec::new(),

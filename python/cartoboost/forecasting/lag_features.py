@@ -23,6 +23,7 @@ class LagFeatureConfig:
     lags: Sequence[int] = (1,)
     difference_lags: Sequence[int] = ()
     rolling_trend_windows: Sequence[int] = ()
+    partial_rolling_mean_windows: Sequence[int] = ()
 
 
 @dataclass(frozen=True)

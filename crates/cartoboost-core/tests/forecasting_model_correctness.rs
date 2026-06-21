@@ -231,6 +231,7 @@ fn cartoboost_lag_delta_mode_learns_linear_increment_exactly() {
         LagFeatureConfig {
             lags: vec![1],
             rolling_mean_windows: Vec::new(),
+            partial_rolling_mean_windows: Vec::new(),
             rolling_std_windows: Vec::new(),
             rolling_min_windows: Vec::new(),
             rolling_max_windows: Vec::new(),

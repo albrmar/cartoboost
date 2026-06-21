@@ -84,7 +84,7 @@ auto calibration from the M5/M6 selector paths.
 
 | Artifact | Previous runtime | Current runtime | Runtime delta | Quality read |
 | --- | ---: | ---: | ---: | --- |
-| `forecasting_overhaul_committed_suite.json` | 69.808s | 68.954s | -1.2% | Auto and lag still tie with mean RMSE ratio 1.000000. Event-flag route interactions improved mean problem RMSE to 0.687513 and WAPE to 0.016942; no-selector non-M scoring avoids calibration work that did not change quality on this artifact. |
+| `forecasting_overhaul_committed_suite.json` | 69.808s | 87.170s | +24.9% | Auto and lag still tie with mean RMSE ratio 1.000000. Event-flag route interactions improved mean problem RMSE to 0.687513 and WAPE to 0.016942; no-selector non-M scoring avoids calibration work that did not change quality on this artifact. |
 | `forecasting_overhaul_m4_committed.json` | 1624.469s | 648.057s | -60.1% | No metric regression; auto remains 1.000000 mean RMSE ratio. |
 | `forecasting_overhaul_m5_committed.json` | 180.293s | 81.262s | -54.9% | No metric regression; auto remains RMSE 2.415225 and WRMSSE 0.568942 with two selector origins. |
 | `forecasting_overhaul_m6_committed.json` | 127.041s | 22.316s | -82.4% | Auto keeps RMSE 0.013439 and WAPE 1.000000 after selecting the market-neutral return candidate; the selected route skips the unused outer raw-auto fit, and RPS is audit-only at 0.208171. |
@@ -186,7 +186,7 @@ uv run --group dev python scripts/forecasting_library_benchmark.py \
 | Model | Library | RMSE | MAE | WAPE | Read |
 | --- | --- | ---: | ---: | ---: | --- |
 | `cartoboost_auto_forecast` | CartoBoost | 39.034 | 29.173 | 0.0937 | Selected the validated seasonal-base route and skipped the unused raw-auto outer fit. |
-| `cartoboost_lag` | CartoBoost | 171.876 | 124.019 | 0.3985 | Lag spine baseline on the same taxi split. |
+| `cartoboost_lag` | CartoBoost | 126.861 | 85.685 | 0.2753 | Lag spine baseline with taxi-default partial rolling mean features on the same split. |
 
 The taxi plots include `cartoboost_auto_forecast`. This table is CartoBoost-only;
 use the full-roster artifact for external-library comparisons.
@@ -247,7 +247,7 @@ uv run --group dev python scripts/forecasting_generalization.py \
 | `lightgbm_lag` | 1.196396 | 0 | 3 |
 | `xgboost_lag` | 1.258816 | 0 | 0 |
 
-The run completed in 17.498 seconds with peak RSS 401.281 MB. This is not a
+The run completed in 25.115 seconds with peak RSS 400.688 MB. This is not a
 replacement for the M competition samples; it is a separate external-baseline
 guardrail for general route-demand behavior.
 

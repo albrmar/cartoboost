@@ -11,14 +11,14 @@
       "rayon_num_threads_env": null
     }
   },
-  "cartoboost_version": "0.1.66",
+  "cartoboost_version": "0.1.67",
   "comparison_libraries": [
     "functime",
     "statsforecast",
     "prophet",
     "external_trees"
   ],
-  "created_at": "2026-06-20T23:22:54.840633+00:00",
+  "created_at": "2026-06-21T02:38:08.519554+00:00",
   "dataset": {
     "aggregated_rows": 744,
     "clean_rows": 2827685,
@@ -47,7 +47,7 @@
   "dataset_hash": "2099de6b3e8dc1f625e96472c4d8b3828f23d070d841e1ec33bacfbe59534452",
   "fixture_source": "nyc-taxi",
   "forecasting_library_models": {},
-  "git_commit": "3a628c0637b28d632b986cc35c9469b44eeb05e5",
+  "git_commit": "5cc35e209c9cf9012027bab18553a99f9f486073",
   "metrics": {
     "cartoboost_auto_forecast": {
       "bias": 10.779761904761905,
@@ -59,13 +59,13 @@
       "wape": 0.09374163191920737
     },
     "cartoboost_lag": {
-      "bias": 73.25465456804217,
-      "mae": 107.5825887096189,
-      "mase": 1.7089898845010323,
-      "r2": 0.18665070042467435,
-      "rmse": 151.55220149637594,
-      "smape": 0.2922350147297577,
-      "wape": 0.3456997609734895
+      "bias": 42.011572632583366,
+      "mae": 85.68503554016935,
+      "mase": 1.3611390165234813,
+      "r2": 0.4300861797963885,
+      "rmse": 126.86104813280062,
+      "smape": 0.24210888431311273,
+      "wape": 0.2753354112457146
     }
   },
   "model_libraries": {
@@ -90,14 +90,14 @@
     "cartoboost_auto_forecast": {
       "auto_n_estimators": null,
       "auto_n_estimators_policy": "quality floor: max(--cartoboost-n-estimators, 360)",
-      "auto_selector_policy": "auto uses the lag spine unless shared validation clears the source-specific gain and consistency guards; non-M inner validation skips raw auto and non-M outer scoring materializes raw auto only when selected; rolling-origin suites cache identical inner validation cutoffs by source, cutoff, and candidate roster",
+      "auto_selector_policy": "auto uses the lag spine unless shared validation clears the source-specific gain and consistency guards; non-M inner validation skips raw auto and non-M outer scoring materializes raw auto only when selected; non-M inner validation stops after one origin when lag beats every finite candidate by at least 15%; rolling-origin suites cache identical inner validation cutoffs by source, cutoff, and candidate roster",
       "learning_rate": 0.06,
       "max_depth": 4,
       "min_samples_leaf": 8,
       "n_estimators": 180,
-      "native_covariate_policy": "use route static covariates and covariate-calendar interactions only when enabled by the source-specific benchmark config",
+      "native_covariate_policy": "use route static covariates, training-gated low-cardinality integer-coded covariate indicators, and covariate-calendar interactions including event-flag interactions only when enabled by the source-specific benchmark config",
       "native_ewm_feature_policy": "EWM target features are available but disabled by default after validation showed route-mix regression without candidate gating",
-      "native_feature_policy": "season-aware lags, rolling means, lag deltas, and rolling trends capped to the shortest training series",
+      "native_feature_policy": "season-aware lags, complete rolling means, optional MLForecast-style partial rolling means, lag deltas, and rolling trends capped to the shortest training series",
       "native_target_mode_policy": "delta_from_last when season_length == 12, horizon == 13, or horizon >= 24; level otherwise",
       "native_tree_regularization_policy": "use at least max_depth=5 and at most min_samples_leaf=6 when horizon >= 24 or season_length == 4; otherwise use configured values",
       "splitters": [
@@ -107,14 +107,14 @@
     },
     "cartoboost_lag": {
       "auto_n_estimators": null,
-      "auto_selector_policy": "auto uses the lag spine unless shared validation clears the source-specific gain and consistency guards; non-M inner validation skips raw auto and non-M outer scoring materializes raw auto only when selected; rolling-origin suites cache identical inner validation cutoffs by source, cutoff, and candidate roster",
+      "auto_selector_policy": "auto uses the lag spine unless shared validation clears the source-specific gain and consistency guards; non-M inner validation skips raw auto and non-M outer scoring materializes raw auto only when selected; non-M inner validation stops after one origin when lag beats every finite candidate by at least 15%; rolling-origin suites cache identical inner validation cutoffs by source, cutoff, and candidate roster",
       "learning_rate": 0.06,
       "max_depth": 4,
       "min_samples_leaf": 8,
       "n_estimators": 180,
-      "native_covariate_policy": "use route static covariates and covariate-calendar interactions only when enabled by the source-specific benchmark config",
+      "native_covariate_policy": "use route static covariates, training-gated low-cardinality integer-coded covariate indicators, and covariate-calendar interactions including event-flag interactions only when enabled by the source-specific benchmark config",
       "native_ewm_feature_policy": "EWM target features are available but disabled by default after validation showed route-mix regression without candidate gating",
-      "native_feature_policy": "season-aware lags, rolling means, lag deltas, and rolling trends capped to the shortest training series",
+      "native_feature_policy": "season-aware lags, complete rolling means, optional MLForecast-style partial rolling means, lag deltas, and rolling trends capped to the shortest training series",
       "native_target_mode_policy": "delta_from_last when season_length == 12, horizon == 13, or horizon >= 24; level otherwise",
       "native_tree_regularization_policy": "use at least max_depth=5 and at most min_samples_leaf=6 when horizon >= 24 or season_length == 4; otherwise use configured values",
       "splitters": [
@@ -177,17 +177,17 @@
     "winner": "cartoboost_auto_forecast"
   },
   "resource_usage": {
-    "peak_rss_mb": 2598.96875,
-    "process_cpu_seconds": 9.183105000000001
+    "peak_rss_mb": 2586.1875,
+    "process_cpu_seconds": 5.244336
   },
   "source_file_hashes": {},
   "timing": {
     "candidate_selection": {
-      "calibration_seconds": 0.982062083989149,
+      "calibration_seconds": 0.31092870800057426,
       "inner_candidate_losses": {
         "cartoboost_auto_forecast": {
-          "cartoboost_auto_forecast": 112.6970479955982,
-          "cartoboost_lag": 153.06516929575716,
+          "cartoboost_auto_forecast": 366.70671588640215,
+          "cartoboost_lag": 133.36766370859107,
           "shared_calendar_dom": 69.47871376663983,
           "shared_calendar_phase14": 84.7987463406882,
           "shared_drift": 428.3204658739305,
@@ -198,39 +198,43 @@
           "shared_seasonal_drift": 68.59883694129857
         },
         "cartoboost_lag": {
-          "cartoboost_lag": 153.06516929575716
+          "cartoboost_lag": 133.36766370859107
         }
       },
       "inner_losses": {
         "cartoboost_auto_forecast": {
-          "raw": 112.6970479955982,
+          "raw": 366.70671588640215,
           "selected": 69.47871376663983
         },
         "cartoboost_lag": {
-          "raw": 153.06516929575716,
-          "selected": 153.06516929575716
+          "raw": 133.36766370859107,
+          "selected": 133.36766370859107
         }
       },
       "inner_origin_count": 1.0,
       "inner_rmse": {
         "cartoboost_auto_forecast": {
-          "raw": 112.6970479955982,
+          "raw": 366.70671588640215,
           "selected": 69.47871376663983
         },
         "cartoboost_lag": {
-          "raw": 153.06516929575716,
-          "selected": 153.06516929575716
+          "raw": 133.36766370859107,
+          "selected": 133.36766370859107
         }
       },
+      "low_support_guarded": {},
       "native_auto_raw_keep": false,
       "objective": "rmse",
       "origin_consistency_guarded": {},
+      "raw_auto_override_guarded": {},
       "selected_candidates": {
         "cartoboost_auto_forecast": "shared_seasonal_base",
         "cartoboost_lag": "cartoboost_lag"
-      }
+      },
+      "validation_cache_hits": 0.0,
+      "validation_cache_misses": 0.0
     },
-    "load_seconds": 1.1962043340026867,
+    "load_seconds": 1.2034803749993443,
     "models": {
       "cartoboost_auto_forecast": {
         "fit_predict_seconds": 0.0,
@@ -240,14 +244,14 @@
         "total_seconds": 0.0
       },
       "cartoboost_lag": {
-        "feature_count": 59.0,
-        "feature_seconds": 0.0007055000169202685,
-        "fit_predict_seconds": 0.16923629201482981,
-        "fit_seconds": 0.1675955830141902,
-        "predict_seconds": 0.0016407090006396174,
-        "total_seconds": 0.16994179203175008
+        "feature_count": 115.0,
+        "feature_seconds": 0.0011038329976145178,
+        "fit_predict_seconds": 0.23024404200259596,
+        "fit_seconds": 0.22832324999035336,
+        "predict_seconds": 0.0019207920122426003,
+        "total_seconds": 0.23134787500021048
       }
     },
-    "total_seconds": 2.353178082994418
+    "total_seconds": 1.7504543339891825
   }
 }

@@ -91,7 +91,7 @@ temporal, spatial, geotemporal, graph, and neural-embedding modeling.
   `scaled_seasonal_delta_lag`, validation-gated `ewm_lag`, dense-panel
   direct/rectified tree candidates, `log1p_scaled_lag`, `lag_plus`,
   sparse-panel `intermittent_demand`, and `classical_expert_bank`; its lag
-  spine includes rolling mean, rolling
+  spine includes rolling mean, optional partial rolling mean, rolling
   standard-deviation, rolling min/max, delta, trend, and calendar features, and
   the auto path adds supported season-length multiples during fit. Candidate
   validation averages deterministic trailing rolling origins when history

@@ -34,6 +34,7 @@ fn direct_factory(max_horizon: usize) -> ForecastFeatureFactory {
         LagFeatureConfig {
             lags: vec![1, 2],
             rolling_mean_windows: vec![2],
+            partial_rolling_mean_windows: Vec::new(),
             rolling_std_windows: Vec::new(),
             rolling_min_windows: Vec::new(),
             rolling_max_windows: Vec::new(),

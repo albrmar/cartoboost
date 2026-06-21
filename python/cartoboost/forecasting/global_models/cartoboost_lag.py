@@ -60,6 +60,10 @@ class CartoBoostLagForecaster(NativeForecastWrapper):
             params.setdefault("lags", list(lag_config.lags))
             params.setdefault("difference_lags", list(lag_config.difference_lags))
             params.setdefault("rolling_trend_windows", list(lag_config.rolling_trend_windows))
+            params.setdefault(
+                "partial_rolling_mean_windows",
+                list(lag_config.partial_rolling_mean_windows),
+            )
 
         rolling_config = params.pop("rolling_config", None)
         if rolling_config is not None:
@@ -77,10 +81,18 @@ class CartoBoostLagForecaster(NativeForecastWrapper):
                 raise ValueError(
                     "native CartoBoostLagForecaster does not support expanding features"
                 )
-            if rolling_config.min_periods is not None:
-                raise ValueError("native CartoBoostLagForecaster requires complete rolling windows")
+            if rolling_config.min_periods not in {None, 1}:
+                raise ValueError(
+                    "native CartoBoostLagForecaster supports rolling_config.min_periods=None or 1"
+                )
             if "mean" in rolling_config.aggregations:
-                params.setdefault("rolling_windows", list(rolling_config.windows))
+                if rolling_config.min_periods == 1:
+                    params.setdefault(
+                        "partial_rolling_mean_windows",
+                        list(rolling_config.windows),
+                    )
+                else:
+                    params.setdefault("rolling_windows", list(rolling_config.windows))
             if "std" in rolling_config.aggregations:
                 params.setdefault("rolling_std_windows", list(rolling_config.windows))
             if "min" in rolling_config.aggregations:
@@ -107,6 +119,7 @@ class CartoBoostLagForecaster(NativeForecastWrapper):
             - {
                 "lags",
                 "rolling_windows",
+                "partial_rolling_mean_windows",
                 "rolling_std_windows",
                 "rolling_min_windows",
                 "rolling_max_windows",
