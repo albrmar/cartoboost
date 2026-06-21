@@ -60,6 +60,7 @@ const sidebars: SidebarsConfig = {
             'user-guide/forecasting-models/kalman',
             'user-guide/forecasting-models/kriging',
             'user-guide/forecasting-models/cartoboost-lag',
+            'user-guide/forecasting-models/auto-forecaster',
             'user-guide/forecasting-models/ensembles',
           ],
         },

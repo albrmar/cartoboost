@@ -15,6 +15,7 @@ temporal, spatial, geotemporal, graph, and neural-embedding modeling.
 - Getting started: ./docs/getting-started.md
 - Choose a model: ./docs/user-guide/model-types.md
 - Model guides: ./docs/user-guide/forecasting-models/index.md
+- AutoForecaster guide: ./docs/user-guide/forecasting-models/auto-forecaster.md
 - ARIMA and AutoARIMA guide: ./docs/user-guide/forecasting-models/arima.md
 - ARIMA examples: ./docs/user-guide/forecasting-models/arima-examples.md
 - Python API reference: ./docs/reference/python-api.md

@@ -126,7 +126,7 @@ be transformed trip duration, fare amount, or future pickup-zone demand.
   feature-generation workflows.
 - [Model Guides](user-guide/forecasting-models/index.md): per-model examples
   for naive, seasonal naive, theta, ETS, ARIMA, AutoARIMA, Kalman, kriging,
-  CartoBoost lag, and weighted ensembles.
+  CartoBoost lag, AutoForecaster, and weighted ensembles.
 
 ## What CartoBoost Supports
 

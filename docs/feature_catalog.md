@@ -139,7 +139,8 @@ training, prediction, rolling-origin backtesting, metrics, and artifact behavior
 to `cartoboost._native`.
 
 See [General Utilities](general_utilities.md), [Forecasting](forecasting.md),
-and [Forecasting API](forecasting_api.md).
+[Forecasting API](forecasting_api.md), and the
+[AutoForecaster guide](user-guide/forecasting-models/auto-forecaster.md).
 
 ## Command Line Interfaces
 

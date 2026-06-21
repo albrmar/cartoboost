@@ -22,6 +22,7 @@ model modes.
 | [Kalman](kalman.md) | Track noisy local level and local trend over time. | Includes state diagnostics and visualization examples. |
 | [Kriging](kriging.md) | Borrow signal across pickup-zone or route coordinates. | Useful for coordinate-aware panel forecasting. |
 | [CartoBoost Lag](cartoboost-lag.md) | Learn one supervised lag model across many related series. | Use for pickup-zone, dropoff-zone, and lane-level panels. |
+| [AutoForecaster](auto-forecaster.md) | Use the guarded Rust-native default selector over lag, direct, residual-corrected, intermittent, and classical candidates. | Includes diagrams for validation, gating, prediction, and metadata inspection. |
 | [Weighted Ensembles](ensembles.md) | Combine fitted native forecasters with explicit weights. | Components and weights must be named explicitly. |
 
 ## Scientific Choice Criteria
@@ -37,6 +38,7 @@ Choose the model whose assumptions match the signal you can defend:
 | The measured series is noisy and the latent level/trend should update gradually. | Kalman | Separates observation noise from latent state movement. |
 | Nearby zones, route midpoints, or residual surfaces should be spatially related. | Kriging | Uses coordinate distance and a variogram to borrow cross-series signal. |
 | Many related zones or lanes share lag, rolling, calendar, or trend structure. | CartoBoost lag | Learns one supervised model from many aligned panel examples. |
+| A production taxi-demand panel needs a deterministic guarded default with auditable candidate weights. | AutoForecaster | Validates a fixed Rust-native roster, protects the lag baseline, and stores global, horizon, and series weights. |
 | Validated models capture complementary errors. | Weighted ensemble | Averages explicit native components after each member proves useful. |
 
 Do not choose a richer model only because it is available. A scientist should
