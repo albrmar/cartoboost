@@ -161,7 +161,7 @@ temporal, spatial, geotemporal, graph, and neural-embedding modeling.
   stay on the compact competition path unless a targeted benchmark proves
   otherwise.
 - M4 suite benchmark orchestration is serial in the committed wrapper so group
-  timing provenance stays directly comparable across maintained artifacts.
+  timing stays directly comparable across maintained artifacts.
 - Use `objective="rmse_wape"` when the user wants a single validation selector
   that balances RMSE and WAPE; it averages WAPE with RMSE normalized by mean
   absolute actual demand.
@@ -211,9 +211,9 @@ temporal, spatial, geotemporal, graph, and neural-embedding modeling.
   lag estimator budget; auto uses the quality floor
   `max(--cartoboost-n-estimators, 360)` unless
   `--cartoboost-auto-n-estimators` is explicitly provided for latency probes.
-- New forecasting benchmark artifacts expose `git_commit`, `dataset_hash`,
+- Forecasting benchmark artifacts expose `git_commit`, `dataset_hash`,
   `source_file_hashes`, `benchmark_integrity`, and `resource_usage` for
-  provenance checks.
+  evidence checks.
 - Use `uv sync --group dev` for local development and
   `uv run --group dev maturin develop` after native binding changes.
 - Use `npm run typecheck` and `npm run build` for the Docusaurus docs site.

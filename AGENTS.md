@@ -16,6 +16,7 @@
 - Benchmark-driven model improvements belong in reusable implementation: shared feature generation, validation, training behavior, and native model code. Keep benchmark datasets, split boundaries, model lists, metrics, and acceptance gates stable across reruns.
 - Benchmark refreshes must include a real writeup, not just protocol notes. When committing benchmark artifacts or changed benchmark behavior, update the maintained docs/report narrative in the same commit with the exact command, data source, sample size, task/split definitions, model roster, comparable settings, metric breakdown tables, timing breakdown, artifact paths, relevant plots/images, winner or tie interpretation, limitations, and why the result is structurally meaningful.
 - Keep evaluation protocol instructions in this agent guide, not public docs. Public docs should show benchmark evidence, commands, data, plots, metric breakdowns, and interpretations; agent-only protocol details belong here.
+- Public docs and commit titles should describe the user-facing result, not the documentation process. Avoid labels such as "new", "simplified", "cleanup", or "provenance" as the main framing; use direct names like "forecasting benchmark results", "M5 WRMSSE results", or "latency comparison".
 - When asked to commit and push, work directly on `main` and push directly to `origin/main` unless the user explicitly asks for a branch or PR. Do not create `codex/*` or feature branches for routine requested commits.
 - Forecast benchmark docs should keep committed CartoBoost result tables simple. For committed M4/M5/M6 model result tables, include only the committed CartoBoost rows that are relevant to that artifact, sorted by RMSE, and do not mix in full-roster comparison rows or duplicate CartoBoost rows from other artifacts. Use one model table per section.
 - Avoid vague table headers such as `Scope` in public benchmark docs. Prefer concrete labels such as `Model`, `RMSE`, `MAE`, `WAPE`, `Read`, `Artifact`, `Details`, and `Result`.
@@ -35,5 +36,5 @@
 ## PR instructions
 - Summarize which surface changed: core Rust, CLI, PyO3 bindings, Python API, docs, tests, fixtures, benchmarks, or scripts.
 - Mention targeted validation commands that were run.
-- If model outputs, golden files, fixtures, or benchmark artifacts changed, explain why the new outputs are expected.
+- If model outputs, golden files, fixtures, or benchmark artifacts changed, explain why the updated outputs are expected.
 - If a PR changes benchmark behavior or claims, include the exact command used and identify whether the data was synthetic, generated acceptance data, or real benchmark data.
