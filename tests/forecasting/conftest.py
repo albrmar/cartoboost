@@ -7,9 +7,15 @@ import pytest
 
 
 class RecordingForecastFrame:
-    def __init__(self, rows: list[tuple[str, str, float]], freq: str) -> None:
+    def __init__(
+        self,
+        rows: list[tuple[str, str, float]],
+        freq: str,
+        **kwargs: Any,
+    ) -> None:
         self.rows = rows
         self.freq = freq
+        self.kwargs = kwargs
 
 
 @pytest.fixture

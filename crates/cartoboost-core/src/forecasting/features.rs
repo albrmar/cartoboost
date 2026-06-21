@@ -15,7 +15,7 @@ pub struct DirectFeatureMatrix {
     pub horizons: Vec<usize>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ForecastFeatureFactory {
     lag_builder: LagFeatureBuilder,
     max_horizon: usize,
@@ -109,7 +109,7 @@ impl ForecastFeatureFactory {
                             target_row.timestamp
                         )));
                     }
-                    let mut features = match self.lag_builder.transform_next(
+                    let mut features = match self.lag_builder.transform_next_sorted_prior(
                         &series_id,
                         prior,
                         target_row.timestamp,

@@ -8,6 +8,7 @@ use std::collections::{HashMap, HashSet};
 pub struct ForecastMetricSet {
     pub mae: f64,
     pub rmse: f64,
+    pub normalized_rmse: f64,
     pub wape: f64,
     pub smape: f64,
     pub bias: f64,
@@ -117,9 +118,17 @@ pub fn evaluate_forecast_with_training(
     } else {
         None
     };
+    let mean_abs_actual = actual_abs_sum / n;
     Ok(ForecastMetricSet {
         mae: abs_sum / n,
         rmse: (squared_sum / n).sqrt(),
+        normalized_rmse: if mean_abs_actual > 0.0 {
+            (squared_sum / n).sqrt() / mean_abs_actual
+        } else if squared_sum == 0.0 {
+            0.0
+        } else {
+            (squared_sum / n).sqrt() / 1e-12
+        },
         wape: if actual_abs_sum > 0.0 {
             abs_sum / actual_abs_sum
         } else {

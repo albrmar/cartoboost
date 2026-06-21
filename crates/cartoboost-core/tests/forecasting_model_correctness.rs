@@ -3,7 +3,8 @@ use cartoboost_core::forecasting::{
     ArimaForecaster, AutoARIMAForecaster, CalendarFeature, CartoBoostLagForecaster, ETSForecaster,
     ForecastFrame, ForecastFrequency, ForecastRow, Forecaster, GlobalForecastTargetMode,
     KalmanForecaster, KrigingForecaster, LagFeatureConfig, NaiveForecaster,
-    OptimizedThetaForecaster, SeasonalNaiveForecaster, ThetaForecaster, WeightedEnsembleForecaster,
+    OptimizedThetaForecaster, SeasonalNaiveForecaster, SeasonalWindowAverageForecaster,
+    ThetaForecaster, WeightedEnsembleForecaster, WindowAverageForecaster,
 };
 use chrono::{NaiveDate, NaiveDateTime};
 use std::collections::BTreeMap;
@@ -56,6 +57,22 @@ fn naive_and_seasonal_naive_have_exact_known_answer_forecasts() {
     seasonal.fit(&frame).expect("fit seasonal naive");
     assert_eq!(means(&seasonal, 5), vec![16.0, 18.0, 20.0, 16.0, 18.0]);
     assert_eq!(seasonal.metadata()["season_length"], 3);
+
+    let mut window_average = WindowAverageForecaster::new(3).expect("valid window average");
+    window_average.fit(&frame).expect("fit window average");
+    assert_eq!(means(&window_average, 4), vec![18.0, 18.0, 18.0, 18.0]);
+    assert_eq!(window_average.metadata()["window_size"], 3);
+
+    let mut seasonal_window =
+        SeasonalWindowAverageForecaster::new(3, 2).expect("valid seasonal window average");
+    seasonal_window
+        .fit(&frame)
+        .expect("fit seasonal window average");
+    assert_eq!(
+        means(&seasonal_window, 5),
+        vec![13.0, 15.0, 17.0, 13.0, 15.0]
+    );
+    assert_eq!(seasonal_window.metadata()["window_count"], 2);
 }
 
 #[test]
@@ -214,8 +231,15 @@ fn cartoboost_lag_delta_mode_learns_linear_increment_exactly() {
         LagFeatureConfig {
             lags: vec![1],
             rolling_mean_windows: Vec::new(),
+            rolling_std_windows: Vec::new(),
+            rolling_min_windows: Vec::new(),
+            rolling_max_windows: Vec::new(),
+            ewm_alpha_percents: Vec::new(),
             difference_lags: vec![1],
             rolling_trend_windows: Vec::new(),
+            covariate_features: Vec::new(),
+            covariate_indicator_values: Default::default(),
+            covariate_calendar_interactions: false,
             calendar_features: vec![CalendarFeature::DayOfWeek],
         },
         booster_config,

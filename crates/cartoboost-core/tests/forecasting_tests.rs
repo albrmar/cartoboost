@@ -287,6 +287,8 @@ fn metrics_align_by_series_timestamp_and_horizon() {
     .expect("metrics");
     assert_eq!(metrics.mae, 1.0);
     assert_eq!(metrics.bias, -1.0);
+    assert!((metrics.normalized_rmse - (1.0 / 18.0)).abs() < 1e-12);
+    assert!((metrics.wape - (2.0 / 36.0)).abs() < 1e-12);
     assert_eq!(metrics.mase, None);
 }
 

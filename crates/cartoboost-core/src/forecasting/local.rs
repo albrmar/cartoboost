@@ -27,6 +27,19 @@ pub struct SeasonalNaiveForecaster {
 }
 
 #[derive(Debug, Clone)]
+pub struct WindowAverageForecaster {
+    window_size: usize,
+    fitted: Option<FittedLocalState>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SeasonalWindowAverageForecaster {
+    season_length: usize,
+    window_count: usize,
+    fitted: Option<FittedLocalState>,
+}
+
+#[derive(Debug, Clone)]
 pub struct ThetaForecaster {
     theta: f64,
     alpha: f64,
@@ -310,6 +323,40 @@ impl SeasonalNaiveForecaster {
         }
         Ok(Self {
             season_length,
+            fitted: None,
+        })
+    }
+}
+
+impl WindowAverageForecaster {
+    pub fn new(window_size: usize) -> Result<Self> {
+        if window_size == 0 {
+            return Err(CartoBoostError::InvalidInput(
+                "window_size must be positive".to_string(),
+            ));
+        }
+        Ok(Self {
+            window_size,
+            fitted: None,
+        })
+    }
+}
+
+impl SeasonalWindowAverageForecaster {
+    pub fn new(season_length: usize, window_count: usize) -> Result<Self> {
+        if season_length == 0 {
+            return Err(CartoBoostError::InvalidInput(
+                "season_length must be positive".to_string(),
+            ));
+        }
+        if window_count == 0 {
+            return Err(CartoBoostError::InvalidInput(
+                "seasonal window_count must be positive".to_string(),
+            ));
+        }
+        Ok(Self {
+            season_length,
+            window_count,
             fitted: None,
         })
     }
@@ -928,6 +975,141 @@ impl Forecaster for SeasonalNaiveForecaster {
 
     fn metadata(&self) -> Value {
         json!({"model": self.model_name(), "season_length": self.season_length})
+    }
+}
+
+impl Forecaster for WindowAverageForecaster {
+    fn fit(&mut self, frame: &ForecastFrame) -> Result<()> {
+        let fitted = FittedLocalState::from_frame(frame);
+        for (series_id, history) in &fitted.history_by_series {
+            if history.len() < self.window_size {
+                return Err(CartoBoostError::InvalidInput(format!(
+                    "series {series_id} has {} rows, but window average requires at least {}",
+                    history.len(),
+                    self.window_size
+                )));
+            }
+        }
+        self.fitted = Some(fitted);
+        Ok(())
+    }
+
+    fn predict(&self, horizon: usize) -> Result<ForecastResult> {
+        validate_horizon(horizon)?;
+        let fitted = self.fitted.as_ref().ok_or_else(not_fitted)?;
+        let series_predictions = fitted
+            .history_by_series
+            .iter()
+            .collect::<Vec<_>>()
+            .into_par_iter()
+            .map(|(series_id, history)| {
+                let last = history.last().ok_or_else(|| {
+                    CartoBoostError::InvalidInput("empty series history".to_string())
+                })?;
+                let start = history.len() - self.window_size;
+                let mean = history[start..].iter().map(|row| row.target).sum::<f64>()
+                    / self.window_size as f64;
+                let model = self.model_name().to_string();
+                let mut predictions = Vec::with_capacity(horizon);
+                for step in 1..=horizon {
+                    predictions.push(ForecastPrediction {
+                        series_id: series_id.clone(),
+                        timestamp: fitted.frame.frequency().advance(last.timestamp, step)?,
+                        horizon: step,
+                        model: model.clone(),
+                        mean,
+                    });
+                }
+                Ok(predictions)
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let mut predictions =
+            Vec::with_capacity(fitted.history_by_series.len().saturating_mul(horizon));
+        for series in series_predictions {
+            predictions.extend(series);
+        }
+        ForecastResult::new(predictions)
+    }
+
+    fn model_name(&self) -> &'static str {
+        "window_average"
+    }
+
+    fn metadata(&self) -> Value {
+        json!({
+            "model": self.model_name(),
+            "window_size": self.window_size,
+        })
+    }
+}
+
+impl Forecaster for SeasonalWindowAverageForecaster {
+    fn fit(&mut self, frame: &ForecastFrame) -> Result<()> {
+        let fitted = FittedLocalState::from_frame(frame);
+        let min_required = self.season_length.saturating_mul(self.window_count);
+        for (series_id, history) in &fitted.history_by_series {
+            if history.len() < min_required {
+                return Err(CartoBoostError::InvalidInput(format!(
+                    "series {series_id} has {} rows, but seasonal window average requires at least {}",
+                    history.len(),
+                    min_required
+                )));
+            }
+        }
+        self.fitted = Some(fitted);
+        Ok(())
+    }
+
+    fn predict(&self, horizon: usize) -> Result<ForecastResult> {
+        validate_horizon(horizon)?;
+        let fitted = self.fitted.as_ref().ok_or_else(not_fitted)?;
+        let series_predictions = fitted
+            .history_by_series
+            .iter()
+            .collect::<Vec<_>>()
+            .into_par_iter()
+            .map(|(series_id, history)| {
+                let last = history.last().ok_or_else(|| {
+                    CartoBoostError::InvalidInput("empty series history".to_string())
+                })?;
+                let model = self.model_name().to_string();
+                let mut predictions = Vec::with_capacity(horizon);
+                for step in 1..=horizon {
+                    let phase_offset = (step - 1) % self.season_length;
+                    let mut sum = 0.0;
+                    for window in 0..self.window_count {
+                        let base = history.len() - self.season_length * (window + 1);
+                        sum += history[base + phase_offset].target;
+                    }
+                    predictions.push(ForecastPrediction {
+                        series_id: series_id.clone(),
+                        timestamp: fitted.frame.frequency().advance(last.timestamp, step)?,
+                        horizon: step,
+                        model: model.clone(),
+                        mean: sum / self.window_count as f64,
+                    });
+                }
+                Ok(predictions)
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let mut predictions =
+            Vec::with_capacity(fitted.history_by_series.len().saturating_mul(horizon));
+        for series in series_predictions {
+            predictions.extend(series);
+        }
+        ForecastResult::new(predictions)
+    }
+
+    fn model_name(&self) -> &'static str {
+        "seasonal_window_average"
+    }
+
+    fn metadata(&self) -> Value {
+        json!({
+            "model": self.model_name(),
+            "season_length": self.season_length,
+            "window_count": self.window_count,
+        })
     }
 }
 

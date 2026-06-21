@@ -46,6 +46,7 @@ pub struct LagPlusForecaster {
 struct FittedLagPlus {
     corrections: BTreeMap<usize, f64>,
     seasonal_corrections: BTreeMap<usize, f64>,
+    series_corrections: BTreeMap<String, f64>,
     validation_window: usize,
     base_rmse: f64,
     corrected_rmse: f64,
@@ -78,6 +79,13 @@ impl LagPlusForecaster {
         self.fitted
             .as_ref()
             .map(|state| state.seasonal_corrections.clone())
+            .unwrap_or_default()
+    }
+
+    pub fn series_corrections(&self) -> BTreeMap<String, f64> {
+        self.fitted
+            .as_ref()
+            .map(|state| state.series_corrections.clone())
             .unwrap_or_default()
     }
 }
@@ -122,7 +130,12 @@ impl Forecaster for LagPlusForecaster {
                         &state.seasonal_corrections,
                         self.config.seasonal_bucket_period,
                         prediction.timestamp,
-                    ),
+                    )
+                    + state
+                        .series_corrections
+                        .get(&prediction.series_id)
+                        .copied()
+                        .unwrap_or(0.0),
             })
             .collect();
         ForecastResult::new(predictions)
@@ -148,6 +161,7 @@ impl Forecaster for LagPlusForecaster {
             "corrected_wape": fitted.map(|state| state.corrected_wape),
             "corrections": fitted.map(|state| &state.corrections),
             "seasonal_corrections": fitted.map(|state| &state.seasonal_corrections),
+            "series_corrections": fitted.map(|state| &state.series_corrections),
             "seasonal_bucket_period": self.config.seasonal_bucket_period,
             "shrinkage_strength": self.config.shrinkage_strength,
             "base_metadata": self.base.metadata(),
@@ -195,25 +209,47 @@ fn calibrate_corrections(config: &LagPlusConfig, split: &ValidationSplit) -> Res
     }
     let mut seasonal_corrections =
         shrink_mean_corrections(by_seasonal_bucket, config.shrinkage_strength);
+    let mut by_series: BTreeMap<String, Vec<f64>> = BTreeMap::new();
+    for residual in &residuals {
+        let horizon_correction = corrections.get(&residual.horizon).copied().unwrap_or(0.0);
+        let seasonal_correction = seasonal_correction_for(
+            &seasonal_corrections,
+            config.seasonal_bucket_period,
+            residual.timestamp,
+        );
+        by_series
+            .entry(residual.series_id.clone())
+            .or_default()
+            .push(residual.residual - horizon_correction - seasonal_correction);
+    }
+    let mut series_corrections =
+        shrink_mean_string_corrections(by_series, config.shrinkage_strength);
     let comparison = validation_comparison(
         &forecast,
         &actuals,
         &corrections,
         &seasonal_corrections,
+        &series_corrections,
         config.seasonal_bucket_period,
     )?;
     let (base_objective, corrected_objective) = match config.objective {
         ForecastObjective::Rmse => (comparison.base_rmse, comparison.corrected_rmse),
         ForecastObjective::Wape => (comparison.base_wape, comparison.corrected_wape),
+        ForecastObjective::RmseWape => (
+            0.5 * (comparison.base_normalized_rmse + comparison.base_wape),
+            0.5 * (comparison.corrected_normalized_rmse + comparison.corrected_wape),
+        ),
     };
     let enabled = corrected_objective <= base_objective;
     if !enabled {
         corrections.clear();
         seasonal_corrections.clear();
+        series_corrections.clear();
     }
     Ok(FittedLagPlus {
         corrections,
         seasonal_corrections,
+        series_corrections,
         validation_window: split.validation.len() / split.train.series_ids().len().max(1),
         base_rmse: comparison.base_rmse,
         corrected_rmse: comparison.corrected_rmse,
@@ -269,6 +305,7 @@ fn validation_actuals(validation: &[ForecastRow]) -> Vec<ForecastActual> {
 
 #[derive(Debug, Clone)]
 struct ValidationResidual {
+    series_id: String,
     horizon: usize,
     timestamp: NaiveDateTime,
     residual: f64,
@@ -299,6 +336,7 @@ fn validation_residuals(
             ))
         })?;
         residuals.push(ValidationResidual {
+            series_id: actual.series_id.clone(),
             horizon: actual.horizon,
             timestamp: actual.timestamp,
             residual: actual.actual - predicted,
@@ -323,9 +361,27 @@ fn shrink_mean_corrections(
     corrections
 }
 
+fn shrink_mean_string_corrections(
+    values_by_key: BTreeMap<String, Vec<f64>>,
+    shrinkage_strength: f64,
+) -> BTreeMap<String, f64> {
+    let mut corrections = BTreeMap::new();
+    for (key, values) in values_by_key {
+        let mean = values.iter().sum::<f64>() / values.len() as f64;
+        let reliability = values.len() as f64 / (values.len() as f64 + shrinkage_strength);
+        let correction = mean * reliability;
+        if correction.is_finite() {
+            corrections.insert(key, correction);
+        }
+    }
+    corrections
+}
+
 struct ValidationComparison {
     base_rmse: f64,
     corrected_rmse: f64,
+    base_normalized_rmse: f64,
+    corrected_normalized_rmse: f64,
     base_wape: f64,
     corrected_wape: f64,
 }
@@ -335,6 +391,7 @@ fn validation_comparison(
     actuals: &[ForecastActual],
     corrections: &BTreeMap<usize, f64>,
     seasonal_corrections: &BTreeMap<usize, f64>,
+    series_corrections: &BTreeMap<String, f64>,
     seasonal_bucket_period: Option<usize>,
 ) -> Result<ValidationComparison> {
     let mut predictions = BTreeMap::new();
@@ -365,7 +422,11 @@ fn validation_comparison(
                 seasonal_corrections,
                 seasonal_bucket_period,
                 actual.timestamp,
-            );
+            )
+            + series_corrections
+                .get(&actual.series_id)
+                .copied()
+                .unwrap_or(0.0);
         let corrected_error = corrected - actual.actual;
         base_sq += base_error * base_error;
         corrected_sq += corrected_error * corrected_error;
@@ -374,9 +435,14 @@ fn validation_comparison(
         actual_abs += actual.actual.abs();
     }
     let count = actuals.len() as f64;
+    let base_rmse = (base_sq / count).sqrt();
+    let corrected_rmse = (corrected_sq / count).sqrt();
+    let mean_abs_actual = actual_abs / count;
     Ok(ValidationComparison {
-        base_rmse: (base_sq / count).sqrt(),
-        corrected_rmse: (corrected_sq / count).sqrt(),
+        base_rmse,
+        corrected_rmse,
+        base_normalized_rmse: normalized_rmse(base_rmse, mean_abs_actual),
+        corrected_normalized_rmse: normalized_rmse(corrected_rmse, mean_abs_actual),
         base_wape: if actual_abs > 0.0 {
             base_abs / actual_abs
         } else {
@@ -388,6 +454,16 @@ fn validation_comparison(
             0.0
         },
     })
+}
+
+fn normalized_rmse(rmse: f64, mean_abs_actual: f64) -> f64 {
+    if mean_abs_actual > 0.0 {
+        rmse / mean_abs_actual
+    } else if rmse == 0.0 {
+        0.0
+    } else {
+        rmse / 1e-12
+    }
 }
 
 fn seasonal_correction_for(

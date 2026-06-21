@@ -73,7 +73,7 @@ struct NativeForecastFrame {
 #[pymethods]
 impl NativeForecastFrame {
     #[new]
-    #[pyo3(signature = (rows, frequency, timestamp_col=None, target_col=None, series_id_col=None, static_covariates=None, known_future_covariates=None, historical_covariates=None))]
+    #[pyo3(signature = (rows, frequency, timestamp_col=None, target_col=None, series_id_col=None, static_covariates=None, known_future_covariates=None, historical_covariates=None, row_covariates=None))]
     #[allow(clippy::too_many_arguments)]
     fn new(
         py: Python<'_>,
@@ -85,6 +85,7 @@ impl NativeForecastFrame {
         static_covariates: Option<Vec<String>>,
         known_future_covariates: Option<Vec<String>>,
         historical_covariates: Option<Vec<String>>,
+        row_covariates: Option<Vec<BTreeMap<String, f64>>>,
     ) -> PyResult<Self> {
         let frequency = ForecastFrequency::parse(frequency).map_err(to_py_value_error)?;
         let frequency_name = frequency.as_str().to_string();
@@ -99,7 +100,26 @@ impl NativeForecastFrame {
         let frame = py
             .allow_threads(|| {
                 let frequency = ForecastFrequency::parse(&frequency_name)?;
-                CoreForecastFrame::from_string_rows(rows, frequency, metadata)
+                match row_covariates {
+                    Some(covariates) => {
+                        if covariates.len() != rows.len() {
+                            return Err(cartoboost_core::CartoBoostError::InvalidInput(
+                                "row_covariates length must match rows length".to_string(),
+                            ));
+                        }
+                        let rows = rows
+                            .into_iter()
+                            .zip(covariates)
+                            .map(|((series_id, timestamp, target), covariates)| {
+                                (series_id, timestamp, target, covariates)
+                            })
+                            .collect();
+                        CoreForecastFrame::from_string_rows_with_covariates(
+                            rows, frequency, metadata,
+                        )
+                    }
+                    None => CoreForecastFrame::from_string_rows(rows, frequency, metadata),
+                }
             })
             .map_err(to_py_value_error)?;
         Ok(Self { frame })
@@ -132,6 +152,14 @@ impl NativeForecastFrame {
                     row.target,
                 )
             })
+            .collect()
+    }
+
+    fn row_covariates(&self) -> Vec<BTreeMap<String, f64>> {
+        self.frame
+            .rows()
+            .iter()
+            .map(|row| row.covariates.clone())
             .collect()
     }
 }
@@ -377,12 +405,21 @@ struct NativeForecastMetricSet {
 #[pymethods]
 impl NativeForecastMetricSet {
     #[new]
-    #[pyo3(signature = (mae=0.0, rmse=0.0, wape=0.0, smape=0.0, bias=0.0, mase=None))]
-    fn new(mae: f64, rmse: f64, wape: f64, smape: f64, bias: f64, mase: Option<f64>) -> Self {
+    #[pyo3(signature = (mae=0.0, rmse=0.0, normalized_rmse=0.0, wape=0.0, smape=0.0, bias=0.0, mase=None))]
+    fn new(
+        mae: f64,
+        rmse: f64,
+        normalized_rmse: f64,
+        wape: f64,
+        smape: f64,
+        bias: f64,
+        mase: Option<f64>,
+    ) -> Self {
         Self {
             metrics: CoreForecastMetricSet {
                 mae,
                 rmse,
+                normalized_rmse,
                 wape,
                 smape,
                 bias,
@@ -423,6 +460,11 @@ impl NativeForecastMetricSet {
     #[getter]
     fn rmse(&self) -> f64 {
         self.metrics.rmse
+    }
+
+    #[getter]
+    fn normalized_rmse(&self) -> f64 {
+        self.metrics.normalized_rmse
     }
 
     #[getter]
@@ -1986,16 +2028,25 @@ struct NativeAutoForecastModel {
 #[pymethods]
 impl NativeAutoForecastModel {
     #[new]
-    #[pyo3(signature = (lags=None, rolling_windows=None, difference_lags=None, rolling_trend_windows=None, calendar_features=true, season_length=7, validation_window=None, objective="rmse", baseline_displacement_gain=0.03, hard_winner_relative_gain=0.05, min_blend_weight=0.15, max_blend_weight=0.85, max_direct_horizon=28, recursive=true, n_estimators=None, learning_rate=None, max_depth=None, min_samples_leaf=None, min_gain=None, splitters=None, trend_features=true, target_mode="level"))]
+    #[pyo3(signature = (lags=None, rolling_windows=None, rolling_std_windows=None, rolling_min_windows=None, rolling_max_windows=None, ewm_alpha_percents=None, difference_lags=None, rolling_trend_windows=None, covariate_features=None, covariate_indicator_values=None, covariate_calendar_interactions=false, calendar_features=true, rich_calendar_features=false, season_length=7, validation_window=None, validation_origin_count=2, objective="rmse_wape", baseline_displacement_gain=0.03, hard_winner_relative_gain=0.05, min_blend_weight=0.15, max_blend_weight=0.85, max_direct_horizon=28, recursive=true, n_estimators=None, learning_rate=None, max_depth=None, min_samples_leaf=None, min_gain=None, splitters=None, trend_features=true, target_mode="level"))]
     #[allow(clippy::too_many_arguments)]
     fn new(
         lags: Option<Vec<usize>>,
         rolling_windows: Option<Vec<usize>>,
+        rolling_std_windows: Option<Vec<usize>>,
+        rolling_min_windows: Option<Vec<usize>>,
+        rolling_max_windows: Option<Vec<usize>>,
+        ewm_alpha_percents: Option<Vec<u8>>,
         difference_lags: Option<Vec<usize>>,
         rolling_trend_windows: Option<Vec<usize>>,
+        covariate_features: Option<Vec<String>>,
+        covariate_indicator_values: Option<BTreeMap<String, Vec<f64>>>,
+        covariate_calendar_interactions: bool,
         calendar_features: bool,
+        rich_calendar_features: bool,
         season_length: usize,
         validation_window: Option<usize>,
+        validation_origin_count: usize,
         objective: &str,
         baseline_displacement_gain: f64,
         hard_winner_relative_gain: f64,
@@ -2019,6 +2070,9 @@ impl NativeAutoForecastModel {
         }
         let lags = lags.unwrap_or_else(|| vec![1, 2, 3, 7, 14, 28]);
         let rolling_mean_windows = rolling_windows.unwrap_or_else(|| vec![7, 14, 28]);
+        let rolling_std_windows = rolling_std_windows.unwrap_or_else(|| vec![7, 14, 28]);
+        let rolling_min_windows = rolling_min_windows.unwrap_or_else(|| vec![7, 14, 28]);
+        let rolling_max_windows = rolling_max_windows.unwrap_or_else(|| vec![7, 14, 28]);
         let difference_lags = match difference_lags {
             Some(values) => values,
             None if trend_features => lags.iter().copied().filter(|lag| *lag > 1).collect(),
@@ -2038,15 +2092,14 @@ impl NativeAutoForecastModel {
             rolling_trend_windows,
             lags,
             rolling_mean_windows,
-            calendar_features: if calendar_features {
-                vec![
-                    CalendarFeature::DayOfWeek,
-                    CalendarFeature::Month,
-                    CalendarFeature::Day,
-                ]
-            } else {
-                Vec::new()
-            },
+            rolling_std_windows,
+            rolling_min_windows,
+            rolling_max_windows,
+            ewm_alpha_percents: ewm_alpha_percents.unwrap_or_default(),
+            calendar_features: calendar_feature_config(calendar_features, rich_calendar_features),
+            covariate_features: covariate_features.unwrap_or_default(),
+            covariate_indicator_values: covariate_indicator_values.unwrap_or_default(),
+            covariate_calendar_interactions,
         };
         let mut booster_config = BoosterConfig::default();
         if let Some(value) = n_estimators {
@@ -2089,6 +2142,7 @@ impl NativeAutoForecastModel {
                 target_mode,
                 season_length,
                 validation_window,
+                validation_origin_count,
                 objective,
                 baseline_displacement_gain,
                 hard_winner_relative_gain,
@@ -2118,14 +2172,22 @@ impl NativeAutoForecastModel {
 #[pymethods]
 impl NativeCartoBoostLagForecaster {
     #[new]
-    #[pyo3(signature = (lags=None, rolling_windows=None, difference_lags=None, rolling_trend_windows=None, calendar_features=true, recursive=true, prediction_interval_levels=None, n_estimators=None, learning_rate=None, max_depth=None, min_samples_leaf=None, min_gain=None, splitters=None, trend_features=true, target_mode="level"))]
+    #[pyo3(signature = (lags=None, rolling_windows=None, rolling_std_windows=None, rolling_min_windows=None, rolling_max_windows=None, ewm_alpha_percents=None, difference_lags=None, rolling_trend_windows=None, covariate_features=None, covariate_indicator_values=None, covariate_calendar_interactions=false, calendar_features=true, rich_calendar_features=false, recursive=true, prediction_interval_levels=None, n_estimators=None, learning_rate=None, max_depth=None, min_samples_leaf=None, min_gain=None, splitters=None, trend_features=true, target_mode="level"))]
     #[allow(clippy::too_many_arguments)]
     fn new(
         lags: Option<Vec<usize>>,
         rolling_windows: Option<Vec<usize>>,
+        rolling_std_windows: Option<Vec<usize>>,
+        rolling_min_windows: Option<Vec<usize>>,
+        rolling_max_windows: Option<Vec<usize>>,
+        ewm_alpha_percents: Option<Vec<u8>>,
         difference_lags: Option<Vec<usize>>,
         rolling_trend_windows: Option<Vec<usize>>,
+        covariate_features: Option<Vec<String>>,
+        covariate_indicator_values: Option<BTreeMap<String, Vec<f64>>>,
+        covariate_calendar_interactions: bool,
         calendar_features: bool,
+        rich_calendar_features: bool,
         recursive: bool,
         prediction_interval_levels: Option<Vec<f64>>,
         n_estimators: Option<usize>,
@@ -2145,6 +2207,9 @@ impl NativeCartoBoostLagForecaster {
         validate_interval_levels(prediction_interval_levels.as_deref())?;
         let lags = lags.unwrap_or_else(|| vec![1, 7, 14]);
         let rolling_mean_windows = rolling_windows.unwrap_or_else(|| vec![7, 28]);
+        let rolling_std_windows = rolling_std_windows.unwrap_or_else(|| vec![7, 28]);
+        let rolling_min_windows = rolling_min_windows.unwrap_or_else(|| vec![7, 28]);
+        let rolling_max_windows = rolling_max_windows.unwrap_or_else(|| vec![7, 28]);
         let difference_lags = match difference_lags {
             Some(values) => values,
             None if trend_features => lags.iter().copied().filter(|lag| *lag > 1).collect(),
@@ -2164,15 +2229,14 @@ impl NativeCartoBoostLagForecaster {
             rolling_trend_windows,
             lags,
             rolling_mean_windows,
-            calendar_features: if calendar_features {
-                vec![
-                    CalendarFeature::DayOfWeek,
-                    CalendarFeature::Month,
-                    CalendarFeature::Day,
-                ]
-            } else {
-                Vec::new()
-            },
+            rolling_std_windows,
+            rolling_min_windows,
+            rolling_max_windows,
+            ewm_alpha_percents: ewm_alpha_percents.unwrap_or_default(),
+            calendar_features: calendar_feature_config(calendar_features, rich_calendar_features),
+            covariate_features: covariate_features.unwrap_or_default(),
+            covariate_indicator_values: covariate_indicator_values.unwrap_or_default(),
+            covariate_calendar_interactions,
         };
         let mut booster_config = BoosterConfig::default();
         if let Some(value) = n_estimators {
@@ -2474,6 +2538,32 @@ fn validate_interval_levels(levels: Option<&[f64]>) -> PyResult<()> {
         }
     }
     Ok(())
+}
+
+fn calendar_feature_config(enabled: bool, rich: bool) -> Vec<CalendarFeature> {
+    if !enabled {
+        return Vec::new();
+    }
+    let mut features = vec![
+        CalendarFeature::DayOfWeek,
+        CalendarFeature::Month,
+        CalendarFeature::Day,
+    ];
+    if rich {
+        features.push(CalendarFeature::DayOfWeekSin);
+        features.push(CalendarFeature::DayOfWeekCos);
+        features.push(CalendarFeature::MonthSin);
+        features.push(CalendarFeature::MonthCos);
+        features.push(CalendarFeature::DaySin);
+        features.push(CalendarFeature::DayCos);
+        features.push(CalendarFeature::MonthStart);
+        features.push(CalendarFeature::MonthMiddle);
+        features.push(CalendarFeature::MonthEnd);
+        features.push(CalendarFeature::DayOfYear);
+        features.push(CalendarFeature::ElapsedIndex);
+        features.push(CalendarFeature::ElapsedPhase14);
+    }
+    features
 }
 
 fn parse_theta_seasonality(
@@ -3140,11 +3230,31 @@ fn parse_global_target_mode(name: &str) -> PyResult<GlobalForecastTargetMode> {
     match name {
         "level" => Ok(GlobalForecastTargetMode::Level),
         "delta_from_last" | "delta" => Ok(GlobalForecastTargetMode::DeltaFromLast),
+        seasonal if seasonal.starts_with("seasonal_delta_") => {
+            parse_seasonal_delta_target_mode(&seasonal["seasonal_delta_".len()..])
+        }
+        seasonal if seasonal.starts_with("seasonal_delta:") => {
+            parse_seasonal_delta_target_mode(&seasonal["seasonal_delta:".len()..])
+        }
         _ => Err(PyValueError::new_err(format!(
             "unknown CartoBoostLagForecaster target_mode {name:?}; expected 'level' or \
-             'delta_from_last'"
+             'delta_from_last' or 'seasonal_delta_<positive season length>'"
         ))),
     }
+}
+
+fn parse_seasonal_delta_target_mode(value: &str) -> PyResult<GlobalForecastTargetMode> {
+    let season_length = value.parse::<usize>().map_err(|_| {
+        PyValueError::new_err(format!(
+            "seasonal_delta target_mode requires a positive integer season length, got {value:?}"
+        ))
+    })?;
+    if season_length == 0 {
+        return Err(PyValueError::new_err(
+            "seasonal_delta target_mode requires a positive season length",
+        ));
+    }
+    Ok(GlobalForecastTargetMode::SeasonalDelta { season_length })
 }
 
 #[pyclass(name = "NeuralEmbeddingFeatures")]

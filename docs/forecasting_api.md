@@ -88,6 +88,26 @@ Use these roles to prevent accidental leakage. A historical value from the
 validation horizon should not be used as if it were known at forecast creation
 time.
 
+`AutoForecaster` uses numeric `static_covariates` automatically when fitting the
+native guarded lag spine. Pass `covariate_features=[]` to disable that behavior,
+or pass an explicit list to use a narrower native covariate set. Known-future
+and historical covariates remain part of the experiment contract; they are not
+silently promoted into recursive native lag features. `AutoForecaster.metadata_`
+records both the configured covariate override and the effective covariate list
+used during fit.
+
+`AutoForecaster` also accepts `ewm_alpha_percents=[...]` to opt into native
+exponentially weighted target-mean features. The default is empty: EWM is a
+production feature for validation-gated experiments, not a blanket benchmark
+default.
+
+Candidate selection uses deterministic rolling-origin validation in the native
+model. `validation_window` controls the horizon-sized trailing window and
+`validation_origin_count` controls how many non-overlapping trailing origins are
+averaged when history supports them. The default origin count is `2`; set
+`validation_origin_count=1` for the previous single-holdout behavior when
+latency is more important than selector stability.
+
 ## ForecastResult
 
 `ForecastResult` standardizes predictions into deterministic columns:

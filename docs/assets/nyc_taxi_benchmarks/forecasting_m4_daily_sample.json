@@ -129,6 +129,7 @@
   },
   "model_settings": {
     "cartoboost_lag": {
+      "auto_selector_policy": "auto uses the lag spine unless shared validation clears the source-specific gain and consistency guards; non-M inner validation skips raw auto and non-M outer scoring materializes raw auto only when selected; rolling-origin suites cache identical inner validation cutoffs by source, cutoff, and candidate roster",
       "learning_rate": 0.05,
       "max_depth": 5,
       "min_samples_leaf": 2,

@@ -127,7 +127,7 @@ impl Forecaster for CartoBoostDirectForecaster {
                     let timestamp = fitted.frame.frequency().advance(last.timestamp, step)?;
                     let features = self
                         .lag_builder
-                        .transform_next(series_id, history, timestamp)?;
+                        .transform_next_sorted_prior(series_id, history, timestamp)?;
                     let mean = fitted.models[step - 1].predict_one(&features);
                     predictions.push(ForecastPrediction {
                         series_id: series_id.clone(),
@@ -246,7 +246,7 @@ impl Forecaster for RectifiedRecursiveForecaster {
                             prediction.series_id
                         ))
                     })?;
-                let features = self.lag_builder.transform_next(
+                let features = self.lag_builder.transform_next_sorted_prior(
                     &prediction.series_id,
                     history,
                     prediction.timestamp,
@@ -305,7 +305,7 @@ fn build_direct_training(
             }
             let origin_timestamp = history[origin_idx].timestamp;
             let prior = &history[..=origin_idx];
-            let features = match lag_builder.transform_next(
+            let features = match lag_builder.transform_next_sorted_prior(
                 &history[origin_idx].series_id,
                 prior,
                 frame.frequency().advance(origin_timestamp, horizon)?,
@@ -340,7 +340,7 @@ fn build_rectification_training(
             if let Some(baseline) = recursive_baselines.get(global_idx).and_then(|v| *v) {
                 let origin_timestamp = history[origin_idx].timestamp;
                 let prior = &history[..=origin_idx];
-                let features = match lag_builder.transform_next(
+                let features = match lag_builder.transform_next_sorted_prior(
                     &history[origin_idx].series_id,
                     prior,
                     frame.frequency().advance(origin_timestamp, horizon)?,
@@ -385,7 +385,7 @@ fn recursive_training_predictions(
                     let timestamp = frame
                         .frequency()
                         .advance(history[origin_idx].timestamp, recursive_step)?;
-                    let features = match lag_builder.transform_next(
+                    let features = match lag_builder.transform_next_sorted_prior(
                         &history[origin_idx].series_id,
                         &recursive_history,
                         timestamp,

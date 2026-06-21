@@ -2,7 +2,8 @@ use crate::forecasting::lag_features::history_by_series;
 use crate::forecasting::local::{
     AutoARIMAForecaster, AutoETSForecaster, AutoKalmanForecaster, AutoLocalLevelKalmanForecaster,
     ETSForecaster, KalmanForecaster, LocalLevelKalmanForecaster, NaiveForecaster,
-    OptimizedThetaForecaster, SeasonalNaiveForecaster, ThetaForecaster, ThetaSeasonality,
+    OptimizedThetaForecaster, SeasonalNaiveForecaster, SeasonalWindowAverageForecaster,
+    ThetaForecaster, ThetaSeasonality, WindowAverageForecaster,
 };
 use crate::forecasting::{
     ForecastFrame, ForecastPrediction, ForecastResult, ForecastRow, Forecaster,
@@ -15,6 +16,13 @@ pub enum ClassicalExpert {
     Naive,
     SeasonalNaive {
         season_length: usize,
+    },
+    WindowAverage {
+        window_size: usize,
+    },
+    SeasonalWindowAverage {
+        season_length: usize,
+        window_count: usize,
     },
     Theta {
         theta: f64,
@@ -70,6 +78,8 @@ impl ClassicalExpert {
         match self {
             Self::Naive => "naive",
             Self::SeasonalNaive { .. } => "seasonal_naive",
+            Self::WindowAverage { .. } => "window_average",
+            Self::SeasonalWindowAverage { .. } => "seasonal_window_average",
             Self::Theta { .. } => "theta",
             Self::OptimizedTheta { .. } => "optimized_theta",
             Self::ETS { .. } => "ets",
@@ -89,6 +99,16 @@ impl ClassicalExpert {
             Self::SeasonalNaive { season_length } => {
                 Ok(Box::new(SeasonalNaiveForecaster::new(season_length)?))
             }
+            Self::WindowAverage { window_size } => {
+                Ok(Box::new(WindowAverageForecaster::new(window_size)?))
+            }
+            Self::SeasonalWindowAverage {
+                season_length,
+                window_count,
+            } => Ok(Box::new(SeasonalWindowAverageForecaster::new(
+                season_length,
+                window_count,
+            )?)),
             Self::Theta { theta, alpha } => Ok(Box::new(ThetaForecaster::new(theta, alpha)?)),
             Self::OptimizedTheta { season_length } => {
                 let seasonality = season_length.map(ThetaSeasonality::additive).transpose()?;
@@ -128,6 +148,19 @@ impl ClassicalExpert {
             Self::Naive => json!({"model": self.name()}),
             Self::SeasonalNaive { season_length } => {
                 json!({"model": self.name(), "season_length": season_length})
+            }
+            Self::WindowAverage { window_size } => {
+                json!({"model": self.name(), "window_size": window_size})
+            }
+            Self::SeasonalWindowAverage {
+                season_length,
+                window_count,
+            } => {
+                json!({
+                    "model": self.name(),
+                    "season_length": season_length,
+                    "window_count": window_count,
+                })
             }
             Self::Theta { theta, alpha } => {
                 json!({"model": self.name(), "theta": theta, "alpha": alpha})
@@ -310,9 +343,11 @@ struct ValidationSplit {
 }
 
 fn default_experts(season_length: usize) -> Vec<ClassicalExpert> {
-    vec![
+    let mut experts = vec![
         ClassicalExpert::Naive,
         ClassicalExpert::SeasonalNaive { season_length },
+        ClassicalExpert::WindowAverage { window_size: 3 },
+        ClassicalExpert::WindowAverage { window_size: 7 },
         ClassicalExpert::Theta {
             theta: 2.0,
             alpha: 0.3,
@@ -359,7 +394,17 @@ fn default_experts(season_length: usize) -> Vec<ClassicalExpert> {
         ClassicalExpert::Kalman,
         ClassicalExpert::AutoLocalLevelKalman,
         ClassicalExpert::AutoKalman,
-    ]
+    ];
+    if season_length > 1 {
+        experts.insert(
+            2,
+            ClassicalExpert::SeasonalWindowAverage {
+                season_length,
+                window_count: 3,
+            },
+        );
+    }
+    experts
 }
 
 fn split_validation_frame(
@@ -472,16 +517,18 @@ fn expert_rank(expert: &ClassicalExpert) -> usize {
     match expert {
         ClassicalExpert::Naive => 0,
         ClassicalExpert::SeasonalNaive { .. } => 1,
-        ClassicalExpert::Theta { .. } => 2,
-        ClassicalExpert::AutoETS { .. } => 3,
-        ClassicalExpert::OptimizedTheta { .. } => 4,
-        ClassicalExpert::ETS { .. } => 5,
-        ClassicalExpert::SeasonalETS { .. } => 6,
-        ClassicalExpert::AutoARIMA { .. } => 7,
-        ClassicalExpert::LocalLevelKalman => 8,
-        ClassicalExpert::Kalman => 9,
-        ClassicalExpert::AutoLocalLevelKalman => 10,
-        ClassicalExpert::AutoKalman => 11,
+        ClassicalExpert::WindowAverage { .. } => 2,
+        ClassicalExpert::SeasonalWindowAverage { .. } => 3,
+        ClassicalExpert::Theta { .. } => 4,
+        ClassicalExpert::AutoETS { .. } => 5,
+        ClassicalExpert::OptimizedTheta { .. } => 6,
+        ClassicalExpert::ETS { .. } => 7,
+        ClassicalExpert::SeasonalETS { .. } => 8,
+        ClassicalExpert::AutoARIMA { .. } => 9,
+        ClassicalExpert::LocalLevelKalman => 10,
+        ClassicalExpert::Kalman => 11,
+        ClassicalExpert::AutoLocalLevelKalman => 12,
+        ClassicalExpert::AutoKalman => 13,
     }
 }
 
@@ -489,7 +536,7 @@ fn robust_classical_expert(scores: &[ClassicalExpertScore]) -> Result<&Classical
     let best = scores.first().ok_or_else(|| {
         CartoBoostError::InvalidInput("classical expert scores must not be empty".to_string())
     })?;
-    let tolerance = best.mse * 1.01;
+    let tolerance = best.mse;
     scores
         .iter()
         .filter(|score| score.mse <= tolerance)
@@ -515,5 +562,30 @@ impl Ord for OrderedF64 {
 impl PartialOrd for OrderedF64 {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn robust_selector_uses_strict_best_validation_mse() {
+        let scores = vec![
+            ClassicalExpertScore {
+                expert: ClassicalExpert::AutoLocalLevelKalman,
+                mse: 100.0,
+                validation_rows: 8,
+            },
+            ClassicalExpertScore {
+                expert: ClassicalExpert::Naive,
+                mse: 100.5,
+                validation_rows: 8,
+            },
+        ];
+
+        let selected = robust_classical_expert(&scores).expect("selected expert");
+
+        assert_eq!(selected.expert, ClassicalExpert::AutoLocalLevelKalman);
     }
 }

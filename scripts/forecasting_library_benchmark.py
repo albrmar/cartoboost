@@ -107,6 +107,11 @@ M6_ASSETS_URL = "https://raw.githubusercontent.com/Mcompetitions/M6-methods/main
 AUTO_ENSEMBLE_CANDIDATE = "cartoboost_validation_weighted_ensemble"
 AUTO_SELECTION_MIN_RELATIVE_GAIN = 0.03
 AUTO_SELECTION_ROBUST_RELATIVE_TOLERANCE = 0.05
+LOW_SUPPORT_AUTO_MIN_RELATIVE_GAIN = 0.08
+RAW_AUTO_OVERRIDE_MIN_RELATIVE_GAIN = 0.15
+NATIVE_AUTO_RAW_KEEP_RELATIVE_GAIN = 0.50
+NON_M_LAG_DOMINANCE_EARLY_STOP_RELATIVE_GAIN = 0.15
+VALIDATION_CACHE_STATS_KEY = "__validation_cache_stats__"
 SYNTHETIC_PROBLEMS = [
     "taxi_weekly",
     "airport_calendar_events",
@@ -248,6 +253,15 @@ def main() -> int:
     )
     parser.add_argument("--no-download", action="store_true")
     parser.add_argument("--cartoboost-n-estimators", type=int, default=180)
+    parser.add_argument(
+        "--cartoboost-auto-n-estimators",
+        type=int,
+        default=None,
+        help=(
+            "Override the auto CartoBoost estimator count. By default auto uses "
+            "a quality floor independent of --cartoboost-n-estimators."
+        ),
+    )
     parser.add_argument("--cartoboost-learning-rate", type=float, default=0.06)
     parser.add_argument("--cartoboost-max-depth", type=int, default=4)
     parser.add_argument("--cartoboost-min-samples-leaf", type=int, default=8)
@@ -257,6 +271,7 @@ def main() -> int:
 
     cartoboost_config = {
         "n_estimators": args.cartoboost_n_estimators,
+        "auto_n_estimators": args.cartoboost_auto_n_estimators,
         "learning_rate": args.cartoboost_learning_rate,
         "max_depth": args.cartoboost_max_depth,
         "min_samples_leaf": args.cartoboost_min_samples_leaf,
@@ -316,7 +331,7 @@ def main() -> int:
         "dataset": dataset,
         "models": benchmark_model_names(args.model_roster),
         "model_roster": args.model_roster,
-        "model_settings": {"cartoboost_lag": cartoboost_benchmark_settings(cartoboost_config)},
+        "model_settings": cartoboost_model_settings(cartoboost_config),
         "metrics": metrics,
         "quality": quality,
         "official_metrics": benchmark_objective_artifacts(
@@ -347,6 +362,9 @@ def validate_args(args: argparse.Namespace) -> None:
         raise ValueError("--days must leave at least 28 training days before the holdout")
     if args.cartoboost_n_estimators <= 0:
         raise ValueError("--cartoboost-n-estimators must be positive")
+    auto_n_estimators = getattr(args, "cartoboost_auto_n_estimators", None)
+    if auto_n_estimators is not None and auto_n_estimators <= 0:
+        raise ValueError("--cartoboost-auto-n-estimators must be positive when provided")
     if args.cartoboost_max_depth <= 0:
         raise ValueError("--cartoboost-max-depth must be positive")
     if args.cartoboost_min_samples_leaf <= 0:
@@ -559,7 +577,7 @@ def run_synthetic_suite(
             "static_covariates": STATIC_COVARIATES,
         },
         "models": benchmark_model_names(args.model_roster),
-        "model_settings": {"cartoboost_lag": cartoboost_benchmark_settings(cartoboost_config)},
+        "model_settings": cartoboost_model_settings(cartoboost_config),
         "problems": results,
         "aggregate_quality": aggregate_suite_quality(results),
         "timing": {
@@ -631,7 +649,7 @@ def run_m4_suite(
             "static_covariates": STATIC_COVARIATES,
         },
         "models": benchmark_model_names(args.model_roster),
-        "model_settings": {"cartoboost_lag": cartoboost_benchmark_settings(cartoboost_config)},
+        "model_settings": cartoboost_model_settings(cartoboost_config),
         "groups": results,
         "aggregate_quality": aggregate_quality,
         "timing": {
@@ -1316,6 +1334,7 @@ def score_models(
     source: str = "synthetic",
     candidate_selection: bool = True,
     cutoff: Any | None = None,
+    candidate_validation_cache: dict[Any, dict[str, float]] | None = None,
 ) -> tuple[dict[str, dict[str, float]], dict[str, Any], dict[str, Any], Any]:
     pl = require_polars()
     if model_names is None:
@@ -1334,6 +1353,12 @@ def score_models(
             pl.col("loads").alias("actual"),
         )
     )
+    timestamps = train.select(pl.col("date").unique().sort()).to_series().to_list()
+    m5_inner_cutoffs = (
+        shared_candidate_validation_cutoffs(timestamps, horizon=horizon, source=source)
+        if candidate_selection and source == "m5"
+        else []
+    )
     predictions, timing = forecast_model_roster(
         train,
         horizon,
@@ -1341,6 +1366,13 @@ def score_models(
         cartoboost_config=cartoboost_config,
         model_names=model_names,
         source=source,
+        skip_m5_raw_auto_candidate=(len(m5_inner_cutoffs) == 1),
+        skip_m6_raw_auto_candidate=candidate_selection,
+        skip_non_m_raw_auto_candidate=(
+            candidate_selection
+            and source not in {"m4", "m5", "m6"}
+            and "cartoboost_auto_forecast" in model_names
+        ),
     )
     if candidate_selection:
         predictions, selection_timing = apply_shared_candidate_selection(
@@ -1349,9 +1381,34 @@ def score_models(
             season_length=season_length,
             source=source,
             raw_predictions=predictions,
+            model_timing=timing.get("models", {}),
             cartoboost_config=cartoboost_config,
             model_names=model_names,
+            validation_cache=candidate_validation_cache,
         )
+        if (
+            source not in {"m4", "m5", "m6"}
+            and selection_timing.get("selected_candidates", {}).get("cartoboost_auto_forecast")
+            == "cartoboost_auto_forecast"
+            and timing.get("models", {}).get("cartoboost_auto_forecast", {}).get("selector_mode")
+            == "non_m_outer_lazy_raw_auto_candidate"
+        ):
+            auto_predictions, auto_timing = cartoboost_forecast(
+                train,
+                horizon,
+                season_length=season_length,
+                config=cartoboost_source_config(cartoboost_config, source=source),
+                prediction_col="cartoboost_auto_forecast",
+            )
+            predictions = replace_forecast_column(
+                predictions,
+                auto_predictions,
+                "cartoboost_auto_forecast",
+            )
+            timing["models"]["cartoboost_auto_forecast"] = {
+                **auto_timing,
+                "selector_mode": "non_m_outer_lazy_raw_auto_selected",
+            }
     else:
         selection_timing = {
             "calibration_seconds": 0.0,
@@ -1397,9 +1454,9 @@ def train_test_split_for_cutoff(
 
 def auto_selection_objective(source: str) -> str:
     if source == "m5":
-        return "wrmsse"
+        return "rmse"
     if source == "m6":
-        return "rank_probability_score_then_rmse"
+        return "rmse"
     if source == "m4":
         return "owa_proxy"
     return "rmse"
@@ -1463,6 +1520,7 @@ def score_rolling_origin_problem(
     split_results: dict[str, Any] = {}
     timing: dict[str, Any] = {"splits": {}}
     cutoffs = rolling_origin_cutoffs(table, horizon=horizon, folds=folds)
+    candidate_validation_cache: dict[Any, dict[str, float]] = {}
     for fold_index, cutoff in enumerate(cutoffs, start=1):
         split_name = f"rolling_origin_{fold_index}"
         metrics, quality, split_timing, _scored = score_models(
@@ -1473,6 +1531,7 @@ def score_rolling_origin_problem(
             model_names=model_names,
             source=source,
             cutoff=cutoff,
+            candidate_validation_cache=candidate_validation_cache,
         )
         split_results[split_name] = {
             "cutoff": str(cutoff),
@@ -1511,6 +1570,15 @@ def combine_forecast_frames(frames: list[Any]) -> Any:
     for frame in normalized[1:]:
         combined = combined.join(frame, on=["series_id", "timestamp", "horizon"], how="inner")
     return combined
+
+
+def replace_forecast_column(base: Any, replacement: Any, column: str) -> Any:
+    columns = [name for name in base.columns if name != column]
+    return base.select(*columns).join(
+        normalize_forecast_frame(replacement).select("series_id", "timestamp", "horizon", column),
+        on=["series_id", "timestamp", "horizon"],
+        how="inner",
+    )
 
 
 def normalize_forecast_frame(frame: Any) -> Any:
@@ -2150,27 +2218,116 @@ def forecast_model_roster(
     cartoboost_config: dict[str, Any],
     model_names: list[str],
     source: str = "synthetic",
+    skip_m5_raw_auto_candidate: bool = False,
+    skip_m6_raw_auto_candidate: bool = False,
+    skip_non_m_raw_auto_candidate: bool = False,
 ) -> tuple[Any, dict[str, Any]]:
     forecast_frames = []
     model_timing: dict[str, Any] = {}
+    native_config = cartoboost_source_config(cartoboost_config, source=source)
     if "cartoboost_lag" in model_names:
         cartoboost_predictions, cartoboost_timing = cartoboost_raw_forecast(
             train,
             horizon,
             season_length=season_length,
-            config=cartoboost_config,
+            config=native_config,
             prediction_col="cartoboost_lag",
         )
         forecast_frames.append(cartoboost_predictions)
         model_timing["cartoboost_lag"] = cartoboost_timing
     if "cartoboost_auto_forecast" in model_names:
-        auto_predictions, auto_timing = cartoboost_forecast(
-            train,
-            horizon,
-            season_length=season_length,
-            config=cartoboost_config,
-            prediction_col="cartoboost_auto_forecast",
-        )
+        if source == "m5" and skip_m5_raw_auto_candidate:
+            pl = require_polars()
+            if forecast_frames:
+                auto_predictions = forecast_frames[0].select("series_id", "timestamp", "horizon")
+            else:
+                auto_predictions = seasonal_naive_forecast_frame(
+                    train,
+                    horizon,
+                    season_length=season_length,
+                    prediction_col="__m5_outer_anchor",
+                ).select("series_id", "timestamp", "horizon")
+            auto_predictions = auto_predictions.with_columns(
+                pl.lit(0.0).alias("cartoboost_auto_forecast")
+            )
+            auto_timing = {
+                "selector_mode": "m5_outer_maps_auto_to_autostats_candidate",
+                "fit_predict_seconds": 0.0,
+                "fit_seconds": 0.0,
+                "predict_seconds": 0.0,
+                "total_seconds": 0.0,
+            }
+        elif source == "m6" and skip_m6_raw_auto_candidate:
+            pl = require_polars()
+            if forecast_frames:
+                auto_predictions = forecast_frames[0].select("series_id", "timestamp", "horizon")
+            else:
+                auto_predictions = seasonal_naive_forecast_frame(
+                    train,
+                    horizon,
+                    season_length=season_length,
+                    prediction_col="__m6_outer_anchor",
+                ).select("series_id", "timestamp", "horizon")
+            auto_predictions = auto_predictions.with_columns(
+                pl.lit(0.0).alias("cartoboost_auto_forecast")
+            )
+            auto_timing = {
+                "selector_mode": "m6_outer_skips_raw_auto_candidate",
+                "fit_predict_seconds": 0.0,
+                "fit_seconds": 0.0,
+                "predict_seconds": 0.0,
+                "total_seconds": 0.0,
+            }
+        elif source not in {"m4", "m5", "m6"} and skip_non_m_raw_auto_candidate:
+            pl = require_polars()
+            if forecast_frames:
+                auto_predictions = forecast_frames[0].select("series_id", "timestamp", "horizon")
+            else:
+                auto_predictions = seasonal_naive_forecast_frame(
+                    train,
+                    horizon,
+                    season_length=season_length,
+                    prediction_col="__non_m_outer_anchor",
+                ).select("series_id", "timestamp", "horizon")
+            auto_predictions = auto_predictions.with_columns(
+                pl.lit(0.0).alias("cartoboost_auto_forecast")
+            )
+            auto_timing = {
+                "selector_mode": "non_m_outer_lazy_raw_auto_candidate",
+                "fit_predict_seconds": 0.0,
+                "fit_seconds": 0.0,
+                "predict_seconds": 0.0,
+                "total_seconds": 0.0,
+            }
+        elif source == "m6":
+            pl = require_polars()
+            auto_config = cartoboost_auto_config(
+                native_config,
+                season_length=season_length,
+                horizon=horizon,
+            )
+            auto_predictions, auto_timing = cartoboost_raw_forecast(
+                train,
+                horizon,
+                season_length=season_length,
+                config=auto_config,
+                prediction_col="cartoboost_auto_forecast",
+            )
+            auto_predictions = auto_predictions.with_columns(
+                pl.col("cartoboost_auto_forecast").alias("cartoboost_m6_point_auto")
+            )
+            auto_timing = {
+                **auto_timing,
+                "selector_mode": "m6_raw_auto_outer_no_nested_calibration",
+            }
+        else:
+            auto_predictions, auto_timing = cartoboost_forecast(
+                train,
+                horizon,
+                season_length=season_length,
+                config=native_config,
+                prediction_col="cartoboost_auto_forecast",
+            )
         if include_autostats_candidate(source=source, season_length=season_length, horizon=horizon):
             autostats_predictions, autostats_timing = cartoboost_autostats_forecast(
                 train,
@@ -2183,21 +2340,12 @@ def forecast_model_roster(
                 on=["series_id", "timestamp", "horizon"],
                 how="inner",
             )
+            if source == "m5" and skip_m5_raw_auto_candidate:
+                auto_predictions = auto_predictions.with_columns(
+                    pl.col("cartoboost_autostats_bank").alias("cartoboost_auto_forecast")
+                )
+                auto_timing["selector_mode"] = "m5_outer_maps_auto_to_autostats_candidate"
             auto_timing["autostats_candidate"] = autostats_timing
-        if source == "m6":
-            point_auto_predictions, point_auto_timing = cartoboost_forecast(
-                train,
-                horizon,
-                season_length=season_length,
-                config=cartoboost_config,
-                prediction_col="cartoboost_m6_point_auto",
-            )
-            auto_predictions = auto_predictions.join(
-                point_auto_predictions,
-                on=["series_id", "timestamp", "horizon"],
-                how="inner",
-            )
-            auto_timing["m6_point_candidate"] = point_auto_timing
         forecast_frames.append(auto_predictions)
         model_timing["cartoboost_auto_forecast"] = auto_timing
     if any(model in model_names for model in FUNCTIME_MODELS):
@@ -2286,8 +2434,10 @@ def apply_shared_candidate_selection(
     season_length: int,
     source: str,
     raw_predictions: Any,
+    model_timing: dict[str, Any] | None = None,
     cartoboost_config: dict[str, Any],
     model_names: list[str],
+    validation_cache: dict[Any, dict[str, float]] | None = None,
 ) -> tuple[Any, dict[str, Any]]:
     pl = require_polars()
     started = perf_counter()
@@ -2315,6 +2465,7 @@ def apply_shared_candidate_selection(
         source=source,
         cartoboost_config=cartoboost_config,
         model_names=selector_model_names,
+        validation_cache=validation_cache,
     )
     if not inner_scores:
         return raw_predictions, {
@@ -2325,9 +2476,16 @@ def apply_shared_candidate_selection(
         }
 
     selected: dict[str, str] = {}
-    inner_losses: dict[str, dict[str, float]] = {}
+    inner_losses: dict[str, dict[str, float | None]] = {}
     candidate_losses_by_model: dict[str, dict[str, float]] = {}
+    origin_consistency_guarded: dict[str, dict[str, Any]] = {}
+    low_support_guarded: dict[str, dict[str, Any]] = {}
+    raw_auto_override_guarded: dict[str, dict[str, Any]] = {}
+    validation_cache_hits = count_validation_cache_hits(validation_cache)
+    validation_cache_misses = count_validation_cache_misses(validation_cache)
     objective = auto_selection_objective(source)
+    keep_native_raw_auto = native_auto_raw_candidate_is_confident(model_timing or {})
+    inner_origin_count = max(len(losses) for losses in inner_scores.values())
     for model in model_names:
         if model != "cartoboost_auto_forecast":
             selected[model] = model
@@ -2345,11 +2503,63 @@ def apply_shared_candidate_selection(
             for candidate, losses in inner_scores.items()
             if candidate == model or candidate in eligible_candidates
         }
-        if model not in candidate_scores:
-            candidate_scores[model] = math.inf
-        base_loss = candidate_scores[model]
-        best_candidate = candidate_choice_for_source(candidate_scores, source=source)
+        base_loss = candidate_scores.get(model, math.inf)
+        best_candidate = candidate_choice_for_source(
+            candidate_scores,
+            source=source,
+            inner_origin_count=max(len(losses) for losses in inner_scores.values()),
+        )
+        consistency_guard = lag_origin_consistency_guard(
+            best_candidate,
+            source=source,
+            inner_scores=inner_scores,
+        )
+        if consistency_guard is not None:
+            origin_consistency_guarded[model] = consistency_guard
+            best_candidate = "cartoboost_lag"
         lag_loss = candidate_scores.get("cartoboost_lag", math.inf)
+        if (
+            source not in {"m4", "m5", "m6"}
+            and inner_origin_count < 2
+            and best_candidate != "cartoboost_lag"
+            and math.isfinite(lag_loss)
+            and math.isfinite(candidate_scores[best_candidate])
+            and lag_loss > 0.0
+        ):
+            relative_gain = 1.0 - candidate_scores[best_candidate] / lag_loss
+            if relative_gain < LOW_SUPPORT_AUTO_MIN_RELATIVE_GAIN:
+                low_support_guarded[model] = {
+                    "candidate": best_candidate,
+                    "reason": "low_validation_support_requires_stronger_gain_vs_lag",
+                    "inner_origin_count": inner_origin_count,
+                    "relative_gain_vs_lag": relative_gain,
+                    "required_relative_gain": LOW_SUPPORT_AUTO_MIN_RELATIVE_GAIN,
+                }
+                best_candidate = "cartoboost_lag"
+        if (
+            source not in {"m4", "m5", "m6"}
+            and best_candidate == model
+            and math.isfinite(lag_loss)
+            and math.isfinite(candidate_scores[best_candidate])
+            and lag_loss > 0.0
+        ):
+            relative_gain = 1.0 - candidate_scores[best_candidate] / lag_loss
+            if relative_gain < RAW_AUTO_OVERRIDE_MIN_RELATIVE_GAIN:
+                raw_auto_override_guarded[model] = {
+                    "candidate": best_candidate,
+                    "reason": "raw_auto_requires_stronger_gain_vs_lag",
+                    "relative_gain_vs_lag": relative_gain,
+                    "required_relative_gain": RAW_AUTO_OVERRIDE_MIN_RELATIVE_GAIN,
+                }
+                best_candidate = "cartoboost_lag"
+        if (
+            best_candidate != "cartoboost_lag"
+            and math.isfinite(lag_loss)
+            and math.isfinite(candidate_scores[best_candidate])
+            and lag_loss > 0.0
+            and 1.0 - candidate_scores[best_candidate] / lag_loss < AUTO_SELECTION_MIN_RELATIVE_GAIN
+        ):
+            best_candidate = "cartoboost_lag"
         if (
             requires_lag_spine(source=source, season_length=season_length, horizon=horizon)
             and math.isfinite(lag_loss)
@@ -2357,11 +2567,46 @@ def apply_shared_candidate_selection(
             and lag_loss <= candidate_scores[best_candidate] * 1.25
         ):
             best_candidate = "cartoboost_lag"
+        if keep_native_raw_auto and model in candidate_scores:
+            best_candidate = model
+            consistency_guard = lag_origin_consistency_guard(
+                best_candidate,
+                source=source,
+                inner_scores=inner_scores,
+            )
+            if consistency_guard is not None:
+                origin_consistency_guarded[model] = consistency_guard
+                best_candidate = "cartoboost_lag"
+            elif (
+                source not in {"m4", "m5", "m6"}
+                and inner_origin_count < 2
+                and math.isfinite(lag_loss)
+                and math.isfinite(candidate_scores[best_candidate])
+                and lag_loss > 0.0
+            ):
+                relative_gain = 1.0 - candidate_scores[best_candidate] / lag_loss
+                if relative_gain < LOW_SUPPORT_AUTO_MIN_RELATIVE_GAIN:
+                    low_support_guarded[model] = {
+                        "candidate": best_candidate,
+                        "reason": "low_validation_support_requires_stronger_gain_vs_lag",
+                        "inner_origin_count": inner_origin_count,
+                        "relative_gain_vs_lag": relative_gain,
+                        "required_relative_gain": LOW_SUPPORT_AUTO_MIN_RELATIVE_GAIN,
+                    }
+                    best_candidate = "cartoboost_lag"
+        if (
+            best_candidate != "cartoboost_lag"
+            and math.isfinite(lag_loss)
+            and math.isfinite(candidate_scores[best_candidate])
+            and lag_loss > 0.0
+            and 1.0 - candidate_scores[best_candidate] / lag_loss < AUTO_SELECTION_MIN_RELATIVE_GAIN
+        ):
+            best_candidate = "cartoboost_lag"
         best_loss = candidate_scores[best_candidate]
         if (
             best_candidate != model
             and source not in {"m5", "m6"}
-            and not (source in {"synthetic", "m4"} and best_candidate == "cartoboost_lag")
+            and best_candidate != "cartoboost_lag"
             and base_loss > 0.0
             and best_loss < base_loss
             and 1.0 - best_loss / base_loss < 0.01
@@ -2369,8 +2614,8 @@ def apply_shared_candidate_selection(
             best_candidate = model
         selected[model] = best_candidate
         inner_losses[model] = {
-            "raw": base_loss,
-            "selected": candidate_scores[best_candidate],
+            "raw": finite_loss_or_none(base_loss),
+            "selected": finite_loss_or_none(candidate_scores[best_candidate]),
         }
         candidate_losses_by_model[model] = dict(sorted(candidate_scores.items()))
 
@@ -2380,6 +2625,8 @@ def apply_shared_candidate_selection(
         season_length=season_length,
         predictions=raw_predictions,
         source=source,
+        cartoboost_config=cartoboost_config,
+        required_columns=set(selected.values()),
     )
     selected_columns = [
         pl.col(selected[model]).alias(model)
@@ -2398,9 +2645,80 @@ def apply_shared_candidate_selection(
         "inner_origin_count": float(max(len(losses) for losses in inner_scores.values())),
         "objective": objective,
         "selected_candidates": selected,
+        "native_auto_raw_keep": keep_native_raw_auto,
+        "origin_consistency_guarded": origin_consistency_guarded,
+        "low_support_guarded": low_support_guarded,
+        "raw_auto_override_guarded": raw_auto_override_guarded,
         "inner_losses": inner_losses,
         "inner_candidate_losses": candidate_losses_by_model,
         "inner_rmse": inner_losses if objective == "rmse" else {},
+        "validation_cache_hits": validation_cache_hits,
+        "validation_cache_misses": validation_cache_misses,
+    }
+
+
+def finite_loss_or_none(loss: float) -> float | None:
+    return float(loss) if math.isfinite(loss) else None
+
+
+def increment_validation_cache_stat(cache: dict[Any, dict[str, float]], name: str) -> None:
+    stats = cache.setdefault(VALIDATION_CACHE_STATS_KEY, {})
+    stats[name] = stats.get(name, 0.0) + 1.0
+
+
+def count_validation_cache_hits(cache: dict[Any, dict[str, float]] | None) -> float:
+    if cache is None:
+        return 0.0
+    return float(cache.get(VALIDATION_CACHE_STATS_KEY, {}).get("hits", 0.0))
+
+
+def count_validation_cache_misses(cache: dict[Any, dict[str, float]] | None) -> float:
+    if cache is None:
+        return 0.0
+    return float(cache.get(VALIDATION_CACHE_STATS_KEY, {}).get("misses", 0.0))
+
+
+def native_auto_raw_candidate_is_confident(model_timing: dict[str, Any]) -> bool:
+    auto_timing = model_timing.get("cartoboost_auto_forecast", {})
+    if auto_timing.get("selected_candidate") != "cartoboost_raw":
+        return False
+    try:
+        relative_gain = float(auto_timing.get("inner_raw_relative_rmse_gain", 0.0))
+    except (TypeError, ValueError):
+        return False
+    return relative_gain >= NATIVE_AUTO_RAW_KEEP_RELATIVE_GAIN
+
+
+def lag_origin_consistency_guard(
+    candidate: str,
+    *,
+    source: str,
+    inner_scores: dict[str, list[float]],
+) -> dict[str, Any] | None:
+    if source in {"m4", "m5", "m6"} or candidate == "cartoboost_lag":
+        return None
+    lag_scores = inner_scores.get("cartoboost_lag")
+    candidate_scores = inner_scores.get(candidate)
+    if not lag_scores or not candidate_scores:
+        return None
+    paired = [
+        (candidate_loss, lag_loss)
+        for candidate_loss, lag_loss in zip(candidate_scores, lag_scores, strict=False)
+        if math.isfinite(candidate_loss) and math.isfinite(lag_loss) and lag_loss > 0.0
+    ]
+    if len(paired) < 2:
+        return None
+    losing_origin_count = sum(1 for candidate_loss, lag_loss in paired if candidate_loss > lag_loss)
+    if losing_origin_count == 0:
+        return None
+    gains = [1.0 - candidate_loss / lag_loss for candidate_loss, lag_loss in paired]
+    return {
+        "candidate": candidate,
+        "reason": "candidate_lost_at_least_one_inner_origin_to_lag",
+        "origin_count": len(paired),
+        "losing_origin_count": losing_origin_count,
+        "min_relative_gain_vs_lag": min(gains),
+        "mean_relative_gain_vs_lag": sum(gains) / len(gains),
     }
 
 
@@ -2421,10 +2739,11 @@ def shared_candidate_validation_scores(
     source: str,
     cartoboost_config: dict[str, Any],
     model_names: list[str],
+    validation_cache: dict[Any, dict[str, float]] | None = None,
 ) -> dict[str, list[float]]:
     pl = require_polars()
     timestamps = train.select(pl.col("date").unique().sort()).to_series().to_list()
-    cutoffs = shared_candidate_validation_cutoffs(timestamps, horizon=horizon)
+    cutoffs = shared_candidate_validation_cutoffs(timestamps, horizon=horizon, source=source)
     objective = auto_selection_objective(source)
     scores: dict[str, list[float]] = {}
     candidate_names = sorted(
@@ -2434,6 +2753,7 @@ def shared_candidate_validation_scores(
             for candidate in [model, *selectable_candidate_names(model, source=source)]
         }
     )
+    disqualified_raw_auto = False
     for cutoff in cutoffs:
         inner_train = train.filter(pl.col("date") < cutoff)
         validation_timestamps = timestamps[
@@ -2442,54 +2762,109 @@ def shared_candidate_validation_scores(
         inner_test = train.filter(pl.col("date").is_in(validation_timestamps))
         if inner_train.is_empty() or inner_test.is_empty():
             continue
-        try:
-            inner_raw, _inner_timing = candidate_selection_forecast_roster(
+        origin_model_names = model_names
+        if disqualified_raw_auto and source not in {"m4", "m5", "m6"}:
+            origin_model_names = [
+                model for model in model_names if model != "cartoboost_auto_forecast"
+            ]
+        cache_key = (source, cutoff, tuple(origin_model_names))
+        if validation_cache is not None and cache_key in validation_cache:
+            increment_validation_cache_stat(validation_cache, "hits")
+            origin_losses = dict(validation_cache[cache_key])
+        else:
+            origin_losses = {}
+            try:
+                inner_raw, _inner_timing = candidate_selection_forecast_roster(
+                    inner_train,
+                    horizon,
+                    season_length=season_length,
+                    cartoboost_config=cartoboost_config,
+                    model_names=origin_model_names,
+                    source=source,
+                )
+            except Exception:
+                continue
+            actual = (
+                inner_test.sort(["lane_id", "date"])
+                .with_columns((pl.int_range(pl.len()).over("lane_id") + 1).alias("horizon"))
+                .select(
+                    pl.col("lane_id").alias("series_id"),
+                    pl.col("date").cast(pl.Datetime("us")).alias("timestamp"),
+                    "horizon",
+                    pl.col("loads").alias("actual"),
+                )
+            )
+            inner_candidates = add_shared_candidate_columns(
                 inner_train,
                 horizon,
                 season_length=season_length,
-                cartoboost_config=cartoboost_config,
-                model_names=model_names,
+                predictions=inner_raw,
                 source=source,
+                cartoboost_config=cartoboost_config,
             )
-        except Exception:
-            continue
-        actual = (
-            inner_test.sort(["lane_id", "date"])
-            .with_columns((pl.int_range(pl.len()).over("lane_id") + 1).alias("horizon"))
-            .select(
-                pl.col("lane_id").alias("series_id"),
-                pl.col("date").cast(pl.Datetime("us")).alias("timestamp"),
-                "horizon",
-                pl.col("loads").alias("actual"),
+            scored = actual.join(
+                inner_candidates,
+                on=["series_id", "timestamp", "horizon"],
+                how="inner",
             )
-        )
-        inner_candidates = add_shared_candidate_columns(
-            inner_train,
-            horizon,
-            season_length=season_length,
-            predictions=inner_raw,
-            source=source,
-        )
-        scored = actual.join(
-            inner_candidates,
-            on=["series_id", "timestamp", "horizon"],
-            how="inner",
-        )
-        if scored.is_empty():
-            continue
-        for candidate in candidate_names:
-            if candidate not in scored.columns:
+            if scored.is_empty():
                 continue
-            loss = forecast_objective_loss(
-                objective,
-                train=inner_train,
-                scored=scored,
-                prediction_col=candidate,
-                season_length=season_length,
-            )
+            for candidate in candidate_names:
+                if candidate not in scored.columns:
+                    continue
+                loss = forecast_objective_loss(
+                    objective,
+                    train=inner_train,
+                    scored=scored,
+                    prediction_col=candidate,
+                    season_length=season_length,
+                )
+                if math.isfinite(loss):
+                    origin_losses[candidate] = loss
+            if validation_cache is not None:
+                validation_cache[cache_key] = dict(origin_losses)
+                increment_validation_cache_stat(validation_cache, "misses")
+        for candidate, loss in origin_losses.items():
             if math.isfinite(loss):
                 scores.setdefault(candidate, []).append(loss)
+        lag_loss = origin_losses.get("cartoboost_lag")
+        raw_auto_loss = origin_losses.get("cartoboost_auto_forecast")
+        if (
+            source not in {"m4", "m5", "m6"}
+            and lag_loss is not None
+            and raw_auto_loss is not None
+            and raw_auto_loss > lag_loss
+        ):
+            disqualified_raw_auto = True
+        elif (
+            disqualified_raw_auto
+            and source not in {"m4", "m5", "m6"}
+            and lag_loss is not None
+            and "cartoboost_auto_forecast" in candidate_names
+        ):
+            scores.setdefault("cartoboost_auto_forecast", []).append(
+                lag_loss * (1.0 + AUTO_SELECTION_MIN_RELATIVE_GAIN)
+            )
+        if non_m_lag_dominates_origin(source=source, origin_losses=origin_losses):
+            break
     return scores
+
+
+def non_m_lag_dominates_origin(*, source: str, origin_losses: dict[str, float]) -> bool:
+    if source in {"m4", "m5", "m6"}:
+        return False
+    lag_loss = origin_losses.get("cartoboost_lag")
+    if lag_loss is None or not math.isfinite(lag_loss) or lag_loss <= 0.0:
+        return False
+    competitors = [
+        loss
+        for candidate, loss in origin_losses.items()
+        if candidate != "cartoboost_lag" and math.isfinite(loss) and loss >= 0.0
+    ]
+    if not competitors:
+        return False
+    next_best = min(competitors)
+    return 1.0 - lag_loss / next_best >= NON_M_LAG_DOMINANCE_EARLY_STOP_RELATIVE_GAIN
 
 
 def candidate_selection_forecast_roster(
@@ -2501,6 +2876,32 @@ def candidate_selection_forecast_roster(
     model_names: list[str],
     source: str,
 ) -> tuple[Any, dict[str, Any]]:
+    if source == "m5" and "cartoboost_auto_forecast" in model_names:
+        return m5_candidate_selection_forecast_roster(
+            train,
+            horizon,
+            season_length=season_length,
+            cartoboost_config=cartoboost_config,
+            model_names=model_names,
+        )
+    if source == "m4" and "cartoboost_auto_forecast" in model_names:
+        return m4_candidate_selection_forecast_roster(
+            train,
+            horizon,
+            season_length=season_length,
+            cartoboost_config=cartoboost_config,
+            model_names=model_names,
+        )
+    if source not in {"m4", "m5", "m6"} and "cartoboost_auto_forecast" in model_names:
+        return forecast_model_roster(
+            train,
+            horizon,
+            season_length=season_length,
+            cartoboost_config=cartoboost_config,
+            model_names=model_names,
+            source=source,
+            skip_non_m_raw_auto_candidate=True,
+        )
     if source != "m6" or "cartoboost_auto_forecast" not in model_names:
         return forecast_model_roster(
             train,
@@ -2511,7 +2912,6 @@ def candidate_selection_forecast_roster(
             source=source,
         )
 
-    pl = require_polars()
     frames = []
     timing: dict[str, Any] = {"models": {}}
     if "cartoboost_lag" in model_names:
@@ -2524,33 +2924,116 @@ def candidate_selection_forecast_roster(
         )
         frames.append(lag_predictions)
         timing["models"]["cartoboost_lag"] = lag_timing
-    auto_config = cartoboost_auto_config(
-        cartoboost_config,
-        season_length=season_length,
-        horizon=horizon,
-    )
-    auto_predictions, auto_timing = cartoboost_raw_forecast(
-        train,
-        horizon,
-        season_length=season_length,
-        config=auto_config,
-        prediction_col="cartoboost_auto_forecast",
-    )
-    auto_predictions = auto_predictions.with_columns(
-        pl.col("cartoboost_auto_forecast").alias("cartoboost_m6_point_auto")
-    )
-    frames.append(auto_predictions)
+    if "cartoboost_lag" not in model_names:
+        anchor = seasonal_naive_forecast_frame(
+            train,
+            horizon,
+            season_length=season_length,
+            prediction_col="__m6_validation_anchor",
+        )
+        frames.append(anchor)
     timing["models"]["cartoboost_auto_forecast"] = {
-        **auto_timing,
-        "selector_mode": "raw_auto_no_nested_calibration",
+        "selector_mode": "m6_inner_validation_skips_raw_auto",
+        "fit_predict_seconds": 0.0,
+        "total_seconds": 0.0,
     }
     return combine_forecast_frames(frames), timing
 
 
-def shared_candidate_validation_cutoffs(timestamps: list[Any], *, horizon: int) -> list[Any]:
+def m4_candidate_selection_forecast_roster(
+    train: Any,
+    horizon: int,
+    *,
+    season_length: int,
+    cartoboost_config: dict[str, Any],
+    model_names: list[str],
+) -> tuple[Any, dict[str, Any]]:
+    frames = []
+    timing: dict[str, Any] = {"models": {}}
+    if "cartoboost_lag" in model_names:
+        lag_predictions, lag_timing = cartoboost_raw_forecast(
+            train,
+            horizon,
+            season_length=season_length,
+            config=cartoboost_config,
+            prediction_col="cartoboost_lag",
+        )
+        frames.append(lag_predictions)
+        timing["models"]["cartoboost_lag"] = lag_timing
+    if "cartoboost_lag" not in model_names:
+        anchor = seasonal_naive_forecast_frame(
+            train,
+            horizon,
+            season_length=season_length,
+            prediction_col="__m4_validation_anchor",
+        )
+        frames.append(anchor)
+    timing["models"]["cartoboost_auto_forecast"] = {
+        "selector_mode": "m4_inner_validation_skips_raw_auto",
+        "fit_predict_seconds": 0.0,
+        "total_seconds": 0.0,
+    }
+    return combine_forecast_frames(frames), timing
+
+
+def m5_candidate_selection_forecast_roster(
+    train: Any,
+    horizon: int,
+    *,
+    season_length: int,
+    cartoboost_config: dict[str, Any],
+    model_names: list[str],
+) -> tuple[Any, dict[str, Any]]:
+    frames = []
+    timing: dict[str, Any] = {"models": {}}
+    if "cartoboost_lag" in model_names:
+        lag_predictions, lag_timing = cartoboost_raw_forecast(
+            train,
+            horizon,
+            season_length=season_length,
+            config=cartoboost_config,
+            prediction_col="cartoboost_lag",
+        )
+        frames.append(lag_predictions)
+        timing["models"]["cartoboost_lag"] = lag_timing
+    timing["models"]["cartoboost_auto_forecast"] = {
+        "selector_mode": "m5_inner_validation_skips_raw_auto",
+        "fit_predict_seconds": 0.0,
+        "total_seconds": 0.0,
+    }
+    autostats_predictions, autostats_timing = cartoboost_autostats_forecast(
+        train,
+        horizon,
+        season_length=season_length,
+        prediction_col="cartoboost_autostats_bank",
+    )
+    frames.append(autostats_predictions)
+    if "cartoboost_auto_forecast" in model_names:
+        frames.append(
+            autostats_predictions.rename({"cartoboost_autostats_bank": "cartoboost_auto_forecast"})
+        )
+    timing["models"]["cartoboost_autostats_bank"] = autostats_timing
+    return combine_forecast_frames(frames), timing
+
+
+def shared_candidate_validation_cutoffs(
+    timestamps: list[Any],
+    *,
+    horizon: int,
+    source: str | None = None,
+) -> list[Any]:
     if len(timestamps) <= horizon + 2:
         return []
-    max_origins = 3
+    if source == "m6":
+        max_origins = 1
+    elif source == "m5":
+        max_origins = 2
+    elif source == "m4":
+        max_origins = 3
+    elif source is None:
+        max_origins = 3
+    else:
+        max_origins = 2
     cutoffs: list[Any] = []
     for origin in range(max_origins, 0, -1):
         index = len(timestamps) - origin * horizon
@@ -2574,12 +3057,17 @@ def selectable_candidate_names(model: str, *, source: str) -> list[str]:
             "shared_m5_phase14_total_reconciled_020",
             "shared_m5_phase14_total_reconciled_035",
             "shared_m5_phase14_total_reconciled_050",
+            "shared_m5_wrmsse_autostats_blend",
+            "shared_m5_point_autostats_phase14_blend",
             "shared_m5_total_reconciled_auto",
-            "shared_m5_state_reconciled_auto",
-            "shared_m5_store_reconciled_auto",
         ]
     if source == "m6" and model == "cartoboost_auto_forecast":
-        candidates = [*candidates, "cartoboost_m6_point_auto"]
+        candidates = [
+            *candidates,
+            "shared_m6_market_neutral_zero",
+            "shared_m6_phase14_rank_blend",
+            "cartoboost_m6_point_auto",
+        ]
     return candidates
 
 
@@ -2602,8 +3090,66 @@ def robust_candidate_choice(candidate_scores: dict[str, float]) -> str:
     )
 
 
-def candidate_choice_for_source(candidate_scores: dict[str, float], *, source: str) -> str:
-    if source in {"m5", "m6"}:
+def candidate_choice_for_source(
+    candidate_scores: dict[str, float],
+    *,
+    source: str,
+    inner_origin_count: int | None = None,
+) -> str:
+    if source == "m5":
+        finite_scores = {
+            candidate: loss
+            for candidate, loss in candidate_scores.items()
+            if math.isfinite(loss) and loss >= 0.0
+        }
+        if finite_scores:
+            best_loss = min(finite_scores.values())
+            lag_loss = finite_scores.get("cartoboost_lag")
+
+            def clears_lag_guard(candidate: str) -> bool:
+                if candidate == "cartoboost_lag" or lag_loss is None or lag_loss <= 0.0:
+                    return True
+                candidate_loss = finite_scores[candidate]
+                return 1.0 - candidate_loss / lag_loss >= AUTO_SELECTION_MIN_RELATIVE_GAIN
+
+            wrmsse_blend = "shared_m5_wrmsse_autostats_blend"
+            if (
+                wrmsse_blend in finite_scores
+                and (inner_origin_count is None or inner_origin_count <= 1)
+                and finite_scores[wrmsse_blend] <= best_loss * 1.001
+                and clears_lag_guard(wrmsse_blend)
+            ):
+                return wrmsse_blend
+            reconciled_candidates = {
+                candidate: loss
+                for candidate, loss in finite_scores.items()
+                if candidate.startswith("shared_m5_phase14_total_reconciled_")
+                and loss <= best_loss * 1.015
+                and clears_lag_guard(candidate)
+            }
+            point_blend = "shared_m5_point_autostats_phase14_blend"
+            if (
+                point_blend in finite_scores
+                and (inner_origin_count is None or inner_origin_count <= 1)
+                and finite_scores[point_blend] <= best_loss * 1.015
+                and clears_lag_guard(point_blend)
+            ):
+                return point_blend
+            if reconciled_candidates:
+                return max(
+                    reconciled_candidates,
+                    key=lambda candidate: (
+                        candidate_complexity_rank(candidate),
+                        -reconciled_candidates[candidate],
+                    ),
+                )
+            selected = min(
+                finite_scores, key=lambda candidate: (finite_scores[candidate], candidate)
+            )
+            if not clears_lag_guard(selected) and lag_loss is not None:
+                return "cartoboost_lag"
+            return selected
+    if source == "m6":
         finite_scores = {
             candidate: loss
             for candidate, loss in candidate_scores.items()
@@ -2628,14 +3174,16 @@ def candidate_complexity_rank(candidate: str) -> int:
         AUTO_ENSEMBLE_CANDIDATE: 9,
         "shared_calendar_dom": 10,
         "shared_calendar_phase14": 11,
-        "shared_m5_calendar_autostats_blend": 12,
-        "shared_m5_phase14_total_reconciled_020": 13,
-        "shared_m5_phase14_total_reconciled_035": 14,
-        "shared_m5_phase14_total_reconciled_050": 15,
-        "shared_m5_total_reconciled_auto": 16,
-        "shared_m5_state_reconciled_auto": 17,
-        "shared_m5_store_reconciled_auto": 18,
-        "cartoboost_m6_point_auto": 19,
+        "shared_m6_market_neutral_zero": 12,
+        "shared_m6_phase14_rank_blend": 13,
+        "shared_m5_calendar_autostats_blend": 14,
+        "shared_m5_phase14_total_reconciled_020": 15,
+        "shared_m5_phase14_total_reconciled_035": 16,
+        "shared_m5_phase14_total_reconciled_050": 17,
+        "shared_m5_wrmsse_autostats_blend": 19,
+        "shared_m5_point_autostats_phase14_blend": 20,
+        "shared_m5_total_reconciled_auto": 20,
+        "cartoboost_m6_point_auto": 24,
     }
     return ranks.get(candidate, 20)
 
@@ -2651,8 +3199,9 @@ def m4_requires_lag_spine(*, season_length: int, horizon: int) -> bool:
 
 
 def requires_lag_spine(*, source: str, season_length: int, horizon: int) -> bool:
-    if source == "synthetic":
-        return True
+    # Keep this narrow. The selector must not force the lag spine just because a
+    # fixture belongs to the maintained synthetic suite; that would overfit the
+    # benchmark source instead of the series structure.
     if source == "m4":
         return m4_requires_lag_spine(season_length=season_length, horizon=horizon)
     return False
@@ -2678,67 +3227,167 @@ def add_shared_candidate_columns(
     season_length: int,
     predictions: Any,
     source: str,
+    cartoboost_config: dict[str, Any] | None = None,
+    required_columns: set[str] | None = None,
 ) -> Any:
     pl = require_polars()
-    shared_frames = [
-        seasonal_naive_forecast_frame(
-            train,
-            horizon,
-            season_length=season_length,
-            prediction_col="shared_seasonal_base",
-        ),
-        calendar_profile_forecast_frame(
-            train,
-            horizon,
-            prediction_col="shared_calendar_dom",
-            mode="day_of_month",
-        ),
-        calendar_profile_forecast_frame(
-            train,
-            horizon,
-            prediction_col="shared_calendar_phase14",
-            mode="phase14",
-        ),
-        trend_forecast_frame(
-            train,
-            horizon,
-            season_length=season_length,
-            prediction_col="shared_drift",
-            mode="drift",
-        ),
-        trend_forecast_frame(
-            train,
-            horizon,
-            season_length=season_length,
-            prediction_col="shared_half_drift",
-            mode="half_drift",
-        ),
-        trend_forecast_frame(
-            train,
-            horizon,
-            season_length=season_length,
-            prediction_col="shared_seasonal_drift",
-            mode="seasonal_drift",
-        ),
-        trend_forecast_frame(
-            train,
-            horizon,
-            season_length=season_length,
-            prediction_col="shared_seasonal_cycle_drift_050",
-            mode="seasonal_cycle_drift_050",
-        ),
-        trend_forecast_frame(
-            train,
-            horizon,
-            season_length=season_length,
-            prediction_col="shared_seasonal_cycle_drift_075",
-            mode="seasonal_cycle_drift_075",
-        ),
-    ]
+    required = set(required_columns) if required_columns is not None else None
+
+    def needs(column: str) -> bool:
+        return required is None or column in required
+
+    def needs_any(columns: set[str]) -> bool:
+        return required is None or bool(required.intersection(columns))
+
+    base_dependencies = {
+        "shared_m6_phase14_rank_blend": {
+            "shared_calendar_phase14",
+            "shared_seasonal_base",
+        },
+        "shared_m5_calendar_autostats_blend": {
+            "shared_calendar_phase14",
+            "cartoboost_autostats_bank",
+        },
+        "shared_m5_phase14_total_reconciled_020": {
+            "shared_calendar_phase14",
+            "cartoboost_autostats_bank",
+        },
+        "shared_m5_phase14_total_reconciled_035": {
+            "shared_calendar_phase14",
+            "cartoboost_autostats_bank",
+        },
+        "shared_m5_phase14_total_reconciled_050": {
+            "shared_calendar_phase14",
+            "cartoboost_autostats_bank",
+        },
+        "shared_m5_wrmsse_autostats_blend": {
+            "shared_calendar_phase14",
+            "cartoboost_autostats_bank",
+        },
+        "shared_m5_point_autostats_phase14_blend": {
+            "shared_calendar_phase14",
+            "cartoboost_autostats_bank",
+        },
+        "shared_m5_total_reconciled_auto": {"cartoboost_auto_forecast"},
+    }
+    expanded_required = set(required) if required is not None else None
+    if expanded_required is not None:
+        changed = True
+        while changed:
+            changed = False
+            for column, dependencies in base_dependencies.items():
+                if column in expanded_required:
+                    before = len(expanded_required)
+                    expanded_required.update(dependencies)
+                    changed = len(expanded_required) != before
+        required = expanded_required
+
+    shared_frames = []
+    if needs("shared_seasonal_base"):
+        shared_frames.append(
+            seasonal_naive_forecast_frame(
+                train,
+                horizon,
+                season_length=season_length,
+                prediction_col="shared_seasonal_base",
+            )
+        )
+    if needs("shared_calendar_dom"):
+        shared_frames.append(
+            calendar_profile_forecast_frame(
+                train,
+                horizon,
+                prediction_col="shared_calendar_dom",
+                mode="day_of_month",
+            )
+        )
+    if needs("shared_calendar_phase14"):
+        shared_frames.append(
+            calendar_profile_forecast_frame(
+                train,
+                horizon,
+                prediction_col="shared_calendar_phase14",
+                mode="phase14",
+            )
+        )
+    if needs("shared_drift"):
+        shared_frames.append(
+            trend_forecast_frame(
+                train,
+                horizon,
+                season_length=season_length,
+                prediction_col="shared_drift",
+                mode="drift",
+            )
+        )
+    if needs("shared_half_drift"):
+        shared_frames.append(
+            trend_forecast_frame(
+                train,
+                horizon,
+                season_length=season_length,
+                prediction_col="shared_half_drift",
+                mode="half_drift",
+            )
+        )
+    if needs("shared_seasonal_drift"):
+        shared_frames.append(
+            trend_forecast_frame(
+                train,
+                horizon,
+                season_length=season_length,
+                prediction_col="shared_seasonal_drift",
+                mode="seasonal_drift",
+            )
+        )
+    if needs("shared_seasonal_cycle_drift_050"):
+        shared_frames.append(
+            trend_forecast_frame(
+                train,
+                horizon,
+                season_length=season_length,
+                prediction_col="shared_seasonal_cycle_drift_050",
+                mode="seasonal_cycle_drift_050",
+            )
+        )
+    if needs("shared_seasonal_cycle_drift_075"):
+        shared_frames.append(
+            trend_forecast_frame(
+                train,
+                horizon,
+                season_length=season_length,
+                prediction_col="shared_seasonal_cycle_drift_075",
+                mode="seasonal_cycle_drift_075",
+            )
+        )
     combined = predictions
     for frame in shared_frames:
         combined = combined.join(frame, on=["series_id", "timestamp", "horizon"], how="inner")
-    if source == "m5" and "cartoboost_auto_forecast" in combined.columns:
+    if source == "m6" and needs_any(
+        {"shared_m6_market_neutral_zero", "shared_m6_phase14_rank_blend"}
+    ):
+        expressions = []
+        if needs("shared_m6_market_neutral_zero"):
+            expressions.append(pl.lit(0.0).alias("shared_m6_market_neutral_zero"))
+        if needs("shared_m6_phase14_rank_blend"):
+            expressions.append(
+                (
+                    0.85 * pl.col("shared_calendar_phase14") + 0.15 * pl.col("shared_seasonal_base")
+                ).alias("shared_m6_phase14_rank_blend")
+            )
+        combined = combined.with_columns(
+            *expressions,
+        )
+    m5_columns = {
+        "shared_m5_calendar_autostats_blend",
+        "shared_m5_phase14_total_reconciled_020",
+        "shared_m5_phase14_total_reconciled_035",
+        "shared_m5_phase14_total_reconciled_050",
+        "shared_m5_wrmsse_autostats_blend",
+        "shared_m5_point_autostats_phase14_blend",
+        "shared_m5_total_reconciled_auto",
+    }
+    if source == "m5" and "cartoboost_auto_forecast" in combined.columns and needs_any(m5_columns):
         if "cartoboost_autostats_bank" in combined.columns:
             combined = combined.with_columns(
                 (
@@ -2752,25 +3401,32 @@ def add_shared_candidate_columns(
                 base_col="shared_m5_calendar_autostats_blend",
                 target_col="shared_calendar_phase14",
             )
-        for group_column, prediction_col in [
-            (None, "shared_m5_total_reconciled_auto"),
-            ("pickup_borough_code", "shared_m5_state_reconciled_auto"),
-            ("pickup_zone", "shared_m5_store_reconciled_auto"),
-        ]:
-            reconciled = m5_autostats_reconciled_forecast_frame(
-                train,
-                horizon,
-                season_length=season_length,
-                predictions=combined,
-                group_column=group_column,
-                base_col="cartoboost_auto_forecast",
-                prediction_col=prediction_col,
+            combined = combined.with_columns(
+                (
+                    0.90 * pl.col("shared_m5_phase14_total_reconciled_050")
+                    + 0.10 * pl.col("cartoboost_autostats_bank")
+                ).alias("shared_m5_wrmsse_autostats_blend")
             )
-            combined = combined.join(
-                reconciled,
-                on=["series_id", "timestamp", "horizon"],
-                how="inner",
+            combined = combined.with_columns(
+                (
+                    0.70 * pl.col("cartoboost_autostats_bank")
+                    + 0.30 * pl.col("shared_calendar_phase14")
+                ).alias("shared_m5_point_autostats_phase14_blend")
             )
+        reconciled = m5_autostats_reconciled_forecast_frame(
+            train,
+            horizon,
+            season_length=season_length,
+            predictions=combined,
+            group_column=None,
+            base_col="cartoboost_auto_forecast",
+            prediction_col="shared_m5_total_reconciled_auto",
+        )
+        combined = combined.join(
+            reconciled,
+            on=["series_id", "timestamp", "horizon"],
+            how="inner",
+        )
     return combined
 
 
@@ -2968,21 +3624,19 @@ def cartoboost_forecast(
         .join(seasonal_drift, on=["series_id", "timestamp", "horizon"], how="inner")
         .join(seasonal_cycle_drift_050, on=["series_id", "timestamp", "horizon"], how="inner")
         .join(seasonal_cycle_drift_075, on=["series_id", "timestamp", "horizon"], how="inner")
-        .with_columns(
-            (
-                pl.col("cartoboost_seasonal_base")
-                + residual_alpha * (pl.col("cartoboost_raw") - pl.col("cartoboost_seasonal_base"))
-            ).alias("cartoboost_residual_blend"),
-            (
-                0.5 * pl.col("cartoboost_seasonal_base") + 0.5 * pl.col("cartoboost_calendar_dom")
-            ).alias("cartoboost_calendar_dom_blend"),
-            (
-                0.5 * pl.col("cartoboost_seasonal_base")
-                + 0.5 * pl.col("cartoboost_calendar_phase14")
-            ).alias("cartoboost_calendar_phase14_blend"),
-        )
-        .with_columns(weighted_candidate_expr(ensemble_weights).alias(AUTO_ENSEMBLE_CANDIDATE))
     )
+    candidates = candidates.with_columns(
+        (
+            pl.col("cartoboost_seasonal_base")
+            + residual_alpha * (pl.col("cartoboost_raw") - pl.col("cartoboost_seasonal_base"))
+        ).alias("cartoboost_residual_blend"),
+        (0.5 * pl.col("cartoboost_seasonal_base") + 0.5 * pl.col("cartoboost_calendar_dom")).alias(
+            "cartoboost_calendar_dom_blend"
+        ),
+        (
+            0.5 * pl.col("cartoboost_seasonal_base") + 0.5 * pl.col("cartoboost_calendar_phase14")
+        ).alias("cartoboost_calendar_phase14_blend"),
+    ).with_columns(weighted_candidate_expr(ensemble_weights).alias(AUTO_ENSEMBLE_CANDIDATE))
     blended = candidates.select(
         "series_id",
         "timestamp",
@@ -3009,13 +3663,27 @@ def cartoboost_auto_config(
     horizon: int,
 ) -> dict[str, Any]:
     auto = dict(config)
-    auto["n_estimators"] = max(int(config["n_estimators"]), 360)
+    if config.get("auto_n_estimators") is None:
+        auto["n_estimators"] = max(int(config["n_estimators"]), 360)
+    else:
+        auto["n_estimators"] = int(config["auto_n_estimators"])
     auto["max_depth"] = max(int(config["max_depth"]), 5)
     auto["min_samples_leaf"] = min(int(config["min_samples_leaf"]), 6)
     if horizon >= 24 or season_length in {4, 7, 12}:
         auto["max_depth"] = max(auto["max_depth"], 6)
         auto["min_samples_leaf"] = min(auto["min_samples_leaf"], 4)
     return auto
+
+
+def cartoboost_source_config(config: dict[str, Any], *, source: str) -> dict[str, Any]:
+    native = dict(config)
+    use_route_context = source in {"synthetic", "polars", "duckdb", "nyc-taxi"}
+    native["use_static_covariates"] = use_route_context
+    native["use_rich_calendar_features"] = use_route_context
+    native["use_native_rolling_stat_features"] = use_route_context
+    native["use_native_ewm_features"] = False
+    native["use_covariate_calendar_interactions"] = use_route_context
+    return native
 
 
 def calibrate_cartoboost_candidate(
@@ -3140,30 +3808,29 @@ def calibrate_cartoboost_candidate(
         .join(seasonal_drift, on=["series_id", "timestamp", "horizon"], how="inner")
         .join(seasonal_cycle_drift_050, on=["series_id", "timestamp", "horizon"], how="inner")
         .join(seasonal_cycle_drift_075, on=["series_id", "timestamp", "horizon"], how="inner")
-        .with_columns(
-            (
-                0.5 * pl.col("cartoboost_seasonal_base") + 0.5 * pl.col("cartoboost_calendar_dom")
-            ).alias("cartoboost_calendar_dom_blend"),
-            (
-                0.5 * pl.col("cartoboost_seasonal_base")
-                + 0.5 * pl.col("cartoboost_calendar_phase14")
-            ).alias("cartoboost_calendar_phase14_blend"),
-        )
-        .select(
-            "actual",
-            "cartoboost_raw",
-            "cartoboost_seasonal_base",
-            "cartoboost_calendar_dom",
-            "cartoboost_calendar_phase14",
-            "cartoboost_calendar_dom_blend",
-            "cartoboost_calendar_phase14_blend",
-            "cartoboost_drift",
-            "cartoboost_half_drift",
-            "cartoboost_seasonal_drift",
-            "cartoboost_seasonal_cycle_drift_050",
-            "cartoboost_seasonal_cycle_drift_075",
-        )
     )
+    select_columns = [
+        "actual",
+        "cartoboost_raw",
+        "cartoboost_seasonal_base",
+        "cartoboost_calendar_dom",
+        "cartoboost_calendar_phase14",
+        "cartoboost_calendar_dom_blend",
+        "cartoboost_calendar_phase14_blend",
+        "cartoboost_drift",
+        "cartoboost_half_drift",
+        "cartoboost_seasonal_drift",
+        "cartoboost_seasonal_cycle_drift_050",
+        "cartoboost_seasonal_cycle_drift_075",
+    ]
+    scored = scored.with_columns(
+        (0.5 * pl.col("cartoboost_seasonal_base") + 0.5 * pl.col("cartoboost_calendar_dom")).alias(
+            "cartoboost_calendar_dom_blend"
+        ),
+        (
+            0.5 * pl.col("cartoboost_seasonal_base") + 0.5 * pl.col("cartoboost_calendar_phase14")
+        ).alias("cartoboost_calendar_phase14_blend"),
+    ).select(*select_columns)
     if scored.is_empty():
         return (
             "cartoboost_raw",
@@ -3315,7 +3982,10 @@ def cartoboost_raw_forecast(
         config,
         train=train,
     )
-    training_frame = train.select("lane_id", "date", "loads").to_pandas()
+    selected_columns = ["lane_id", "date", "loads"]
+    if config.get("use_static_covariates", False):
+        selected_columns.extend(STATIC_COVARIATES)
+    training_frame = train.select(*selected_columns).to_pandas()
     if not isinstance(training_frame, pd.DataFrame):
         raise TypeError("CartoBoost native benchmark training conversion did not return pandas")
     feature_seconds = perf_counter() - feature_start
@@ -3558,14 +4228,37 @@ def cartoboost_native_forecaster_params(
         lag for lag in cartoboost_difference_lags(season_length) if lag <= max_lag - 1
     ]
     rolling_trend_windows = list(rolling_windows)
+    rolling_stat_windows = (
+        cartoboost_rolling_stat_windows(rolling_windows)
+        if config.get("use_native_rolling_stat_features", False)
+        else []
+    )
     if not lags:
         lags = [1]
+    covariate_features = STATIC_COVARIATES if config.get("use_static_covariates", False) else []
     return {
         "lags": lags,
         "rolling_windows": rolling_windows,
+        "rolling_std_windows": rolling_stat_windows,
+        "rolling_min_windows": rolling_stat_windows,
+        "rolling_max_windows": rolling_stat_windows,
+        "ewm_alpha_percents": [90] if config.get("use_native_ewm_features", False) else [],
         "difference_lags": difference_lags,
         "rolling_trend_windows": rolling_trend_windows,
         "calendar_features": True,
+        "rich_calendar_features": config.get("use_rich_calendar_features", False),
+        "covariate_features": covariate_features,
+        "covariate_indicator_values": low_cardinality_covariate_indicators(
+            train,
+            covariate_features,
+            min_unique=3,
+            max_unique=8,
+            min_calendar_interaction_strength=0.50,
+        ),
+        "covariate_calendar_interactions": config.get(
+            "use_covariate_calendar_interactions",
+            False,
+        ),
         "target_mode": cartoboost_target_mode(season_length, horizon),
         "n_estimators": config["n_estimators"],
         "learning_rate": config["learning_rate"],
@@ -3574,10 +4267,95 @@ def cartoboost_native_forecaster_params(
     }
 
 
+def low_cardinality_covariate_indicators(
+    train: Any,
+    covariate_features: list[str],
+    *,
+    min_unique: int,
+    max_unique: int,
+    min_calendar_interaction_strength: float,
+) -> dict[str, list[float]]:
+    pl = require_polars()
+    if not covariate_features:
+        return {}
+    indicators: dict[str, list[float]] = {}
+    for name in covariate_features:
+        if name not in train.columns:
+            continue
+        values = train.select(pl.col(name).drop_nulls().unique().sort()).to_series().to_list()
+        numeric_values = [float(value) for value in values if value is not None]
+        if not (min_unique <= len(numeric_values) <= max_unique):
+            continue
+        if any(not math.isfinite(value) for value in numeric_values):
+            continue
+        if any(abs(value - round(value)) > 1.0e-9 for value in numeric_values):
+            continue
+        strength = covariate_calendar_interaction_strength(train, name)
+        if strength < min_calendar_interaction_strength:
+            continue
+        indicators[name] = numeric_values
+    return indicators
+
+
+def covariate_calendar_interaction_strength(train: Any, covariate: str) -> float:
+    pl = require_polars()
+    if (
+        "date" not in train.columns
+        or "loads" not in train.columns
+        or covariate not in train.columns
+    ):
+        return 0.0
+    target_std = train.select(pl.col("loads").std()).item()
+    if target_std is None or not math.isfinite(float(target_std)) or float(target_std) <= 1.0e-12:
+        return 0.0
+    global_mean = train.select(pl.col("loads").mean()).item()
+    if global_mean is None or not math.isfinite(float(global_mean)):
+        return 0.0
+    scored = train.with_columns(pl.col("date").dt.day().alias("__calendar_day"))
+    covariate_means = scored.group_by(covariate).agg(pl.col("loads").mean().alias("__cov_mean"))
+    day_means = scored.group_by("__calendar_day").agg(pl.col("loads").mean().alias("__day_mean"))
+    interaction = (
+        scored.group_by([covariate, "__calendar_day"])
+        .agg(pl.col("loads").mean().alias("__joint_mean"))
+        .join(covariate_means, on=covariate, how="inner")
+        .join(day_means, on="__calendar_day", how="inner")
+        .with_columns(
+            (
+                pl.col("__joint_mean")
+                - pl.col("__cov_mean")
+                - pl.col("__day_mean")
+                + float(global_mean)
+            )
+            .abs()
+            .alias("__interaction")
+        )
+    )
+    max_interaction = interaction.select(pl.col("__interaction").max()).item()
+    if max_interaction is None or not math.isfinite(float(max_interaction)):
+        return 0.0
+    return float(max_interaction) / float(target_std)
+
+
 def cartoboost_benchmark_settings(config: dict[str, Any]) -> dict[str, Any]:
     settings = dict(config)
     settings["native_target_mode_policy"] = (
         "delta_from_last when season_length == 12, horizon == 13, or horizon >= 24; level otherwise"
+    )
+    settings["native_covariate_policy"] = (
+        "use route static covariates, training-gated low-cardinality integer-coded covariate "
+        "indicators, and covariate-calendar interactions including event-flag interactions only "
+        "when enabled by the source-specific benchmark config"
+    )
+    settings["auto_selector_policy"] = (
+        "auto uses the lag spine unless shared validation clears the source-specific gain and "
+        "consistency guards; non-M inner validation skips raw auto and non-M outer scoring "
+        "materializes raw auto only when selected; non-M inner validation stops after one origin "
+        "when lag beats every finite candidate by at least 15%; rolling-origin suites cache "
+        "identical inner validation cutoffs by source, cutoff, and candidate roster"
+    )
+    settings["native_ewm_feature_policy"] = (
+        "EWM target features are available but disabled by default after validation showed "
+        "route-mix regression without candidate gating"
     )
     settings["native_tree_regularization_policy"] = (
         "use at least max_depth=5 and at most min_samples_leaf=6 when "
@@ -3588,6 +4366,34 @@ def cartoboost_benchmark_settings(config: dict[str, Any]) -> dict[str, Any]:
         "the shortest training series"
     )
     return settings
+
+
+def cartoboost_model_settings(config: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "cartoboost_lag": cartoboost_benchmark_settings(config),
+        "cartoboost_auto_forecast": {
+            **cartoboost_benchmark_settings(config),
+            "auto_n_estimators": (
+                int(config["auto_n_estimators"])
+                if config.get("auto_n_estimators") is not None
+                else None
+            ),
+            "auto_n_estimators_policy": (
+                "explicit --cartoboost-auto-n-estimators override"
+                if config.get("auto_n_estimators") is not None
+                else "quality floor: max(--cartoboost-n-estimators, 360)"
+            ),
+        },
+    }
+
+
+def cartoboost_rolling_stat_windows(rolling_windows: list[int]) -> list[int]:
+    preferred = [window for window in [7, 28] if window in rolling_windows]
+    if preferred:
+        return preferred
+    if not rolling_windows:
+        return []
+    return sorted({rolling_windows[0], rolling_windows[-1]})
 
 
 def cartoboost_tree_regularization(
@@ -3621,6 +4427,22 @@ def cartoboost_supported_history_limits(train: Any) -> tuple[int, int]:
     return max_lag, max_lag
 
 
+def lane_date_value_history(history: Any) -> dict[Any, tuple[list[datetime], list[float]]]:
+    pl = require_polars()
+    records: dict[Any, tuple[list[datetime], list[float]]] = {}
+    grouped = (
+        history.sort(["lane_id", "date"])
+        .group_by("lane_id", maintain_order=True)
+        .agg(pl.col("date"), pl.col("loads"))
+    )
+    for row in grouped.iter_rows(named=True):
+        records[row["lane_id"]] = (
+            list(row["date"]),
+            [float(value) for value in row["loads"]],
+        )
+    return records
+
+
 def seasonal_naive_forecast_frame(
     train: Any,
     horizon: int,
@@ -3634,9 +4456,9 @@ def seasonal_naive_forecast_frame(
     forecast_frames = []
     for step in range(1, horizon + 1):
         rows = []
+        histories = lane_date_value_history(history)
         for row in next_future_rows(history).iter_rows(named=True):
-            lane_history = history.filter(pl.col("lane_id") == row["lane_id"]).sort("date")
-            values = lane_history["loads"].to_list()
+            _dates, values = histories[row["lane_id"]]
             prediction = float(
                 values[-season_length] if len(values) >= season_length else values[-1]
             )
@@ -3673,11 +4495,11 @@ def calendar_profile_forecast_frame(
     forecast_frames = []
     for step in range(1, horizon + 1):
         rows = []
+        histories = lane_date_value_history(history)
         for row in next_future_rows(history).iter_rows(named=True):
-            lane_history = history.filter(pl.col("lane_id") == row["lane_id"]).sort("date")
-            values = [float(value) for value in lane_history["loads"].to_list()]
+            dates, values = histories[row["lane_id"]]
             prediction = calendar_profile_prediction(
-                lane_history,
+                dates,
                 values,
                 row["date"],
                 mode=mode,
@@ -3716,9 +4538,9 @@ def trend_forecast_frame(
     forecast_frames = []
     for step in range(1, horizon + 1):
         rows = []
+        histories = lane_date_value_history(history)
         for row in next_future_rows(history).iter_rows(named=True):
-            lane_history = history.filter(pl.col("lane_id") == row["lane_id"]).sort("date")
-            values = [float(value) for value in lane_history["loads"].to_list()]
+            _dates, values = histories[row["lane_id"]]
             prediction = trend_prediction(
                 values,
                 step=step,
@@ -3779,7 +4601,7 @@ def trend_prediction(
 
 
 def calendar_profile_prediction(
-    lane_history: Any,
+    dates: list[datetime],
     values: list[float],
     timestamp: datetime,
     *,
@@ -3789,9 +4611,9 @@ def calendar_profile_prediction(
         raise ValueError("calendar profile requires non-empty lane history")
     fallback = float(values[-7] if len(values) >= 7 else values[-1])
     if mode == "day_of_month":
-        matches = lane_history.filter(lane_history["date"].dt.day() == timestamp.day)[
-            "loads"
-        ].to_list()
+        matches = [
+            value for date, value in zip(dates, values, strict=True) if date.day == timestamp.day
+        ]
         return float(np.mean(matches)) if matches else fallback
     if mode == "phase14":
         future_phase = len(values) % 14
@@ -3913,11 +4735,11 @@ def build_future_features(history: Any, future: Any, *, season_length: int) -> A
     lags = cartoboost_lag_values(season_length)
     rolling_windows = cartoboost_rolling_windows(season_length)
     difference_lags = cartoboost_difference_lags(season_length)
+    histories = lane_date_value_history(history)
     pieces = []
     for row in future.iter_rows(named=True):
-        lane_history = history.filter(pl.col("lane_id") == row["lane_id"]).sort("date")
         values = dict(row)
-        loads = lane_history["loads"].to_list()
+        _dates, loads = histories[row["lane_id"]]
         for lag in lags:
             values[f"loads_lag_{lag}"] = float(loads[-lag]) if len(loads) >= lag else None
         for window in rolling_windows:

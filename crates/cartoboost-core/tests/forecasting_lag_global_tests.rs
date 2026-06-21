@@ -1,9 +1,9 @@
 use cartoboost_core::booster::BoosterConfig;
 use cartoboost_core::forecasting::{
     CalendarFeature, CartoBoostLagForecaster, ForecastFrame, ForecastFrequency, ForecastObjective,
-    ForecastRow, Forecaster, GlobalForecastTargetMode, IntermittentDemandConfig,
-    IntermittentDemandForecaster, LagFeatureBuilder, LagFeatureConfig, LagPlusConfig,
-    LagPlusForecaster, LocalStandardScaledForecaster, Log1pForecaster,
+    ForecastRow, Forecaster, GlobalForecastSampleWeightMode, GlobalForecastTargetMode,
+    IntermittentDemandConfig, IntermittentDemandForecaster, LagFeatureBuilder, LagFeatureConfig,
+    LagPlusConfig, LagPlusForecaster, LocalStandardScaledForecaster, Log1pForecaster,
 };
 use chrono::{NaiveDate, NaiveDateTime};
 
@@ -41,8 +41,15 @@ fn lag_builder_is_leakage_safe_and_panel_isolated() {
     let builder = LagFeatureBuilder::new(LagFeatureConfig {
         lags: vec![1, 2],
         rolling_mean_windows: vec![2],
+        rolling_std_windows: vec![2],
+        rolling_min_windows: vec![2],
+        rolling_max_windows: vec![2],
+        ewm_alpha_percents: Vec::new(),
         difference_lags: Vec::new(),
         rolling_trend_windows: Vec::new(),
+        covariate_features: Vec::new(),
+        covariate_indicator_values: Default::default(),
+        covariate_calendar_interactions: false,
         calendar_features: vec![CalendarFeature::DayOfWeek, CalendarFeature::Month],
     })
     .expect("valid config");
@@ -63,6 +70,9 @@ fn lag_builder_is_leakage_safe_and_panel_isolated() {
             "target_lag_1".to_string(),
             "target_lag_2".to_string(),
             "target_roll_mean_2".to_string(),
+            "target_roll_std_2".to_string(),
+            "target_roll_min_2".to_string(),
+            "target_roll_max_2".to_string(),
             "calendar_day_of_week".to_string(),
             "calendar_month".to_string(),
         ]
@@ -70,9 +80,15 @@ fn lag_builder_is_leakage_safe_and_panel_isolated() {
     assert_eq!(pu1_day3.features[0], 20.0);
     assert_eq!(pu1_day3.features[1], 10.0);
     assert_eq!(pu1_day3.features[2], 15.0);
+    assert_eq!(pu1_day3.features[3], 5.0);
+    assert_eq!(pu1_day3.features[4], 10.0);
+    assert_eq!(pu1_day3.features[5], 20.0);
     assert_eq!(pu9_day3.features[0], 200.0);
     assert_eq!(pu9_day3.features[1], 100.0);
     assert_eq!(pu9_day3.features[2], 150.0);
+    assert_eq!(pu9_day3.features[3], 50.0);
+    assert_eq!(pu9_day3.features[4], 100.0);
+    assert_eq!(pu9_day3.features[5], 200.0);
     assert_eq!(rows.len(), 2);
 }
 
@@ -90,8 +106,15 @@ fn lag_builder_drops_rows_without_complete_lag_history() {
     let builder = LagFeatureBuilder::new(LagFeatureConfig {
         lags: vec![2],
         rolling_mean_windows: Vec::new(),
+        rolling_std_windows: Vec::new(),
+        rolling_min_windows: Vec::new(),
+        rolling_max_windows: Vec::new(),
+        ewm_alpha_percents: Vec::new(),
         difference_lags: Vec::new(),
         rolling_trend_windows: Vec::new(),
+        covariate_features: Vec::new(),
+        covariate_indicator_values: Default::default(),
+        covariate_calendar_interactions: false,
         calendar_features: Vec::new(),
     })
     .expect("valid config");
@@ -123,8 +146,15 @@ fn cartoboost_lag_forecaster_predicts_recursively_per_panel() {
         LagFeatureConfig {
             lags: vec![1],
             rolling_mean_windows: vec![2],
+            rolling_std_windows: Vec::new(),
+            rolling_min_windows: Vec::new(),
+            rolling_max_windows: Vec::new(),
+            ewm_alpha_percents: Vec::new(),
             difference_lags: Vec::new(),
             rolling_trend_windows: Vec::new(),
+            covariate_features: Vec::new(),
+            covariate_indicator_values: Default::default(),
+            covariate_calendar_interactions: false,
             calendar_features: vec![CalendarFeature::Day],
         },
         small_booster_config(),
@@ -152,6 +182,89 @@ fn cartoboost_lag_forecaster_predicts_recursively_per_panel() {
 }
 
 #[test]
+fn cartoboost_lag_forecaster_supports_recency_sample_weights() {
+    let frame = ForecastFrame::new(
+        (1..=16)
+            .map(|day| {
+                let target = if day <= 8 {
+                    10.0 + f64::from(day)
+                } else {
+                    40.0 + f64::from(day * 2)
+                };
+                ForecastRow::new("PU1", ts(day), target)
+            })
+            .collect(),
+        ForecastFrequency::Daily,
+    )
+    .expect("valid frame");
+    let mut forecaster = CartoBoostLagForecaster::new_with_target_mode_and_sample_weight(
+        LagFeatureConfig {
+            lags: vec![1, 2],
+            rolling_mean_windows: vec![2],
+            rolling_std_windows: Vec::new(),
+            rolling_min_windows: Vec::new(),
+            rolling_max_windows: Vec::new(),
+            ewm_alpha_percents: Vec::new(),
+            difference_lags: vec![1],
+            rolling_trend_windows: vec![3],
+            covariate_features: Vec::new(),
+            covariate_indicator_values: Default::default(),
+            covariate_calendar_interactions: false,
+            calendar_features: Vec::new(),
+        },
+        small_booster_config(),
+        GlobalForecastTargetMode::Level,
+        GlobalForecastSampleWeightMode::ExponentialRecency { half_life: 4 },
+    )
+    .expect("forecaster");
+
+    forecaster.fit(&frame).expect("fit");
+    let forecast = forecaster.predict(2).expect("predict");
+
+    assert_eq!(
+        forecaster.sample_weight_mode(),
+        GlobalForecastSampleWeightMode::ExponentialRecency { half_life: 4 }
+    );
+    assert_eq!(
+        forecaster.metadata()["sample_weight_mode"],
+        serde_json::json!("exponential_recency_half_life_4")
+    );
+    assert_eq!(forecast.predictions().len(), 2);
+    assert!(forecast
+        .predictions()
+        .iter()
+        .all(|prediction| prediction.mean.is_finite()));
+}
+
+#[test]
+fn cartoboost_lag_forecaster_rejects_invalid_recency_half_life() {
+    let err = CartoBoostLagForecaster::new_with_target_mode_and_sample_weight(
+        LagFeatureConfig {
+            lags: vec![1],
+            rolling_mean_windows: Vec::new(),
+            rolling_std_windows: Vec::new(),
+            rolling_min_windows: Vec::new(),
+            rolling_max_windows: Vec::new(),
+            ewm_alpha_percents: Vec::new(),
+            difference_lags: Vec::new(),
+            rolling_trend_windows: Vec::new(),
+            covariate_features: Vec::new(),
+            covariate_indicator_values: Default::default(),
+            covariate_calendar_interactions: false,
+            calendar_features: Vec::new(),
+        },
+        small_booster_config(),
+        GlobalForecastTargetMode::Level,
+        GlobalForecastSampleWeightMode::ExponentialRecency { half_life: 0 },
+    )
+    .expect_err("invalid half-life");
+
+    assert!(err
+        .to_string()
+        .contains("exponential recency half_life must be positive"));
+}
+
+#[test]
 fn cartoboost_lag_forecaster_can_model_delta_from_last_target() {
     let frame = ForecastFrame::new(
         vec![
@@ -169,8 +282,15 @@ fn cartoboost_lag_forecaster_can_model_delta_from_last_target() {
         LagFeatureConfig {
             lags: vec![1],
             rolling_mean_windows: Vec::new(),
+            rolling_std_windows: Vec::new(),
+            rolling_min_windows: Vec::new(),
+            rolling_max_windows: Vec::new(),
+            ewm_alpha_percents: Vec::new(),
             difference_lags: vec![1],
             rolling_trend_windows: vec![3],
+            covariate_features: Vec::new(),
+            covariate_indicator_values: Default::default(),
+            covariate_calendar_interactions: false,
             calendar_features: Vec::new(),
         },
         small_booster_config(),
@@ -196,10 +316,75 @@ fn cartoboost_lag_forecaster_can_model_delta_from_last_target() {
 }
 
 #[test]
+fn cartoboost_lag_forecaster_can_model_seasonal_delta_target() {
+    let frame = ForecastFrame::new(
+        (1..=21)
+            .map(|day| {
+                let seasonal = match day % 7 {
+                    1 => 30.0,
+                    2 => 34.0,
+                    3 => 38.0,
+                    4 => 42.0,
+                    5 => 46.0,
+                    6 => 50.0,
+                    _ => 54.0,
+                };
+                ForecastRow::new("PU1", ts(day), seasonal + f64::from(day / 7))
+            })
+            .collect(),
+        ForecastFrequency::Daily,
+    )
+    .expect("valid frame");
+    let mut forecaster = CartoBoostLagForecaster::new_with_target_mode(
+        LagFeatureConfig {
+            lags: vec![1, 7],
+            rolling_mean_windows: vec![7],
+            rolling_std_windows: Vec::new(),
+            rolling_min_windows: Vec::new(),
+            rolling_max_windows: Vec::new(),
+            ewm_alpha_percents: Vec::new(),
+            difference_lags: vec![7],
+            rolling_trend_windows: vec![7],
+            covariate_features: Vec::new(),
+            covariate_indicator_values: Default::default(),
+            covariate_calendar_interactions: false,
+            calendar_features: Vec::new(),
+        },
+        small_booster_config(),
+        GlobalForecastTargetMode::SeasonalDelta { season_length: 7 },
+    )
+    .expect("forecaster");
+
+    forecaster.fit(&frame).expect("fit");
+    let forecast = forecaster.predict(2).expect("predict");
+    let predictions = forecast.predictions();
+
+    assert_eq!(
+        forecaster.target_mode(),
+        GlobalForecastTargetMode::SeasonalDelta { season_length: 7 }
+    );
+    assert_eq!(predictions.len(), 2);
+    assert!(predictions
+        .iter()
+        .all(|prediction| prediction.mean.is_finite()));
+    assert!(predictions[0].mean > 30.0);
+    assert!(predictions[1].mean > predictions[0].mean);
+    assert_eq!(
+        forecaster.metadata()["target_mode"],
+        serde_json::json!("seasonal_delta_7")
+    );
+}
+
+#[test]
 fn lag_plus_forecaster_calibrates_residual_corrections() {
     let frame = ForecastFrame::new(
         (1..=14)
-            .map(|day| ForecastRow::single(ts(day), 20.0 + f64::from(day * 2)))
+            .flat_map(|day| {
+                [
+                    ForecastRow::new("PU1", ts(day), 20.0 + f64::from(day * 2)),
+                    ForecastRow::new("PU9", ts(day), 100.0 + f64::from(day * 3)),
+                ]
+            })
             .collect(),
         ForecastFrequency::Daily,
     )
@@ -208,8 +393,15 @@ fn lag_plus_forecaster_calibrates_residual_corrections() {
         lag_config: LagFeatureConfig {
             lags: vec![1, 2],
             rolling_mean_windows: vec![2],
+            rolling_std_windows: Vec::new(),
+            rolling_min_windows: Vec::new(),
+            rolling_max_windows: Vec::new(),
+            ewm_alpha_percents: Vec::new(),
             difference_lags: vec![2],
             rolling_trend_windows: vec![2],
+            covariate_features: Vec::new(),
+            covariate_indicator_values: Default::default(),
+            covariate_calendar_interactions: false,
             calendar_features: Vec::new(),
         },
         booster_config: small_booster_config(),
@@ -225,7 +417,7 @@ fn lag_plus_forecaster_calibrates_residual_corrections() {
     let forecast = forecaster.predict(2).expect("predict");
     let metadata = forecaster.metadata();
 
-    assert_eq!(forecast.predictions().len(), 2);
+    assert_eq!(forecast.predictions().len(), 4);
     assert_eq!(metadata["model"], serde_json::json!("lag_plus"));
     assert_eq!(metadata["base_model"], serde_json::json!("cartoboost_lag"));
     assert_eq!(metadata["objective"], serde_json::json!("wape"));
@@ -249,6 +441,14 @@ fn lag_plus_forecaster_calibrates_residual_corrections() {
     assert!(metadata["seasonal_corrections"]
         .as_object()
         .expect("seasonal corrections")
+        .values()
+        .all(|value| value.as_f64().expect("correction").is_finite()));
+    let series_corrections = metadata["series_corrections"]
+        .as_object()
+        .expect("series corrections");
+    assert!(series_corrections.contains_key("PU1"));
+    assert!(series_corrections.contains_key("PU9"));
+    assert!(series_corrections
         .values()
         .all(|value| value.as_f64().expect("correction").is_finite()));
     assert!(forecast
@@ -277,8 +477,15 @@ fn local_standard_scaled_forecaster_inverts_predictions_to_original_scale() {
         LagFeatureConfig {
             lags: vec![1],
             rolling_mean_windows: Vec::new(),
+            rolling_std_windows: Vec::new(),
+            rolling_min_windows: Vec::new(),
+            rolling_max_windows: Vec::new(),
+            ewm_alpha_percents: Vec::new(),
             difference_lags: Vec::new(),
             rolling_trend_windows: Vec::new(),
+            covariate_features: Vec::new(),
+            covariate_indicator_values: Default::default(),
+            covariate_calendar_interactions: false,
             calendar_features: Vec::new(),
         },
         small_booster_config(),
@@ -336,8 +543,15 @@ fn log1p_forecaster_inverts_and_clamps_nonnegative_predictions() {
                 LagFeatureConfig {
                     lags: vec![1],
                     rolling_mean_windows: Vec::new(),
+                    rolling_std_windows: Vec::new(),
+                    rolling_min_windows: Vec::new(),
+                    rolling_max_windows: Vec::new(),
+                    ewm_alpha_percents: Vec::new(),
                     difference_lags: Vec::new(),
                     rolling_trend_windows: Vec::new(),
+                    covariate_features: Vec::new(),
+                    covariate_indicator_values: Default::default(),
+                    covariate_calendar_interactions: false,
                     calendar_features: Vec::new(),
                 },
                 small_booster_config(),
@@ -381,8 +595,15 @@ fn log1p_forecaster_rejects_negative_targets() {
         LagFeatureConfig {
             lags: vec![1],
             rolling_mean_windows: Vec::new(),
+            rolling_std_windows: Vec::new(),
+            rolling_min_windows: Vec::new(),
+            rolling_max_windows: Vec::new(),
+            ewm_alpha_percents: Vec::new(),
             difference_lags: Vec::new(),
             rolling_trend_windows: Vec::new(),
+            covariate_features: Vec::new(),
+            covariate_indicator_values: Default::default(),
+            covariate_calendar_interactions: false,
             calendar_features: Vec::new(),
         },
         small_booster_config(),

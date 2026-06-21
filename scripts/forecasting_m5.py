@@ -25,7 +25,7 @@ def main() -> int:
     if not args.no_hyperopt:
         parser.error("--no-hyperopt is required for benchmark integrity")
     if not args.official_wrmsse:
-        parser.error("--official-wrmsse is required so M5 is not reduced to RMSE")
+        parser.error("--official-wrmsse is required so M5 artifacts report WRMSSE")
     cmd = [
         sys.executable,
         str(ROOT / "scripts" / "forecasting_library_benchmark.py"),

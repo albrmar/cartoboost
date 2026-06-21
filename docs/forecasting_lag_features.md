@@ -42,19 +42,49 @@ objects are converted only when they match the native surface:
   available in the Python inspection builder, and the native
   `CartoBoostLagForecaster(trend_features=True)` enables the corresponding
   leakage-safe lag-delta and rolling-trend features for forecasting;
-- `RollingFeatureConfig` maps to native `rolling_windows` only for complete
-  rolling means;
+- `RollingFeatureConfig` maps complete rolling means to native
+  `rolling_windows`, complete rolling standard deviations to
+  `rolling_std_windows`, complete rolling minimums to `rolling_min_windows`,
+  and complete rolling maximums to `rolling_max_windows`;
+- `ewm_alpha_percents=[...]` adds native exponentially weighted target means,
+  such as `target_ewm_alpha_090`, built from prior same-series target history
+  only. EWM features are opt-in because benchmark probes showed route-mix
+  regression when enabling alpha 90 without validation gating;
 - `CalendarFeatureConfig` maps to native `calendar_features=True` for
   `dayofweek`, `month`, and `day`;
+- `rich_calendar_features=True` adds native day-of-year, elapsed-index,
+  elapsed phase-14, low-cost Fourier sine/cosine encodings for weekday,
+  month, and day-of-month cycles, plus month-start, mid-month, and month-end
+  event indicators. These features give trees smooth calendar context and
+  recurring operational event hints without enabling expensive periodic split
+  searches;
+- `covariate_features=[...]` maps numeric static row covariates into native
+  lag features. During recursive prediction, the latest known value for each
+  series is carried forward, which fits taxi route metadata such as pickup
+  zone, dropoff zone, route distance, airport-lane flag, and borough code;
+- `covariate_indicator_values={...}` adds dense one-hot style native indicators
+  for explicitly configured low-cardinality numeric covariates. The maintained
+  benchmark harness discovers only finite integer-coded covariates with 3 to 8
+  distinct training values and enables them only when a training-only
+  covariate-by-day interaction signal clears the fixed threshold. That keeps
+  this route-context expansion useful for region/store/borough-like metadata
+  without turning every binary flag into more tree features;
+- `covariate_calendar_interactions=True` adds native products between each
+  configured numeric covariate or covariate indicator and each configured
+  calendar feature. This is intended for route-demand settings where static lane
+  context changes the size of calendar pulses, including month-start,
+  mid-month, and month-end operational event flags. The benchmark harness
+  enables it only for non-M shared demand sources such as synthetic taxi-style
+  fixtures and NYC taxi runs;
 - `regressor_params` maps fixed CartoBoost booster settings such as
   `n_estimators`, `learning_rate`, `max_depth`, `min_samples_leaf`, `min_gain`,
   and `splitters` to the native model.
 
 Unsupported regressor parameters fail explicitly. Unsupported Python-only
-feature options, such as hourly calendar features, expanding summaries, non-mean
-rolling aggregations, static columns, known-future covariates, and custom booster
-options outside the documented native surface, should fail clearly instead of
-being silently ignored by the native wrapper.
+feature options, such as hourly calendar features, expanding summaries,
+unsupported rolling aggregations, dynamic known-future covariates, and custom
+booster options outside the documented native surface, should fail
+clearly instead of being silently ignored by the native wrapper.
 
 ## Direct Feature Matrix
 
@@ -99,26 +129,33 @@ flowchart TD
     F --> H["target_roll_mean_w"]
     F --> I["target_delta_lag_k"]
     F --> J["target_roll_trend_w"]
-    F --> K["calendar_day_of_week / month / day"]
+    F --> R["optional target_ewm_alpha_p"]
+    F --> K["calendar_day_of_week / month / day<br/>optional Fourier + month events + day_of_year / elapsed / phase_14"]
+    F --> Q["optional static covariates"]
     G --> L["Supervised matrix X"]
     H --> L
     I --> L
     J --> L
+    R --> L
     K --> L
+    Q --> L
     L --> M["CartoBoost booster fit"]
     A --> N["Training target y"]
     N --> M
     M --> O["Native cartoboost_lag model"]
 ```
 
-At fit time, the target can be trained as the observed level or, when
-`target_mode="delta_from_last"` is selected, as the change from the lane's most
-recent prior target. In both modes, the feature row never sees the row target or
-any later taxi demand value.
+At fit time, the target can be trained as the observed level, as the change
+from the lane's most recent prior target with `target_mode="delta_from_last"`,
+or as the change from the same lane's previous seasonal position with an
+explicit mode such as `target_mode="seasonal_delta_7"`. In all modes, the
+feature row never sees the row target or any later taxi demand value.
 
 Prediction is recursive. For each lane, the model predicts the next timestamp,
 appends that prediction to an in-memory copy of the lane history, and then uses
 that expanded history to build features for the next horizon step.
+When `covariate_features` are configured, the recursive row also carries the
+latest known static covariate values forward for that lane.
 
 ```mermaid
 flowchart LR
@@ -127,6 +164,7 @@ flowchart LR
     C --> D{"Target mode"}
     D -- level --> E["Use raw prediction as mean"]
     D -- delta_from_last --> F["Add raw prediction to previous target"]
+    D -- seasonal_delta_k --> G["Add raw prediction to previous seasonal target"]
     E --> G["Forecast row<br/>horizon h"]
     F --> G
     G --> H["Append predicted mean to lane history"]

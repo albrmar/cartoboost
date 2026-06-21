@@ -322,19 +322,34 @@ fn objective_loss(
                 / actuals.len().max(1) as f64;
             Ok(mse.sqrt())
         }
-        ForecastObjective::Wape => {
-            let denominator = actuals.iter().map(|actual| actual.abs()).sum::<f64>();
-            if denominator == 0.0 {
-                return Ok(predictions.iter().map(|prediction| prediction.abs()).sum());
-            }
-            let numerator = actuals
-                .iter()
-                .zip(predictions)
-                .map(|(actual, predicted)| (predicted - actual).abs())
-                .sum::<f64>();
-            Ok(numerator / denominator)
+        ForecastObjective::Wape => wape_loss(actuals, predictions),
+        ForecastObjective::RmseWape => {
+            let rmse = objective_loss(actuals, predictions, ForecastObjective::Rmse)?;
+            let mean_abs_actual = actuals.iter().map(|actual| actual.abs()).sum::<f64>()
+                / actuals.len().max(1) as f64;
+            let normalized_rmse = if mean_abs_actual > 0.0 {
+                rmse / mean_abs_actual
+            } else if rmse == 0.0 {
+                0.0
+            } else {
+                rmse / 1e-12
+            };
+            Ok(0.5 * (normalized_rmse + wape_loss(actuals, predictions)?))
         }
     }
+}
+
+fn wape_loss(actuals: &[f64], predictions: &[f64]) -> Result<f64> {
+    let denominator = actuals.iter().map(|actual| actual.abs()).sum::<f64>();
+    if denominator == 0.0 {
+        return Ok(predictions.iter().map(|prediction| prediction.abs()).sum());
+    }
+    let numerator = actuals
+        .iter()
+        .zip(predictions)
+        .map(|(actual, predicted)| (predicted - actual).abs())
+        .sum::<f64>();
+    Ok(numerator / denominator)
 }
 
 fn effective_validation_window(frame: &ForecastFrame, configured: Option<usize>) -> usize {

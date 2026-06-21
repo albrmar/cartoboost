@@ -41,8 +41,12 @@ def test_cartoboost_lag_converts_supported_feature_configs(install_fake_native):
             difference_lags=[24],
             rolling_trend_windows=[3],
         ),
-        rolling_config=RollingFeatureConfig(windows=[3], aggregations=["mean"]),
+        rolling_config=RollingFeatureConfig(
+            windows=[3],
+            aggregations=["mean", "std", "min", "max"],
+        ),
         calendar_config=CalendarFeatureConfig(features=["dayofweek", "month", "day"]),
+        target_mode="seasonal_delta_7",
     ).fit({"pickup_1": [10, 11, 12, 13]})
 
     assert native.calls[0] == (
@@ -52,7 +56,11 @@ def test_cartoboost_lag_converts_supported_feature_configs(install_fake_native):
             "difference_lags": [24],
             "rolling_trend_windows": [3],
             "rolling_windows": [3],
+            "rolling_std_windows": [3],
+            "rolling_min_windows": [3],
+            "rolling_max_windows": [3],
             "calendar_features": True,
+            "target_mode": "seasonal_delta_7",
         },
     )
 
@@ -96,6 +104,46 @@ def test_cartoboost_lag_passes_supported_regressor_params(install_fake_native):
             "splitters": ["axis"],
         },
     )
+
+
+def test_cartoboost_lag_dataframe_coercion_passes_static_covariates_to_native(
+    install_fake_native,
+):
+    native = install_fake_native("CartoBoostLagForecaster")
+    training = pd.DataFrame(
+        {
+            "lane_id": ["PU1-DO2", "PU1-DO2", "PU1-DO2"],
+            "pickup_day": pd.to_datetime(["2026-01-01", "2026-01-02", "2026-01-03"]),
+            "trips": [10.0, 12.0, 14.0],
+            "distance_miles": [2.5, 2.5, 2.5],
+            "airport_lane": [0.0, 0.0, 0.0],
+        }
+    )
+
+    CartoBoostLagForecaster(
+        time_col="pickup_day",
+        target_col="trips",
+        panel_cols=["lane_id"],
+        covariate_features=["distance_miles", "airport_lane"],
+        lags=[1],
+        rolling_windows=[],
+        calendar_features=False,
+    ).fit(training)
+
+    assert native.calls[0] == (
+        "init",
+        {
+            "covariate_features": ["distance_miles", "airport_lane"],
+            "lags": [1],
+            "rolling_windows": [],
+            "calendar_features": False,
+        },
+    )
+    assert native.calls[1][1].kwargs["row_covariates"] == [
+        {"distance_miles": 2.5, "airport_lane": 0.0},
+        {"distance_miles": 2.5, "airport_lane": 0.0},
+        {"distance_miles": 2.5, "airport_lane": 0.0},
+    ]
 
 
 def test_cartoboost_lag_rejects_unsupported_regressor_params() -> None:

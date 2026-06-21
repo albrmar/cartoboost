@@ -59,7 +59,9 @@ pub use ensemble::{ForecastEnsemble, GatedEnsembleForecaster, WeightedEnsembleFo
 pub use features::{DirectFeatureMatrix, ForecastFeatureFactory};
 pub use frequency::{parse_forecast_timestamp, ForecastFrequency};
 pub use gating::{ExpertScore, RuleBasedGating, RuleBasedGatingGuardrails, ValidationScoreTable};
-pub use global::{CartoBoostLagForecaster, GlobalForecastTargetMode};
+pub use global::{
+    CartoBoostLagForecaster, GlobalForecastSampleWeightMode, GlobalForecastTargetMode,
+};
 pub use hierarchy::{HierarchyNode, HierarchySpec};
 pub use horizon::{ForecastOutput, ForecastRequest, ForecastStrategy, QuantileForecastOutput};
 pub use intermittent::{
@@ -74,7 +76,8 @@ pub use local::{
     ETSValidationScore, KalmanForecaster, KalmanParameterSet, KalmanValidationScore,
     KrigingForecaster, LocalLevelKalmanForecaster, LocalLevelKalmanParameterSet,
     LocalLevelKalmanValidationScore, NaiveForecaster, OptimizedThetaForecaster,
-    SeasonalNaiveForecaster, ThetaForecaster, ThetaSeasonality,
+    SeasonalNaiveForecaster, SeasonalWindowAverageForecaster, ThetaForecaster, ThetaSeasonality,
+    WindowAverageForecaster,
 };
 pub use metrics::{
     evaluate_forecast, evaluate_forecast_with_training, ForecastActual, ForecastMetricSet,

@@ -8,23 +8,46 @@ use crate::forecasting::{
     RectifiedRecursiveForecaster, RuleBasedGating, RuleBasedGatingGuardrails, ValidationScoreTable,
 };
 use crate::forecasting::{
-    CartoBoostDirectForecaster, CartoBoostLagForecaster, GlobalForecastTargetMode,
+    CartoBoostDirectForecaster, CartoBoostLagForecaster, GlobalForecastSampleWeightMode,
+    GlobalForecastTargetMode,
 };
 use crate::{CartoBoostError, Result};
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, BTreeSet};
 
 const LAG_EXPERT: &str = "cartoboost_lag";
+const RECENCY_WEIGHTED_LAG_EXPERT: &str = "recency_weighted_lag";
 const SCALED_LAG_EXPERT: &str = "scaled_lag";
 const DELTA_LAG_EXPERT: &str = "delta_lag";
 const SCALED_DELTA_LAG_EXPERT: &str = "scaled_delta_lag";
+const SEASONAL_DELTA_LAG_EXPERT: &str = "seasonal_delta_lag";
+const SCALED_SEASONAL_DELTA_LAG_EXPERT: &str = "scaled_seasonal_delta_lag";
+const EWM_LAG_EXPERT: &str = "ewm_lag";
 const DIRECT_EXPERT: &str = "cartoboost_direct";
 const RECTIFIED_RECURSIVE_EXPERT: &str = "cartoboost_rectified_recursive";
 const LOG1P_SCALED_LAG_EXPERT: &str = "log1p_scaled_lag";
 const LAG_PLUS_EXPERT: &str = "lag_plus";
 const INTERMITTENT_DEMAND_EXPERT: &str = "intermittent_demand";
 const CLASSICAL_EXPERT: &str = "classical_expert_bank";
+const MIN_SERIES_WEIGHT_VALIDATION_POINTS: usize = 4;
+const AUTO_CANDIDATES: [&str; 14] = [
+    LAG_EXPERT,
+    RECENCY_WEIGHTED_LAG_EXPERT,
+    SCALED_LAG_EXPERT,
+    DELTA_LAG_EXPERT,
+    SCALED_DELTA_LAG_EXPERT,
+    SEASONAL_DELTA_LAG_EXPERT,
+    SCALED_SEASONAL_DELTA_LAG_EXPERT,
+    EWM_LAG_EXPERT,
+    DIRECT_EXPERT,
+    RECTIFIED_RECURSIVE_EXPERT,
+    LOG1P_SCALED_LAG_EXPERT,
+    LAG_PLUS_EXPERT,
+    INTERMITTENT_DEMAND_EXPERT,
+    CLASSICAL_EXPERT,
+];
 
 pub type AutoForecastObjective = ForecastObjective;
 
@@ -35,6 +58,7 @@ pub struct AutoForecastConfig {
     pub target_mode: GlobalForecastTargetMode,
     pub season_length: usize,
     pub validation_window: Option<usize>,
+    pub validation_origin_count: usize,
     pub objective: AutoForecastObjective,
     pub baseline_displacement_gain: f64,
     pub hard_winner_relative_gain: f64,
@@ -49,6 +73,10 @@ impl Default for AutoForecastConfig {
             lag_config: LagFeatureConfig {
                 lags: vec![1, 2, 3, 7, 14, 28],
                 rolling_mean_windows: vec![7, 14, 28],
+                rolling_std_windows: vec![7, 14, 28],
+                rolling_min_windows: vec![7, 14, 28],
+                rolling_max_windows: vec![7, 14, 28],
+                ewm_alpha_percents: Vec::new(),
                 calendar_features: vec![
                     CalendarFeature::DayOfWeek,
                     CalendarFeature::Month,
@@ -56,12 +84,16 @@ impl Default for AutoForecastConfig {
                 ],
                 difference_lags: vec![2, 3, 7, 14, 28],
                 rolling_trend_windows: vec![7, 14, 28],
+                covariate_features: Vec::new(),
+                covariate_indicator_values: Default::default(),
+                covariate_calendar_interactions: false,
             },
             booster_config: BoosterConfig::default(),
             target_mode: GlobalForecastTargetMode::Level,
             season_length: 7,
             validation_window: None,
-            objective: ForecastObjective::Rmse,
+            validation_origin_count: 2,
+            objective: ForecastObjective::RmseWape,
             baseline_displacement_gain: 0.03,
             hard_winner_relative_gain: 0.05,
             min_blend_weight: 0.15,
@@ -81,8 +113,10 @@ struct FittedAutoForecastModel {
     weights: BTreeMap<String, f64>,
     horizon_weights: BTreeMap<usize, BTreeMap<String, f64>>,
     series_weights: BTreeMap<String, BTreeMap<String, f64>>,
+    effective_lag_config: LagFeatureConfig,
     validation_scores: Vec<ExpertScore>,
     validation_window: usize,
+    validation_origin_count: usize,
     member_metadata: BTreeMap<String, Value>,
     nonnegative_output: bool,
 }
@@ -178,30 +212,19 @@ impl AutoForecastModel {
 impl Forecaster for AutoForecastModel {
     fn fit(&mut self, frame: &ForecastFrame) -> Result<()> {
         let validation_window = effective_validation_window(frame, self.config.validation_window);
+        let validation_origin_count = effective_validation_origin_count(
+            frame,
+            validation_window,
+            self.config.validation_origin_count,
+        );
         let nonnegative_output = frame_is_nonnegative(frame.rows());
-        let split = split_validation_frame(frame, validation_window)?;
-        let mut scores = Vec::new();
-        for name in [
-            LAG_EXPERT,
-            SCALED_LAG_EXPERT,
-            DELTA_LAG_EXPERT,
-            SCALED_DELTA_LAG_EXPERT,
-            DIRECT_EXPERT,
-            RECTIFIED_RECURSIVE_EXPERT,
-            LOG1P_SCALED_LAG_EXPERT,
-            LAG_PLUS_EXPERT,
-            INTERMITTENT_DEMAND_EXPERT,
-            CLASSICAL_EXPERT,
-        ] {
-            if !candidate_is_eligible(name, frame) {
-                continue;
-            }
-            if let Ok(candidate_scores) =
-                score_candidate(name, &self.config, &split, nonnegative_output)
-            {
-                scores.extend(candidate_scores);
-            }
-        }
+        let splits = rolling_validation_splits(frame, validation_window, validation_origin_count)?;
+        let last_split = splits.last().ok_or_else(|| {
+            CartoBoostError::InvalidInput("no auto forecast validation splits".to_string())
+        })?;
+        let effective_config =
+            effective_auto_config_for_split(&self.config, &last_split.train, validation_window);
+        let scores = score_auto_candidates(frame, &effective_config, &splits, nonnegative_output);
         if scores.is_empty() {
             return Err(CartoBoostError::InvalidInput(
                 "no auto forecast model candidate could be validated".to_string(),
@@ -226,26 +249,20 @@ impl Forecaster for AutoForecastModel {
         )?;
         let weights = gating.weights_for(None, None)?;
         let horizon_weights = weights_by_horizon(&gating, validation_window)?;
-        let series_weights = weights_by_series(&gating, frame)?;
+        let series_weights =
+            weights_by_series(&gating, frame, validation_window, validation_origin_count)?;
         let selected_names = selected_member_names(&weights, &horizon_weights, &series_weights);
-        let mut members = Vec::new();
-        let mut member_metadata = BTreeMap::new();
-        for name in selected_names {
-            let mut forecaster = build_candidate(&name, &self.config)?;
-            forecaster.fit(frame)?;
-            member_metadata.insert(name.clone(), forecaster.metadata());
-            members.push(FittedMember {
-                name: name.clone(),
-                forecaster,
-            });
-        }
+        let (members, member_metadata) =
+            fit_selected_members(&selected_names, &effective_config, frame)?;
         self.fitted = Some(FittedAutoForecastModel {
             members,
             weights,
             horizon_weights,
             series_weights,
+            effective_lag_config: effective_config.lag_config,
             validation_scores: scores,
             validation_window,
+            validation_origin_count,
             member_metadata,
             nonnegative_output,
         });
@@ -316,11 +333,14 @@ impl Forecaster for AutoForecastModel {
             "objective": self.config.objective.as_str(),
             "season_length": self.config.season_length,
             "validation_window": fitted.map(|state| state.validation_window),
+            "validation_origin_count": fitted.map(|state| state.validation_origin_count),
+            "series_weight_min_validation_points": MIN_SERIES_WEIGHT_VALIDATION_POINTS,
             "baseline": LAG_EXPERT,
             "baseline_displacement_gain": self.config.baseline_displacement_gain,
             "hard_winner_relative_gain": self.config.hard_winner_relative_gain,
             "max_direct_horizon": self.config.max_direct_horizon,
             "nonnegative_output": fitted.map(|state| state.nonnegative_output),
+            "effective_lag_config": fitted.map(|state| &state.effective_lag_config),
             "blend_bounds": {
                 "min": self.config.min_blend_weight,
                 "max": self.config.max_blend_weight,
@@ -339,8 +359,51 @@ struct ValidationSplit {
     validation: Vec<ForecastRow>,
 }
 
+type ValidationScoreKey = (String, Option<String>, Option<usize>, String);
+
 fn build_candidate(name: &str, config: &AutoForecastConfig) -> Result<Box<dyn Forecaster>> {
     build_candidate_with_direct_horizon(name, config, config.max_direct_horizon)
+}
+
+struct SelectedMemberFit {
+    index: usize,
+    name: String,
+    member: FittedMember,
+    metadata: Value,
+}
+
+fn fit_selected_members(
+    selected_names: &[String],
+    config: &AutoForecastConfig,
+    frame: &ForecastFrame,
+) -> Result<(Vec<FittedMember>, BTreeMap<String, Value>)> {
+    let mut fitted = selected_names
+        .par_iter()
+        .enumerate()
+        .map(|(index, name)| {
+            let mut forecaster = build_candidate(name, config)?;
+            forecaster.fit(frame)?;
+            let metadata = forecaster.metadata();
+            Ok(SelectedMemberFit {
+                index,
+                name: name.clone(),
+                member: FittedMember {
+                    name: name.clone(),
+                    forecaster,
+                },
+                metadata,
+            })
+        })
+        .collect::<Result<Vec<_>>>()?;
+    fitted.sort_by_key(|member| member.index);
+
+    let mut members = Vec::with_capacity(fitted.len());
+    let mut member_metadata = BTreeMap::new();
+    for fit in fitted {
+        member_metadata.insert(fit.name, fit.metadata);
+        members.push(fit.member);
+    }
+    Ok((members, member_metadata))
 }
 
 fn build_candidate_with_direct_horizon(
@@ -354,6 +417,16 @@ fn build_candidate_with_direct_horizon(
             config.booster_config.clone(),
             config.target_mode,
         )?)),
+        RECENCY_WEIGHTED_LAG_EXPERT => Ok(Box::new(
+            CartoBoostLagForecaster::new_with_target_mode_and_sample_weight(
+                config.lag_config.clone(),
+                config.booster_config.clone(),
+                config.target_mode,
+                GlobalForecastSampleWeightMode::ExponentialRecency {
+                    half_life: recency_half_life(config),
+                },
+            )?,
+        )),
         SCALED_LAG_EXPERT => Ok(Box::new(LocalStandardScaledForecaster::new(
             Box::new(CartoBoostLagForecaster::new_with_target_mode(
                 config.lag_config.clone(),
@@ -377,6 +450,34 @@ fn build_candidate_with_direct_horizon(
             1e-6,
             SCALED_DELTA_LAG_EXPERT,
         )?)),
+        SEASONAL_DELTA_LAG_EXPERT => Ok(Box::new(CartoBoostLagForecaster::new_with_target_mode(
+            config.lag_config.clone(),
+            config.booster_config.clone(),
+            GlobalForecastTargetMode::SeasonalDelta {
+                season_length: config.season_length,
+            },
+        )?)),
+        SCALED_SEASONAL_DELTA_LAG_EXPERT => Ok(Box::new(LocalStandardScaledForecaster::new(
+            Box::new(CartoBoostLagForecaster::new_with_target_mode(
+                config.lag_config.clone(),
+                config.booster_config.clone(),
+                GlobalForecastTargetMode::SeasonalDelta {
+                    season_length: config.season_length,
+                },
+            )?),
+            1e-6,
+            SCALED_SEASONAL_DELTA_LAG_EXPERT,
+        )?)),
+        EWM_LAG_EXPERT => {
+            let mut lag_config = config.lag_config.clone();
+            push_unique_u8(&mut lag_config.ewm_alpha_percents, 90);
+            sort_dedup_u8(&mut lag_config.ewm_alpha_percents);
+            Ok(Box::new(CartoBoostLagForecaster::new_with_target_mode(
+                lag_config,
+                config.booster_config.clone(),
+                config.target_mode,
+            )?))
+        }
         DIRECT_EXPERT => Ok(Box::new(FixedHorizonDirectForecaster::new(
             DirectAutoMember::Direct(Box::new(CartoBoostDirectForecaster::new(
                 config.lag_config.clone(),
@@ -433,8 +534,9 @@ fn build_candidate_with_direct_horizon(
     }
 }
 
-fn candidate_is_eligible(name: &str, frame: &ForecastFrame) -> bool {
+fn candidate_is_eligible(name: &str, frame: &ForecastFrame, config: &AutoForecastConfig) -> bool {
     match name {
+        RECENCY_WEIGHTED_LAG_EXPERT => recent_level_shift_present(frame, config),
         LOG1P_SCALED_LAG_EXPERT => frame_is_nonnegative(frame.rows()),
         INTERMITTENT_DEMAND_EXPERT => {
             frame_is_nonnegative(frame.rows()) && zero_fraction(frame.rows()) >= 0.25
@@ -442,6 +544,39 @@ fn candidate_is_eligible(name: &str, frame: &ForecastFrame) -> bool {
         DIRECT_EXPERT | RECTIFIED_RECURSIVE_EXPERT => zero_fraction(frame.rows()) < 0.25,
         _ => true,
     }
+}
+
+fn recency_half_life(config: &AutoForecastConfig) -> usize {
+    config
+        .season_length
+        .max(config.validation_window.unwrap_or(1))
+        .max(2)
+}
+
+fn recent_level_shift_present(frame: &ForecastFrame, config: &AutoForecastConfig) -> bool {
+    let window = recency_half_life(config).clamp(2, 28);
+    let mut eligible = 0usize;
+    let mut shifted = 0usize;
+    for history in history_by_series(frame.rows()).values() {
+        if history.len() < window * 2 {
+            continue;
+        }
+        eligible += 1;
+        let recent = &history[history.len() - window..];
+        let prior = &history[history.len() - window * 2..history.len() - window];
+        let recent_mean = recent.iter().map(|row| row.target).sum::<f64>() / window as f64;
+        let prior_mean = prior.iter().map(|row| row.target).sum::<f64>() / window as f64;
+        let scale = prior
+            .iter()
+            .chain(recent.iter())
+            .map(|row| row.target.abs())
+            .sum::<f64>()
+            / (window * 2) as f64;
+        if scale > 0.0 && ((recent_mean - prior_mean).abs() / scale) >= 0.35 {
+            shifted += 1;
+        }
+    }
+    eligible > 0 && shifted * 4 >= eligible
 }
 
 fn zero_fraction(rows: &[ForecastRow]) -> f64 {
@@ -458,9 +593,15 @@ fn frame_is_nonnegative(rows: &[ForecastRow]) -> bool {
 fn weights_by_series(
     gating: &RuleBasedGating,
     frame: &ForecastFrame,
+    validation_window: usize,
+    validation_origin_count: usize,
 ) -> Result<BTreeMap<String, BTreeMap<String, f64>>> {
     let mut by_series = BTreeMap::new();
     if !frame.is_panel() {
+        return Ok(by_series);
+    }
+    let validation_points = validation_window.saturating_mul(validation_origin_count);
+    if validation_points < MIN_SERIES_WEIGHT_VALIDATION_POINTS {
         return Ok(by_series);
     }
     for series_id in frame.series_ids() {
@@ -549,6 +690,57 @@ fn score_candidate(
         &predictions,
         &actuals,
     )?);
+    Ok(scores)
+}
+
+fn score_auto_candidates(
+    frame: &ForecastFrame,
+    config: &AutoForecastConfig,
+    splits: &[ValidationSplit],
+    nonnegative_output: bool,
+) -> Vec<ExpertScore> {
+    let mut scored = AUTO_CANDIDATES
+        .par_iter()
+        .enumerate()
+        .filter_map(|(index, name)| {
+            if !candidate_is_eligible(name, frame, config) {
+                return None;
+            }
+            score_candidate_across_splits(name, config, splits, nonnegative_output)
+                .ok()
+                .map(|scores| (index, scores))
+        })
+        .collect::<Vec<_>>();
+    scored.sort_by_key(|(index, _)| *index);
+    scored.into_iter().flat_map(|(_, scores)| scores).collect()
+}
+
+fn score_candidate_across_splits(
+    name: &str,
+    config: &AutoForecastConfig,
+    splits: &[ValidationSplit],
+    nonnegative_output: bool,
+) -> Result<Vec<ExpertScore>> {
+    let mut scores_by_key: BTreeMap<ValidationScoreKey, Vec<f64>> = BTreeMap::new();
+    for split in splits {
+        for score in score_candidate(name, config, split, nonnegative_output)? {
+            scores_by_key
+                .entry((score.expert, score.series_id, score.horizon, score.metric))
+                .or_default()
+                .push(score.value);
+        }
+    }
+    let mut scores = Vec::with_capacity(scores_by_key.len());
+    for ((expert, series_id, horizon, metric), values) in scores_by_key {
+        let value = values.iter().sum::<f64>() / values.len() as f64;
+        scores.push(ExpertScore {
+            expert,
+            series_id,
+            horizon,
+            metric,
+            value,
+        });
+    }
     Ok(scores)
 }
 
@@ -659,21 +851,52 @@ fn series_scores(
     Ok(scores)
 }
 
-fn split_validation_frame(
+fn rolling_validation_splits(
     frame: &ForecastFrame,
     validation_window: usize,
+    origin_count: usize,
+) -> Result<Vec<ValidationSplit>> {
+    if origin_count == 0 {
+        return Err(CartoBoostError::InvalidInput(
+            "auto forecast validation_origin_count must be positive".to_string(),
+        ));
+    }
+    let mut splits = Vec::with_capacity(origin_count);
+    for origin_index in 0..origin_count {
+        splits.push(split_validation_frame_at_origin(
+            frame,
+            validation_window,
+            origin_count - origin_index,
+        )?);
+    }
+    Ok(splits)
+}
+
+fn split_validation_frame_at_origin(
+    frame: &ForecastFrame,
+    validation_window: usize,
+    windows_from_end: usize,
 ) -> Result<ValidationSplit> {
     let mut train_rows = Vec::new();
     let mut validation_rows = Vec::new();
     for (_, rows) in history_by_series(frame.rows()) {
-        if rows.len() <= validation_window {
+        let validation_end = rows
+            .len()
+            .checked_sub(validation_window * (windows_from_end - 1));
+        let validation_start = rows.len().checked_sub(validation_window * windows_from_end);
+        let (Some(validation_start), Some(validation_end)) = (validation_start, validation_end)
+        else {
+            return Err(CartoBoostError::InvalidInput(
+                "not enough history for auto forecast rolling validation".to_string(),
+            ));
+        };
+        if validation_start == 0 || validation_start >= validation_end {
             return Err(CartoBoostError::InvalidInput(
                 "not enough history for auto forecast validation".to_string(),
             ));
         }
-        let split_at = rows.len() - validation_window;
-        train_rows.extend(rows[..split_at].iter().cloned());
-        validation_rows.extend(rows[split_at..].iter().cloned());
+        train_rows.extend(rows[..validation_start].iter().cloned());
+        validation_rows.extend(rows[validation_start..validation_end].iter().cloned());
     }
     Ok(ValidationSplit {
         train: ForecastFrame::with_metadata(
@@ -720,6 +943,105 @@ fn effective_validation_window(frame: &ForecastFrame, configured: Option<usize>)
     (min_history / 5).clamp(1, 8)
 }
 
+fn effective_validation_origin_count(
+    frame: &ForecastFrame,
+    validation_window: usize,
+    configured: usize,
+) -> usize {
+    let min_history = history_by_series(frame.rows())
+        .values()
+        .map(Vec::len)
+        .min()
+        .unwrap_or(0);
+    let max_origins = min_history.saturating_sub(1) / validation_window.max(1);
+    configured.max(1).min(max_origins.max(1))
+}
+
+fn effective_auto_config_for_split(
+    config: &AutoForecastConfig,
+    train: &ForecastFrame,
+    validation_window: usize,
+) -> AutoForecastConfig {
+    let mut effective = config.clone();
+    expand_lag_config_for_season(
+        &mut effective.lag_config,
+        config.season_length,
+        supported_history_len(train, validation_window),
+    );
+    effective
+}
+
+fn supported_history_len(train: &ForecastFrame, validation_window: usize) -> usize {
+    history_by_series(train.rows())
+        .values()
+        .map(Vec::len)
+        .min()
+        .unwrap_or(0)
+        .saturating_sub(validation_window.min(2))
+}
+
+fn expand_lag_config_for_season(
+    lag_config: &mut LagFeatureConfig,
+    season_length: usize,
+    max_supported_window: usize,
+) {
+    if season_length <= 1 || max_supported_window < season_length {
+        sort_dedup_lag_config(lag_config);
+        return;
+    }
+    for multiple in 1..=4 {
+        let Some(window) = season_length.checked_mul(multiple) else {
+            break;
+        };
+        if window > max_supported_window {
+            break;
+        }
+        push_unique(&mut lag_config.lags, window);
+        push_unique(&mut lag_config.rolling_mean_windows, window);
+        push_unique(&mut lag_config.rolling_std_windows, window);
+        push_unique(&mut lag_config.rolling_min_windows, window);
+        push_unique(&mut lag_config.rolling_max_windows, window);
+        push_unique(&mut lag_config.rolling_trend_windows, window.max(2));
+        if window > 1 {
+            push_unique(&mut lag_config.difference_lags, window);
+        }
+    }
+    sort_dedup_lag_config(lag_config);
+}
+
+fn sort_dedup_lag_config(lag_config: &mut LagFeatureConfig) {
+    sort_dedup(&mut lag_config.lags);
+    sort_dedup(&mut lag_config.rolling_mean_windows);
+    sort_dedup(&mut lag_config.rolling_std_windows);
+    sort_dedup(&mut lag_config.rolling_min_windows);
+    sort_dedup(&mut lag_config.rolling_max_windows);
+    sort_dedup_u8(&mut lag_config.ewm_alpha_percents);
+    sort_dedup(&mut lag_config.difference_lags);
+    sort_dedup(&mut lag_config.rolling_trend_windows);
+}
+
+fn push_unique(values: &mut Vec<usize>, value: usize) {
+    if !values.contains(&value) {
+        values.push(value);
+    }
+}
+
+fn sort_dedup(values: &mut Vec<usize>) {
+    values.sort_unstable();
+    values.dedup();
+}
+
+fn push_unique_u8(values: &mut Vec<u8>, value: u8) {
+    if !values.contains(&value) {
+        values.push(value);
+    }
+}
+
+fn sort_dedup_u8(values: &mut Vec<u8>) {
+    values.sort_unstable();
+    values.dedup();
+}
+
 fn validate_config(config: &AutoForecastConfig) -> Result<()> {
     if config.season_length == 0 {
         return Err(CartoBoostError::InvalidInput(
@@ -729,6 +1051,11 @@ fn validate_config(config: &AutoForecastConfig) -> Result<()> {
     if matches!(config.validation_window, Some(0)) {
         return Err(CartoBoostError::InvalidInput(
             "auto forecast validation_window must be positive".to_string(),
+        ));
+    }
+    if config.validation_origin_count == 0 {
+        return Err(CartoBoostError::InvalidInput(
+            "auto forecast validation_origin_count must be positive".to_string(),
         ));
     }
     if config.max_direct_horizon == 0 {
@@ -766,6 +1093,11 @@ fn validate_config(config: &AutoForecastConfig) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::forecasting::parse_forecast_timestamp;
+
+    fn ts(day: u32) -> chrono::NaiveDateTime {
+        parse_forecast_timestamp(&format!("2026-01-{day:02}")).expect("timestamp")
+    }
 
     #[test]
     fn series_weights_are_authoritative_when_present() {
@@ -783,8 +1115,10 @@ mod tests {
                 "pickup_zone_1".to_string(),
                 BTreeMap::from([("cartoboost_lag".to_string(), 1.0)]),
             )]),
+            effective_lag_config: LagFeatureConfig::default(),
             validation_scores: Vec::new(),
             validation_window: 2,
+            validation_origin_count: 2,
             member_metadata: BTreeMap::new(),
             nonnegative_output: true,
         };
@@ -804,6 +1138,267 @@ mod tests {
         assert_eq!(
             member_weight_for_prediction(&fitted, "cartoboost_direct", "unknown_zone", 9),
             0.4
+        );
+    }
+
+    #[test]
+    fn season_aware_lag_config_adds_supported_multiples() {
+        let mut config = LagFeatureConfig {
+            lags: vec![1],
+            rolling_mean_windows: Vec::new(),
+            rolling_std_windows: Vec::new(),
+            rolling_min_windows: Vec::new(),
+            rolling_max_windows: Vec::new(),
+            ewm_alpha_percents: Vec::new(),
+            calendar_features: Vec::new(),
+            difference_lags: Vec::new(),
+            rolling_trend_windows: Vec::new(),
+            covariate_features: Vec::new(),
+            covariate_indicator_values: Default::default(),
+            covariate_calendar_interactions: false,
+        };
+
+        expand_lag_config_for_season(&mut config, 12, 40);
+
+        assert_eq!(config.lags, vec![1, 12, 24, 36]);
+        assert_eq!(config.rolling_mean_windows, vec![12, 24, 36]);
+        assert_eq!(config.rolling_std_windows, vec![12, 24, 36]);
+        assert_eq!(config.rolling_min_windows, vec![12, 24, 36]);
+        assert_eq!(config.rolling_max_windows, vec![12, 24, 36]);
+        assert_eq!(config.difference_lags, vec![12, 24, 36]);
+        assert_eq!(config.rolling_trend_windows, vec![12, 24, 36]);
+    }
+
+    #[test]
+    fn season_aware_lag_config_skips_unsupported_short_history_windows() {
+        let mut config = LagFeatureConfig {
+            lags: vec![1, 7],
+            rolling_mean_windows: vec![7],
+            rolling_std_windows: vec![7],
+            rolling_min_windows: vec![7],
+            rolling_max_windows: vec![7],
+            ewm_alpha_percents: Vec::new(),
+            calendar_features: Vec::new(),
+            difference_lags: vec![7],
+            rolling_trend_windows: vec![7],
+            covariate_features: Vec::new(),
+            covariate_indicator_values: Default::default(),
+            covariate_calendar_interactions: false,
+        };
+
+        expand_lag_config_for_season(&mut config, 24, 16);
+
+        assert_eq!(config.lags, vec![1, 7]);
+        assert_eq!(config.rolling_mean_windows, vec![7]);
+        assert_eq!(config.rolling_std_windows, vec![7]);
+        assert_eq!(config.rolling_min_windows, vec![7]);
+        assert_eq!(config.rolling_max_windows, vec![7]);
+        assert_eq!(config.difference_lags, vec![7]);
+        assert_eq!(config.rolling_trend_windows, vec![7]);
+    }
+
+    #[test]
+    fn auto_candidate_scoring_keeps_fixed_roster_order() {
+        let frame = ForecastFrame::new(
+            (1..=18)
+                .map(|day| ForecastRow::single(ts(day), 10.0 + f64::from(day)))
+                .collect(),
+            crate::forecasting::ForecastFrequency::Daily,
+        )
+        .expect("frame");
+        let config = AutoForecastConfig {
+            lag_config: LagFeatureConfig {
+                lags: vec![1, 2],
+                rolling_mean_windows: vec![2],
+                rolling_std_windows: Vec::new(),
+                rolling_min_windows: Vec::new(),
+                rolling_max_windows: Vec::new(),
+                ewm_alpha_percents: Vec::new(),
+                calendar_features: Vec::new(),
+                difference_lags: vec![2],
+                rolling_trend_windows: vec![2],
+                covariate_features: Vec::new(),
+                covariate_indicator_values: Default::default(),
+                covariate_calendar_interactions: false,
+            },
+            validation_window: Some(2),
+            objective: ForecastObjective::RmseWape,
+            season_length: 7,
+            ..AutoForecastConfig::default()
+        };
+        let splits = rolling_validation_splits(&frame, 2, 2).expect("splits");
+        let effective =
+            effective_auto_config_for_split(&config, &splits.last().expect("last").train, 2);
+
+        let scores = score_auto_candidates(&frame, &effective, &splits, true);
+        let global_experts = scores
+            .iter()
+            .filter(|score| score.series_id.is_none() && score.horizon.is_none())
+            .map(|score| score.expert.as_str())
+            .collect::<Vec<_>>();
+
+        let positions = global_experts
+            .iter()
+            .map(|expert| {
+                AUTO_CANDIDATES
+                    .iter()
+                    .position(|candidate| candidate == expert)
+                    .expect("candidate")
+            })
+            .collect::<Vec<_>>();
+        let sorted = {
+            let mut values = positions.clone();
+            values.sort_unstable();
+            values
+        };
+        assert!(!global_experts.is_empty());
+        assert_eq!(positions, sorted);
+    }
+
+    #[test]
+    fn auto_validation_origin_count_is_capped_by_available_history() {
+        let short_frame = ForecastFrame::new(
+            (1..=5)
+                .map(|day| ForecastRow::single(ts(day), 10.0 + f64::from(day)))
+                .collect(),
+            crate::forecasting::ForecastFrequency::Daily,
+        )
+        .expect("frame");
+        let long_frame = ForecastFrame::new(
+            (1..=12)
+                .map(|day| ForecastRow::single(ts(day), 10.0 + f64::from(day)))
+                .collect(),
+            crate::forecasting::ForecastFrequency::Daily,
+        )
+        .expect("frame");
+
+        assert_eq!(effective_validation_origin_count(&short_frame, 3, 4), 1);
+        assert_eq!(effective_validation_origin_count(&long_frame, 3, 4), 3);
+    }
+
+    #[test]
+    fn rolling_validation_splits_use_ordered_non_overlapping_origins() {
+        let frame = ForecastFrame::new(
+            (1..=8)
+                .map(|day| ForecastRow::single(ts(day), f64::from(day)))
+                .collect(),
+            crate::forecasting::ForecastFrequency::Daily,
+        )
+        .expect("frame");
+
+        let splits = rolling_validation_splits(&frame, 2, 2).expect("splits");
+
+        assert_eq!(splits.len(), 2);
+        assert_eq!(
+            splits[0]
+                .validation
+                .iter()
+                .map(|row| row.target)
+                .collect::<Vec<_>>(),
+            vec![5.0, 6.0]
+        );
+        assert_eq!(
+            splits[1]
+                .validation
+                .iter()
+                .map(|row| row.target)
+                .collect::<Vec<_>>(),
+            vec![7.0, 8.0]
+        );
+        assert_eq!(splits[0].train.rows().len(), 4);
+        assert_eq!(splits[1].train.rows().len(), 6);
+    }
+
+    #[test]
+    fn selected_member_fitting_keeps_requested_order() {
+        let frame = ForecastFrame::new(
+            (1..=20)
+                .map(|day| ForecastRow::single(ts(day), 12.0 + f64::from(day % 7)))
+                .collect(),
+            crate::forecasting::ForecastFrequency::Daily,
+        )
+        .expect("frame");
+        let config = AutoForecastConfig {
+            lag_config: LagFeatureConfig {
+                lags: vec![1, 2],
+                rolling_mean_windows: vec![2],
+                rolling_std_windows: Vec::new(),
+                rolling_min_windows: Vec::new(),
+                rolling_max_windows: Vec::new(),
+                ewm_alpha_percents: Vec::new(),
+                calendar_features: Vec::new(),
+                difference_lags: vec![2],
+                rolling_trend_windows: vec![2],
+                covariate_features: Vec::new(),
+                covariate_indicator_values: Default::default(),
+                covariate_calendar_interactions: false,
+            },
+            validation_window: Some(2),
+            objective: ForecastObjective::RmseWape,
+            season_length: 7,
+            max_direct_horizon: 2,
+            ..AutoForecastConfig::default()
+        };
+        let selected = vec![
+            SCALED_LAG_EXPERT.to_string(),
+            LAG_EXPERT.to_string(),
+            DELTA_LAG_EXPERT.to_string(),
+        ];
+
+        let (members, metadata) =
+            fit_selected_members(&selected, &config, &frame).expect("fit members");
+
+        let member_names = members
+            .iter()
+            .map(|member| member.name.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            member_names,
+            vec![SCALED_LAG_EXPERT, LAG_EXPERT, DELTA_LAG_EXPERT]
+        );
+        for name in selected {
+            assert!(metadata.contains_key(&name));
+        }
+    }
+
+    #[test]
+    fn ewm_lag_candidate_fits_with_validation_gated_feature_config() {
+        let frame = ForecastFrame::new(
+            (1..=20)
+                .map(|day| ForecastRow::single(ts(day), 12.0 + f64::from(day % 7)))
+                .collect(),
+            crate::forecasting::ForecastFrequency::Daily,
+        )
+        .expect("frame");
+        let config = AutoForecastConfig {
+            lag_config: LagFeatureConfig {
+                lags: vec![1, 2],
+                rolling_mean_windows: vec![2],
+                rolling_std_windows: Vec::new(),
+                rolling_min_windows: Vec::new(),
+                rolling_max_windows: Vec::new(),
+                ewm_alpha_percents: Vec::new(),
+                calendar_features: Vec::new(),
+                difference_lags: vec![2],
+                rolling_trend_windows: vec![2],
+                covariate_features: Vec::new(),
+                covariate_indicator_values: Default::default(),
+                covariate_calendar_interactions: false,
+            },
+            validation_window: Some(2),
+            objective: ForecastObjective::RmseWape,
+            season_length: 7,
+            ..AutoForecastConfig::default()
+        };
+        let selected = vec![EWM_LAG_EXPERT.to_string()];
+
+        let (_members, metadata) =
+            fit_selected_members(&selected, &config, &frame).expect("fit EWM member");
+
+        let ewm_metadata = metadata.get(EWM_LAG_EXPERT).expect("EWM metadata");
+        assert_eq!(
+            ewm_metadata["lag_config"]["ewm_alpha_percents"],
+            serde_json::json!([90])
         );
     }
 }

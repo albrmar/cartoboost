@@ -136,6 +136,11 @@ fn aggregate_metrics(folds: &[BacktestFoldResult]) -> Option<ForecastMetricSet> 
     Some(ForecastMetricSet {
         mae: folds.iter().map(|fold| fold.metrics.mae).sum::<f64>() / n,
         rmse: folds.iter().map(|fold| fold.metrics.rmse).sum::<f64>() / n,
+        normalized_rmse: folds
+            .iter()
+            .map(|fold| fold.metrics.normalized_rmse)
+            .sum::<f64>()
+            / n,
         wape: folds.iter().map(|fold| fold.metrics.wape).sum::<f64>() / n,
         smape: folds.iter().map(|fold| fold.metrics.smape).sum::<f64>() / n,
         bias: folds.iter().map(|fold| fold.metrics.bias).sum::<f64>() / n,

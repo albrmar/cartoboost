@@ -3,7 +3,7 @@ use crate::{CartoBoostError, Result};
 use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 
 pub const SINGLE_SERIES_ID: &str = "__single__";
 
@@ -12,10 +12,21 @@ pub struct ForecastRow {
     pub series_id: String,
     pub timestamp: NaiveDateTime,
     pub target: f64,
+    #[serde(default)]
+    pub covariates: BTreeMap<String, f64>,
 }
 
 impl ForecastRow {
     pub fn new(series_id: impl Into<String>, timestamp: NaiveDateTime, target: f64) -> Self {
+        Self::with_covariates(series_id, timestamp, target, BTreeMap::new())
+    }
+
+    pub fn with_covariates(
+        series_id: impl Into<String>,
+        timestamp: NaiveDateTime,
+        target: f64,
+        covariates: BTreeMap<String, f64>,
+    ) -> Self {
         let series_id = series_id.into();
         Self {
             series_id: if series_id.is_empty() {
@@ -25,6 +36,7 @@ impl ForecastRow {
             },
             timestamp,
             target,
+            covariates,
         }
     }
 
@@ -37,10 +49,25 @@ impl ForecastRow {
         timestamp: &str,
         target: f64,
     ) -> Result<Self> {
-        Ok(Self::new(
+        Ok(Self::with_covariates(
             series_id,
             parse_forecast_timestamp(timestamp)?,
             target,
+            BTreeMap::new(),
+        ))
+    }
+
+    pub fn from_timestamp_str_with_covariates(
+        series_id: impl Into<String>,
+        timestamp: &str,
+        target: f64,
+        covariates: BTreeMap<String, f64>,
+    ) -> Result<Self> {
+        Ok(Self::with_covariates(
+            series_id,
+            parse_forecast_timestamp(timestamp)?,
+            target,
+            covariates,
         ))
     }
 }
@@ -87,6 +114,19 @@ impl ForecastFrame {
                     "forecast targets must be finite".to_string(),
                 ));
             }
+            for (name, value) in &row.covariates {
+                if name.is_empty() {
+                    return Err(CartoBoostError::InvalidInput(
+                        "forecast covariate names must not be empty".to_string(),
+                    ));
+                }
+                if !value.is_finite() {
+                    return Err(CartoBoostError::InvalidInput(format!(
+                        "forecast covariate {name:?} for series {} at {} must be finite",
+                        row.series_id, row.timestamp
+                    )));
+                }
+            }
         }
         rows.sort_by(|a, b| {
             a.series_id
@@ -120,6 +160,22 @@ impl ForecastFrame {
             .into_iter()
             .map(|(series_id, timestamp, target)| {
                 ForecastRow::from_timestamp_str(series_id, &timestamp, target)
+            })
+            .collect::<Result<Vec<_>>>()?;
+        Self::with_metadata(parsed, frequency, metadata)
+    }
+
+    pub fn from_string_rows_with_covariates(
+        rows: Vec<(String, String, f64, BTreeMap<String, f64>)>,
+        frequency: ForecastFrequency,
+        metadata: ForecastFrameMetadata,
+    ) -> Result<Self> {
+        let parsed = rows
+            .into_iter()
+            .map(|(series_id, timestamp, target, covariates)| {
+                ForecastRow::from_timestamp_str_with_covariates(
+                    series_id, &timestamp, target, covariates,
+                )
             })
             .collect::<Result<Vec<_>>>()?;
         Self::with_metadata(parsed, frequency, metadata)

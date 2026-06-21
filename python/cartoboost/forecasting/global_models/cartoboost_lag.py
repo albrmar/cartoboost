@@ -30,6 +30,7 @@ class CartoBoostLagForecaster(NativeForecastWrapper):
         self.target_col = params.pop("target_col", None)
         self.panel_cols = list(params.pop("panel_cols", []))
         self.frequency = params.pop("frequency", params.pop("freq", "D"))
+        self.covariate_features = list(params.get("covariate_features", []) or [])
         native_params = self._native_params(params)
         super().__init__(**native_params)
 
@@ -64,15 +65,28 @@ class CartoBoostLagForecaster(NativeForecastWrapper):
         if rolling_config is not None:
             if not isinstance(rolling_config, RollingFeatureConfig):
                 raise TypeError("rolling_config must be a RollingFeatureConfig")
-            if tuple(rolling_config.aggregations) != ("mean",):
-                raise ValueError("native CartoBoostLagForecaster supports rolling mean only")
+            unsupported_aggs = sorted(
+                set(rolling_config.aggregations) - {"mean", "std", "min", "max"}
+            )
+            if unsupported_aggs:
+                raise ValueError(
+                    "native CartoBoostLagForecaster supports rolling mean/std/min/max only; "
+                    f"unsupported: {unsupported_aggs}"
+                )
             if rolling_config.include_expanding:
                 raise ValueError(
                     "native CartoBoostLagForecaster does not support expanding features"
                 )
             if rolling_config.min_periods is not None:
                 raise ValueError("native CartoBoostLagForecaster requires complete rolling windows")
-            params.setdefault("rolling_windows", list(rolling_config.windows))
+            if "mean" in rolling_config.aggregations:
+                params.setdefault("rolling_windows", list(rolling_config.windows))
+            if "std" in rolling_config.aggregations:
+                params.setdefault("rolling_std_windows", list(rolling_config.windows))
+            if "min" in rolling_config.aggregations:
+                params.setdefault("rolling_min_windows", list(rolling_config.windows))
+            if "max" in rolling_config.aggregations:
+                params.setdefault("rolling_max_windows", list(rolling_config.windows))
 
         calendar_config = params.pop("calendar_config", None)
         if calendar_config is not None:
@@ -93,9 +107,17 @@ class CartoBoostLagForecaster(NativeForecastWrapper):
             - {
                 "lags",
                 "rolling_windows",
+                "rolling_std_windows",
+                "rolling_min_windows",
+                "rolling_max_windows",
+                "ewm_alpha_percents",
+                "covariate_features",
+                "covariate_indicator_values",
+                "covariate_calendar_interactions",
                 "difference_lags",
                 "rolling_trend_windows",
                 "calendar_features",
+                "rich_calendar_features",
                 "recursive",
                 "prediction_interval_levels",
                 "trend_features",
@@ -129,7 +151,7 @@ class CartoBoostLagForecaster(NativeForecastWrapper):
             ) from exc
         if not isinstance(value, pd.DataFrame):
             return None
-        required = [self.time_col, self.target_col, *self.panel_cols]
+        required = [self.time_col, self.target_col, *self.panel_cols, *self.covariate_features]
         missing = [col for col in required if col not in value.columns]
         if missing:
             raise ValueError(f"missing required columns: {missing}")
@@ -144,6 +166,7 @@ class CartoBoostLagForecaster(NativeForecastWrapper):
                 "coercing a DataFrame to the native ForecastFrame"
             )
         rows = []
+        row_covariates = []
         for row in data.itertuples(index=False):
             row_values = dict(zip(data.columns, row, strict=True))
             if self.panel_cols:
@@ -152,10 +175,17 @@ class CartoBoostLagForecaster(NativeForecastWrapper):
                 series_id = "__single__"
             timestamp = pd.Timestamp(row_values[self.time_col]).strftime("%Y-%m-%dT%H:%M:%S")
             rows.append((series_id, timestamp, float(row_values[self.target_col])))
+            row_covariates.append(
+                {name: float(row_values[name]) for name in self.covariate_features}
+            )
         native_frame_class = _native_class("ForecastFrame")
         if native_frame_class is None:
             raise NotImplementedError("Rust binding for ForecastFrame is not available.")
-        return native_frame_class(rows, self.frequency)
+        return native_frame_class(
+            rows,
+            self.frequency,
+            row_covariates=row_covariates if self.covariate_features else None,
+        )
 
 
 __all__ = ["CartoBoostLagForecaster", "ForecastResult"]

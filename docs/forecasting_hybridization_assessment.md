@@ -48,7 +48,8 @@ CartoBoost already has many of the right Rust modules:
 
 The first production gap has been closed: `AutoForecaster` now delegates to a
 Rust-native `AutoForecastModel` that validates `cartoboost_lag`, `lag_plus`,
-`scaled_lag`, `delta_lag`, `scaled_delta_lag`, `log1p_scaled_lag`,
+`scaled_lag`, `delta_lag`, `scaled_delta_lag`, `seasonal_delta_lag`,
+`scaled_seasonal_delta_lag`, `log1p_scaled_lag`,
 sparse-panel `intermittent_demand`, dense-panel `cartoboost_direct` and
 `cartoboost_rectified_recursive`, and the native `classical_expert_bank`, keeps
 lag as the baseline unless another candidate clears a configured displacement
@@ -68,19 +69,34 @@ same validation objective.
 Dense panels also receive direct and rectified-recursive candidates, so the
 auto path can choose horizon-specific boosted models when recursive lag
 rollouts are the wrong bias.
-Panel validation now emits both global and per-series scores, and prediction
-uses per-series weights when available. That is the production equivalent of
-local routing without dataset-name branches.
+Validation now emits global, horizon-level, and per-series scores, and
+prediction uses series-specific weights first, horizon-specific weights second,
+and global weights as the fallback. That is the production equivalent of local
+and horizon-aware routing without dataset-name branches.
+Candidate validation is parallelized across the fixed Rust roster and collected
+back in deterministic roster order, so adding useful experts does not force a
+linear auto-fit latency penalty.
+The shared lag spine also carries rolling standard-deviation, minimum, and
+maximum features next to rolling means, deltas, trends, and calendar features,
+giving every lag-based candidate direct signals for bursty demand, instability,
+and recent local demand floors/ceilings.
+The auto path also expands the shared lag spine with supported season-length
+multiples during fit, which is the same structural lesson used by strong
+competition systems: encode known frequency and let validation decide whether
+the resulting candidate should displace or blend with the baseline.
 For nonnegative training frames, validation scoring and final auto predictions
 are clamped nonnegative. That makes the selector honest for count/demand
 metrics instead of letting impossible negative forecasts distort WAPE or RMSE.
 
 `lag_plus` is now the first residual-correction spine: it fits the normal lag
 model, predicts a held-out validation window, estimates horizon-specific and
-seasonal-bucket mean residual corrections, shrinks them by support, disables
-them if the configured validation objective does not improve, and then refits
-the base lag model on the full frame. The current native objectives are RMSE
-and WAPE.
+seasonal-bucket mean residual corrections plus per-series residual
+corrections, shrinks them by support, disables them if the configured
+validation objective does not improve, and then refits the base lag model on
+the full frame. The current native objectives are RMSE, WAPE, and a blended
+`rmse_wape` objective that averages WAPE with normalized RMSE. The auto path
+uses `rmse_wape` by default so ordinary point-forecasting selection is not
+biased toward RMSE while ignoring absolute percentage demand error.
 
 The remaining gap is depth, not direction. The auto selector needs richer
 target transforms, specialist experts, hierarchy-aware reconciliation, and
@@ -105,7 +121,7 @@ Grouped Rust panel store
 The first rule is that `cartoboost_lag` remains the spine until validation
 proves another route improves the target metric. That prevents the auto path
 from losing to its simplest internal baseline. The second rule is that metrics
-must come from the actual task: RMSE/WAPE for ordinary point forecasting,
+must come from the actual task: RMSE, WAPE, or `rmse_wape` for ordinary point forecasting,
 MASE/sMAPE-style losses for heterogeneous M4-style data, WRMSSE for weighted
 hierarchical demand, and RPS for ordinal rank forecasts.
 
@@ -114,7 +130,8 @@ hierarchical demand, and RPS for ordinal rank forecasts.
 1. Extend the Rust `AutoForecastModel` roster. The current implementation
    owns the validation split, objective, lag baseline displacement rule, blend
    bounds, and metadata for `cartoboost_lag`, `scaled_lag`,
-   `delta_lag`, `scaled_delta_lag`, `log1p_scaled_lag`, `lag_plus`,
+   `delta_lag`, `scaled_delta_lag`, `seasonal_delta_lag`,
+   `scaled_seasonal_delta_lag`, `log1p_scaled_lag`, `lag_plus`,
    dense-panel `cartoboost_direct` and `cartoboost_rectified_recursive`,
    sparse-panel `intermittent_demand`, and `classical_expert_bank`. Next, add
    decomposition and calibrated probabilistic candidates behind the same

@@ -110,6 +110,34 @@ fn classical_bank_falls_back_on_short_history() {
 }
 
 #[test]
+fn classical_bank_default_includes_seasonal_window_average() {
+    let bank = ClassicalExpertBank::default_for_season_length(7).expect("default bank");
+
+    assert!(bank
+        .experts()
+        .contains(&ClassicalExpert::WindowAverage { window_size: 3 }));
+    assert!(bank
+        .experts()
+        .contains(&ClassicalExpert::WindowAverage { window_size: 7 }));
+    assert!(bank
+        .experts()
+        .contains(&ClassicalExpert::SeasonalWindowAverage {
+            season_length: 7,
+            window_count: 3,
+        }));
+}
+
+#[test]
+fn classical_bank_default_skips_seasonal_window_average_without_seasonality() {
+    let bank = ClassicalExpertBank::default_for_season_length(1).expect("default bank");
+
+    assert!(!bank
+        .experts()
+        .iter()
+        .any(|expert| matches!(expert, ClassicalExpert::SeasonalWindowAverage { .. })));
+}
+
+#[test]
 fn autostats_bank_selects_and_predicts() {
     let frame = taxi_hourly_frame(&[30.0, 31.0, 32.0, 33.0, 34.0, 35.0, 36.0, 37.0]);
     let mut bank = AutoStatsBank::with_validation_window(2, Some(2)).expect("valid autostats");

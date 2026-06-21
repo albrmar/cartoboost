@@ -100,6 +100,17 @@ class ForecastFrame:
             raise ValueError(f"target column {target_col!r} must contain numeric values") from exc
         if not np.isfinite(target_values).all():
             raise ValueError(f"target column {target_col!r} must contain only finite values")
+        for covariate_col in [*static, *known_future, *historical]:
+            try:
+                covariate_values = data[covariate_col].to_numpy(dtype=float, copy=False)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(
+                    f"forecast covariate column {covariate_col!r} must contain numeric values"
+                ) from exc
+            if not np.isfinite(covariate_values).all():
+                raise ValueError(
+                    f"forecast covariate column {covariate_col!r} must contain only finite values"
+                )
 
         sort_cols = [timestamp_col] if series_id_col is None else [series_id_col, timestamp_col]
         data = data.sort_values(sort_cols, kind="mergesort").reset_index(drop=True)
@@ -489,6 +500,12 @@ def _build_native_frame(frame: ForecastFrame) -> Any:
     except ImportError as exc:
         raise RuntimeError("cartoboost._native is required for ForecastFrame validation") from exc
     rows = []
+    row_covariates = []
+    covariate_cols = [
+        *frame.static_covariates,
+        *frame.known_future_covariates,
+        *frame.historical_covariates,
+    ]
     data = frame.data
     for row in data.itertuples(index=False):
         values = row._asdict()
@@ -498,6 +515,7 @@ def _build_native_frame(frame: ForecastFrame) -> Any:
         timestamp = values[frame.timestamp_col].isoformat()
         target = float(values[frame.target_col])
         rows.append((series_id, timestamp, target))
+        row_covariates.append({name: float(values[name]) for name in covariate_cols})
     try:
         return _native.ForecastFrame(
             rows,
@@ -508,6 +526,7 @@ def _build_native_frame(frame: ForecastFrame) -> Any:
             static_covariates=list(frame.static_covariates),
             known_future_covariates=list(frame.known_future_covariates),
             historical_covariates=list(frame.historical_covariates),
+            row_covariates=row_covariates if covariate_cols else None,
         )
     except TypeError:
         return _native.ForecastFrame(rows, frame.freq)

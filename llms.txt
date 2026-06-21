@@ -86,14 +86,130 @@ temporal, spatial, geotemporal, graph, and neural-embedding modeling.
   `arima_example_visualization.py`, `cartoboost_lag_visualization.py`,
   `weighted_ensemble_visualization.py`, and `kriging_example_visualization.py`.
 - Use `cartoboost.forecasting.AutoForecaster` for the Rust-native guarded
-  selector over `cartoboost_lag`, `scaled_lag`, `delta_lag`,
-  `scaled_delta_lag`, dense-panel direct/rectified tree candidates,
-  `log1p_scaled_lag`, `lag_plus`, sparse-panel `intermittent_demand`, and
-  `classical_expert_bank`; benchmark claims must cite the maintained artifact.
+  selector over `cartoboost_lag`, recent-level-shift-gated `recency_weighted_lag`,
+  `scaled_lag`, `delta_lag`, `scaled_delta_lag`, `seasonal_delta_lag`,
+  `scaled_seasonal_delta_lag`, validation-gated `ewm_lag`, dense-panel
+  direct/rectified tree candidates, `log1p_scaled_lag`, `lag_plus`,
+  sparse-panel `intermittent_demand`, and `classical_expert_bank`; its lag
+  spine includes rolling mean, rolling
+  standard-deviation, rolling min/max, delta, trend, and calendar features, and
+  the auto path adds supported season-length multiples during fit. Candidate
+  validation averages deterministic trailing rolling origins when history
+  supports them; series-specific auto weights are used only when each series has
+  at least four validation points, otherwise prediction falls back to horizon or
+  global weights. Selected member refits run in parallel while preserving
+  stable roster/member order. The Python wrapper passes `ForecastFrame.static_covariates`
+  to the native lag spine by default, supports `covariate_features=[]` as an
+  explicit opt-out, and exposes `rich_calendar_features=True`; native EWM target
+  features are opt-in via `ewm_alpha_percents` after alpha 90 regressed the
+  exact route-mix smoke without validation gating. Rich calendar features include
+  day-of-year, elapsed index, an elapsed 14-step phase feature, low-cost
+  Fourier weekday/month/day encodings, and month-start/mid/end indicators for
+  recurring operational cycles. Route-demand benchmark paths also pass native
+  low-cardinality covariate indicators for finite integer-coded static context
+  with 3 to 8 distinct training values when a training-only covariate-by-day
+  interaction signal clears the fixed threshold, and those indicators can
+  participate in the same covariate-calendar interactions.
+  Static route covariates and gated indicators may interact with month-start,
+  mid-month, and month-end event flags on taxi/synthetic route-demand sources;
+  M4/M5/M6 remain on the compact feature path unless separately validated.
+  Benchmark claims must cite
+  the maintained artifact. The synthetic forecasting suite must not force lag
+  solely by source name; lag-spine overrides are limited to documented
+  frequency-risk guards and otherwise come from inner-origin validation loss.
+  For non-M shared demand sources, auto candidates must also be
+  origin-consistent against `cartoboost_lag`; if a candidate loses any usable
+  inner validation origin to lag, the benchmark selector keeps lag even when the
+  candidate's average inner loss is lower. Non-M inner validation skips the
+  raw-auto fit and scores the lag spine plus deterministic shared candidates;
+  raw auto remains lazy in outer scoring as well, where the harness starts with
+  a placeholder auto column and only materializes the real raw-auto forecast if
+  shared selection keeps `cartoboost_auto_forecast`. Rolling-origin suites
+  cache identical inner validation cutoffs per problem, keyed by source, cutoff,
+  and candidate roster, so overlapping folds reuse the same score without
+  changing split semantics.
+  Raw native auto must clear the stronger raw-auto override gain before it can
+  replace the lag spine on non-M shared demand sources.
+- `scripts/forecasting_generalization.py --compact --no-hyperopt` is the
+  maintained non-M scalable synthetic external-roster guardrail. It uses the
+  fixed synthetic taxi-style suite with 18 series, 150 days, horizon 14, two
+  folds, seed 177, the `scalable` roster, and `--no-candidate-selection` so
+  benchmark work is not judged only on M4/M5/M6 samples and does not spend
+  calibration time when raw native auto and lag are quality-identical.
+- `docs/assets/nyc_taxi_benchmarks/forecasting_overhaul_committed_suite_scalable_roster.json`
+  is the current scalable external-roster committed synthetic artifact. The
+  older full external-roster artifact is still present, but refresh attempts can
+  stall in `statsforecast_autotbats`/ARIMA optimization; use the scalable
+  artifact for the current external-tree/functime synthetic read.
+- Non-M shared candidate selection uses up to two inner rolling origins, with
+  an early stop after one origin when `cartoboost_lag` beats every finite
+  candidate by at least 15%. M4 keeps three origins, M5 keeps two origins, and
+  M6 keeps one; this preserves the current M benchmark artifacts while reducing
+  redundant non-M inner fits versus the previous three-origin policy.
+- `ClassicalExpertBank` and `AutoStatsBank` rosters include native
+  `window_average` candidates with fixed `window_size` values 3 and 7.
+  Seasonal rosters also include a native `seasonal_window_average` candidate
+  with fixed `window_count=3` when `season_length > 1`; these smooth recent
+  levels or matching seasonal positions without adding hyperparameter search.
+- Native `CartoBoostLagForecaster` can consume numeric `covariate_features`
+  from `ForecastFrame` rows, multiply them by configured calendar features when
+  `covariate_calendar_interactions=True`, and carry latest static values
+  forward during recursive prediction. The benchmark harness source-gates
+  static covariates, covariate-calendar interactions, rich calendar features,
+  and rolling-stat enrichments to taxi/synthetic route-demand sources; M4/M5/M6
+  stay on the compact competition path unless a targeted benchmark proves
+  otherwise.
+- M4 suite benchmark orchestration is serial in the committed wrapper so group
+  timing provenance stays directly comparable across maintained artifacts.
+- Use `objective="rmse_wape"` when the user wants a single validation selector
+  that balances RMSE and WAPE; it averages WAPE with RMSE normalized by mean
+  absolute actual demand.
 - Use `cartoboost.metrics.wrmsse`, `cartoboost.metrics.m6`, and the benchmark
   artifact `official_metrics` section for M5/M6-style checks instead of
   treating all forecasting benchmarks as RMSE-only. M6 benchmark artifacts
-  include training-window rank-probability calibration metadata.
+  include training-window rank-probability calibration metadata. The maintained
+  M5/M6 selector paths avoid nested auto calibration during inner-origin
+  scoring to preserve quality while cutting benchmark latency. M5 selection is
+  RMSE-first for point quality while still emitting official WRMSSE artifacts;
+  M5 shared candidates must beat the lag spine by the configured minimum
+  relative-gain guard before replacing it. Two-origin M5 validation keeps only
+  the total-reconciled shared route in the
+  selectable surface after state/store reconciled variants measured as
+  non-selected overhead, and one-origin comparison runs may select the
+  autostats/phase-14 point blend. The Rust `ClassicalExpertBank` selects the
+  strict best validation-MSE expert rather than a simpler expert inside a 1%
+  tolerance; this lets `AutoStatsBank` use validation-winning local statistical
+  routes on demand panels. M6 selection is one-origin and RMSE-first for
+  the daily-return point proxy, with a validation-selected market-neutral
+  return candidate; cite point RMSE and
+  calibrated RPS separately because the point-quality route is not the RPS
+  leader on the maintained full-roster artifact. M4, M5, and M6 inner-origin
+  candidate validation skip expensive raw-auto fits when judging deterministic
+  shared candidates; M4 still fits both committed CartoBoost rows in the outer
+  reported run, M5 one-origin comparison runs map the skipped outer auto column
+  to the already-fit AutoStats candidate, and M6 shared-selection runs use a
+  zero-cost market-neutral outer candidate. Direct no-selection runs still fit
+  raw auto, and two-origin committed M5 runs still fit raw auto because the
+  selected reconciled route depends on it. M6 records skipped raw inner scores
+  as null.
+- Shared-candidate selection keeps `cartoboost_lag` as the default champion
+  unless a replacement candidate clears the configured minimum relative gain
+  versus lag. This guard is source-general, runs after native raw-auto keep
+  checks, and prevents tiny validation wins from displacing the lag spine.
+  Non-M shared demand sources also require origin-consistent displacement:
+  any usable inner-origin loss to lag sends auto back to the lag spine. Non-M
+  inner validation skips raw-auto fitting up front, while non-M outer scoring
+  skips raw-auto fitting unless that exact raw route is the selected final
+  candidate.
+- After shared-candidate validation selects the final route, benchmark outer
+  scoring builds only the required selected candidate columns. Inner validation
+  still scores the broad candidate bank, but final artifact generation skips
+  unused calendar, trend, reconciliation, and local-statistical columns.
+- Forecast benchmark artifacts record separate `cartoboost_lag` and
+  `cartoboost_auto_forecast` settings. `--cartoboost-n-estimators` controls the
+  lag estimator budget; auto uses the quality floor
+  `max(--cartoboost-n-estimators, 360)` unless
+  `--cartoboost-auto-n-estimators` is explicitly provided for latency probes.
 - New forecasting benchmark artifacts expose `git_commit`, `dataset_hash`,
   `source_file_hashes`, `benchmark_integrity`, and `resource_usage` for
   provenance checks.

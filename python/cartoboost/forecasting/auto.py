@@ -19,13 +19,18 @@ class AutoForecasterConfig:
     quantiles: tuple[float, ...] = ()
     n_threads: int | None = None
     no_hyperopt: bool = True
-    objective: str = "rmse"
+    objective: str = "rmse_wape"
     validation_window: int | None = None
+    validation_origin_count: int = 2
     baseline_displacement_gain: float = 0.03
     hard_winner_relative_gain: float = 0.05
     min_blend_weight: float = 0.15
     max_blend_weight: float = 0.85
     max_direct_horizon: int = 28
+    covariate_features: tuple[str, ...] | None = None
+    covariate_calendar_interactions: bool = False
+    rich_calendar_features: bool = False
+    ewm_alpha_percents: tuple[int, ...] = ()
 
 
 class AutoForecaster(BaseForecaster):
@@ -43,13 +48,18 @@ class AutoForecaster(BaseForecaster):
         season_length: int | None = None,
         quantiles: Sequence[float] | None = None,
         n_threads: int | None = None,
-        objective: str = "rmse",
+        objective: str = "rmse_wape",
         validation_window: int | None = None,
+        validation_origin_count: int = 2,
         baseline_displacement_gain: float = 0.03,
         hard_winner_relative_gain: float = 0.05,
         min_blend_weight: float = 0.15,
         max_blend_weight: float = 0.85,
         max_direct_horizon: int = 28,
+        covariate_features: Sequence[str] | None = None,
+        covariate_calendar_interactions: bool = False,
+        rich_calendar_features: bool = False,
+        ewm_alpha_percents: Sequence[int] | None = None,
         **cartoboost_params: Any,
     ) -> None:
         self.config = AutoForecasterConfig(
@@ -59,14 +69,25 @@ class AutoForecaster(BaseForecaster):
             n_threads=n_threads,
             objective=str(objective),
             validation_window=validation_window,
+            validation_origin_count=int(validation_origin_count),
             baseline_displacement_gain=float(baseline_displacement_gain),
             hard_winner_relative_gain=float(hard_winner_relative_gain),
             min_blend_weight=float(min_blend_weight),
             max_blend_weight=float(max_blend_weight),
             max_direct_horizon=int(max_direct_horizon),
+            covariate_features=_normalize_optional_feature_names(
+                covariate_features,
+                name="covariate_features",
+            ),
+            covariate_calendar_interactions=bool(covariate_calendar_interactions),
+            rich_calendar_features=bool(rich_calendar_features),
+            ewm_alpha_percents=_normalize_ewm_alpha_percents(ewm_alpha_percents),
         )
+        if self.config.validation_origin_count <= 0:
+            raise ValueError("validation_origin_count must be positive")
         self.cartoboost_params = dict(cartoboost_params)
         self._model: Any | None = None
+        self._effective_covariate_features: list[str] | None = None
 
     def fit(self, frame: ForecastFrame, *_args: Any, **_kwargs: Any) -> AutoForecaster:
         if not isinstance(frame, ForecastFrame):
@@ -74,12 +95,21 @@ class AutoForecaster(BaseForecaster):
         native_class = _native_class("AutoForecastModel")
         if native_class is None:
             raise NotImplementedError("Rust binding for AutoForecastModel is not available.")
+        effective_covariates = self._covariate_features_for_frame(frame)
         params = {
             "lags": self._default_lags(),
             "rolling_windows": self._default_windows(),
+            "rolling_std_windows": self._default_windows(),
+            "rolling_min_windows": self._default_windows(),
+            "rolling_max_windows": self._default_windows(),
+            "ewm_alpha_percents": list(self.config.ewm_alpha_percents),
             "calendar_features": True,
+            "rich_calendar_features": self.config.rich_calendar_features,
+            "covariate_features": effective_covariates,
+            "covariate_calendar_interactions": self.config.covariate_calendar_interactions,
             "season_length": self.config.season_length or 7,
             "validation_window": self.config.validation_window,
+            "validation_origin_count": self.config.validation_origin_count,
             "objective": self.config.objective,
             "baseline_displacement_gain": self.config.baseline_displacement_gain,
             "hard_winner_relative_gain": self.config.hard_winner_relative_gain,
@@ -91,6 +121,7 @@ class AutoForecaster(BaseForecaster):
         model = native_class(**params)
         model.fit(frame._native_frame)
         self._model = model
+        self._effective_covariate_features = list(effective_covariates)
         self._mark_fitted()
         return self
 
@@ -109,7 +140,18 @@ class AutoForecaster(BaseForecaster):
             "quantiles": list(self.config.quantiles),
             "no_hyperopt": self.config.no_hyperopt,
             "objective": self.config.objective,
+            "validation_window": self.config.validation_window,
+            "validation_origin_count": self.config.validation_origin_count,
             "max_direct_horizon": self.config.max_direct_horizon,
+            "covariate_features": (
+                None
+                if self.config.covariate_features is None
+                else list(self.config.covariate_features)
+            ),
+            "covariate_calendar_interactions": self.config.covariate_calendar_interactions,
+            "rich_calendar_features": self.config.rich_calendar_features,
+            "ewm_alpha_percents": list(self.config.ewm_alpha_percents),
+            "effective_covariate_features": list(self._effective_covariate_features or []),
             "selected_model": "AutoForecastModel",
         }
         return metadata
@@ -131,6 +173,36 @@ class AutoForecaster(BaseForecaster):
         if season is not None and season > 1:
             windows.append(int(season))
         return sorted(set(windows))
+
+    def _covariate_features_for_frame(self, frame: ForecastFrame) -> list[str]:
+        if self.config.covariate_features is not None:
+            return list(self.config.covariate_features)
+        return list(frame.static_covariates)
+
+
+def _normalize_optional_feature_names(
+    values: Sequence[str] | None,
+    *,
+    name: str,
+) -> tuple[str, ...] | None:
+    if values is None:
+        return None
+    if isinstance(values, str):
+        raise ValueError(f"{name} must be a sequence of column names, not a string")
+    result = tuple(str(value) for value in values)
+    if len(set(result)) != len(result):
+        raise ValueError(f"{name} must not contain duplicate column names")
+    return result
+
+
+def _normalize_ewm_alpha_percents(values: Sequence[int] | None) -> tuple[int, ...]:
+    raw_values = () if values is None else tuple(values)
+    result = tuple(int(value) for value in raw_values)
+    if any(value < 1 or value > 100 for value in result):
+        raise ValueError("ewm_alpha_percents must contain integers in 1..=100")
+    if len(set(result)) != len(result):
+        raise ValueError("ewm_alpha_percents must not contain duplicate values")
+    return result
 
 
 def evaluate_m4(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
