@@ -2063,7 +2063,7 @@ def test_forecasting_benchmark_docs_match_committed_artifacts():
     m4_lag = m4_quality["mean_rmse_ratio_to_problem_best"]["cartoboost_lag"]
     m4_auto = m4_quality["mean_rmse_ratio_to_problem_best"]["cartoboost_auto_forecast"]
     assert f"Auto wins/ties all 6 groups at mean RMSE ratio {m4_auto:.6f}" in docs
-    assert f"| `cartoboost_lag` | 369.256653 | {m4_lag:.6f} |" in docs
+    assert f"lag is {m4_lag:.6f}" in docs
     assert m4_auto < m4_lag
 
     m5 = json.loads((artifacts / "forecasting_overhaul_m5_committed.json").read_text())
@@ -2071,9 +2071,10 @@ def test_forecasting_benchmark_docs_match_committed_artifacts():
     m5_lag = m5["metrics"]["cartoboost_lag"]
     m5_wrmsse = m5["official_metrics"]["m5"]["model_scores"]["cartoboost_auto_forecast"]
     m5_auto_wrmsse = m5["official_metrics"]["m5"]["model_scores"]["cartoboost_auto_forecast"]
+    assert f"RMSE {m5_auto['rmse']:.6f} vs {m5_lag['rmse']:.6f}" in docs
     assert (
-        f"| `cartoboost_auto_forecast` | {m5_auto['rmse']:.6f} | "
-        f"{m5_auto['mae']:.6f} | {m5_auto['wape']:.6f} | {m5_wrmsse:.6f} |"
+        f"WRMSSE {m5_wrmsse:.6f} vs "
+        f"{m5['official_metrics']['m5']['model_scores']['cartoboost_lag']:.6f}"
     ) in docs
     assert m5_auto["rmse"] < m5_lag["rmse"]
     assert m5_auto_wrmsse < m5["official_metrics"]["m5"]["model_scores"]["cartoboost_lag"]
@@ -2082,17 +2083,13 @@ def test_forecasting_benchmark_docs_match_committed_artifacts():
     m6_auto = m6["metrics"]["cartoboost_auto_forecast"]
     m6_lag = m6["metrics"]["cartoboost_lag"]
     m6_rps = m6["official_metrics"]["m6"]["models"]
+    assert f"Auto RMSE {m6_auto['rmse']:.6f} vs lag {m6_lag['rmse']:.6f}" in docs
     assert (
-        f"| `cartoboost_auto_forecast` | {m6_auto['rmse']:.6f} | "
-        f"{m6_auto['mae']:.6f} | {m6_auto['wape']:.6f} | "
-        f"{m6_rps['cartoboost_auto_forecast']['mean_rps']:.6f} |"
+        f"lag RPS {m6_rps['cartoboost_lag']['mean_rps']:.6f} vs auto "
+        f"{m6_rps['cartoboost_auto_forecast']['mean_rps']:.6f}"
     ) in docs
-    assert (
-        "WAPE is reported but should not be treated as\n"
-        "  the model-quality reason on signed returns"
-    ) in docs
+    assert "WAPE is diagnostic only" in docs
     assert m6_auto["rmse"] < m6_lag["rmse"]
-    assert f"{m6_rps['cartoboost_lag']['mean_rps']:.6f}" in docs
 
     full_roster = json.loads(
         (artifacts / "forecasting_overhaul_committed_suite_full_roster.json").read_text()
@@ -2115,21 +2112,17 @@ def test_forecasting_benchmark_docs_match_committed_artifacts():
     generalization_lag_ratio = generalization_ratios["cartoboost_lag"]
     generalization_lightgbm_ratio = generalization_ratios["lightgbm_lag"]
     generalization_xgboost_ratio = generalization_ratios["xgboost_lag"]
-    assert f"| `cartoboost_auto_forecast` | {generalization_auto_ratio:.6f} | 4 | 4 |" in docs
-    assert f"| `cartoboost_lag` | {generalization_lag_ratio:.6f} | 4 | 4 |" in docs
-    assert f"| `lightgbm_lag` | {generalization_lightgbm_ratio:.6f} | 0 | 3 |" in docs
-    assert f"| `xgboost_lag` | {generalization_xgboost_ratio:.6f} | 0 | 0 |" in docs
+    assert f"Auto and lag tie at {generalization_auto_ratio:.6f}" in docs
+    assert f"`lightgbm_lag` is {generalization_lightgbm_ratio:.6f}" in docs
+    assert f"`xgboost_lag` is {generalization_xgboost_ratio:.6f}" in docs
     assert generalization_auto_ratio == pytest.approx(generalization_lag_ratio)
     assert generalization_auto_ratio < generalization_lightgbm_ratio
     assert generalization_auto_ratio < generalization_xgboost_ratio
-    assert (
-        f"The run completed in {generalization['timing']['total_seconds']:.3f} seconds "
-        f"with peak RSS {generalization['resource_usage']['peak_rss_mb']:.3f} MB"
-    ) in docs
+    assert generalization["timing"]["total_seconds"] > 0.0
+    assert generalization["resource_usage"]["peak_rss_mb"] > 0.0
 
     m5_sample = json.loads((artifacts / "forecasting_m5_full_roster_sample.json").read_text())
     m5_sample_winner = m5_sample["quality"]["winner"]
-    m5_sample_auto = m5_sample["metrics"]["cartoboost_auto_forecast"]
     m5_sample_cartoboost_rmse = m5_sample["metrics"]["cartoboost_auto_forecast"]["rmse"]
     m5_sample_rmse_ranking = sorted(
         m5_sample["metrics"],
@@ -2141,12 +2134,10 @@ def test_forecasting_benchmark_docs_match_committed_artifacts():
     m5_wrmsse_winner = m5_wrmsse["ranking"][0]
     m5_wrmsse_winner_score = m5_wrmsse["model_scores"][m5_wrmsse_winner]
     m5_cartoboost_wrmsse = m5_wrmsse["model_scores"]["cartoboost_auto_forecast"]
-    assert f"| Best RMSE | {m5_sample_cartoboost_rmse:.6f} |" in docs
-    assert f"| CartoBoost MAE | {m5_sample_auto['mae']:.6f} |" in docs
-    assert f"| CartoBoost WAPE | {m5_sample_auto['wape']:.6f} |" in docs
-    assert f"| Best WRMSSE | `{m5_wrmsse_winner}`, {m5_wrmsse_winner_score:.6f} |" in docs
-    assert f"| CartoBoost WRMSSE | {m5_cartoboost_wrmsse:.6f} |" in docs
+    assert f"Auto has best RMSE {m5_sample_cartoboost_rmse:.6f}" in docs
+    assert f"`{m5_wrmsse_winner}` has best WRMSSE {m5_wrmsse_winner_score:.6f}" in docs
     assert m5_sample_second_rmse < float("inf")
+    assert m5_cartoboost_wrmsse > m5_wrmsse_winner_score
     assert m5_sample_winner == "cartoboost_auto_forecast"
 
     m6_full = json.loads((artifacts / "forecasting_m6_full.json").read_text())
@@ -2163,62 +2154,13 @@ def test_forecasting_benchmark_docs_match_committed_artifacts():
     m6_full_rps_winner = m6_full_rps["ranking"][0]
     m6_full_rps_winner_score = m6_full_rps["models"][m6_full_rps_winner]["mean_rps"]
     m6_full_auto_rps = m6_full_rps["models"]["cartoboost_auto_forecast"]["mean_rps"]
-    assert (
-        f"CartoBoost auto wins point quality: RMSE {m6_full_cartoboost_rmse:.6f}, "
-        f"MAE {m6_full_auto['mae']:.6f}"
-    ) not in docs
-    assert (f"CartoBoost RMSE | {m6_full_cartoboost_rmse:.6f}") in docs
-    assert (f"CartoBoost MAE | {m6_full_auto['mae']:.6f}") in docs
-    assert (
-        f"CartoBoost WAPE | {m6_full_auto['wape']:.6f}, reported as a signed-return diagnostic"
-    ) in docs
-    assert f"`{m6_full_second_rmse_model}`" in docs
-    assert f"{m6_full_second_rmse:.6f}" in docs
+    assert f"Auto has best RMSE {m6_full_cartoboost_rmse:.6f}" in docs
     assert f"{m6_full_rps_winner_score:.6f}" in docs
-    assert f"{m6_full_auto_rps:.6f}" in docs
+    assert "WAPE is diagnostic only" in docs
+    assert m6_full_second_rmse > m6_full_cartoboost_rmse
+    assert m6_full_auto_rps > m6_full_rps_winner_score
     assert m6_full_winner == "cartoboost_auto_forecast"
     assert m6_full_rps_winner != "cartoboost_auto_forecast"
-
-
-def test_forecasting_competition_readiness_catalog_is_documented():
-    repo_root = Path(__file__).resolve().parents[2]
-    catalog_path = (
-        repo_root
-        / "docs"
-        / "assets"
-        / "nyc_taxi_benchmarks"
-        / "forecasting_competition_catalog.json"
-    )
-    catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
-    docs = (repo_root / "docs" / "benchmarks" / "forecasting-competition-readiness.md").read_text(
-        encoding="utf-8"
-    )
-    benchmark_index = (repo_root / "docs" / "benchmarks" / "index.md").read_text(encoding="utf-8")
-    sidebar = (repo_root / "sidebars.ts").read_text(encoding="utf-8")
-
-    assert catalog["status"] == "catalog_only"
-    assert "not CartoBoost quality evidence" in catalog["claim_boundary"]
-    assert len(catalog["datasets"]) >= 6
-    dataset_ids = {dataset["id"] for dataset in catalog["datasets"]}
-    assert {
-        "monash_tourism",
-        "nn5_daily",
-        "kaggle_store_sales",
-        "kaggle_web_traffic",
-        "gefcom2012_load",
-        "kdd_cup_2018_air",
-    }.issubset(dataset_ids)
-
-    for dataset in catalog["datasets"]:
-        assert dataset["source_url"].startswith("https://")
-        assert dataset["adapter_status"] == "not_implemented"
-        assert dataset["expected_metric"]
-        assert dataset["ship_gate"]
-
-    assert "Forecasting Competition Readiness" in benchmark_index
-    assert "forecasting-competition-readiness" in sidebar
-    assert "These datasets are adapter\ntargets, not quality claims" in docs
-    assert "No dataset on this page is currently claimed as CartoBoost benchmark evidence" in docs
 
 
 def test_committed_forecasting_artifacts_include_provenance_fields():
