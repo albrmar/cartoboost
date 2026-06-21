@@ -85,7 +85,6 @@ const sidebars: SidebarsConfig = {
         'benchmarks/nyc-taxi',
         'benchmarks/forecasting',
         'benchmarks/taxi-zone',
-        'benchmarks/neural-embedding-strategy',
         'benchmarks/neural-embedding-benchmark-latest',
       ],
     },
