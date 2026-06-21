@@ -28,6 +28,15 @@ WAPE, SMAPE, and bias. M5 and M6 artifacts also include `official_metrics`:
 | `m5` | `official_metrics.m5` | Level-aware WRMSSE by total, state, store, item, and item-store levels, plus model rankings and per-series breakdowns. | Uses one-step RMSSE scaling and recent unit-sales volume weights because sell prices are not present in the shared benchmark frame. |
 | `m6` | `official_metrics.m6` | Five-bucket rank-probability scores, training-window calibration metadata, per-asset probability rows, deterministic long/short decision rows, and model rankings. | Still an audit proxy, not an official M6 submission file. |
 
+Metric values and metric ratios should not be read the same way. `RMSE` and
+`WAPE` are raw error metrics, so lower is better and the meaning depends on the
+target scale. `Mean RMSE ratio to problem best` is different: `1.000000` means a
+model tied the best RMSE observed for that artifact and split. A raw `WAPE` of
+`1.000000` is not a badge of accuracy; it means the sum of absolute errors
+equals the sum of absolute actual values. On signed-return tasks such as the M6
+proxy, WAPE is especially easy to misread because near-zero or market-neutral
+forecasts can produce WAPE near 1 while still having competitive RMSE/MAE.
+
 ## Forecasting Overhaul Committed Run
 
 Run dates: June 19-20, 2026. These runs used the deterministic CartoBoost-only
@@ -56,8 +65,9 @@ or ties every M4 group, beats lag on M5 WRMSSE, and beats lag on M6 point
 metrics. This is not a blanket external-library win claim: the maintained M5
 full-roster sample is now led by CartoBoost auto on RMSE, MAE, and WAPE, but
 `statsforecast_autotbats` still leads WRMSSE. The maintained M6 full-roster
-sample is now led by CartoBoost auto on RMSE, MAE, and WAPE, but simple
-seasonal-naive baselines still lead calibrated RPS.
+sample is now led by CartoBoost auto on RMSE and MAE; its WAPE is 1.000000, so
+that value should be treated as a signed-return scale diagnostic rather than a
+quality claim. Simple seasonal-naive baselines still lead calibrated RPS.
 
 ## Current Benchmark Status
 
@@ -68,11 +78,11 @@ seasonal-naive baselines still lead calibrated RPS.
 | `forecasting_generalization_scalable_synthetic.json` | Current generalization check | Auto and lag tie at 1.000000. |
 | `forecasting_overhaul_m4_committed.json` | Current sample | Auto wins/ties all 6 groups at mean RMSE ratio 1.000000. |
 | `forecasting_overhaul_m5_committed.json` | Current sample | Auto beats lag on RMSE and WRMSSE. |
-| `forecasting_overhaul_m6_committed.json` | Current sample | Auto beats lag on RMSE, MAE, and WAPE. |
+| `forecasting_overhaul_m6_committed.json` | Current sample | Auto beats lag on RMSE and MAE; WAPE is a signed-return diagnostic. |
 | `forecasting_overhaul_committed_suite_full_roster.json` | Older full-roster artifact | `lightgbm_lag` remains first at mean RMSE ratio 1.069525. |
 | `forecasting_m5_full_roster_sample.json` | Current sample | Auto has best RMSE; `statsforecast_autotbats` has best WRMSSE. |
 | `forecasting_m5_full.json` | Coverage artifact | Lag completed the 30,490-series fast run. |
-| `forecasting_m6_full.json` | Current proxy | Auto has best RMSE; seasonal-naive baselines have best calibrated RPS. |
+| `forecasting_m6_full.json` | Current proxy | Auto has best RMSE; WAPE is 1.000000 and seasonal-naive baselines have best calibrated RPS. |
 
 The scalable synthetic artifacts were added because the full external roster can
 spend substantial time in AutoTBATS and ARIMA optimization. The older full-roster
@@ -114,7 +124,8 @@ improved mean problem RMSE to 0.687513 and WAPE to 0.016942.
 The M5 comparison sample is bounded to 100 item-store series. In that artifact,
 `statsforecast_autotbats` has the best WRMSSE at 0.618397, while CartoBoost auto
 has WRMSSE 0.669928. In M6, the point-quality proxy is led by CartoBoost auto,
-while seasonal-naive baselines still lead calibrated RPS.
+while seasonal-naive baselines still lead calibrated RPS. M6 WAPE values are
+reported for transparency but are not the reason to prefer a model.
 
 ## Bottom Line
 
@@ -138,9 +149,10 @@ competition-style proxy runs:
 - M5 committed sample: `cartoboost_auto_forecast` is present in the committed
   artifact and beats `cartoboost_lag` on both point RMSE and WRMSSE.
 - M6 committed sample: `cartoboost_auto_forecast` is present in the committed
-  artifact and beats `cartoboost_lag` on point RMSE/MAE/WAPE after selecting
-  the market-neutral return candidate; RPS is emitted for audit rather than
-  optimized by this point-quality route.
+  artifact and beats `cartoboost_lag` on point RMSE/MAE after selecting the
+  market-neutral return candidate; WAPE is reported but should not be treated as
+  the model-quality reason on signed returns. RPS is emitted for audit rather
+  than optimized by this point-quality route.
 - M5 comparison sample: Kaggle M5 Accuracy files are now a first-class source
   with a full 14-model roster sample over 100 item-store daily unit-sales
   series, the official 28-day holdout shape, and the same model-family table
@@ -152,9 +164,9 @@ competition-style proxy runs:
 - M6 full-run protocol: M6 assets are now a first-class source for a daily
   return point-forecast proxy over the public M6 asset panel. The June 20, 2026
   run completed over 100 symbols and 38,219 daily-return rows; CartoBoost auto
-  now leads the maintained full-roster artifact on RMSE, MAE, and WAPE after
-  selecting the market-neutral return candidate, while seasonal-naive baselines
-  still lead calibrated RPS.
+  now leads the maintained full-roster artifact on RMSE and MAE after selecting
+  the market-neutral return candidate, while seasonal-naive baselines still lead
+  calibrated RPS.
 
 Forecasting claims should stay split-specific. The taxi run, committed
 CartoBoost-only samples, and M5/M6 full-roster artifacts are separate pieces of
@@ -466,18 +478,21 @@ uv run --group dev --group bench python scripts/forecasting_library_benchmark.py
 | Best RMSE | 0.013392 |
 | CartoBoost RMSE | 0.013392 |
 | CartoBoost MAE | 0.007357 |
-| CartoBoost WAPE | 1.000000 |
+| CartoBoost WAPE | 1.000000, reported as a signed-return diagnostic |
 | CartoBoost RMSE ratio vs best forecasting library | 0.999218 |
 | Best calibrated RPS | `functime_snaive` and `statsforecast_seasonal_naive`, 0.192195 |
 | CartoBoost calibrated RPS | 0.206007 |
 
 | Rank | Model | Role |
 | ---: | --- | --- |
-| 1 | `cartoboost_auto_forecast` | Best point metrics |
+| 1 | `cartoboost_auto_forecast` | Best RMSE and MAE |
 | 2 | `statsforecast_autoarima` | Best StatsForecast RMSE |
 | 3 | `statsforecast_autoets` | Close StatsForecast baseline |
 | 4 | `functime_ridge` | Best functime RMSE |
 | 5 | `statsforecast_autotbats` | Strong statistical baseline |
+
+`statsforecast_autoarima` was second by RMSE at 0.013402. The WAPE value should
+not be read as a separate model-quality win on this signed-return proxy.
 
 ### M6 Calibrated RPS
 
@@ -508,6 +523,8 @@ rank-probability forecasts and investment decisions, with RPS and investment
 return as official scoring dimensions. The artifact includes deterministic
 rank-probability scoring and decision rows calibrated on a pre-holdout window,
 but those rows are audit evidence rather than an official M6 submission file.
+The WAPE value of 1.000000 means absolute error equals total absolute realized
+return in this signed-return proxy; it is not an accuracy target.
 
 ## Limitations
 

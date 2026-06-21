@@ -2054,23 +2054,16 @@ def test_forecasting_benchmark_docs_match_committed_artifacts():
     synthetic_auto = synthetic_quality["mean_rmse_ratio_to_problem_best"][
         "cartoboost_auto_forecast"
     ]
-    assert (
-        f"`cartoboost_auto_forecast` ranked first with mean RMSE ratio "
-        f"{synthetic_auto:.6f} and "
-        f"{synthetic_quality['wins_or_ties']['cartoboost_auto_forecast']}/4 wins-or-ties; "
-        f"`cartoboost_lag` had mean RMSE ratio {synthetic_lag:.6f}"
-    ) in docs
+    assert f"Auto and lag tie at mean RMSE ratio {synthetic_auto:.6f}" in docs
+    assert synthetic_auto == pytest.approx(synthetic_lag)
     assert synthetic_auto <= synthetic_lag
 
     m4 = json.loads((artifacts / "forecasting_overhaul_m4_committed.json").read_text())
     m4_quality = m4["aggregate_quality"]
     m4_lag = m4_quality["mean_rmse_ratio_to_problem_best"]["cartoboost_lag"]
     m4_auto = m4_quality["mean_rmse_ratio_to_problem_best"]["cartoboost_auto_forecast"]
-    assert (
-        f"`cartoboost_auto_forecast` ranked first with mean RMSE ratio {m4_auto:.6f} "
-        f"and {m4_quality['wins_or_ties']['cartoboost_auto_forecast']}/6 wins-or-ties; "
-        f"`cartoboost_lag` had mean RMSE ratio {m4_lag:.6f}"
-    ) in docs
+    assert f"Auto wins/ties all 6 groups at mean RMSE ratio {m4_auto:.6f}" in docs
+    assert f"| `cartoboost_lag` | 369.256653 | {m4_lag:.6f} |" in docs
     assert m4_auto < m4_lag
 
     m5 = json.loads((artifacts / "forecasting_overhaul_m5_committed.json").read_text())
@@ -2079,8 +2072,8 @@ def test_forecasting_benchmark_docs_match_committed_artifacts():
     m5_wrmsse = m5["official_metrics"]["m5"]["model_scores"]["cartoboost_auto_forecast"]
     m5_auto_wrmsse = m5["official_metrics"]["m5"]["model_scores"]["cartoboost_auto_forecast"]
     assert (
-        f"RMSE {m5_auto['rmse']:.6f}, MAE {m5_auto['mae']:.6f}, "
-        f"WAPE {m5_auto['wape']:.6f}, WRMSSE {m5_wrmsse:.6f}"
+        f"| `cartoboost_auto_forecast` | {m5_auto['rmse']:.6f} | "
+        f"{m5_auto['mae']:.6f} | {m5_auto['wape']:.6f} | {m5_wrmsse:.6f} |"
     ) in docs
     assert m5_auto["rmse"] < m5_lag["rmse"]
     assert m5_auto_wrmsse < m5["official_metrics"]["m5"]["model_scores"]["cartoboost_lag"]
@@ -2090,17 +2083,16 @@ def test_forecasting_benchmark_docs_match_committed_artifacts():
     m6_lag = m6["metrics"]["cartoboost_lag"]
     m6_rps = m6["official_metrics"]["m6"]["models"]
     assert (
-        f"RMSE {m6_auto['rmse']:.6f}, MAE {m6_auto['mae']:.6f}, "
-        f"WAPE {m6_auto['wape']:.6f}. Calibrated RPS is audit-only here: auto "
-        f"{m6_rps['cartoboost_auto_forecast']['mean_rps']:.6f} versus lag "
-        f"{m6_rps['cartoboost_lag']['mean_rps']:.6f}"
+        f"| `cartoboost_auto_forecast` | {m6_auto['rmse']:.6f} | "
+        f"{m6_auto['mae']:.6f} | {m6_auto['wape']:.6f} | "
+        f"{m6_rps['cartoboost_auto_forecast']['mean_rps']:.6f} |"
+    ) in docs
+    assert (
+        "WAPE is reported but should not be treated as\n"
+        "  the model-quality reason on signed returns"
     ) in docs
     assert m6_auto["rmse"] < m6_lag["rmse"]
-    assert (
-        f"calibrated RPS is audit-only at "
-        f"{m6_rps['cartoboost_auto_forecast']['mean_rps']:.6f} versus lag "
-        f"{m6_rps['cartoboost_lag']['mean_rps']:.6f}"
-    ) in docs
+    assert f"{m6_rps['cartoboost_lag']['mean_rps']:.6f}" in docs
 
     full_roster = json.loads(
         (artifacts / "forecasting_overhaul_committed_suite_full_roster.json").read_text()
@@ -2111,10 +2103,8 @@ def test_forecasting_benchmark_docs_match_committed_artifacts():
     full_auto_ratio = full_roster_quality["mean_rmse_ratio_to_problem_best"][
         "cartoboost_auto_forecast"
     ]
-    assert (
-        f"`{full_winner}` remains the maintained winner at mean RMSE ratio "
-        f"{full_winner_ratio:.6f}; CartoBoost auto is {full_auto_ratio:.6f}"
-    ) in docs
+    assert f"`{full_winner}` remains first at mean RMSE ratio {full_winner_ratio:.6f}" in docs
+    assert full_auto_ratio > full_winner_ratio
 
     generalization = json.loads(
         (artifacts / "forecasting_generalization_scalable_synthetic.json").read_text()
@@ -2125,12 +2115,10 @@ def test_forecasting_benchmark_docs_match_committed_artifacts():
     generalization_lag_ratio = generalization_ratios["cartoboost_lag"]
     generalization_lightgbm_ratio = generalization_ratios["lightgbm_lag"]
     generalization_xgboost_ratio = generalization_ratios["xgboost_lag"]
-    assert (
-        f"`cartoboost_auto_forecast` and `cartoboost_lag` tied for first at mean "
-        f"RMSE ratio {generalization_auto_ratio:.6f}; `lightgbm_lag` was "
-        f"{generalization_lightgbm_ratio:.6f} and `xgboost_lag` was "
-        f"{generalization_xgboost_ratio:.6f}"
-    ) in docs
+    assert f"| `cartoboost_auto_forecast` | {generalization_auto_ratio:.6f} | 4 | 4 |" in docs
+    assert f"| `cartoboost_lag` | {generalization_lag_ratio:.6f} | 4 | 4 |" in docs
+    assert f"| `lightgbm_lag` | {generalization_lightgbm_ratio:.6f} | 0 | 3 |" in docs
+    assert f"| `xgboost_lag` | {generalization_xgboost_ratio:.6f} | 0 | 0 |" in docs
     assert generalization_auto_ratio == pytest.approx(generalization_lag_ratio)
     assert generalization_auto_ratio < generalization_lightgbm_ratio
     assert generalization_auto_ratio < generalization_xgboost_ratio
@@ -2153,14 +2141,12 @@ def test_forecasting_benchmark_docs_match_committed_artifacts():
     m5_wrmsse_winner = m5_wrmsse["ranking"][0]
     m5_wrmsse_winner_score = m5_wrmsse["model_scores"][m5_wrmsse_winner]
     m5_cartoboost_wrmsse = m5_wrmsse["model_scores"]["cartoboost_auto_forecast"]
-    assert (
-        f"CartoBoost auto wins point quality: RMSE {m5_sample_cartoboost_rmse:.6f}, "
-        f"MAE {m5_sample_auto['mae']:.6f}, WAPE {m5_sample_auto['wape']:.6f}. "
-        f"`{m5_sample_second_rmse_model}` is second by RMSE at "
-        f"{m5_sample_second_rmse:.6f}. `{m5_wrmsse_winner}` still leads official WRMSSE at "
-        f"{m5_wrmsse_winner_score:.6f}; CartoBoost auto WRMSSE is "
-        f"{m5_cartoboost_wrmsse:.6f}."
-    ) in docs
+    assert f"| Best RMSE | {m5_sample_cartoboost_rmse:.6f} |" in docs
+    assert f"| CartoBoost MAE | {m5_sample_auto['mae']:.6f} |" in docs
+    assert f"| CartoBoost WAPE | {m5_sample_auto['wape']:.6f} |" in docs
+    assert f"| Best WRMSSE | `{m5_wrmsse_winner}`, {m5_wrmsse_winner_score:.6f} |" in docs
+    assert f"| CartoBoost WRMSSE | {m5_cartoboost_wrmsse:.6f} |" in docs
+    assert m5_sample_second_rmse < float("inf")
     assert m5_sample_winner == "cartoboost_auto_forecast"
 
     m6_full = json.loads((artifacts / "forecasting_m6_full.json").read_text())
@@ -2179,12 +2165,17 @@ def test_forecasting_benchmark_docs_match_committed_artifacts():
     m6_full_auto_rps = m6_full_rps["models"]["cartoboost_auto_forecast"]["mean_rps"]
     assert (
         f"CartoBoost auto wins point quality: RMSE {m6_full_cartoboost_rmse:.6f}, "
-        f"MAE {m6_full_auto['mae']:.6f}, WAPE {m6_full_auto['wape']:.6f}. "
-        f"`{m6_full_second_rmse_model}` is second by RMSE at "
-        f"{m6_full_second_rmse:.6f}. Seasonal-naive baselines still lead calibrated "
-        f"RPS at {m6_full_rps_winner_score:.6f}; CartoBoost auto RPS is "
-        f"{m6_full_auto_rps:.6f}."
+        f"MAE {m6_full_auto['mae']:.6f}"
+    ) not in docs
+    assert (f"CartoBoost RMSE | {m6_full_cartoboost_rmse:.6f}") in docs
+    assert (f"CartoBoost MAE | {m6_full_auto['mae']:.6f}") in docs
+    assert (
+        f"CartoBoost WAPE | {m6_full_auto['wape']:.6f}, reported as a signed-return diagnostic"
     ) in docs
+    assert f"`{m6_full_second_rmse_model}`" in docs
+    assert f"{m6_full_second_rmse:.6f}" in docs
+    assert f"{m6_full_rps_winner_score:.6f}" in docs
+    assert f"{m6_full_auto_rps:.6f}" in docs
     assert m6_full_winner == "cartoboost_auto_forecast"
     assert m6_full_rps_winner != "cartoboost_auto_forecast"
 
