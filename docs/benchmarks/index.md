@@ -22,6 +22,7 @@ separate real NYC TLC evidence from synthetic mechanism checks.
 | --- | --- | --- |
 | [NYC Taxi Benchmarks](nyc-taxi.md) | Real TLC fare, duration, and pickup-demand regression. | Metric summary, predicted-vs-actual plots, throughput plots. |
 | [Forecasting Tool Benchmark](forecasting.md) | Real taxi lane demand, synthetic taxi-shaped forecasting, M4 sample, M5 full-roster sample, and M5/M6 full-run protocols. | RMSE/WAPE tables, M5/M6 model rosters, run commands, horizon plot, forecast-line plot. |
+| [Forecasting Competition Readiness](forecasting-competition-readiness.md) | Catalog of next competition-style forecasting datasets outside the maintained M4/M5/M6 evidence. | Dataset coverage, adapter order, required artifact gates, and claim boundaries. |
 | [Model Benchmark Suite](model-suite.md) | Synthetic dense, repeated-ID, and graph diagnostics. | MAE-by-model plot and workload table. |
 | [Taxi Zone Acceptance](taxi-zone.md) | Deterministic taxi-lane feature acceptance. | Lane heatmap, hour profile, route midpoint geometry. |
 | [Neural Embedding Benchmark](neural-embedding-benchmark-latest.md) | Synthetic repeated-ID/cold-ID diagnostic. | Scenario table showing random/tail wins and cold-origin failure. |
@@ -44,6 +45,7 @@ separate real NYC TLC evidence from synthetic mechanism checks.
 | M5 full-roster sample JSON | `docs/assets/nyc_taxi_benchmarks/forecasting_m5_full_roster_sample.json` |
 | M5 full forecasting JSON | `docs/assets/nyc_taxi_benchmarks/forecasting_m5_full.json` |
 | M6 full forecasting JSON | `docs/assets/nyc_taxi_benchmarks/forecasting_m6_full.json` |
+| Forecasting competition-readiness catalog | `docs/assets/nyc_taxi_benchmarks/forecasting_competition_catalog.json` |
 | Model diagnostic suite JSON | `docs/assets/model_benchmarks/results.json` |
 | Lane acceptance JSON | `docs/assets/lane_level_tests/acceptance_metrics.json` |
 

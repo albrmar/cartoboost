@@ -24,6 +24,7 @@ temporal, spatial, geotemporal, graph, and neural-embedding modeling.
 - Neural embedding models and features: ./docs/neural-features.md
 - Benchmarks: ./docs/benchmarks/index.md
 - Forecasting benchmarks and M4/M5/M6 evidence: ./docs/benchmarks/forecasting.md
+- Forecasting competition readiness catalog: ./docs/benchmarks/forecasting-competition-readiness.md
 - Forecasting overhaul: ./docs/forecasting_overhaul.md
 - Forecasting hybridization assessment: ./docs/forecasting_hybridization_assessment.md
 

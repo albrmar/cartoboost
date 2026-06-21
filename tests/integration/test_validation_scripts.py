@@ -2180,6 +2180,47 @@ def test_forecasting_benchmark_docs_match_committed_artifacts():
     assert m6_full_rps_winner != "cartoboost_auto_forecast"
 
 
+def test_forecasting_competition_readiness_catalog_is_documented():
+    repo_root = Path(__file__).resolve().parents[2]
+    catalog_path = (
+        repo_root
+        / "docs"
+        / "assets"
+        / "nyc_taxi_benchmarks"
+        / "forecasting_competition_catalog.json"
+    )
+    catalog = json.loads(catalog_path.read_text(encoding="utf-8"))
+    docs = (repo_root / "docs" / "benchmarks" / "forecasting-competition-readiness.md").read_text(
+        encoding="utf-8"
+    )
+    benchmark_index = (repo_root / "docs" / "benchmarks" / "index.md").read_text(encoding="utf-8")
+    sidebar = (repo_root / "sidebars.ts").read_text(encoding="utf-8")
+
+    assert catalog["status"] == "catalog_only"
+    assert "not CartoBoost quality evidence" in catalog["claim_boundary"]
+    assert len(catalog["datasets"]) >= 6
+    dataset_ids = {dataset["id"] for dataset in catalog["datasets"]}
+    assert {
+        "monash_tourism",
+        "nn5_daily",
+        "kaggle_store_sales",
+        "kaggle_web_traffic",
+        "gefcom2012_load",
+        "kdd_cup_2018_air",
+    }.issubset(dataset_ids)
+
+    for dataset in catalog["datasets"]:
+        assert dataset["source_url"].startswith("https://")
+        assert dataset["adapter_status"] == "not_implemented"
+        assert dataset["expected_metric"]
+        assert dataset["ship_gate"]
+
+    assert "Forecasting Competition Readiness" in benchmark_index
+    assert "forecasting-competition-readiness" in sidebar
+    assert "These datasets are adapter\ntargets, not quality claims" in docs
+    assert "No dataset on this page is currently claimed as CartoBoost benchmark evidence" in docs
+
+
 def test_committed_forecasting_artifacts_include_provenance_fields():
     repo_root = Path(__file__).resolve().parents[2]
     artifacts = repo_root / "docs" / "assets" / "nyc_taxi_benchmarks"

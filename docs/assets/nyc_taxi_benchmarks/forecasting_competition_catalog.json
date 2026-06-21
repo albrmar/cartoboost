@@ -1,0 +1,88 @@
+{
+  "generated_at": "2026-06-21",
+  "purpose": "Out-of-sample competition-style forecasting catalog for testing CartoBoost beyond maintained M4/M5/M6 artifacts.",
+  "status": "catalog_only",
+  "claim_boundary": "These datasets are recommended next validation targets. They are not CartoBoost quality evidence until adapters, split definitions, commands, and artifacts are committed.",
+  "datasets": [
+    {
+      "id": "monash_tourism",
+      "name": "Tourism forecasting competition datasets",
+      "source": "Monash Time Series Forecasting Repository / Zenodo tourism datasets",
+      "source_url": "https://forecastingdata.org/",
+      "mirror_url": "https://zenodo.org/records/4656103",
+      "domain": "tourism demand",
+      "frequency": ["yearly", "quarterly", "monthly"],
+      "task_shape": "heterogeneous univariate seasonal demand",
+      "why_it_matters": "Tests M4-like frequency variation on a competition dataset that is not one of the maintained M4/M5/M6 artifacts.",
+      "expected_metric": ["sMAPE", "MASE", "OWA proxy", "RMSE"],
+      "adapter_status": "not_implemented",
+      "ship_gate": "Auto must beat or tie lag on every frequency group and beat at least one serious statistical baseline on aggregate."
+    },
+    {
+      "id": "nn5_daily",
+      "name": "NN5 cash-withdrawal forecasting competition",
+      "source": "Monash Time Series Forecasting Repository",
+      "source_url": "https://forecastingdata.org/",
+      "domain": "ATM cash demand",
+      "frequency": ["daily"],
+      "task_shape": "short panel with weekly seasonality and demand spikes",
+      "why_it_matters": "Tests sparse-ish operational demand outside taxi, retail, and finance.",
+      "expected_metric": ["sMAPE", "MASE", "RMSE", "WAPE"],
+      "adapter_status": "not_implemented",
+      "ship_gate": "Auto must beat lag and seasonal naive on rolling-origin quality without materially worse runtime."
+    },
+    {
+      "id": "kaggle_store_sales",
+      "name": "Store Sales - Time Series Forecasting",
+      "source": "Kaggle",
+      "source_url": "https://www.kaggle.com/competitions/store-sales-time-series-forecasting",
+      "domain": "grocery retail demand",
+      "frequency": ["daily"],
+      "task_shape": "multi-store, multi-family retail panel with promotions and calendar events",
+      "why_it_matters": "Tests whether CartoBoost can use tabular covariates and calendar structure on a modern public retail competition distinct from M5.",
+      "expected_metric": ["RMSLE", "RMSE", "WAPE"],
+      "adapter_status": "not_implemented",
+      "ship_gate": "Use train-only validation splits; auto must beat lag, seasonal naive, and a LightGBM lag baseline on RMSLE."
+    },
+    {
+      "id": "kaggle_web_traffic",
+      "name": "Web Traffic Time Series Forecasting",
+      "source": "Kaggle / Zenodo mirror",
+      "source_url": "https://www.kaggle.com/c/web-traffic-time-series-forecasting",
+      "mirror_url": "https://zenodo.org/records/4656075",
+      "domain": "Wikipedia page traffic",
+      "frequency": ["daily"],
+      "task_shape": "large high-cardinality panel with missing values, spikes, language/project metadata, and intermittent traffic",
+      "why_it_matters": "Tests scale, high-cardinality series IDs, intermittent behavior, and robustness to missing values.",
+      "expected_metric": ["sMAPE", "MASE", "RMSE"],
+      "adapter_status": "not_implemented",
+      "ship_gate": "Run a fixed sample and a scalable large-panel slice; auto must beat lag and median/seasonal baselines while preserving bounded memory."
+    },
+    {
+      "id": "gefcom2012_load",
+      "name": "Global Energy Forecasting Competition 2012 load forecasting",
+      "source": "GEFCom2012 / tscompdata",
+      "source_url": "https://pkg.robjhyndman.com/tscompdata/reference/gefcom2012_load.html",
+      "domain": "electric load",
+      "frequency": ["hourly"],
+      "task_shape": "hierarchical zonal load panel with calendar and weather-sensitive seasonality",
+      "why_it_matters": "Tests hourly multi-seasonality, hierarchy, and energy-demand behavior outside transportation and retail.",
+      "expected_metric": ["RMSE", "WAPE", "hierarchy coherence"],
+      "adapter_status": "not_implemented",
+      "ship_gate": "Auto must beat lag and seasonal naive on zonal and total-load levels, with explicit hierarchy/coherence reporting."
+    },
+    {
+      "id": "kdd_cup_2018_air",
+      "name": "KDD Cup 2018 air quality forecasting",
+      "source": "Monash Time Series Forecasting Repository",
+      "source_url": "https://forecastingdata.org/",
+      "domain": "air quality",
+      "frequency": ["hourly"],
+      "task_shape": "sensor panel with missingness, exogenous context, and local temporal structure",
+      "why_it_matters": "Tests missing-data handling and environmental sensor behavior that is not sales, finance, or taxi demand.",
+      "expected_metric": ["RMSE", "MAE", "WAPE"],
+      "adapter_status": "not_implemented",
+      "ship_gate": "Auto must beat lag and classical baselines under train-only imputation and fixed rolling-origin splits."
+    }
+  ]
+}
