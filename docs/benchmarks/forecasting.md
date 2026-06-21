@@ -1,57 +1,121 @@
 # Forecasting Benchmark
 
-This page is the maintained forecasting benchmark write-up. It shows what runs
-where, which artifact backs each result, and what claim is allowed. The detailed
-metric tables live in the JSON artifacts under
-`docs/assets/nyc_taxi_benchmarks/`.
+This page summarizes the maintained forecasting benchmark artifacts. Lower is
+better for RMSE, MAE, WAPE, WRMSSE, RPS, and mean RMSE ratio. A mean RMSE ratio
+of `1.000000` means the model tied the best RMSE observed on that artifact and
+split.
 
-The benchmark commands use fixed model rosters, fixed seeds, and `--no-hyperopt`.
-A result is only a quality claim when it cites the artifact, split, seed, model
-roster, and metric table. M5 and M6 claims must also cite `official_metrics`.
+## NYC Taxi Demand
 
-## Metric Reading
+Real taxi demand uses January 2024 NYC TLC yellow taxi trips, 24 pickup/dropoff
+lanes, daily aggregation, and a 7-day holdout.
 
-RMSE, MAE, WAPE, WRMSSE, and RPS are raw error metrics, so lower is better.
-Their meaning depends on target scale and task. `Mean RMSE ratio to problem
-best` is different: `1.000000` means the model tied the best RMSE observed for
-that artifact and split.
+| Rank | Model | RMSE | MAE | WAPE | Artifact |
+| ---: | --- | ---: | ---: | ---: | --- |
+| 1 | `cartoboost_auto_forecast` | 39.033944 | 29.172619 | 0.093742 | `forecasting_library_benchmark_real.json` |
+| 2 | `cartoboost_lag` | 126.861048 | 85.685036 | 0.275335 | `forecasting_library_benchmark_real.json` |
 
-A raw WAPE of `1.000000` is not a badge of accuracy. It means total absolute
-error equals total absolute actual value. On signed-return tasks such as the M6
-proxy, WAPE is especially easy to misread because market-neutral or near-zero
-forecasts can have competitive RMSE/MAE while WAPE remains near 1.
+Read: CartoBoost auto is the stronger model on this real taxi lane-demand split.
+The run is short, so it is useful evidence for the taxi workflow, not a broad
+forecasting claim by itself.
 
-## What Runs Where
+## Synthetic Demand Checks
 
-| Run | Artifact | Roster | Current read |
-| --- | --- | --- | --- |
-| Real NYC taxi lane demand | `forecasting_library_benchmark_real.json` | CartoBoost auto and lag | Auto beats lag: RMSE 39.033944 vs 126.861. |
-| Synthetic taxi-shaped suite | `forecasting_overhaul_committed_suite.json` | CartoBoost auto and lag | Auto and lag tie at mean RMSE ratio 1.000000. |
-| Synthetic scalable external roster | `forecasting_overhaul_committed_suite_scalable_roster.json` | CartoBoost, LightGBM, XGBoost, functime | Auto and lag rank first at 1.013744; `lightgbm_lag` is 1.279238. |
-| Synthetic full external roster | `forecasting_overhaul_committed_suite_full_roster.json` | Full external roster | Older artifact: `lightgbm_lag` remains first at mean RMSE ratio 1.069525. |
-| Generalization guardrail | `forecasting_generalization_scalable_synthetic.json` | Scalable external roster | Auto and lag tie at 1.000000; `lightgbm_lag` is 1.196396 and `xgboost_lag` is 1.258816. |
-| M4 committed sample | `forecasting_overhaul_m4_committed.json` | CartoBoost auto and lag | Auto wins/ties all 6 groups at mean RMSE ratio 1.000000; lag is 12.104570. |
-| M5 committed sample | `forecasting_overhaul_m5_committed.json` | CartoBoost auto and lag | Auto beats lag: RMSE 2.415225 vs 2.540625; WRMSSE 0.568942 vs 0.743721. |
-| M5 100-series comparison | `forecasting_m5_full_roster_sample.json` | Full 14-model roster | Auto has best RMSE 2.511292; `statsforecast_autotbats` has best WRMSSE 0.618397. |
-| M5 full-corpus fast check | `forecasting_m5_full.json` | CartoBoost lag fast roster | Lag completed 30,490 series: RMSE 2.634879. This is coverage evidence, not a bakeoff. |
-| M6 committed sample | `forecasting_overhaul_m6_committed.json` | CartoBoost auto and lag | Auto RMSE 0.013439 vs lag 0.014440; lag RPS 0.200754 vs auto 0.208171. WAPE is diagnostic only. |
-| M6 100-symbol proxy | `forecasting_m6_full.json` | Full 15-model roster | Auto has best RMSE 0.013392; seasonal-naive baselines have best calibrated RPS 0.192195. |
+The synthetic demand artifacts keep taxi-shaped route-demand diagnostics in the
+benchmark suite. They are not real TLC data.
 
-## Bottom Line
+| Run | Rank | Model | Mean RMSE Ratio | Wins/Ties | Artifact |
+| --- | ---: | --- | ---: | ---: | --- |
+| CartoBoost committed | 1 | `cartoboost_auto_forecast` | 1.000000 | 4 | `forecasting_overhaul_committed_suite.json` |
+| CartoBoost committed | 1 | `cartoboost_lag` | 1.000000 | 4 | `forecasting_overhaul_committed_suite.json` |
+| Scalable external roster | 1 | `cartoboost_auto_forecast` | 1.013744 | 3 | `forecasting_overhaul_committed_suite_scalable_roster.json` |
+| Scalable external roster | 1 | `cartoboost_lag` | 1.013744 | 3 | `forecasting_overhaul_committed_suite_scalable_roster.json` |
+| Scalable external roster | 3 | `lightgbm_lag` | 1.279238 | 1 | `forecasting_overhaul_committed_suite_scalable_roster.json` |
+| Generalization guardrail | 1 | `cartoboost_auto_forecast` | 1.000000 | 4 | `forecasting_generalization_scalable_synthetic.json` |
+| Generalization guardrail | 1 | `cartoboost_lag` | 1.000000 | 4 | `forecasting_generalization_scalable_synthetic.json` |
+| Generalization guardrail | 3 | `lightgbm_lag` | 1.196396 | 0 | `forecasting_generalization_scalable_synthetic.json` |
+| Generalization guardrail | 4 | `xgboost_lag` | 1.258816 | 0 | `forecasting_generalization_scalable_synthetic.json` |
+| Older full external roster | 1 | `lightgbm_lag` | 1.069525 | 3 | `forecasting_overhaul_committed_suite_full_roster.json` |
+| Older full external roster | 2 | `cartoboost_auto_forecast` | 1.187837 | 0 | `forecasting_overhaul_committed_suite_full_roster.json` |
+| Older full external roster | 3 | `cartoboost_lag` | 1.189963 | 0 | `forecasting_overhaul_committed_suite_full_roster.json` |
 
-CartoBoost auto is now guarded by the lag spine. When validation does not justify
-a riskier candidate, auto falls back instead of losing casually to
-`cartoboost_lag`.
+Read: the current scalable synthetic checks favor CartoBoost. The older full
+external-roster artifact still has LightGBM first and remains useful as a
+comparison point.
 
-On the committed CartoBoost-only samples, auto ties lag on the synthetic suite,
-wins/ties every M4 group, beats lag on M5 RMSE and WRMSSE, and beats lag on M6
-RMSE/MAE. That is not a blanket external-library win. The older full external
-synthetic artifact is still led by LightGBM. The M5 full-roster sample is led by
-CartoBoost on point RMSE, but AutoTBATS still leads WRMSSE. The M6 proxy is led
-by CartoBoost on point RMSE, but seasonal-naive baselines still lead calibrated
-RPS.
+## M4 Sample
 
-## Reproduce The Maintained Runs
+The committed M4 run scores the first 96 series from each M4 frequency group.
+It is a sample, not a full M4 corpus result.
+
+| Rank | Model | Mean RMSE Ratio | Wins/Ties | Top-3 Finishes | Artifact |
+| ---: | --- | ---: | ---: | ---: | --- |
+| 1 | `cartoboost_auto_forecast` | 1.000000 | 6 | 6 | `forecasting_overhaul_m4_committed.json` |
+| 2 | `cartoboost_lag` | 12.104570 | 3 | 6 | `forecasting_overhaul_m4_committed.json` |
+
+Read: CartoBoost auto wins or ties all six M4 sample groups on this artifact.
+
+## M5 Demand Forecasting
+
+The committed M5 run is a 96-series sample with M5-style WRMSSE reporting. The
+100-series comparison uses the public M5 files and a full external roster. The
+full-corpus fast check covers all 30,490 bottom-level item-store series with the
+CartoBoost lag fast roster.
+
+| Run | Rank | Model | RMSE | MAE | WAPE | WRMSSE | Artifact |
+| --- | ---: | --- | ---: | ---: | ---: | ---: | --- |
+| Committed sample | 1 | `cartoboost_auto_forecast` | 2.415225 | 1.139285 | 0.910615 | 0.568942 | `forecasting_overhaul_m5_committed.json` |
+| Committed sample | 2 | `cartoboost_lag` | 2.540625 | 1.219927 | 0.975071 | 0.743721 | `forecasting_overhaul_m5_committed.json` |
+| 100-series comparison | 1 | `cartoboost_auto_forecast` | 2.511292 | 1.135585 | 0.916059 | 0.669928 | `forecasting_m5_full_roster_sample.json` |
+| 100-series comparison | 2 | `statsforecast_autoets` | 2.525734 | 1.141999 | 0.921232 | 0.717426 | `forecasting_m5_full_roster_sample.json` |
+| 100-series comparison | 3 | `statsforecast_dynamic_optimized_theta` | 2.556517 | 1.163750 | 0.938779 | 0.712698 | `forecasting_m5_full_roster_sample.json` |
+| 100-series comparison | 4 | `statsforecast_autotbats` | 2.602055 | 1.156588 | 0.933001 | 0.618397 | `forecasting_m5_full_roster_sample.json` |
+| 100-series comparison | 5 | `functime_ridge` | 2.606775 | 1.207878 | 0.974376 | 0.711331 | `forecasting_m5_full_roster_sample.json` |
+| 100-series comparison | 6 | `statsforecast_autotheta` | 2.607077 | 1.196042 | 0.964828 | 0.723187 | `forecasting_m5_full_roster_sample.json` |
+| 100-series comparison | 7 | `statsforecast_autoarima` | 2.655754 | 1.194312 | 0.963433 | 0.739778 | `forecasting_m5_full_roster_sample.json` |
+| 100-series comparison | 8 | `xgboost_lag` | 2.793477 | 1.500446 | 1.210386 | 1.249158 | `forecasting_m5_full_roster_sample.json` |
+| 100-series comparison | 9 | `cartoboost_lag` | 2.805543 | 1.285725 | 1.037173 | 0.827678 | `forecasting_m5_full_roster_sample.json` |
+| 100-series comparison | 10 | `statsforecast_autoces` | 2.818083 | 1.228058 | 0.990655 | 0.630302 | `forecasting_m5_full_roster_sample.json` |
+| 100-series comparison | 11 | `lightgbm_lag` | 2.825295 | 1.253991 | 1.011575 | 1.000983 | `forecasting_m5_full_roster_sample.json` |
+| 100-series comparison | 12 | `functime_snaive` | 3.286281 | 1.337500 | 1.078940 | 0.825078 | `forecasting_m5_full_roster_sample.json` |
+| 100-series comparison | 12 | `statsforecast_seasonal_naive` | 3.286281 | 1.337500 | 1.078940 | 0.825078 | `forecasting_m5_full_roster_sample.json` |
+| 100-series comparison | 14 | `functime_lightgbm` | 3.342214 | 1.379177 | 1.112560 | 0.982476 | `forecasting_m5_full_roster_sample.json` |
+| 100-series comparison | 15 | `prophet_additive` | 14.960959 | 6.146700 | 4.958444 | 3.366280 | `forecasting_m5_full_roster_sample.json` |
+| Full-corpus fast check | 1 | `cartoboost_lag` | 2.634879 | 1.332997 | 0.923884 | n/a | `forecasting_m5_full.json` |
+
+Read: CartoBoost auto is first by RMSE on the committed and 100-series M5
+samples. AutoTBATS is first by WRMSSE on the 100-series comparison.
+
+## M6 Daily Returns
+
+The M6 artifacts are daily-return forecasting proxies with five-bucket rank
+probabilities. They are not official M6 submission files.
+
+| Run | Rank | Model | RMSE | MAE | WAPE | RPS | Artifact |
+| --- | ---: | --- | ---: | ---: | ---: | ---: | --- |
+| Committed sample | 1 | `cartoboost_auto_forecast` | 0.013439 | 0.007342 | 1.000000 | 0.208171 | `forecasting_overhaul_m6_committed.json` |
+| Committed sample | 2 | `cartoboost_lag` | 0.014440 | 0.009290 | 1.265338 | 0.200754 | `forecasting_overhaul_m6_committed.json` |
+| 100-symbol comparison | 1 | `cartoboost_auto_forecast` | 0.013392 | 0.007357 | 1.000000 | 0.206007 | `forecasting_m6_full.json` |
+| 100-symbol comparison | 2 | `statsforecast_autoarima` | 0.013402 | 0.007400 | 1.005844 | 0.200029 | `forecasting_m6_full.json` |
+| 100-symbol comparison | 3 | `statsforecast_autoets` | 0.013408 | 0.007456 | 1.013524 | 0.198295 | `forecasting_m6_full.json` |
+| 100-symbol comparison | 4 | `functime_ridge` | 0.013474 | 0.007670 | 1.042553 | 0.198198 | `forecasting_m6_full.json` |
+| 100-symbol comparison | 5 | `statsforecast_autotbats` | 0.013477 | 0.007663 | 1.041580 | 0.200969 | `forecasting_m6_full.json` |
+| 100-symbol comparison | 6 | `statsforecast_autoces` | 0.013522 | 0.007617 | 1.035289 | 0.198260 | `forecasting_m6_full.json` |
+| 100-symbol comparison | 7 | `statsforecast_dynamic_optimized_theta` | 0.013669 | 0.008204 | 1.115187 | 0.199984 | `forecasting_m6_full.json` |
+| 100-symbol comparison | 8 | `statsforecast_autotheta` | 0.013683 | 0.008228 | 1.118462 | 0.197417 | `forecasting_m6_full.json` |
+| 100-symbol comparison | 9 | `xgboost_lag` | 0.014246 | 0.008896 | 1.209160 | 0.199529 | `forecasting_m6_full.json` |
+| 100-symbol comparison | 10 | `cartoboost_lag` | 0.014348 | 0.009357 | 1.271868 | 0.204266 | `forecasting_m6_full.json` |
+| 100-symbol comparison | 11 | `lightgbm_lag` | 0.016087 | 0.010955 | 1.489135 | 0.200887 | `forecasting_m6_full.json` |
+| 100-symbol comparison | 12 | `prophet_additive` | 0.017417 | 0.011750 | 1.597096 | 0.197646 | `forecasting_m6_full.json` |
+| 100-symbol comparison | 13 | `functime_lightgbm` | 0.017474 | 0.011163 | 1.517349 | 0.198504 | `forecasting_m6_full.json` |
+| 100-symbol comparison | 14 | `functime_snaive` | 0.017846 | 0.010780 | 1.465315 | 0.192195 | `forecasting_m6_full.json` |
+| 100-symbol comparison | 14 | `statsforecast_seasonal_naive` | 0.017846 | 0.010780 | 1.465315 | 0.192195 | `forecasting_m6_full.json` |
+
+Read: CartoBoost auto is first by RMSE on the committed and 100-symbol M6
+artifacts. Seasonal-naive baselines are first by RPS on the 100-symbol
+comparison.
+
+## Reproduce
 
 ```sh
 uv run --group dev python scripts/forecasting_library_benchmark.py \
@@ -121,37 +185,12 @@ uv run --group dev --group bench python scripts/forecasting_library_benchmark.py
   --plot-dir docs/assets/nyc_taxi_benchmarks/forecasting_m6_full_plots
 ```
 
-## Notes By Run
+## Limits
 
-Real taxi uses January 2024 NYC TLC yellow taxi trips, 24 pickup/dropoff lanes,
-31 days, and a 7-day holdout. The run is CartoBoost-only and shows that auto
-selected the validated seasonal-base route while lag stayed as the supervised
-lag baseline. The plots in `forecasting_plots/` show the metric comparison,
-horizon RMSE, forecast lines, and actual-vs-predicted demand.
-
-The synthetic suite is a route-demand diagnostic, not real TLC evidence. The
-generalization guardrail keeps a non-M external-baseline check in the loop so
-forecasting changes are not judged only on M4/M5/M6.
-
-The M4 artifact scores the first 96 series from each M4 group. It is a committed
-sample, not a full M4 corpus or cross-library claim.
-
-The M5 committed sample reports both shared point metrics and
-`official_metrics.m5`. The separate 100-series M5 comparison uses a full
-external roster, but it is still a sample. The all-series M5 artifact is a
-lag-only fast coverage run over 30,490 bottom-level item-store series.
-
-The M6 artifacts are point-forecast proxies over daily returns. They include RPS
-and decision rows for audit, but they are not official M6 submission payloads.
-For M6, prefer the RMSE/MAE and RPS reads over WAPE.
-
-## Limitations
-
-- Real taxi panel is short: 31 days and a 7-day holdout.
-- Synthetic results are diagnostics, not real-world superiority claims.
+- Real taxi demand covers one month and a 7-day holdout.
+- Synthetic demand checks are diagnostics.
 - M4 is a 96-series-per-group sample.
-- M5 full-roster evidence is a 100-series sample; the full-corpus artifact is
-  a lag-only coverage run.
-- M6 is a daily-return point proxy with audit RPS, not an official leaderboard
-  submission.
-- External model availability depends on optional benchmark dependencies.
+- M5 full-roster evidence is a 100-series sample; the full-corpus artifact is a
+  lag-only coverage run.
+- M6 is a daily-return proxy, not an official leaderboard submission.
+- Optional external baselines require their benchmark extras.

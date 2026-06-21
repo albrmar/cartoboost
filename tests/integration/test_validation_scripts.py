@@ -2048,13 +2048,34 @@ def test_forecasting_benchmark_docs_match_committed_artifacts():
     docs = (repo_root / "docs" / "benchmarks" / "forecasting.md").read_text(encoding="utf-8")
     artifacts = repo_root / "docs" / "assets" / "nyc_taxi_benchmarks"
 
+    assert "badge of accuracy" not in docs
+    assert "WAPE is diagnostic only" not in docs
+    assert "guarded by the lag spine" not in docs
+    assert "provenance" not in docs
+
+    taxi = json.loads((artifacts / "forecasting_library_benchmark_real.json").read_text())
+    taxi_auto = taxi["metrics"]["cartoboost_auto_forecast"]
+    taxi_lag = taxi["metrics"]["cartoboost_lag"]
+    assert (
+        f"| 1 | `cartoboost_auto_forecast` | {taxi_auto['rmse']:.6f} | "
+        f"{taxi_auto['mae']:.6f} | {taxi_auto['wape']:.6f} |"
+    ) in docs
+    assert (
+        f"| 2 | `cartoboost_lag` | {taxi_lag['rmse']:.6f} | "
+        f"{taxi_lag['mae']:.6f} | {taxi_lag['wape']:.6f} |"
+    ) in docs
+    assert taxi_auto["rmse"] < taxi_lag["rmse"]
+
     synthetic = json.loads((artifacts / "forecasting_overhaul_committed_suite.json").read_text())
     synthetic_quality = synthetic["aggregate_quality"]
     synthetic_lag = synthetic_quality["mean_rmse_ratio_to_problem_best"]["cartoboost_lag"]
     synthetic_auto = synthetic_quality["mean_rmse_ratio_to_problem_best"][
         "cartoboost_auto_forecast"
     ]
-    assert f"Auto and lag tie at mean RMSE ratio {synthetic_auto:.6f}" in docs
+    assert (
+        f"| CartoBoost committed | 1 | `cartoboost_auto_forecast` | {synthetic_auto:.6f} |"
+    ) in docs
+    assert f"| CartoBoost committed | 1 | `cartoboost_lag` | {synthetic_lag:.6f} |" in docs
     assert synthetic_auto == pytest.approx(synthetic_lag)
     assert synthetic_auto <= synthetic_lag
 
@@ -2062,8 +2083,8 @@ def test_forecasting_benchmark_docs_match_committed_artifacts():
     m4_quality = m4["aggregate_quality"]
     m4_lag = m4_quality["mean_rmse_ratio_to_problem_best"]["cartoboost_lag"]
     m4_auto = m4_quality["mean_rmse_ratio_to_problem_best"]["cartoboost_auto_forecast"]
-    assert f"Auto wins/ties all 6 groups at mean RMSE ratio {m4_auto:.6f}" in docs
-    assert f"lag is {m4_lag:.6f}" in docs
+    assert f"| 1 | `cartoboost_auto_forecast` | {m4_auto:.6f} | 6 | 6 |" in docs
+    assert f"| 2 | `cartoboost_lag` | {m4_lag:.6f} | 3 | 6 |" in docs
     assert m4_auto < m4_lag
 
     m5 = json.loads((artifacts / "forecasting_overhaul_m5_committed.json").read_text())
@@ -2071,10 +2092,14 @@ def test_forecasting_benchmark_docs_match_committed_artifacts():
     m5_lag = m5["metrics"]["cartoboost_lag"]
     m5_wrmsse = m5["official_metrics"]["m5"]["model_scores"]["cartoboost_auto_forecast"]
     m5_auto_wrmsse = m5["official_metrics"]["m5"]["model_scores"]["cartoboost_auto_forecast"]
-    assert f"RMSE {m5_auto['rmse']:.6f} vs {m5_lag['rmse']:.6f}" in docs
     assert (
-        f"WRMSSE {m5_wrmsse:.6f} vs "
-        f"{m5['official_metrics']['m5']['model_scores']['cartoboost_lag']:.6f}"
+        f"| Committed sample | 1 | `cartoboost_auto_forecast` | {m5_auto['rmse']:.6f} | "
+        f"{m5_auto['mae']:.6f} | {m5_auto['wape']:.6f} | {m5_auto_wrmsse:.6f} |"
+    ) in docs
+    assert (
+        f"| Committed sample | 2 | `cartoboost_lag` | {m5_lag['rmse']:.6f} | "
+        f"{m5_lag['mae']:.6f} | {m5_lag['wape']:.6f} | "
+        f"{m5['official_metrics']['m5']['model_scores']['cartoboost_lag']:.6f} |"
     ) in docs
     assert m5_auto["rmse"] < m5_lag["rmse"]
     assert m5_auto_wrmsse < m5["official_metrics"]["m5"]["model_scores"]["cartoboost_lag"]
@@ -2083,12 +2108,16 @@ def test_forecasting_benchmark_docs_match_committed_artifacts():
     m6_auto = m6["metrics"]["cartoboost_auto_forecast"]
     m6_lag = m6["metrics"]["cartoboost_lag"]
     m6_rps = m6["official_metrics"]["m6"]["models"]
-    assert f"Auto RMSE {m6_auto['rmse']:.6f} vs lag {m6_lag['rmse']:.6f}" in docs
     assert (
-        f"lag RPS {m6_rps['cartoboost_lag']['mean_rps']:.6f} vs auto "
-        f"{m6_rps['cartoboost_auto_forecast']['mean_rps']:.6f}"
+        f"| Committed sample | 1 | `cartoboost_auto_forecast` | {m6_auto['rmse']:.6f} | "
+        f"{m6_auto['mae']:.6f} | {m6_auto['wape']:.6f} | "
+        f"{m6_rps['cartoboost_auto_forecast']['mean_rps']:.6f} |"
     ) in docs
-    assert "WAPE is diagnostic only" in docs
+    assert (
+        f"| Committed sample | 2 | `cartoboost_lag` | {m6_lag['rmse']:.6f} | "
+        f"{m6_lag['mae']:.6f} | {m6_lag['wape']:.6f} | "
+        f"{m6_rps['cartoboost_lag']['mean_rps']:.6f} |"
+    ) in docs
     assert m6_auto["rmse"] < m6_lag["rmse"]
 
     full_roster = json.loads(
@@ -2100,7 +2129,7 @@ def test_forecasting_benchmark_docs_match_committed_artifacts():
     full_auto_ratio = full_roster_quality["mean_rmse_ratio_to_problem_best"][
         "cartoboost_auto_forecast"
     ]
-    assert f"`{full_winner}` remains first at mean RMSE ratio {full_winner_ratio:.6f}" in docs
+    assert f"| Older full external roster | 1 | `{full_winner}` | {full_winner_ratio:.6f} |" in docs
     assert full_auto_ratio > full_winner_ratio
 
     generalization = json.loads(
@@ -2112,9 +2141,19 @@ def test_forecasting_benchmark_docs_match_committed_artifacts():
     generalization_lag_ratio = generalization_ratios["cartoboost_lag"]
     generalization_lightgbm_ratio = generalization_ratios["lightgbm_lag"]
     generalization_xgboost_ratio = generalization_ratios["xgboost_lag"]
-    assert f"Auto and lag tie at {generalization_auto_ratio:.6f}" in docs
-    assert f"`lightgbm_lag` is {generalization_lightgbm_ratio:.6f}" in docs
-    assert f"`xgboost_lag` is {generalization_xgboost_ratio:.6f}" in docs
+    assert (
+        f"| Generalization guardrail | 1 | `cartoboost_auto_forecast` | "
+        f"{generalization_auto_ratio:.6f} |"
+    ) in docs
+    assert (
+        f"| Generalization guardrail | 1 | `cartoboost_lag` | {generalization_lag_ratio:.6f} |"
+    ) in docs
+    assert (
+        f"| Generalization guardrail | 3 | `lightgbm_lag` | {generalization_lightgbm_ratio:.6f} |"
+    ) in docs
+    assert (
+        f"| Generalization guardrail | 4 | `xgboost_lag` | {generalization_xgboost_ratio:.6f} |"
+    ) in docs
     assert generalization_auto_ratio == pytest.approx(generalization_lag_ratio)
     assert generalization_auto_ratio < generalization_lightgbm_ratio
     assert generalization_auto_ratio < generalization_xgboost_ratio
@@ -2134,8 +2173,12 @@ def test_forecasting_benchmark_docs_match_committed_artifacts():
     m5_wrmsse_winner = m5_wrmsse["ranking"][0]
     m5_wrmsse_winner_score = m5_wrmsse["model_scores"][m5_wrmsse_winner]
     m5_cartoboost_wrmsse = m5_wrmsse["model_scores"]["cartoboost_auto_forecast"]
-    assert f"Auto has best RMSE {m5_sample_cartoboost_rmse:.6f}" in docs
-    assert f"`{m5_wrmsse_winner}` has best WRMSSE {m5_wrmsse_winner_score:.6f}" in docs
+    assert (
+        f"| 100-series comparison | 1 | `cartoboost_auto_forecast` | "
+        f"{m5_sample_cartoboost_rmse:.6f} |"
+    ) in docs
+    assert f"| 100-series comparison | 4 | `{m5_wrmsse_winner}` |" in docs
+    assert f"{m5_wrmsse_winner_score:.6f}" in docs
     assert m5_sample_second_rmse < float("inf")
     assert m5_cartoboost_wrmsse > m5_wrmsse_winner_score
     assert m5_sample_winner == "cartoboost_auto_forecast"
@@ -2154,9 +2197,11 @@ def test_forecasting_benchmark_docs_match_committed_artifacts():
     m6_full_rps_winner = m6_full_rps["ranking"][0]
     m6_full_rps_winner_score = m6_full_rps["models"][m6_full_rps_winner]["mean_rps"]
     m6_full_auto_rps = m6_full_rps["models"]["cartoboost_auto_forecast"]["mean_rps"]
-    assert f"Auto has best RMSE {m6_full_cartoboost_rmse:.6f}" in docs
+    assert (
+        f"| 100-symbol comparison | 1 | `cartoboost_auto_forecast` | "
+        f"{m6_full_cartoboost_rmse:.6f} |"
+    ) in docs
     assert f"{m6_full_rps_winner_score:.6f}" in docs
-    assert "WAPE is diagnostic only" in docs
     assert m6_full_second_rmse > m6_full_cartoboost_rmse
     assert m6_full_auto_rps > m6_full_rps_winner_score
     assert m6_full_winner == "cartoboost_auto_forecast"
