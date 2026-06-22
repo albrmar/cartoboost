@@ -103,9 +103,13 @@ def test_piecewise_linear_seasonal_python_wrapper_uses_native_features():
     restored_samples = restored.samples(3)
     columns = result.columns()
     records = json.loads(result.to_json())["records"]
+    result_roundtrip = type(result).from_json(result.to_json())
+    result_roundtrip_payload = json.loads(result_roundtrip.to_json())
     restored_records = json.loads(restored_result.to_json())["records"]
 
     assert "prediction_lower_p80" in columns
+    assert "prediction_upper_p80" in result_roundtrip.columns()
+    _assert_json_close(result_roundtrip_payload["records"], records)
     _assert_json_close(records, restored_records)
     _assert_json_close(components, restored_components)
     _assert_json_close(samples, restored_samples)
