@@ -178,6 +178,7 @@ const fallbackModelOptions: ModelOption[] = [
   {value: 'local_level_kalman', label: 'Local Level Kalman', group: 'local'},
   {value: 'auto_kalman', label: 'Auto Kalman', group: 'local'},
   {value: 'auto_local_level_kalman', label: 'Auto Local Level Kalman', group: 'local'},
+  {value: 'piecewise_linear_seasonal', label: 'Piecewise Linear Seasonal', group: 'local'},
   {value: 'kriging', label: 'Kriging', group: 'spatial'},
   {value: 'optimized_theta', label: 'Optimized Theta', group: 'local'},
   {value: 'naive', label: 'Naive', group: 'local'},
@@ -205,7 +206,7 @@ const graphNeuralPipelines = new Set(['node2vec', 'graphsage', 'hetero_graphsage
 
 const sampleCsv = buildSampleCsv();
 
-export default function ForecastLabClient(): React.ReactElement {
+export default function ModelingLabClient(): React.ReactElement {
   const wasmJsUrl = useBaseUrl('/wasm/cartoboost/cartoboost_wasm.js');
   const wasmBinaryUrl = useBaseUrl('/wasm/cartoboost/cartoboost_wasm_bg.wasm');
   const [table, setTable] = useState<ParsedTable | null>(null);
@@ -235,6 +236,7 @@ export default function ForecastLabClient(): React.ReactElement {
   const [modelOptions, setModelOptions] = useState<ModelOption[]>(fallbackModelOptions);
 
   const previewRows = table?.rows.slice(0, 6) ?? [];
+  const selectedForecastModel = modelOptions.find((option) => option.value === model) ?? modelOptions[0];
   const selectedColumnsReady =
     table !== null && timestampCol !== '' && targetCol !== '' && table.columns.includes(timestampCol) && table.columns.includes(targetCol);
 
@@ -659,11 +661,11 @@ export default function ForecastLabClient(): React.ReactElement {
     <main className={styles.shell}>
       <section className={styles.header}>
         <div>
-          <span className={styles.eyebrow}>WebAssembly forecast lab</span>
-          <h1>Drag in demand data and forecast in the browser</h1>
+          <span className={styles.eyebrow}>WebAssembly modeling lab</span>
+          <h1>Model taxi demand, routes, and neural signals in the browser</h1>
           <p>
-            This page runs CartoBoost's Rust forecasting core locally through WebAssembly. No dataset
-            leaves the browser.
+            This page runs CartoBoost's Rust forecasting, regression, graph, and neural modeling cores
+            locally through WebAssembly. No dataset leaves the browser.
           </p>
         </div>
         <button className={styles.secondaryButton} type="button" onClick={() => loadText(sampleCsv, 'sample-taxi-demand.csv')}>
@@ -704,21 +706,51 @@ export default function ForecastLabClient(): React.ReactElement {
             <ControlSection title="Forecast">
               <div className={styles.controlsGrid}>
                 <Select label="Frequency" value={frequency} onChange={setFrequency} options={['hourly', 'daily', 'weekly']} />
-                <GroupedSelect
-                  label="Model"
-                  value={model}
-                  onChange={setModel}
-                  groups={forecastModelGroups(modelOptions)}
-                />
                 <NumberInput label="Horizon" value={horizon} min={1} max={365} onChange={setHorizon} />
                 <SeasonalityControl frequency={frequency} value={seasonLength} onChange={setSeasonLength} />
+              </div>
+              <ModelPicker
+                modelOptions={modelOptions}
+                selectedModel={selectedForecastModel}
+                value={model}
+                onChange={setModel}
+              />
+            </ControlSection>
+
+            <ControlSection title="Neural and graph settings">
+              <div className={styles.neuralSummary}>
+                <strong>{neuralPipelineLabels[neuralPipeline]}</strong>
+                <span>{graphNeuralPipelines.has(neuralPipeline) ? 'Source and target node columns are required.' : 'Choose an ID column for embedding features.'}</span>
+              </div>
+              <div className={styles.controlsGrid}>
+                <GroupedSelect
+                  label="Neural pipeline"
+                  value={neuralPipeline}
+                  onChange={setNeuralPipeline}
+                  groups={[
+                    {label: 'Embeddings', options: [{value: 'embedding', label: neuralPipelineLabels.embedding}]},
+                    {
+                      label: 'Graph pipelines',
+                      options: [
+                        {value: 'node2vec', label: neuralPipelineLabels.node2vec},
+                        {value: 'graphsage', label: neuralPipelineLabels.graphsage},
+                        {value: 'hetero_graphsage', label: neuralPipelineLabels.hetero_graphsage},
+                        {value: 'hinsage', label: neuralPipelineLabels.hinsage},
+                      ],
+                    },
+                  ]}
+                />
+                <Select label="ID" value={neuralIdCol} onChange={setNeuralIdCol} options={table?.columns ?? []} allowBlank blankLabel="No ID column" />
+                <Select label="Graph Source" value={graphSourceCol} onChange={setGraphSourceCol} options={table?.columns ?? []} allowBlank blankLabel="No source column" />
+                <Select label="Graph Target" value={graphTargetCol} onChange={setGraphTargetCol} options={table?.columns ?? []} allowBlank blankLabel="No target column" />
+                <Select label="Graph Weight" value={graphWeightCol} onChange={setGraphWeightCol} options={table?.columns ?? []} allowBlank blankLabel="Unweighted graph" />
               </div>
             </ControlSection>
 
             <ControlSection title="Regression modeling">
               <div className={styles.controlsGrid}>
                 <Select
-                  label="Splitter Menu"
+                  label="Splitter menu"
                   value={modelingMode}
                   onChange={setModelingMode}
                   options={['full', 'auto', 'axis', 'spatial', 'periodic']}
@@ -746,31 +778,6 @@ export default function ForecastLabClient(): React.ReactElement {
               </div>
             </ControlSection>
 
-            <ControlSection title="Graph and neural">
-              <div className={styles.controlsGrid}>
-                <GroupedSelect
-                  label="Neural Menu"
-                  value={neuralPipeline}
-                  onChange={setNeuralPipeline}
-                  groups={[
-                    {label: 'Embeddings', options: [{value: 'embedding', label: neuralPipelineLabels.embedding}]},
-                    {
-                      label: 'Graph pipelines',
-                      options: [
-                        {value: 'node2vec', label: neuralPipelineLabels.node2vec},
-                        {value: 'graphsage', label: neuralPipelineLabels.graphsage},
-                        {value: 'hetero_graphsage', label: neuralPipelineLabels.hetero_graphsage},
-                        {value: 'hinsage', label: neuralPipelineLabels.hinsage},
-                      ],
-                    },
-                  ]}
-                />
-                <Select label="ID" value={neuralIdCol} onChange={setNeuralIdCol} options={table?.columns ?? []} allowBlank blankLabel="No ID column" />
-                <Select label="Graph Source" value={graphSourceCol} onChange={setGraphSourceCol} options={table?.columns ?? []} allowBlank blankLabel="No source column" />
-                <Select label="Graph Target" value={graphTargetCol} onChange={setGraphTargetCol} options={table?.columns ?? []} allowBlank blankLabel="No target column" />
-                <Select label="Graph Weight" value={graphWeightCol} onChange={setGraphWeightCol} options={table?.columns ?? []} allowBlank blankLabel="Unweighted graph" />
-              </div>
-            </ControlSection>
           </div>
           {table && (
             <FeatureSelector
@@ -1115,6 +1122,49 @@ function forecastModelGroups(modelOptions: ModelOption[]): SelectGroup[] {
   return Array.from(grouped, ([label, options]) => ({label, options}));
 }
 
+function ModelPicker({
+  modelOptions,
+  selectedModel,
+  value,
+  onChange,
+}: {
+  modelOptions: ModelOption[];
+  selectedModel?: ModelOption;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  const groups = forecastModelGroups(modelOptions);
+  return (
+    <div className={styles.modelPicker}>
+      <div className={styles.modelPickerHeader}>
+        <span>Forecast model</span>
+        <strong>{selectedModel ? selectedModel.label : value}</strong>
+      </div>
+      <div className={styles.modelPickerGrid}>
+        {groups.map((group) => (
+          <div className={styles.modelGroup} key={group.label}>
+            <span>{group.label}</span>
+            <div>
+              {group.options.map((option) => (
+                <button
+                  className={option.value === value ? styles.modelOptionActive : undefined}
+                  type="button"
+                  onClick={() => onChange(option.value)}
+                  key={option.value}
+                  title={option.value}
+                >
+                  <strong>{option.label.replace(` (${option.value})`, '')}</strong>
+                  <em>{option.value}</em>
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function FeatureSelector({
   title = 'Model features',
   columns,
@@ -1251,11 +1301,11 @@ function ForecastSignalSummary({
       <p>
         <span>First forecast</span>
         {firstForecast === undefined ? '-' : formatCompact(firstForecast)}
-        <em>{lift === null ? 'no lift' : `${lift >= 0 ? '+' : ''}${(lift * 100).toFixed(1)}% vs last actual`}</em>
+        <em>{lift === null ? 'no lift' : `${formatPercent(lift)} vs last actual`}</em>
       </p>
       <p>
         <span>Horizon drift</span>
-        {drift === null ? '-' : `${drift >= 0 ? '+' : ''}${(drift * 100).toFixed(1)}%`}
+        {formatPercent(drift)}
         <em>{forecastRows.length.toLocaleString()} forecast rows</em>
       </p>
     </div>
@@ -1267,15 +1317,15 @@ function RegressionMetricSummary({result}: {result: RegressionResponse}) {
     <div className={styles.metricCards}>
       <p>
         <span>RMSE</span>
-        {result.metrics.rmse.toFixed(3)}
+        {formatMetric(result.metrics.rmse)}
       </p>
       <p>
         <span>MAE</span>
-        {result.metrics.mae.toFixed(3)}
+        {formatMetric(result.metrics.mae)}
       </p>
       <p>
         <span>R2</span>
-        {result.metrics.r2.toFixed(3)}
+        {formatMetric(result.metrics.r2)}
       </p>
       <p>
         <span>Trees</span>
@@ -1375,11 +1425,11 @@ function RegressionPredictionTable({result}: {result: RegressionResponse}) {
           {result.predictions.slice(0, 20).map((row) => (
             <tr key={row.rowIndex}>
               <td>{row.rowIndex.toLocaleString()}</td>
-              <td>{row.actual.toFixed(3)}</td>
-              <td>{row.prediction.toFixed(3)}</td>
-              <td>{typeof row.lowerPrediction === 'number' ? row.lowerPrediction.toFixed(3) : '-'}</td>
-              <td>{typeof row.upperPrediction === 'number' ? row.upperPrediction.toFixed(3) : '-'}</td>
-              <td>{row.residual.toFixed(3)}</td>
+              <td>{formatMetric(row.actual)}</td>
+              <td>{formatMetric(row.prediction)}</td>
+              <td>{formatMetric(row.lowerPrediction)}</td>
+              <td>{formatMetric(row.upperPrediction)}</td>
+              <td>{formatMetric(row.residual)}</td>
             </tr>
           ))}
         </tbody>
@@ -1401,6 +1451,7 @@ function ComparisonChart({actualRows, results}: {actualRows: ActualRecord[]; res
 }
 
 function LineChart({caption, series}: {caption: string; series: ChartSeries[]}) {
+  const [activePoint, setActivePoint] = useState<{series: string; index: number; value: number; x: number; y: number} | null>(null);
   const drawable = series.filter((item) => item.points.length > 0);
   if (drawable.length === 0) {
     return null;
@@ -1408,11 +1459,34 @@ function LineChart({caption, series}: {caption: string; series: ChartSeries[]}) 
   const width = 820;
   const height = 300;
   const padding = 38;
-  const values = drawable.flatMap((item) => item.points.map((point) => point.value));
+  const values = drawable
+    .flatMap((item) => item.points.map((point) => coerceFiniteNumber(point.value)))
+    .filter((value): value is number => value !== null);
+  if (values.length === 0) {
+    return null;
+  }
   const min = Math.min(...values);
   const max = Math.max(...values);
   const span = max - min || 1;
   const maxIndex = Math.max(...drawable.flatMap((item) => item.points.map((point) => point.index)), 1);
+  const plotSeries = drawable.map((item, seriesIndex) => ({
+    ...item,
+    color: chartColor(seriesIndex),
+    points: item.points
+      .map((point) => {
+        const value = coerceFiniteNumber(point.value);
+        if (value === null) {
+          return null;
+        }
+        return {
+          ...point,
+          value,
+          x: padding + (point.index / maxIndex) * (width - padding * 2),
+          y: height - padding - ((value - min) / span) * (height - padding * 2),
+        };
+      })
+      .filter((point): point is {index: number; value: number; x: number; y: number} => point !== null),
+  }));
   const ticks = [0, 0.25, 0.5, 0.75, 1].map((ratio) => ({
     value: min + span * ratio,
     y: height - padding - ratio * (height - padding * 2),
@@ -1431,29 +1505,51 @@ function LineChart({caption, series}: {caption: string; series: ChartSeries[]}) 
         ))}
         <line x1={padding} y1={height - padding} x2={width - padding} y2={height - padding} />
         <line x1={padding} y1={padding} x2={padding} y2={height - padding} />
-        {drawable.map((item, seriesIndex) => {
+        {plotSeries.map((item, seriesIndex) => {
           const points = item.points
-            .map((point) => {
-              const x = padding + (point.index / maxIndex) * (width - padding * 2);
-              const y = height - padding - ((point.value - min) / span) * (height - padding * 2);
-              return `${x},${y}`;
-            })
+            .map((point) => `${point.x},${point.y}`)
             .join(' ');
           return (
             <polyline
               className={seriesIndex === 0 ? styles.actualLine : styles.forecastLine}
               points={points}
-              style={{stroke: chartColor(seriesIndex)}}
+              style={{stroke: item.color}}
               key={item.label}
             />
           );
         })}
+        {plotSeries.flatMap((item) =>
+          item.points.map((point) => (
+            <circle
+              className={styles.interactivePoint}
+              cx={point.x}
+              cy={point.y}
+              r="7"
+              tabIndex={0}
+              role="button"
+              aria-label={`${item.label} step ${point.index}: ${formatMetric(point.value)}`}
+              onBlur={() => setActivePoint(null)}
+              onFocus={() => setActivePoint({series: item.label, index: point.index, value: point.value, x: point.x, y: point.y})}
+              onMouseEnter={() => setActivePoint({series: item.label, index: point.index, value: point.value, x: point.x, y: point.y})}
+              onMouseLeave={() => setActivePoint(null)}
+              style={{stroke: item.color}}
+              key={`${item.label}-${point.index}-${point.value}`}
+            />
+          )),
+        )}
+        {activePoint && (
+          <g className={styles.chartTooltip} transform={`translate(${Math.min(activePoint.x + 12, width - 210)}, ${Math.max(activePoint.y - 44, 14)})`}>
+            <rect width="196" height="54" rx="6" />
+            <text x="10" y="20">{activePoint.series}</text>
+            <text x="10" y="40">{`step ${activePoint.index}: ${formatMetric(activePoint.value)}`}</text>
+          </g>
+        )}
       </svg>
       <figcaption>{caption}</figcaption>
       <div className={styles.legend}>
-        {drawable.map((item, index) => (
+        {plotSeries.map((item) => (
           <span key={item.label}>
-            <i style={{background: chartColor(index)}} />
+            <i style={{background: item.color}} />
             {item.label}
           </span>
         ))}
@@ -1537,7 +1633,7 @@ function DatasetProfile({
         </p>
         <p>
           <span>Target range</span>
-          {minTarget === null || maxTarget === null ? '-' : `${minTarget.toFixed(3)} to ${maxTarget.toFixed(3)}`}
+          {minTarget === null || maxTarget === null ? '-' : `${formatMetric(minTarget)} to ${formatMetric(maxTarget)}`}
         </p>
       </div>
       <div className={styles.columnChips}>
@@ -1707,11 +1803,11 @@ function TargetDiagnostics({
         </p>
         <p>
           <span>P90 / P50</span>
-          {summary.median === 0 ? '-' : `${(summary.p90 / summary.median).toFixed(2)}x`}
+          {summary.median === 0 ? '-' : `${formatFixed(summary.p90 / summary.median, 2)}x`}
         </p>
         <p>
           <span>Zero share</span>
-          {`${(summary.zeroShare * 100).toFixed(1)}%`}
+          {formatPercent(summary.zeroShare).replace(/^\+/, '')}
         </p>
         <p>
           <span>Outlier band</span>
@@ -1774,8 +1870,8 @@ function TargetOpportunityPanel({
               <span>{row.segmentType}</span>
               {row.key}
             </strong>
-            <em>{`${row.lift >= 0 ? '+' : ''}${(row.lift * 100).toFixed(1)}%`}</em>
-            <em>{`${row.trend >= 0 ? '+' : ''}${(row.trend * 100).toFixed(1)}%`}</em>
+            <em>{formatPercent(row.lift)}</em>
+            <em>{formatPercent(row.trend)}</em>
             <i>{row.count.toLocaleString()}</i>
             <p>
               {row.action}
@@ -2078,7 +2174,7 @@ function GeoDatasetVisualization({table, targetCol, seriesCol}: {table: ParsedTa
         <div className={styles.geoStats}>
           <p>
             <span>Bounds</span>
-            {`${minLat.toFixed(3)}, ${minLon.toFixed(3)} to ${maxLat.toFixed(3)}, ${maxLon.toFixed(3)}`}
+            {`${formatMetric(minLat)}, ${formatMetric(minLon)} to ${formatMetric(maxLat)}, ${formatMetric(maxLon)}`}
           </p>
           <p>
             <span>Target intensity</span>
@@ -2188,7 +2284,7 @@ function ForecastTable({records}: {records: ForecastRecord[]}) {
               <td>{record.series_id}</td>
               <td>{record.timestamp}</td>
               <td>{record.horizon}</td>
-              <td>{record.prediction.toFixed(3)}</td>
+              <td>{formatMetric(record.prediction)}</td>
             </tr>
           ))}
         </tbody>
@@ -2218,7 +2314,7 @@ function ComparisonTable({results}: {results: ComparisonResult[]}) {
                 <td>{result.label}</td>
                 <td>{result.pipeline}</td>
                 <td>{result.response ? result.response.forecast.records.length.toLocaleString() : '-'}</td>
-                <td>{first ? first.prediction.toFixed(3) : '-'}</td>
+                <td>{first ? formatMetric(first.prediction) : '-'}</td>
                 <td>{result.error ?? 'ok'}</td>
               </tr>
             );
@@ -2247,7 +2343,7 @@ function BacktestMetricChart({results}: {results: BacktestResult[]}) {
           <div>
             <i style={{width: `${Math.max(((result.rmse as number) / maxRmse) * 100, 2)}%`}} />
           </div>
-          <strong>{(result.rmse as number).toFixed(3)}</strong>
+          <strong>{formatMetric(result.rmse)}</strong>
         </div>
       ))}
     </figure>
@@ -2276,7 +2372,7 @@ function BacktestTable({results}: {results: BacktestResult[]}) {
               <td>{result.pipeline}</td>
               <td>{formatMetric(result.rmse)}</td>
               <td>{formatMetric(result.mae)}</td>
-              <td>{result.wape === undefined ? '-' : `${(result.wape * 100).toFixed(2)}%`}</td>
+              <td>{result.wape === undefined ? '-' : formatPercent(result.wape, 2).replace(/^\+/, '')}</td>
               <td>{result.comparedRows?.toLocaleString() ?? '-'}</td>
               <td>{result.error ?? 'ok'}</td>
             </tr>
@@ -2300,8 +2396,8 @@ function sortBacktestRows(a: BacktestResult, b: BacktestResult) {
   return a.rmse - b.rmse;
 }
 
-function formatMetric(value: number | undefined) {
-  return value === undefined ? '-' : value.toFixed(3);
+function formatMetric(value: unknown) {
+  return formatFixed(value, 3);
 }
 
 function buildTargetingProfile(
@@ -2369,7 +2465,7 @@ function buildTargetingProfile(
   const readinessChecks = [
     {
       label: 'Target',
-      detail: summary ? `${targetValues.length.toLocaleString()} finite rows, ${(summary.zeroShare * 100).toFixed(1)}% zero share` : 'no numeric target values',
+      detail: summary ? `${targetValues.length.toLocaleString()} finite rows, ${formatPercent(summary.zeroShare).replace(/^\+/, '')} zero share` : 'no numeric target values',
       status: summary ? 'ready' : 'review',
     },
     {
@@ -2830,11 +2926,40 @@ function projectedCellPath(
   return `M${projected.map((corner) => `${corner[0]},${corner[1]}`).join('L')}Z`;
 }
 
-function formatCompact(value: number) {
+export function coerceFiniteNumber(value: unknown): number | null {
+  if (typeof value === 'number') {
+    return Number.isFinite(value) ? value : null;
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (trimmed === '') {
+      return null;
+    }
+    const parsed = Number(trimmed);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+export function formatFixed(value: unknown, digits = 3) {
+  const numeric = coerceFiniteNumber(value);
+  return numeric === null ? '-' : numeric.toFixed(digits);
+}
+
+function formatPercent(value: unknown, digits = 1) {
+  const numeric = coerceFiniteNumber(value);
+  return numeric === null ? '-' : `${numeric >= 0 ? '+' : ''}${(numeric * 100).toFixed(digits)}%`;
+}
+
+function formatCompact(value: unknown) {
+  const numeric = coerceFiniteNumber(value);
+  if (numeric === null) {
+    return '-';
+  }
   return new Intl.NumberFormat('en-US', {
-    maximumFractionDigits: Math.abs(value) >= 100 ? 0 : 2,
-    notation: Math.abs(value) >= 10000 ? 'compact' : 'standard',
-  }).format(value);
+    maximumFractionDigits: Math.abs(numeric) >= 100 ? 0 : 2,
+    notation: Math.abs(numeric) >= 10000 ? 'compact' : 'standard',
+  }).format(numeric);
 }
 
 function summarizeComponentRecord(record: ForecastComponentRecord) {
@@ -3158,6 +3283,8 @@ function buildSuggestedConfig({
   const targetingProfile = buildTargetingProfile(table, targetCol, timestampCol, seriesCol, featureCols, sparseFeatureCols, modelOptions);
   const rankedFeatures = rankFeatureRoles(table, targetCol, timestampCol, seriesCol, featureCols, sparseFeatureCols).slice(0, 20);
   const opportunityTargets = rankTargetOpportunities(table, targetCol, timestampCol, seriesCol, 20);
+  const covariateColumns = numericCovariateColumns(table, [timestampCol, targetCol, seriesCol]);
+  const piecewiseOptions = piecewiseForecastOptions(table, targetCol, seriesCol, covariateColumns, horizon);
   return {
     cartoboostConfigVersion: 1,
     source: {
@@ -3167,7 +3294,7 @@ function buildSuggestedConfig({
       acceptedFormats: ['csv', 'tsv', 'parquet'],
     },
     browserWasm: {
-      page: '/forecast-lab',
+      page: '/modeling-lab',
       crate: 'cartoboost-wasm',
       entrypoints: ['runForecast', 'runRegressionModel', 'runNeuralModel', 'runSequence', 'availableForecastModels'],
     },
@@ -3220,6 +3347,7 @@ function buildSuggestedConfig({
       options: {
         seasonLength,
         seasonality: seasonalityLabel(frequency, seasonLength),
+        ...(isPiecewiseForecastModel(model) ? piecewiseOptions : {}),
       },
       roster: modelOptions.map((option) => ({
         model: option.value,
@@ -3311,6 +3439,35 @@ function numericCovariates(row: Record<string, string>, excludedColumns: string[
 
 function isPiecewiseForecastModel(model: string) {
   return model.trim().toLowerCase().replace(/-/g, '_') === 'piecewise_linear_seasonal';
+}
+
+function piecewiseForecastOptions(
+  table: ParsedTable,
+  targetCol: string,
+  seriesCol: string,
+  covariateColumns: string[],
+  horizon: number,
+) {
+  return {
+    extraRegressors: covariateColumns,
+    extraRegressorMonotonicConstraints: Object.fromEntries(
+      covariateColumns
+        .map((column) => [column, inferMonotonicConstraint(column)] as const)
+        .filter(([, direction]) => direction !== 0),
+    ),
+    futureRegressors: carriedFutureRegressors(table, covariateColumns, horizon),
+    futureRegressorsBySeries: carriedFutureRegressorsBySeries(
+      table,
+      covariateColumns,
+      horizon,
+      seriesCol,
+    ),
+    quantileLevels: [0.1, 0.5, 0.9],
+    uncertaintySamples: 128,
+    includeSamples: false,
+    includeQuantiles: true,
+    ...inferLogisticBoundRegressors(table, targetCol, covariateColumns),
+  };
 }
 
 function numericCovariateColumns(table: ParsedTable, excludedColumns: string[]) {
@@ -3513,25 +3670,8 @@ async function runBrowserForecast({
 }) {
   const wasmModule = await getInitializedWasmModule(wasmJsUrl, wasmBinaryUrl);
   const covariateColumns = numericCovariateColumns(table, [timestampCol, targetCol, seriesCol]);
-  const logisticBounds = isPiecewiseForecastModel(model)
-    ? inferLogisticBoundRegressors(table, targetCol, covariateColumns)
-    : {};
   const piecewiseOptions = isPiecewiseForecastModel(model)
-    ? {
-        extraRegressors: covariateColumns,
-        extraRegressorMonotonicConstraints: Object.fromEntries(
-          covariateColumns
-            .map((column) => [column, inferMonotonicConstraint(column)] as const)
-            .filter(([, direction]) => direction !== 0),
-        ),
-        futureRegressors: carriedFutureRegressors(table, covariateColumns, horizon),
-        futureRegressorsBySeries: carriedFutureRegressorsBySeries(table, covariateColumns, horizon, seriesCol),
-        quantileLevels: [0.1, 0.5, 0.9],
-        uncertaintySamples: 128,
-        ...logisticBounds,
-        includeSamples: false,
-        includeQuantiles: true,
-      }
+    ? piecewiseForecastOptions(table, targetCol, seriesCol, covariateColumns, horizon)
     : {};
   return wasmModule.runForecast({
     rows: table.rows.map((row) => ({
@@ -3793,7 +3933,7 @@ type ActualRecord = {
 
 type ChartSeries = {
   label: string;
-  points: {index: number; value: number}[];
+  points: {index: number; value: unknown}[];
 };
 
 function actualRowsForFirstSeries(
@@ -3828,16 +3968,16 @@ function firstSeriesQuantileRows(response: ForecastResponse) {
 }
 
 function quantileForecastSeries(rows: ForecastQuantileRecord[]) {
-  const levels = [...new Set(rows.map((row) => row.quantile))].sort((a, b) => a - b);
+  const levels = [...new Set(rows.map((row) => coerceFiniteNumber(row.quantile)).filter((level): level is number => level !== null))].sort((a, b) => a - b);
   return levels.map((level) => ({
-    label: `q${level.toFixed(2)}`,
+    label: `q${formatFixed(level, 2)}`,
     records: rows
-      .filter((row) => row.quantile === level)
+      .filter((row) => coerceFiniteNumber(row.quantile) === level)
       .map((row) => ({
         series_id: row.series_id,
         timestamp: row.timestamp,
         horizon: row.horizon,
-        model: `q${level.toFixed(2)}`,
+        model: `q${formatFixed(level, 2)}`,
         prediction: row.prediction,
       })),
   }));

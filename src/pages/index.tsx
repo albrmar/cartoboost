@@ -17,9 +17,9 @@ const paths = [
     href: '/docs/user-guide/model-types',
   },
   {
-    title: 'Forecast taxi demand',
-    detail: 'Drag in a dataset and run Rust-native forecasts in the browser.',
-    href: '/forecast-lab',
+    title: 'Model in the browser',
+    detail: 'Drag in a taxi dataset and run Rust-native forecasts, regression, graph, and neural modeling.',
+    href: '/modeling-lab',
   },
   {
     title: 'Validate the evidence',

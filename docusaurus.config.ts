@@ -100,6 +100,7 @@ const config: Config = {
           { from: '/reference/cli', to: '/docs/reference/cli' },
           { from: '/user-guide/model-types', to: '/docs/user-guide/model-types' },
           { from: '/user-guide/python-estimator', to: '/docs/user-guide/python-estimator' },
+          { from: '/forecast-lab', to: '/modeling-lab' },
         ],
       },
     ],
@@ -121,7 +122,7 @@ const config: Config = {
       items: [
         { to: '/docs/installation', label: 'Get Started', position: 'left' },
         { to: '/docs/user-guide/model-types', label: 'Guides', position: 'left' },
-        { to: '/forecast-lab', label: 'Forecast Lab', position: 'left' },
+        { to: '/modeling-lab', label: 'Modeling Lab', position: 'left' },
         { to: '/docs/reference/python-api', label: 'Reference', position: 'left' },
         { to: '/docs/benchmarks', label: 'Benchmarks', position: 'left' },
         { type: 'search', position: 'right' },

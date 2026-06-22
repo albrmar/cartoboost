@@ -10,8 +10,8 @@ temporal, spatial, geotemporal, graph, and neural-embedding modeling.
 - Docusaurus config: ./docusaurus.config.ts
 - Docusaurus sidebar: ./sidebars.ts
 - Docs homepage component: ./src/pages/index.tsx
-- Forecast Lab page: ./src/pages/forecast-lab.tsx
-- Forecast Lab client: ./src/components/ForecastLabClient/index.tsx
+- Modeling Lab page: ./src/pages/modeling-lab.tsx
+- Modeling Lab client: ./src/components/ModelingLabClient/index.tsx
 - Docs theme stylesheet: ./src/css/custom.css
 - Installation: ./docs/installation.md
 - Getting started: ./docs/getting-started.md
@@ -78,7 +78,7 @@ temporal, spatial, geotemporal, graph, and neural-embedding modeling.
 
 - Prefer taxi-style examples: pickup zones, dropoff zones, pickup-dropoff pairs,
   trip distance, fare, duration, and demand.
-- Use the Forecast Lab for browser-local WebAssembly forecasting, regression,
+- Use the Modeling Lab for browser-local WebAssembly forecasting, regression,
   graph/neural modeling smoke tests, and taxi-style target diagnostics with
   MapLibre/deck.gl WebGL maps, D3 fallback diagnostics, and exported targeting
   run plans.
