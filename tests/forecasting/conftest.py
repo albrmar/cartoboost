@@ -37,6 +37,10 @@ def install_fake_native(monkeypatch: pytest.MonkeyPatch):
                 calls.append(("predict", args, kwargs))
                 return {"args": args, "kwargs": kwargs}
 
+            def predict_with_known_future(self, *args: Any, **kwargs: Any) -> dict[str, Any]:
+                calls.append(("predict_with_known_future", args, kwargs))
+                return {"args": args, "kwargs": kwargs}
+
         native = SimpleNamespace(ForecastFrame=RecordingForecastFrame)
         setattr(native, class_name, RecordingModel)
         monkeypatch.setattr(cartoboost, "_native", native, raising=False)

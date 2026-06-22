@@ -24,6 +24,54 @@ pub struct Reconciler {
     method: ReconciliationMethod,
 }
 
+pub fn proportional_total_reconciliation(
+    base_values: &[f64],
+    target_total: f64,
+    gamma: f64,
+) -> Result<Vec<f64>> {
+    if base_values.is_empty() {
+        return Err(CartoBoostError::InvalidInput(
+            "proportional reconciliation requires at least one base value".to_string(),
+        ));
+    }
+    if !target_total.is_finite() {
+        return Err(CartoBoostError::InvalidInput(
+            "proportional reconciliation target total must be finite".to_string(),
+        ));
+    }
+    if !(0.0..=1.0).contains(&gamma) || !gamma.is_finite() {
+        return Err(CartoBoostError::InvalidInput(
+            "proportional reconciliation gamma must be finite and between 0 and 1".to_string(),
+        ));
+    }
+    if !base_values.iter().all(|value| value.is_finite()) {
+        return Err(CartoBoostError::InvalidInput(
+            "proportional reconciliation base values must be finite".to_string(),
+        ));
+    }
+    let allocation_values = if target_total >= 0.0 {
+        base_values
+            .iter()
+            .map(|value| value.max(0.0))
+            .collect::<Vec<_>>()
+    } else {
+        base_values.to_vec()
+    };
+    let base_total = allocation_values.iter().sum::<f64>();
+    if base_total.abs() <= 1.0e-12 {
+        return Ok(base_values.to_vec());
+    }
+    let scale = target_total / base_total;
+    Ok(base_values
+        .iter()
+        .zip(allocation_values.iter())
+        .map(|(base, allocation)| {
+            let reconciled = allocation * scale;
+            (1.0 - gamma) * base + gamma * reconciled
+        })
+        .collect())
+}
+
 impl Reconciler {
     pub fn new(hierarchy: HierarchySpec, method: ReconciliationMethod) -> Self {
         Self { hierarchy, method }

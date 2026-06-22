@@ -127,6 +127,29 @@ def test_cartoboost_lag_passes_supported_regressor_params(install_fake_native):
     )
 
 
+def test_cartoboost_lag_passes_elapsed_calendar_feature_flag(install_fake_native):
+    native = install_fake_native("CartoBoostLagForecaster")
+
+    CartoBoostLagForecaster(
+        lags=[1],
+        rolling_windows=[],
+        calendar_features=True,
+        elapsed_calendar_features=True,
+        elapsed_calendar_periods=[7],
+    ).fit({"pickup_1": [10, 11, 12, 13]})
+
+    assert native.calls[0] == (
+        "init",
+        {
+            "lags": [1],
+            "rolling_windows": [],
+            "calendar_features": True,
+            "elapsed_calendar_features": True,
+            "elapsed_calendar_periods": [7],
+        },
+    )
+
+
 def test_cartoboost_lag_dataframe_coercion_passes_static_covariates_to_native(
     install_fake_native,
 ):
@@ -164,6 +187,50 @@ def test_cartoboost_lag_dataframe_coercion_passes_static_covariates_to_native(
         {"distance_miles": 2.5, "airport_lane": 0.0},
         {"distance_miles": 2.5, "airport_lane": 0.0},
         {"distance_miles": 2.5, "airport_lane": 0.0},
+    ]
+
+
+def test_cartoboost_lag_predict_passes_known_future_covariates_to_native(
+    install_fake_native,
+):
+    native = install_fake_native("CartoBoostLagForecaster")
+    training = pd.DataFrame(
+        {
+            "lane_id": ["PU1-DO2", "PU1-DO2", "PU1-DO2"],
+            "pickup_day": pd.to_datetime(["2026-01-01", "2026-01-02", "2026-01-03"]),
+            "trips": [10.0, 12.0, 14.0],
+            "event_code": [0.0, 0.0, 1.0],
+            "sell_price": [2.5, 2.5, 2.75],
+        }
+    )
+    known_future = pd.DataFrame(
+        {
+            "lane_id": ["PU1-DO2"],
+            "pickup_day": pd.to_datetime(["2026-01-04"]),
+            "event_code": [3.0],
+            "sell_price": [3.25],
+        }
+    )
+
+    result = (
+        CartoBoostLagForecaster(
+            time_col="pickup_day",
+            target_col="trips",
+            panel_cols=["lane_id"],
+            covariate_features=["event_code", "sell_price"],
+            lags=[1],
+            rolling_windows=[],
+            calendar_features=False,
+        )
+        .fit(training)
+        .predict(1, known_future=known_future)
+    )
+
+    assert result == {"args": (1, native.calls[2][1][1]), "kwargs": {}}
+    assert native.calls[2][0] == "predict_with_known_future"
+    assert native.calls[2][1][1].rows == [("PU1-DO2", "2026-01-04T00:00:00", 0.0)]
+    assert native.calls[2][1][1].kwargs["row_covariates"] == [
+        {"event_code": 3.0, "sell_price": 3.25}
     ]
 
 

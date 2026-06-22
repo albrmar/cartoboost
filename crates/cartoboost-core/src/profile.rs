@@ -1,5 +1,8 @@
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::time::{Duration, Instant};
+use std::time::Duration;
+
+#[cfg(not(target_arch = "wasm32"))]
+use std::time::Instant;
 
 pub const CONTEXT: usize = 0;
 pub const RESIDUAL: usize = 1;
@@ -83,7 +86,7 @@ pub fn timed<T>(bucket: usize, f: impl FnOnce() -> T) -> T {
     if !enabled() {
         return f();
     }
-    let started = Instant::now();
+    let started = ProfileTimer::start();
     let value = f();
     add(bucket, started.elapsed());
     value
@@ -100,4 +103,30 @@ pub fn report(label: &str, total: Duration) {
         eprint!(" {name}_ms={ms:.3}");
     }
     eprintln!();
+}
+
+#[derive(Debug, Clone)]
+pub struct ProfileTimer {
+    #[cfg(not(target_arch = "wasm32"))]
+    started: Instant,
+}
+
+impl ProfileTimer {
+    pub fn start() -> Self {
+        Self {
+            #[cfg(not(target_arch = "wasm32"))]
+            started: Instant::now(),
+        }
+    }
+
+    pub fn elapsed(&self) -> Duration {
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            self.started.elapsed()
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            Duration::ZERO
+        }
+    }
 }

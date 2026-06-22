@@ -131,6 +131,8 @@ class CartoBoostLagForecaster(NativeForecastWrapper):
                 "rolling_trend_windows",
                 "calendar_features",
                 "rich_calendar_features",
+                "elapsed_calendar_features",
+                "elapsed_calendar_periods",
                 "recursive",
                 "prediction_interval_levels",
                 "trend_features",
@@ -153,6 +155,18 @@ class CartoBoostLagForecaster(NativeForecastWrapper):
             if frame is not None:
                 return (frame, *args[1:])
         return super()._coerce_fit_args(args)
+
+    def predict(self, horizon: int, *, known_future: Any | None = None) -> Any:
+        if known_future is None:
+            return super().predict(horizon)
+        self._check_is_fitted()
+        native_frame = self._native_future_frame_from_dataframe(known_future)
+        predict = getattr(self._native_model, "predict_with_known_future", None)
+        if predict is None:
+            raise NotImplementedError(
+                "Rust binding for CartoBoostLagForecaster known-future prediction is not available."
+            )
+        return predict(int(horizon), native_frame)
 
     def _native_frame_from_dataframe(self, value: Any) -> Any | None:
         try:
@@ -188,6 +202,42 @@ class CartoBoostLagForecaster(NativeForecastWrapper):
                 series_id = "__single__"
             timestamp = pd.Timestamp(row_values[self.time_col]).strftime("%Y-%m-%dT%H:%M:%S")
             rows.append((series_id, timestamp, float(row_values[self.target_col])))
+            row_covariates.append(
+                {name: float(row_values[name]) for name in self.covariate_features}
+            )
+        native_frame_class = _native_class("ForecastFrame")
+        if native_frame_class is None:
+            raise NotImplementedError("Rust binding for ForecastFrame is not available.")
+        return native_frame_class(
+            rows,
+            self.frequency,
+            row_covariates=row_covariates if self.covariate_features else None,
+        )
+
+    def _native_future_frame_from_dataframe(self, value: Any) -> Any:
+        try:
+            import pandas as pd
+        except ImportError as exc:  # pragma: no cover - exercised only in minimal installs.
+            raise ImportError(
+                "CartoBoostLagForecaster known_future DataFrame input requires pandas."
+            ) from exc
+        if not isinstance(value, pd.DataFrame):
+            raise TypeError("known_future must be a pandas DataFrame")
+        required = [self.time_col, *self.panel_cols, *self.covariate_features]
+        missing = [col for col in required if col not in value.columns]
+        if missing:
+            raise ValueError(f"missing required known_future columns: {missing}")
+        data = value.sort_values([*self.panel_cols, self.time_col], kind="mergesort")
+        rows = []
+        row_covariates = []
+        for row in data.itertuples(index=False):
+            row_values = dict(zip(data.columns, row, strict=True))
+            if self.panel_cols:
+                series_id = "|".join(str(row_values[col]) for col in self.panel_cols)
+            else:
+                series_id = "__single__"
+            timestamp = pd.Timestamp(row_values[self.time_col]).strftime("%Y-%m-%dT%H:%M:%S")
+            rows.append((series_id, timestamp, 0.0))
             row_covariates.append(
                 {name: float(row_values[name]) for name in self.covariate_features}
             )

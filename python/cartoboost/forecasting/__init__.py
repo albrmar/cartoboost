@@ -1,13 +1,7 @@
 """Forecasting API for CartoBoost."""
 
 from .artifacts import ForecastArtifact, ForecastArtifactManifest
-from .auto import (
-    AutoForecaster,
-    evaluate_m4,
-    evaluate_m5,
-    evaluate_m6_official_style,
-    evaluate_m6_proxy,
-)
+from .auto import AutoForecaster
 from .backtesting import BacktestFoldResult, BacktestResult, RollingOriginBacktester
 from .base import BaseForecaster, PanelForecasterMixin, SingleSeriesForecasterMixin
 from .config import ForecastingConfig
@@ -99,8 +93,4 @@ __all__ = [
     "validate_horizon",
     "validate_regular_frequency",
     "WeightedEnsembleForecaster",
-    "evaluate_m4",
-    "evaluate_m5",
-    "evaluate_m6_official_style",
-    "evaluate_m6_proxy",
 ]

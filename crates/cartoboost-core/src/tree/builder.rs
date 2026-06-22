@@ -9,7 +9,6 @@ use crate::profile;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
-use std::time::Instant;
 
 #[derive(Debug, Clone)]
 pub struct TreeBuilder {
@@ -321,7 +320,7 @@ impl TreeBuilder {
         upper_bound: f64,
     ) -> Node {
         let leaf = |updates: Option<&mut [f64]>| {
-            let started = Instant::now();
+            let started = profile::ProfileTimer::start();
             let node_stats = node_stats
                 .or_else(|| {
                     node_histogram_stats.and_then(|stats| histogram_node_stats(context, stats))
@@ -637,7 +636,7 @@ impl TreeBuilder {
     ) {
         let bins = bins.clamp(2, 1024);
         if !context.histogram_row_bins.is_empty() {
-            let started = Instant::now();
+            let started = profile::ProfileTimer::start();
             let mut computed_stats;
             let stats = if let Some(stats) = node_histogram_stats {
                 stats
@@ -745,7 +744,7 @@ impl TreeBuilder {
             return;
         }
 
-        let started = Instant::now();
+        let started = profile::ProfileTimer::start();
         let mut stats = vec![CandidateStats::default(); bins];
         let mut histogram_candidate: Option<BestHistogramCandidate> = None;
         for feature in 0..x.n_cols() {
@@ -3129,7 +3128,7 @@ fn materialize_axis_split(
     indices: &[usize],
     best: &mut Option<BestSplit>,
 ) {
-    let started = Instant::now();
+    let started = profile::ProfileTimer::start();
     let mut left = Vec::new();
     let mut right = Vec::new();
     for &idx in indices {
@@ -3166,7 +3165,7 @@ fn materialize_axis_candidate(
     active: &[bool],
     best: &mut Option<BestSplit>,
 ) {
-    let started = Instant::now();
+    let started = profile::ProfileTimer::start();
     let Some(candidate) = candidate.take() else {
         return;
     };
@@ -3215,7 +3214,7 @@ fn materialize_ordered_candidate(
     pairs: &[(f64, usize)],
     candidate: BestOrderedCandidate,
 ) -> BestSplit {
-    let started = Instant::now();
+    let started = profile::ProfileTimer::start();
     let mut left = Vec::with_capacity(candidate.left_capacity);
     let mut right = Vec::with_capacity(candidate.right_capacity);
     for (position, &(_, idx)) in pairs.iter().enumerate() {
@@ -3259,7 +3258,7 @@ fn materialize_histogram_candidate(
     terminal_updates: Option<&mut [f64]>,
     best: &mut Option<BestSplit>,
 ) {
-    let started = Instant::now();
+    let started = profile::ProfileTimer::start();
     let Some(candidate) = candidate.take() else {
         return;
     };

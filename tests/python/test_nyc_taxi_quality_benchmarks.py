@@ -25,6 +25,7 @@ from scripts.run_nyc_taxi_quality_benchmarks import (  # noqa: E402
     pickup_demand_cold_zone_fraction,
     sample_tlc_frame,
 )
+from scripts.run_repeated_nyc_taxi_benchmarks import collect_quality  # noqa: E402
 
 
 def test_nyc_taxi_quality_benchmark_synthetic_smoke(tmp_path: Path):
@@ -47,9 +48,48 @@ def test_nyc_taxi_quality_benchmark_synthetic_smoke(tmp_path: Path):
     )
 
     results = json.loads((output_dir / "results.json").read_text(encoding="utf-8"))
+    jsonl_rows = [
+        json.loads(line)
+        for line in (output_dir / "results.jsonl").read_text(encoding="utf-8").splitlines()
+        if line
+    ]
     assert results["artifact_version"] == 1
     assert results["dataset"]["source"] == "synthetic_smoke"
+    assert len(results["dataset_hash"]) == 64
+    assert results["dataset"]["dataset_hash"] == results["dataset_hash"]
+    assert results["source_file_hashes"] == {}
+    assert results["git_commit"] is None or len(results["git_commit"]) == 40
+    assert results["benchmark_integrity"]["hpo"] == "fixed_settings_no_hpo"
+    assert results["benchmark_integrity"]["split_modes"] == ["random", "spatial_holdout"]
+    assert results["feature_access_policy"]["baseline_feature_access"]
+    assert set(results["split_definitions"]) == {"random", "spatial_holdout"}
+    assert results["model_roster"] == ["mean"]
+    assert results["resource_usage"]["python"]
     assert set(results["tasks"]) == {"duration", "fare", "pickup_demand"}
+    assert jsonl_rows
+    assert {"task_id", "split_id", "model_family", "metric", "value"} <= set(jsonl_rows[0])
+    assert {row["model_family"] for row in jsonl_rows} == {"mean"}
+
+    aggregate_path = output_dir / "aggregate.json"
+    subprocess.run(
+        [
+            sys.executable,
+            str(repo_root / "benchmarks" / "runners" / "aggregate_results.py"),
+            "--input",
+            str(output_dir / "results.jsonl"),
+            "--output",
+            str(aggregate_path),
+        ],
+        check=True,
+        cwd=repo_root,
+    )
+    aggregate = json.loads(aggregate_path.read_text(encoding="utf-8"))
+    aggregate_keys = {
+        (row["track"], row["task_id"], row["split_id"], row["model_family"], row["metric"])
+        for row in aggregate["metrics"]
+    }
+    assert ("spatial", "duration", "random", "mean", "rmse") in aggregate_keys
+    assert ("spatial", "duration", "spatial_holdout", "mean", "rmse") in aggregate_keys
 
     for task in results["tasks"].values():
         assert set(task["splits"]) == {"random", "spatial_holdout"}
@@ -169,6 +209,81 @@ def test_nyc_taxi_quality_benchmark_reports_best_cartoboost_vs_lightgbm():
             "winner": "cartoboost",
         }
     ]
+
+
+def test_repeated_nyc_quality_summary_reports_cis_and_paired_deltas():
+    results = [
+        {
+            "tasks": {
+                "fare": {
+                    "splits": {
+                        "random": {
+                            "models": {
+                                "cartoboost": {
+                                    "status": "ok",
+                                    "metrics": {"rmse": 1.0, "mae": 0.7, "r2": 0.8},
+                                    "timing": {
+                                        "train_seconds": 2.0,
+                                        "predict_seconds": 0.2,
+                                        "predict_rows_per_second": 100.0,
+                                    },
+                                },
+                                "lightgbm": {
+                                    "status": "ok",
+                                    "metrics": {"rmse": 1.2, "mae": 0.8, "r2": 0.7},
+                                    "timing": {
+                                        "train_seconds": 1.0,
+                                        "predict_seconds": 0.1,
+                                        "predict_rows_per_second": 200.0,
+                                    },
+                                },
+                            },
+                        }
+                    },
+                }
+            }
+        },
+        {
+            "tasks": {
+                "fare": {
+                    "splits": {
+                        "random": {
+                            "models": {
+                                "cartoboost": {
+                                    "status": "ok",
+                                    "metrics": {"rmse": 1.1, "mae": 0.75, "r2": 0.78},
+                                    "timing": {
+                                        "train_seconds": 3.0,
+                                        "predict_seconds": 0.3,
+                                        "predict_rows_per_second": 90.0,
+                                    },
+                                },
+                                "lightgbm": {
+                                    "status": "ok",
+                                    "metrics": {"rmse": 1.3, "mae": 0.85, "r2": 0.68},
+                                    "timing": {
+                                        "train_seconds": 1.1,
+                                        "predict_seconds": 0.1,
+                                        "predict_rows_per_second": 190.0,
+                                    },
+                                },
+                            },
+                        }
+                    },
+                }
+            }
+        },
+    ]
+
+    summary = collect_quality(results)
+    cartoboost = summary["fare/random"]["models"]["cartoboost"]
+    assert cartoboost["metrics"]["rmse"]["n"] == 2
+    assert cartoboost["metrics"]["rmse"]["mean"] == pytest.approx(1.05)
+    assert cartoboost["rmse_wins_or_ties"] == 2
+
+    delta = summary["fare/random"]["paired_deltas"]["cartoboost_vs_lightgbm"]
+    assert delta["rmse_delta_mean"] == pytest.approx(-0.2)
+    assert delta["r2_delta_mean"] == pytest.approx(0.1)
 
 
 def test_nyc_taxi_centroids_are_only_required_for_cartoboost_geometry():

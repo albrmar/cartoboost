@@ -8,7 +8,6 @@ use crate::tree::{
 use crate::{CartoBoostError, Result};
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::time::Instant;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BoosterConfig {
@@ -66,7 +65,7 @@ impl Booster {
         if profile_enabled {
             profile::reset();
         }
-        let profile_started = Instant::now();
+        let profile_started = profile::ProfileTimer::start();
         if !self.config.learning_rate.is_finite() {
             return Err(CartoBoostError::InvalidInput(
                 "learning_rate must be finite".to_string(),

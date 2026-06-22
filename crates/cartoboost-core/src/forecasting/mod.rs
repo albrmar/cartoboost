@@ -58,7 +58,16 @@ pub use direct::{
 pub use ensemble::{ForecastEnsemble, GatedEnsembleForecaster, WeightedEnsembleForecaster};
 pub use features::{DirectFeatureMatrix, ForecastFeatureFactory};
 pub use frequency::{parse_forecast_timestamp, ForecastFrequency};
-pub use gating::{ExpertScore, RuleBasedGating, RuleBasedGatingGuardrails, ValidationScoreTable};
+pub use gating::{
+    calendar_profile_candidate_prediction, candidate_complexity_rank,
+    forecast_magnitude_guard_allows, include_autostats_candidate, lag_origin_consistency_guard,
+    native_auto_raw_candidate_is_confident, relative_loss_displacement_allowed, requires_lag_spine,
+    seasonal_naive_candidate_prediction, selectable_candidate_names, shared_candidate_names,
+    stable_magnitude_candidate_choice, trend_candidate_prediction, validation_ensemble_weights,
+    validation_unavailable_candidate_choice, weighted_blend_candidate_forecast, CandidateSelection,
+    CandidateSelectionPolicy, ExpertScore, RuleBasedGating, RuleBasedGatingGuardrails,
+    ValidationScoreTable,
+};
 pub use global::{
     CartoBoostLagForecaster, GlobalForecastSampleWeightMode, GlobalForecastTargetMode,
 };
@@ -80,18 +89,22 @@ pub use local::{
     WindowAverageForecaster,
 };
 pub use metrics::{
-    evaluate_forecast, evaluate_forecast_with_training, ForecastActual, ForecastMetricSet,
+    evaluate_forecast, evaluate_forecast_with_training, evaluate_m_competition_metrics,
+    m_competition_mase_scale, ForecastActual, ForecastMetricSet, MCompetitionMetricSet,
 };
 pub use mstl::MSTLDecomposition;
 pub use objective::ForecastObjective;
 pub use probabilistic::{ProbabilisticDirectForecaster, ProbabilisticForecaster};
 pub use quantiles::{pinball_loss, repair_non_crossing_quantiles, QuantileForecast};
 pub use rank_probability::{rank_probability_score, RankProbabilityForecast};
-pub use reconciliation::{Reconciler, ReconciliationMethod};
+pub use reconciliation::{proportional_total_reconciliation, Reconciler, ReconciliationMethod};
 pub use registry::{ForecastModelSpec, ForecastRegistry, RegisterMode, RegisteredForecastModel};
 pub use result::{ForecastPrediction, ForecastResult};
 pub use schema::{ForecastFrame, ForecastFrameMetadata, ForecastRow, SINGLE_SERIES_ID};
-pub use splitters::{ForecastFold, ForecastFoldMetadata, ForecastWindow, RollingOriginSplitter};
+pub use splitters::{
+    CandidateValidationCutoffSchedule, ForecastFold, ForecastFoldMetadata, ForecastWindow,
+    RollingOriginSplitter,
+};
 pub use stl::STLDecomposition;
 pub use target_transform::{
     LocalScaleStats, LocalStandardScaledForecaster, LocalStandardScaler, Log1pForecaster,

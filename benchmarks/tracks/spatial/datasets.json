@@ -3,10 +3,17 @@
     {
       "id": "nyc_tlc_yellow_taxi_q1_2024_v1",
       "source": "NYC TLC yellow taxi trip records and taxi zone lookup",
-      "hash": "to_be_frozen",
+      "source_url": "https://www.nyc.gov/site/tlc/about/tlc-trip-record-data.page",
+      "source_identity": "January 2024 yellow_tripdata parquet plus NYC TLC taxi zone lookup CSV and taxi zones ZIP",
+      "hash": "sha256:9c694e388df6104ec6187f95e25c5198acff19667c8cf5ac025d0ee1a2d09900",
+      "hash_material": "canonical JSON mapping source filenames to SHA-256 file hashes",
+      "source_file_hashes": {
+        "yellow_tripdata_2024-01.parquet": "sha256:c4d59da7bbc8abaeeeb1727947ee93d9891a71acb42854bd80db1571b2030510",
+        "taxi_zone_lookup.csv": "sha256:1a99e105092230f8620f301edcca7f80d3080642ff404d28ed957d3fa222c8ed",
+        "taxi_zones.zip": "sha256:f6d711917bb4340f8f644d5366c51665489eb2d426dd1a4a55677721ae5adf17"
+      },
       "datasheet": "benchmarks/reports/dataset_card_template.md",
-      "notes": "Public monthly Parquet releases with extraction date, filters, transforms, and zone joins."
+      "notes": "Public monthly Parquet release with fixed January 2024 yellow taxi input and fixed zone assets for the maintained NYC taxi regression artifact."
     }
   ]
 }
-

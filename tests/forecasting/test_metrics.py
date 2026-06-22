@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import math
 
+import cartoboost.metrics as metrics_module
 import pandas as pd
 import pytest
 from cartoboost.forecasting import ForecastMetricSet
 from cartoboost.forecasting.metrics import pinball_loss
+from cartoboost.metrics import m_competition_metrics
 
 
 def test_point_metrics_zero_safe_and_grouped() -> None:
@@ -40,6 +42,55 @@ def test_pinball_coverage_and_interval_width() -> None:
     assert metrics["pinball"]["0.5"] == pytest.approx(pinball_loss([10.0, 20.0], [11.0, 18.0], 0.5))
     assert metrics["coverage"] == pytest.approx(0.5)
     assert metrics["interval_width"] == pytest.approx(3.0)
+
+
+def test_m_competition_metrics_delegate_to_native(monkeypatch) -> None:
+    calls: dict[str, object] = {}
+
+    class FakeNative:
+        def m_competition_metrics_value(
+            self,
+            training_series,
+            actuals,
+            forecasts,
+            seasonality,
+            baseline_smape,
+            baseline_mase,
+        ):
+            calls["payload"] = (
+                training_series,
+                actuals,
+                forecasts,
+                seasonality,
+                baseline_smape,
+                baseline_mase,
+            )
+            return (
+                '{"smape":0.1,"mase":0.2,'
+                '"smape_ratio_to_baseline":0.5,'
+                '"mase_ratio_to_baseline":0.25,"owa":0.375}'
+            )
+
+    monkeypatch.setattr(metrics_module, "_native", FakeNative())
+
+    result = m_competition_metrics(
+        [[1.0, 2.0, 3.0]],
+        [4.0],
+        [3.5],
+        seasonality=1,
+        baseline_smape=0.2,
+        baseline_mase=0.8,
+    )
+
+    assert result["owa"] == pytest.approx(0.375)
+    assert calls["payload"] == (
+        [[1.0, 2.0, 3.0]],
+        [4.0],
+        [3.5],
+        1,
+        0.2,
+        0.8,
+    )
 
 
 def test_frame_evaluation_aligns_series_timestamp_horizon_columns() -> None:

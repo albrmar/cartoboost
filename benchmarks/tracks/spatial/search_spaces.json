@@ -1,8 +1,10 @@
 {
   "search_spaces": [
     {"model_family": "cartoboost", "budget": "standard", "parameters": ["n_estimators", "learning_rate", "max_depth", "min_samples_leaf", "splitters", "zone_treatment"]},
-    {"model_family": "gbdt_spatial_baseline", "budget": "standard", "parameters": ["n_estimators", "learning_rate", "max_depth", "subsample", "train_only_target_encodings"]},
-    {"model_family": "deep_or_metric_baseline", "budget": "standard", "parameters": ["embedding_dim", "layers", "dropout", "learning_rate", "weight_decay"]}
+    {"model_family": "cartoboost_neural", "budget": "standard", "parameters": ["neural_dim", "n_estimators", "learning_rate", "max_depth", "zone_treatment"]},
+    {"model_family": "cartoboost_graph", "budget": "standard", "parameters": ["graph_family", "graph_dim", "graph_epochs", "n_estimators", "learning_rate", "max_depth", "zone_treatment"]},
+    {"model_family": "lightgbm", "budget": "standard", "parameters": ["n_estimators", "learning_rate", "max_depth", "subsample", "train_only_target_encodings"]},
+    {"model_family": "xgboost", "budget": "standard", "parameters": ["n_estimators", "learning_rate", "max_depth", "tree_method", "max_bin", "subsample", "colsample_bytree", "train_only_target_encodings"]},
+    {"model_family": "mean", "budget": "fixed", "parameters": []}
   ]
 }
-

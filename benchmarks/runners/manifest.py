@@ -71,6 +71,9 @@ def validate_track(spec: TrackSpec) -> None:
     if "cartoboost" not in search_ids:
         raise ManifestError(f"{spec.name} must define a cartoboost search space")
 
+    if spec.name in {"tabular", "spatial", "graph"}:
+        validate_frozen_dataset_identities(spec)
+
     for task in _items(spec.tasks, "tasks", spec.name):
         _require(task, ["id", "dataset_id", "split_id", "primary_metric", "required_model_families"])
         if task["dataset_id"] not in dataset_ids:
@@ -83,6 +86,14 @@ def validate_track(spec: TrackSpec) -> None:
         if missing_models:
             missing = ", ".join(sorted(missing_models))
             raise ManifestError(f"{spec.name}/{task['id']} missing search spaces: {missing}")
+
+
+def validate_frozen_dataset_identities(spec: TrackSpec) -> None:
+    for dataset in _items(spec.datasets, "datasets", spec.name):
+        _require(dataset, ["id", "source", "source_url", "source_identity", "hash"])
+        value = str(dataset["hash"])
+        if value == "to_be_frozen" or not value.startswith("sha256:"):
+            raise ManifestError(f"{spec.name}/{dataset['id']} must define a sha256 dataset hash")
 
 
 def load_config(name: str, root: Path = CONFIGS_DIR) -> dict[str, Any]:
@@ -105,6 +116,24 @@ def validate_configs(root: Path = CONFIGS_DIR) -> None:
     for track in ["tabular", "spatial", "graph", "forecasting"]:
         if track not in baselines:
             raise ManifestError(f"required_baselines missing {track}")
+    validate_required_baselines(baselines)
+
+
+def validate_required_baselines(
+    baselines: dict[str, Any],
+    tracks_root: Path = TRACKS_DIR,
+) -> None:
+    for track, required in baselines.items():
+        if not isinstance(required, list) or not required:
+            raise ManifestError(f"required_baselines.{track} must be a non-empty list")
+        spec = load_track(track, tracks_root)
+        search_ids = {
+            item["model_family"] for item in _items(spec.search_spaces, "search_spaces", track)
+        }
+        missing = set(required) - search_ids
+        if missing:
+            names = ", ".join(sorted(missing))
+            raise ManifestError(f"required_baselines.{track} missing search spaces: {names}")
 
 
 def load_all_tracks(root: Path = TRACKS_DIR) -> list[TrackSpec]:
@@ -142,4 +171,3 @@ def main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

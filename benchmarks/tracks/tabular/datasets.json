@@ -1,12 +1,16 @@
 {
   "datasets": [
     {
-      "id": "openml_tabular_regression_v1",
-      "source": "OpenML-style public tabular tasks",
-      "hash": "to_be_frozen",
+      "id": "sklearn_diabetes_regression_v1",
+      "source": "scikit-learn packaged diabetes regression dataset",
+      "source_url": "https://scikit-learn.org/stable/modules/generated/sklearn.datasets.load_diabetes.html",
+      "source_identity": "sklearn.datasets.load_diabetes from scikit-learn 1.9.0, scaled=True, return_X_y=False",
+      "hash": "sha256:8bedb589aad0b9f809367140f461fd76562bb7d93381795a4692aea8b2bb2aaf",
+      "hash_material": "canonical JSON of loader name, data shape, target shape, feature names, rounded float data, and target values",
+      "row_count": 442,
+      "feature_count": 10,
       "datasheet": "benchmarks/reports/dataset_card_template.md",
-      "notes": "Curated public tasks with immutable task IDs and hashes before release runs."
+      "notes": "Small frozen public tabular regression task used for runner plumbing and baseline policy validation; not a broad tabular benchmark by itself."
     }
   ]
 }
-

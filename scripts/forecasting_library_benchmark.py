@@ -17,22 +17,33 @@ import math
 import os
 import platform
 import resource
+import shlex
 import subprocess
 import sys
 import urllib.request
 import warnings
+import zipfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from time import perf_counter
 from typing import Any
 
 import numpy as np
-from cartoboost import __version__
+from cartoboost import __version__, _native
 from cartoboost.forecasting.global_models import CartoBoostLagForecaster
 from cartoboost.forecasting.local import AutoStatsBank
 from cartoboost.forecasting.schema import ForecastFrame
-from cartoboost.metrics.m6 import rank_probability_score
-from cartoboost.metrics.wrmsse import rmsse_scale, wrmsse
+from cartoboost.metrics import m_competition_metrics
+from cartoboost.metrics.rank_portfolio import (
+    portfolio_summary as native_portfolio_summary,
+)
+from cartoboost.metrics.rank_portfolio import (
+    rank_hit_rates as native_rank_hit_rates,
+)
+from cartoboost.metrics.rank_portfolio import (
+    rank_probability_calibration as native_rank_probability_calibration,
+)
+from cartoboost.metrics.wrmsse import m5_equal_level_wrmsse, rmsse_scale, wrmsse
 
 ROOT = Path(__file__).resolve().parents[1]
 PYTHON_SOURCE = ROOT / "python"
@@ -64,6 +75,25 @@ STATIC_COVARIATES = [
     "distance_miles",
     "airport_lane",
     "pickup_borough_code",
+]
+M5_EVENT_COLUMNS = ["event_name_1", "event_type_1", "event_name_2", "event_type_2"]
+M5_SNAP_COLUMNS = ["snap_CA", "snap_TX", "snap_WI"]
+M5_KNOWN_FUTURE_COVARIATES = [
+    "m5_event_name_1_code",
+    "m5_event_type_1_code",
+    "m5_event_name_2_code",
+    "m5_event_type_2_code",
+    "m5_snap_CA",
+    "m5_snap_TX",
+    "m5_snap_WI",
+    "m5_sell_price",
+]
+M5_HIERARCHY_COVARIATES = [
+    "m5_state_code",
+    "m5_store_code",
+    "m5_cat_code",
+    "m5_dept_code",
+    "m5_item_code",
 ]
 FUNCTIME_MODELS = ["functime_snaive", "functime_ridge", "functime_lightgbm"]
 STATSFORECAST_MODELS = [
@@ -102,6 +132,31 @@ SCALABLE_FORECASTING_LIBRARY_BASELINES = [
     *EXTERNAL_TREE_MODELS,
 ]
 AIRPORT_ZONE_IDS = {1, 132, 138}
+M1_GROUPS = ["Yearly", "Quarterly", "Monthly"]
+M1_GROUP_INFO = {
+    "Yearly": {
+        "record_id": "4656193",
+        "zip_name": "m1_yearly_dataset.zip",
+        "tsf_name": "m1_yearly_dataset.tsf",
+        "horizon": 6,
+        "season_length": 1,
+    },
+    "Quarterly": {
+        "record_id": "4656154",
+        "zip_name": "m1_quarterly_dataset.zip",
+        "tsf_name": "m1_quarterly_dataset.tsf",
+        "horizon": 8,
+        "season_length": 4,
+    },
+    "Monthly": {
+        "record_id": "4656159",
+        "zip_name": "m1_monthly_dataset.zip",
+        "tsf_name": "m1_monthly_dataset.tsf",
+        "horizon": 18,
+        "season_length": 12,
+    },
+}
+M3_GROUPS = ["Yearly", "Quarterly", "Monthly", "Other"]
 M4_GROUPS = ["Hourly", "Daily", "Weekly", "Monthly", "Quarterly", "Yearly"]
 M6_ASSETS_URL = "https://raw.githubusercontent.com/Mcompetitions/M6-methods/main/assets_m6.csv"
 AUTO_ENSEMBLE_CANDIDATE = "cartoboost_validation_weighted_ensemble"
@@ -109,6 +164,9 @@ AUTO_SELECTION_MIN_RELATIVE_GAIN = 0.03
 AUTO_SELECTION_ROBUST_RELATIVE_TOLERANCE = 0.05
 LOW_SUPPORT_AUTO_MIN_RELATIVE_GAIN = 0.08
 RAW_AUTO_OVERRIDE_MIN_RELATIVE_GAIN = 0.15
+M6_RAW_AUTO_DISPLACEMENT_MIN_RELATIVE_GAIN = 0.005
+M6_INVESTMENT_RPS_TIEBREAK_WEIGHT = 1.0e-4
+CALENDAR_PROFILE_ELAPSED_PHASE_PERIOD = 14
 NATIVE_AUTO_RAW_KEEP_RELATIVE_GAIN = 0.50
 NON_M_LAG_DOMINANCE_EARLY_STOP_RELATIVE_GAIN = 0.15
 VALIDATION_CACHE_STATS_KEY = "__validation_cache_stats__"
@@ -127,7 +185,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--source",
-        choices=["polars", "duckdb", "nyc-taxi", "m4", "m5", "m6"],
+        choices=["polars", "duckdb", "nyc-taxi", "m", "m1", "m3", "m4", "m5", "m6"],
         default="polars",
     )
     parser.add_argument("--output", default="artifacts/forecasting_library_benchmark_polars.json")
@@ -168,6 +226,38 @@ def main() -> int:
     parser.add_argument("--months", default="1", help="Comma-separated month numbers, e.g. 1,2,3")
     parser.add_argument("--taxi-type", default="yellow", choices=["yellow"])
     parser.add_argument("--cache-dir", type=Path, default=DEFAULT_CACHE_DIR)
+    parser.add_argument(
+        "--m1-group",
+        default="Monthly",
+        choices=M1_GROUPS,
+    )
+    parser.add_argument(
+        "--m1-series-limit",
+        type=int,
+        default=96,
+        help="Maximum M1 series to score; use 0 for every series in the selected group.",
+    )
+    parser.add_argument(
+        "--m1-suite",
+        action="store_true",
+        help="Run all three public M1 groups: Yearly, Quarterly, and Monthly.",
+    )
+    parser.add_argument(
+        "--m3-group",
+        default="Monthly",
+        choices=M3_GROUPS,
+    )
+    parser.add_argument(
+        "--m3-series-limit",
+        type=int,
+        default=96,
+        help="Maximum M3 series to score; use 0 for every series in the selected group.",
+    )
+    parser.add_argument(
+        "--m3-suite",
+        action="store_true",
+        help="Run all four M3 groups: Yearly, Quarterly, Monthly, and Other.",
+    )
     parser.add_argument(
         "--m4-group",
         default="Hourly",
@@ -266,6 +356,7 @@ def main() -> int:
     parser.add_argument("--cartoboost-max-depth", type=int, default=4)
     parser.add_argument("--cartoboost-min-samples-leaf", type=int, default=8)
     args = parser.parse_args()
+    normalize_competition_source(args)
     validate_args(args)
     ensure_prophet_class()
 
@@ -281,6 +372,10 @@ def main() -> int:
     benchmark_start = perf_counter()
     if args.suite:
         return run_synthetic_suite(args, cartoboost_config, benchmark_start)
+    if args.m1_suite:
+        return run_m1_suite(args, cartoboost_config, benchmark_start)
+    if args.m3_suite:
+        return run_m3_suite(args, cartoboost_config, benchmark_start)
     if args.m4_suite:
         return run_m4_suite(args, cartoboost_config, benchmark_start)
 
@@ -320,6 +415,8 @@ def main() -> int:
         "created_at": datetime.now(timezone.utc).isoformat(),
         "cartoboost_version": __version__,
         "git_commit": read_git_commit(),
+        "invocation": invocation_metadata(),
+        "requested_source": getattr(args, "requested_source", args.source),
         "dataset_hash": dataset["dataset_hash"],
         "source_file_hashes": dataset_source_hashes,
         "benchmark_integrity": benchmark_integrity(args),
@@ -371,16 +468,25 @@ def validate_args(args: argparse.Namespace) -> None:
         raise ValueError("--cartoboost-min-samples-leaf must be positive")
     if args.suite and args.source == "nyc-taxi":
         raise ValueError("--suite is only supported for synthetic polars or duckdb sources")
-    if args.suite and args.source == "m4":
+    if args.suite and args.source in {"m1", "m3", "m4"}:
         raise ValueError(
-            "use --source m4 without --suite; M4 groups are already benchmark datasets"
+            "use --source m1, --source m3, or --source m4 without --suite; "
+            "M1/M3/M4 groups are already benchmark datasets"
         )
     if args.suite and args.source in {"m5", "m6"}:
         raise ValueError("--suite is only supported for synthetic polars or duckdb sources")
-    if args.m4_suite and args.source != "m4":
+    if getattr(args, "m1_suite", False) and args.source != "m1":
+        raise ValueError("--m1-suite requires --source m1")
+    if getattr(args, "m3_suite", False) and args.source != "m3":
+        raise ValueError("--m3-suite requires --source m3")
+    if getattr(args, "m4_suite", False) and args.source != "m4":
         raise ValueError("--m4-suite requires --source m4")
     if args.m4_series_limit < 0:
         raise ValueError("--m4-series-limit must be non-negative; use 0 for every M4 series")
+    if getattr(args, "m1_series_limit", 0) < 0:
+        raise ValueError("--m1-series-limit must be non-negative; use 0 for every M1 series")
+    if getattr(args, "m3_series_limit", 0) < 0:
+        raise ValueError("--m3-series-limit must be non-negative; use 0 for every M3 series")
     if args.m5_series_limit < 0:
         raise ValueError("--m5-series-limit must be non-negative; use 0 for every M5 series")
     if args.m5_history_days < 0:
@@ -405,6 +511,17 @@ def validate_args(args: argparse.Namespace) -> None:
         raise ValueError("--suite-folds must be positive")
     if args.suite and args.days <= args.horizon * args.suite_folds + 60:
         raise ValueError("--suite requires enough days for rolling origins and 60 training days")
+
+
+def normalize_competition_source(args: argparse.Namespace) -> argparse.Namespace:
+    requested_source = getattr(args, "source", None)
+    args.requested_source = requested_source
+    if requested_source == "m":
+        args.source = "m1"
+        args.source_alias = "m"
+    else:
+        args.source_alias = None
+    return args
 
 
 def canonical_dataset_hash(table: Any) -> str:
@@ -433,7 +550,7 @@ def aggregate_hash(values: Any) -> str:
 
 def source_file_hashes(dataset: dict[str, Any]) -> dict[str, str]:
     hashes: dict[str, str] = {}
-    for key in ["sales_file", "calendar_file", "assets_file"]:
+    for key in ["sales_file", "calendar_file", "prices_file", "assets_file", "tsf_file"]:
         value = dataset.get(key)
         if not value:
             continue
@@ -476,6 +593,14 @@ def benchmark_integrity(args: argparse.Namespace) -> dict[str, Any]:
             "omp_num_threads_env": os.environ.get("OMP_NUM_THREADS"),
             "python_hash_seed": os.environ.get("PYTHONHASHSEED"),
         },
+    }
+
+
+def invocation_metadata() -> dict[str, Any]:
+    argv = [str(part) for part in sys.argv]
+    return {
+        "argv": argv,
+        "command": " ".join(shlex.quote(part) for part in argv),
     }
 
 
@@ -554,6 +679,8 @@ def run_synthetic_suite(
         "created_at": datetime.now(timezone.utc).isoformat(),
         "cartoboost_version": __version__,
         "git_commit": read_git_commit(),
+        "invocation": invocation_metadata(),
+        "requested_source": getattr(args, "requested_source", args.source),
         "dataset_hash": aggregate_hash(
             result["dataset"]["dataset_hash"] for result in results.values()
         ),
@@ -618,6 +745,14 @@ def run_m4_suite(
         results[group] = {
             "dataset": dataset,
             "metrics": metrics,
+            "official_metrics": benchmark_objective_artifacts(
+                "m4",
+                train_table=table,
+                scored=_scored,
+                model_names=benchmark_model_names(args.model_roster),
+                season_length=int(dataset["season_length"]),
+                cartoboost_config=cartoboost_config,
+            ),
             "quality": quality,
         }
         timings[group] = {
@@ -630,6 +765,8 @@ def run_m4_suite(
         "created_at": datetime.now(timezone.utc).isoformat(),
         "cartoboost_version": __version__,
         "git_commit": read_git_commit(),
+        "invocation": invocation_metadata(),
+        "requested_source": getattr(args, "requested_source", args.source),
         "dataset_hash": aggregate_hash(
             result["dataset"]["dataset_hash"] for result in results.values()
         ),
@@ -652,6 +789,175 @@ def run_m4_suite(
         "model_settings": cartoboost_model_settings(cartoboost_config),
         "groups": results,
         "aggregate_quality": aggregate_quality,
+        "official_metrics": aggregate_m_series_suite_official_metrics("m4", M4_GROUPS, results),
+        "timing": {
+            "total_seconds": perf_counter() - benchmark_start,
+            "groups": timings,
+        },
+        "resource_usage": resource_usage_snapshot(),
+    }
+    output = Path(args.output)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    print(json.dumps(aggregate_quality, indent=2, sort_keys=True))
+    return 0
+
+
+def run_m1_suite(
+    args: argparse.Namespace,
+    cartoboost_config: dict[str, Any],
+    benchmark_start: float,
+) -> int:
+    results: dict[str, Any] = {}
+    timings: dict[str, Any] = {}
+    for group in M1_GROUPS:
+        group_args = argparse.Namespace(**vars(args))
+        group_args.m1_group = group
+        load_start = perf_counter()
+        table, dataset = load_m1_fixture(group_args)
+        dataset["dataset_hash"] = canonical_dataset_hash(table)
+        load_seconds = perf_counter() - load_start
+        metrics, quality, timing, scored = score_models(
+            table,
+            horizon=int(dataset["horizon"]),
+            season_length=int(dataset["season_length"]),
+            cartoboost_config=cartoboost_config,
+            model_names=benchmark_model_names(args.model_roster),
+            source="m1",
+        )
+        results[group] = {
+            "dataset": dataset,
+            "metrics": metrics,
+            "official_metrics": benchmark_objective_artifacts(
+                "m1",
+                train_table=table,
+                scored=scored,
+                model_names=benchmark_model_names(args.model_roster),
+                season_length=int(dataset["season_length"]),
+                cartoboost_config=cartoboost_config,
+            ),
+            "quality": quality,
+        }
+        timings[group] = {
+            "load_seconds": load_seconds,
+            **timing,
+        }
+
+    aggregate_quality = aggregate_suite_quality(results)
+    payload = {
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "cartoboost_version": __version__,
+        "git_commit": read_git_commit(),
+        "invocation": invocation_metadata(),
+        "requested_source": getattr(args, "requested_source", args.source),
+        "dataset_hash": aggregate_hash(
+            result["dataset"]["dataset_hash"] for result in results.values()
+        ),
+        "source_file_hashes": {
+            group: source_file_hashes(result["dataset"]) for group, result in results.items()
+        },
+        "benchmark_integrity": benchmark_integrity(args),
+        "benchmark": "m1_forecasting_library_group_suite",
+        "fixture_source": args.source,
+        "comparison_libraries": list(FORECASTING_LIBRARY_MODELS),
+        "forecasting_library_models": forecasting_library_models_for_roster(args.model_roster),
+        "model_libraries": MODEL_LIBRARIES,
+        "dataset": {
+            "groups": M1_GROUPS,
+            "source": "m1",
+            "domain": "M1 forecasting competition train panels from public TSF archives",
+            "split_type": "last_official_horizon_from_full_public_series",
+            "series_limit_per_group": (None if args.m1_series_limit == 0 else args.m1_series_limit),
+            "static_covariates": STATIC_COVARIATES,
+        },
+        "models": benchmark_model_names(args.model_roster),
+        "model_settings": cartoboost_model_settings(cartoboost_config),
+        "groups": results,
+        "aggregate_quality": aggregate_quality,
+        "official_metrics": aggregate_m_series_suite_official_metrics("m1", M1_GROUPS, results),
+        "timing": {
+            "total_seconds": perf_counter() - benchmark_start,
+            "groups": timings,
+        },
+        "resource_usage": resource_usage_snapshot(),
+    }
+    output = Path(args.output)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    output.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    print(json.dumps(aggregate_quality, indent=2, sort_keys=True))
+    return 0
+
+
+def run_m3_suite(
+    args: argparse.Namespace,
+    cartoboost_config: dict[str, Any],
+    benchmark_start: float,
+) -> int:
+    results: dict[str, Any] = {}
+    timings: dict[str, Any] = {}
+    for group in M3_GROUPS:
+        group_args = argparse.Namespace(**vars(args))
+        group_args.m3_group = group
+        load_start = perf_counter()
+        table, dataset = load_m3_fixture(group_args)
+        dataset["dataset_hash"] = canonical_dataset_hash(table)
+        load_seconds = perf_counter() - load_start
+        metrics, quality, timing, scored = score_models(
+            table,
+            horizon=int(dataset["horizon"]),
+            season_length=int(dataset["season_length"]),
+            cartoboost_config=cartoboost_config,
+            model_names=benchmark_model_names(args.model_roster),
+            source="m3",
+        )
+        results[group] = {
+            "dataset": dataset,
+            "metrics": metrics,
+            "official_metrics": benchmark_objective_artifacts(
+                "m3",
+                train_table=table,
+                scored=scored,
+                model_names=benchmark_model_names(args.model_roster),
+                season_length=int(dataset["season_length"]),
+                cartoboost_config=cartoboost_config,
+            ),
+            "quality": quality,
+        }
+        timings[group] = {
+            "load_seconds": load_seconds,
+            **timing,
+        }
+
+    aggregate_quality = aggregate_suite_quality(results)
+    payload = {
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "cartoboost_version": __version__,
+        "git_commit": read_git_commit(),
+        "invocation": invocation_metadata(),
+        "requested_source": getattr(args, "requested_source", args.source),
+        "dataset_hash": aggregate_hash(
+            result["dataset"]["dataset_hash"] for result in results.values()
+        ),
+        "source_file_hashes": {},
+        "benchmark_integrity": benchmark_integrity(args),
+        "benchmark": "m3_forecasting_library_group_suite",
+        "fixture_source": args.source,
+        "comparison_libraries": list(FORECASTING_LIBRARY_MODELS),
+        "forecasting_library_models": forecasting_library_models_for_roster(args.model_roster),
+        "model_libraries": MODEL_LIBRARIES,
+        "dataset": {
+            "groups": M3_GROUPS,
+            "source": "m3",
+            "domain": "M3 forecasting competition train panels",
+            "split_type": "last_official_horizon_from_training_panel",
+            "series_limit_per_group": (None if args.m3_series_limit == 0 else args.m3_series_limit),
+            "static_covariates": STATIC_COVARIATES,
+        },
+        "models": benchmark_model_names(args.model_roster),
+        "model_settings": cartoboost_model_settings(cartoboost_config),
+        "groups": results,
+        "aggregate_quality": aggregate_quality,
+        "official_metrics": aggregate_m_series_suite_official_metrics("m3", M3_GROUPS, results),
         "timing": {
             "total_seconds": perf_counter() - benchmark_start,
             "groups": timings,
@@ -697,8 +1003,12 @@ def aggregate_suite_quality(results: dict[str, Any]) -> dict[str, Any]:
 def load_dataset(args: argparse.Namespace) -> tuple[Any, dict[str, Any]]:
     if args.source in {"polars", "duckdb"}:
         return load_synthetic_fixture(args)
+    if args.source == "m1":
+        return load_m1_fixture(args)
     if args.source == "m4":
         return load_m4_fixture(args)
+    if args.source == "m3":
+        return load_m3_fixture(args)
     if args.source == "m5":
         return load_m5_fixture(args)
     if args.source == "m6":
@@ -732,6 +1042,256 @@ def load_synthetic_fixture(args: argparse.Namespace) -> tuple[Any, dict[str, Any
         "source": "synthetic_fixture",
         "problem": args.problem,
         "problem_description": synthetic_problem_description(args.problem),
+        "static_covariates": STATIC_COVARIATES,
+    }
+
+
+def load_m1_fixture(args: argparse.Namespace) -> tuple[Any, dict[str, Any]]:
+    pd = require_pandas_for_benchmark()
+    pl = require_polars()
+    try:
+        from datasetsforecast.utils import convert_tsf_to_dataframe
+    except ImportError:
+        convert_tsf_to_dataframe = convert_tsf_to_dataframe_fallback
+
+    cache_dir = (
+        DEFAULT_FORECASTING_CACHE_DIR if args.cache_dir == DEFAULT_CACHE_DIR else args.cache_dir
+    )
+    tsf_path = ensure_m1_tsf_file(args.m1_group, cache_dir=cache_dir, no_download=args.no_download)
+    loaded, frequency, forecast_horizon, _missing, _equal_length = convert_tsf_to_dataframe(
+        str(tsf_path)
+    )
+    group_info = M1_GROUP_INFO[args.m1_group]
+    series_column = next(
+        (column for column in ["series_name", "series_id", "unique_id"] if column in loaded),
+        None,
+    )
+    if series_column is None:
+        loaded = loaded.copy()
+        loaded["series_name"] = [f"M1_{args.m1_group}_{index}" for index in range(len(loaded))]
+        series_column = "series_name"
+    loaded[series_column] = loaded[series_column].astype(str)
+    available_series_ids = sorted(loaded[series_column].unique())
+    series_ids = (
+        available_series_ids
+        if args.m1_series_limit == 0
+        else available_series_ids[: args.m1_series_limit]
+    )
+    loaded = loaded[loaded[series_column].isin(series_ids)].copy()
+    series_lookup = {series_id: index for index, series_id in enumerate(series_ids, start=1)}
+    rows = []
+    for row in loaded.sort_values(series_column).itertuples(index=False):
+        row_data = row._asdict()
+        series_id = str(row_data[series_column])
+        series_values = [float(value) for value in row_data["series_value"] if not pd.isna(value)]
+        series_index = series_lookup[series_id]
+        for offset, value in enumerate(series_values):
+            rows.append(
+                {
+                    "lane_id": series_id,
+                    "date": pd.Timestamp("2000-01-01") + pd.to_timedelta(offset, unit="D"),
+                    "loads": value,
+                    "pickup_zone": float(series_index),
+                    "dropoff_zone": float((series_index % 31) + 1),
+                    "distance_miles": 1.0 + float(series_index % 25) / 5.0,
+                    "airport_lane": float(series_index % 2 == 0),
+                    "pickup_borough_code": float((series_index % 5) + 1),
+                }
+            )
+    if not rows:
+        raise ValueError(f"M1 {args.m1_group} TSF file did not contain selected series")
+    result = (
+        pl.from_pandas(pd.DataFrame(rows))
+        .with_columns(pl.col("date").cast(pl.Datetime("us")))
+        .sort(["lane_id", "date"])
+    )
+    horizon = int(forecast_horizon or group_info["horizon"])
+    season_length = int(group_info["season_length"])
+    return result, {
+        "series": int(len(series_ids)),
+        "available_series": int(len(available_series_ids)),
+        "rows": int(result.height),
+        "horizon": horizon,
+        "season_length": season_length,
+        "domain": f"M1 {args.m1_group} forecasting competition dataset",
+        "source": "m1_zenodo_tsf",
+        "group": args.m1_group,
+        "source_url": m1_zip_url(args.m1_group),
+        "tsf_file": str(tsf_path),
+        "frequency": frequency,
+        "series_limit": int(args.m1_series_limit),
+        "split_type": "last_official_horizon_from_full_public_series",
+        "static_covariates": STATIC_COVARIATES,
+    }
+
+
+def ensure_m1_tsf_file(group: str, *, cache_dir: Path, no_download: bool) -> Path:
+    group_info = M1_GROUP_INFO[group]
+    data_dir = cache_dir / "m1"
+    tsf_path = data_dir / str(group_info["tsf_name"])
+    if tsf_path.exists():
+        return tsf_path
+    if no_download:
+        raise FileNotFoundError(
+            f"M1 {group} benchmark requires {tsf_path}; remove --no-download to fetch "
+            f"{m1_zip_url(group)} or pre-populate the TSF file."
+        )
+    data_dir.mkdir(parents=True, exist_ok=True)
+    zip_path = data_dir / str(group_info["zip_name"])
+    if not zip_path.exists():
+        urllib.request.urlretrieve(m1_zip_url(group), zip_path)
+    with zipfile.ZipFile(zip_path) as archive:
+        members = [name for name in archive.namelist() if name.lower().endswith(".tsf")]
+        if not members:
+            raise FileNotFoundError(f"M1 archive {zip_path} did not contain a TSF file")
+        member = next((name for name in members if Path(name).name == tsf_path.name), members[0])
+        with archive.open(member) as source, tsf_path.open("wb") as destination:
+            destination.write(source.read())
+    if not tsf_path.exists():
+        raise FileNotFoundError(f"failed to extract M1 TSF file to {tsf_path}")
+    return tsf_path
+
+
+def m1_zip_url(group: str) -> str:
+    group_info = M1_GROUP_INFO[group]
+    return (
+        f"https://zenodo.org/records/{group_info['record_id']}/files/"
+        f"{group_info['zip_name']}?download=1"
+    )
+
+
+def convert_tsf_to_dataframe_fallback(
+    full_file_path_and_name: str,
+    replace_missing_vals_with: str = "NaN",
+    value_column_name: str = "series_value",
+) -> tuple[Any, str | None, int | None, bool | None, bool | None]:
+    pd = require_pandas_for_benchmark()
+    column_names: list[str] = []
+    column_types: list[str] = []
+    rows: dict[str, list[Any]] = {}
+    frequency: str | None = None
+    forecast_horizon: int | None = None
+    contain_missing_values: bool | None = None
+    contain_equal_length: bool | None = None
+    found_data = False
+    series_values: list[Any] = []
+
+    with Path(full_file_path_and_name).open("r", encoding="cp1252") as handle:
+        for raw_line in handle:
+            line = raw_line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if line.startswith("@attribute"):
+                parts = line.split(" ")
+                if len(parts) != 3:
+                    raise ValueError("Invalid TSF attribute specification.")
+                column_names.append(parts[1])
+                column_types.append(parts[2])
+                rows[parts[1]] = []
+            elif line.startswith("@frequency"):
+                frequency = line.split(" ", 1)[1]
+            elif line.startswith("@horizon"):
+                forecast_horizon = int(line.split(" ", 1)[1])
+            elif line.startswith("@missing"):
+                contain_missing_values = line.split(" ", 1)[1].lower() in {"yes", "true", "t", "1"}
+            elif line.startswith("@equallength"):
+                contain_equal_length = line.split(" ", 1)[1].lower() in {"yes", "true", "t", "1"}
+            elif line.startswith("@data"):
+                if not column_names:
+                    raise ValueError("Missing TSF attribute section.")
+                found_data = True
+            elif found_data:
+                parts = line.split(":")
+                if len(parts) != len(column_names) + 1:
+                    raise ValueError("Missing attributes or values in TSF series row.")
+                for name, column_type, value in zip(
+                    column_names,
+                    column_types,
+                    parts[:-1],
+                    strict=True,
+                ):
+                    rows[name].append(parse_tsf_attribute(value, column_type))
+                values = [
+                    replace_missing_vals_with if value == "?" else float(value)
+                    for value in parts[-1].split(",")
+                ]
+                series_values.append(np.array(values, dtype=np.float32))
+            else:
+                raise ValueError("TSF file is missing @data before series rows.")
+
+    if not found_data or not series_values:
+        raise ValueError("Missing TSF series information under @data section.")
+    rows[value_column_name] = series_values
+    return (
+        pd.DataFrame(rows),
+        frequency,
+        forecast_horizon,
+        contain_missing_values,
+        contain_equal_length,
+    )
+
+
+def parse_tsf_attribute(value: str, column_type: str) -> Any:
+    if column_type == "numeric":
+        return int(value)
+    if column_type == "string":
+        return value
+    if column_type == "date":
+        return datetime.strptime(value, "%Y-%m-%d %H-%M-%S")
+    raise ValueError(f"Invalid TSF attribute type: {column_type}")
+
+
+def load_m3_fixture(args: argparse.Namespace) -> tuple[Any, dict[str, Any]]:
+    pd = require_pandas_for_benchmark()
+    pl = require_polars()
+    try:
+        from datasetsforecast.m3 import M3, M3Info
+    except ImportError as exc:
+        raise ImportError(
+            "M3 benchmark source requires datasetsforecast; run `uv sync --group bench`."
+        ) from exc
+
+    cache_dir = (
+        DEFAULT_FORECASTING_CACHE_DIR if args.cache_dir == DEFAULT_CACHE_DIR else args.cache_dir
+    )
+    data, _test, _info = M3.load(directory=str(cache_dir), group=args.m3_group)
+    group_info = M3Info.get_group(args.m3_group)
+    available_series_ids = sorted(data["unique_id"].unique())
+    series_ids = (
+        available_series_ids
+        if args.m3_series_limit == 0
+        else available_series_ids[: args.m3_series_limit]
+    )
+    data = data[data["unique_id"].isin(series_ids)].copy()
+    data = data.sort_values(["unique_id", "ds"]).reset_index(drop=True)
+    series_lookup = {series_id: index for index, series_id in enumerate(series_ids, start=1)}
+    data["series_index"] = data["unique_id"].map(series_lookup).astype(int)
+    data["date"] = pd.Timestamp("2000-01-01") + pd.to_timedelta(
+        data.groupby("unique_id").cumcount().astype(int),
+        unit="D",
+    )
+    data["pickup_zone"] = data["series_index"].astype(int)
+    data["dropoff_zone"] = (data["series_index"].astype(int) % 31) + 1
+    data["distance_miles"] = 1.0 + (data["series_index"].astype(float) % 25.0) / 5.0
+    data["airport_lane"] = (data["series_index"].astype(int) % 2 == 0).astype(float)
+    data["pickup_borough_code"] = (data["series_index"].astype(int) % 5 + 1).astype(float)
+    result = pl.from_pandas(
+        data.rename(columns={"unique_id": "lane_id", "y": "loads"})[
+            ["lane_id", "date", "loads", *STATIC_COVARIATES]
+        ]
+    ).with_columns(pl.col("date").cast(pl.Datetime("us")))
+    return result, {
+        "series": int(len(series_ids)),
+        "available_series": int(len(available_series_ids)),
+        "rows": int(result.height),
+        "horizon": int(group_info.horizon),
+        "season_length": int(group_info.seasonality),
+        "domain": f"M3 {args.m3_group} forecasting competition dataset",
+        "source": "m3",
+        "group": args.m3_group,
+        "source_url": str(group_info.source_url),
+        "series_limit": int(args.m3_series_limit),
+        "split_type": "last_official_horizon_from_training_panel",
         "static_covariates": STATIC_COVARIATES,
     }
 
@@ -895,6 +1455,12 @@ def load_m5_fixture(args: argparse.Namespace) -> tuple[Any, dict[str, Any]]:
     pl = require_polars()
     data_dir = ensure_m5_data_dir(args.m5_data_dir, no_download=args.no_download)
     sales_path = find_m5_sales_file(data_dir)
+    prices_path = data_dir / "sell_prices.csv"
+    if not prices_path.exists():
+        raise FileNotFoundError(
+            f"M5 official-style WRMSSE requires {prices_path}; download the Kaggle M5 "
+            "Accuracy files and point --m5-data-dir at the extracted directory."
+        )
     calendar_path = data_dir / "calendar.csv"
     if not calendar_path.exists():
         raise FileNotFoundError(
@@ -904,16 +1470,23 @@ def load_m5_fixture(args: argparse.Namespace) -> tuple[Any, dict[str, Any]]:
 
     sales = pl.read_csv(sales_path, n_rows=args.m5_series_limit or None)
     calendar = pl.read_csv(calendar_path)
+    prices = pl.read_csv(prices_path)
     required_sales_columns = ["item_id", "dept_id", "cat_id", "store_id", "state_id"]
     missing_sales = [column for column in required_sales_columns if column not in sales.columns]
     if missing_sales:
         raise ValueError(f"M5 sales file is missing required columns: {missing_sales}")
+    required_price_columns = ["store_id", "item_id", "wm_yr_wk", "sell_price"]
+    missing_prices = [column for column in required_price_columns if column not in prices.columns]
+    if missing_prices:
+        raise ValueError(f"M5 sell_prices file is missing required columns: {missing_prices}")
     if "id" not in sales.columns:
         sales = sales.with_columns(
             pl.concat_str(["item_id", "store_id"], separator="_").alias("id")
         )
     if "date" not in calendar.columns:
         raise ValueError("M5 calendar file is missing required column: date")
+    if "wm_yr_wk" not in calendar.columns:
+        raise ValueError("M5 calendar file is missing required column: wm_yr_wk")
     if "d" not in calendar.columns:
         calendar = calendar.with_row_index("d_index").with_columns(
             pl.format("d_{}", pl.col("d_index") + 1).alias("d")
@@ -940,19 +1513,44 @@ def load_m5_fixture(args: argparse.Namespace) -> tuple[Any, dict[str, Any]]:
         variable_name="d",
         value_name="loads",
     )
+    calendar_feature_columns = [
+        column for column in [*M5_EVENT_COLUMNS, *M5_SNAP_COLUMNS] if column in calendar.columns
+    ]
     calendar = calendar.select(
         "d",
+        "wm_yr_wk",
         pl.col("date").str.strptime(pl.Date, "%Y-%m-%d", strict=False).cast(pl.Datetime("us")),
+        *calendar_feature_columns,
     )
+    calendar = add_m5_calendar_covariates(calendar, calendar_feature_columns)
 
     lookup_frame = m5_static_lookup(sales)
+    m5_known_columns = [
+        column for column in M5_KNOWN_FUTURE_COVARIATES if column != "m5_sell_price"
+    ]
     result = (
         long.join(calendar, on="d", how="inner")
+        .join(
+            prices.select("store_id", "item_id", "wm_yr_wk", "sell_price"),
+            on=["store_id", "item_id", "wm_yr_wk"],
+            how="left",
+        )
         .join(lookup_frame, on=["id", "item_id", "dept_id", "cat_id", "store_id", "state_id"])
+        .with_columns(
+            pl.when(pl.col("sell_price").is_null())
+            .then(0.0)
+            .otherwise(pl.col("loads").cast(pl.Float64) * pl.col("sell_price").cast(pl.Float64))
+            .alias("weight_value"),
+            pl.col("sell_price").fill_null(0.0).cast(pl.Float64).alias("m5_sell_price"),
+        )
         .select(
             pl.col("id").alias("lane_id"),
             "date",
             pl.col("loads").cast(pl.Float64),
+            "weight_value",
+            "m5_sell_price",
+            *m5_known_columns,
+            *M5_HIERARCHY_COVARIATES,
             *STATIC_COVARIATES,
         )
         .sort(["lane_id", "date"])
@@ -975,9 +1573,19 @@ def load_m5_fixture(args: argparse.Namespace) -> tuple[Any, dict[str, Any]]:
         "mirror_url": "https://github.com/Nixtla/m5-forecasts/raw/main/datasets/m5.zip",
         "sales_file": str(sales_path),
         "calendar_file": str(calendar_path),
+        "prices_file": str(prices_path),
         "series_limit": int(args.m5_series_limit),
         "history_days": int(args.m5_history_days),
         "split_type": "last_28_days_from_training_or_evaluation_file",
+        "official_style_inputs": {
+            "calendar_events_present": bool(calendar_feature_columns),
+            "sell_prices_present": True,
+            "snap_columns_present": sorted(
+                column for column in calendar_feature_columns if column.startswith("snap_")
+            ),
+        },
+        "known_future_covariates": known_future_covariate_columns(result),
+        "hierarchy_covariates": M5_HIERARCHY_COVARIATES,
         "static_covariates": STATIC_COVARIATES,
     }
 
@@ -1012,9 +1620,13 @@ def ensure_m5_data_dir(data_dir: Path, *, no_download: bool) -> Path:
 
 
 def m5_data_files_exist(data_dir: Path) -> bool:
-    return (data_dir / "calendar.csv").exists() and (
-        (data_dir / "sales_train_evaluation.csv").exists()
-        or (data_dir / "sales_train_validation.csv").exists()
+    return (
+        (data_dir / "calendar.csv").exists()
+        and (
+            (data_dir / "sales_train_evaluation.csv").exists()
+            or (data_dir / "sales_train_validation.csv").exists()
+        )
+        and (data_dir / "sell_prices.csv").exists()
     )
 
 
@@ -1030,6 +1642,34 @@ def find_m5_sales_file(data_dir: Path) -> Path:
         "M5 benchmark requires sales_train_evaluation.csv or sales_train_validation.csv "
         f"under {data_dir}; download the Kaggle M5 Accuracy files first."
     )
+
+
+def add_m5_calendar_covariates(calendar: Any, calendar_feature_columns: list[str]) -> Any:
+    pl = require_polars()
+    result = calendar
+    for column in M5_EVENT_COLUMNS:
+        output = f"m5_{column}_code"
+        if column not in calendar_feature_columns:
+            result = result.with_columns(pl.lit(0.0).alias(output))
+            continue
+        normalized = f"__{column}_normalized"
+        result = result.with_columns(
+            pl.col(column).cast(pl.Utf8).fill_null("__none__").alias(normalized)
+        )
+        lookup = (
+            result.select(pl.col(normalized).unique())
+            .sort(normalized)
+            .with_row_index(output, offset=0)
+            .with_columns(pl.col(output).cast(pl.Float64))
+        )
+        result = result.join(lookup, on=normalized, how="left").drop(normalized)
+    for column in M5_SNAP_COLUMNS:
+        output = f"m5_{column}"
+        if column in calendar_feature_columns:
+            result = result.with_columns(pl.col(column).fill_null(0).cast(pl.Float64).alias(output))
+        else:
+            result = result.with_columns(pl.lit(0.0).alias(output))
+    return result
 
 
 def unpivot_frame(
@@ -1073,7 +1713,21 @@ def m5_static_lookup(sales: Any) -> Any:
         (1.0 + (pl.col("dept_code").cast(pl.Float64) % 20.0) / 4.0).alias("distance_miles"),
         (pl.col("cat_code") % 2).cast(pl.Float64).alias("airport_lane"),
         pl.col("state_code").cast(pl.Float64).alias("pickup_borough_code"),
-    ).select("id", "item_id", "dept_id", "cat_id", "store_id", "state_id", *STATIC_COVARIATES)
+        pl.col("state_code").cast(pl.Float64).alias("m5_state_code"),
+        pl.col("pickup_zone_code").cast(pl.Float64).alias("m5_store_code"),
+        pl.col("cat_code").cast(pl.Float64).alias("m5_cat_code"),
+        pl.col("dept_code").cast(pl.Float64).alias("m5_dept_code"),
+        pl.col("dropoff_zone_code").cast(pl.Float64).alias("m5_item_code"),
+    ).select(
+        "id",
+        "item_id",
+        "dept_id",
+        "cat_id",
+        "store_id",
+        "state_id",
+        *M5_HIERARCHY_COVARIATES,
+        *STATIC_COVARIATES,
+    )
 
 
 def code_lookup(frame: Any, column: str, output: str) -> Any:
@@ -1366,8 +2020,9 @@ def score_models(
         cartoboost_config=cartoboost_config,
         model_names=model_names,
         source=source,
+        known_future=known_future_covariate_frame(table),
         skip_m5_raw_auto_candidate=(len(m5_inner_cutoffs) == 1),
-        skip_m6_raw_auto_candidate=candidate_selection,
+        skip_m6_raw_auto_candidate=False,
         skip_non_m_raw_auto_candidate=(
             candidate_selection
             and source not in {"m4", "m5", "m6"}
@@ -1454,10 +2109,10 @@ def train_test_split_for_cutoff(
 
 def auto_selection_objective(source: str) -> str:
     if source == "m5":
-        return "rmse"
+        return "wrmsse"
     if source == "m6":
-        return "rmse"
-    if source == "m4":
+        return "investment_decision_return_then_rps"
+    if source in {"m", "m1", "m3", "m4"}:
         return "owa_proxy"
     return "rmse"
 
@@ -1492,6 +2147,12 @@ def forecast_objective_loss(
         )
         rmse = rmse_expr(scored, prediction_col)
         return float(rps + 1.0e-6 * rmse)
+    if objective == "investment_decision_return_then_rps":
+        return m6_investment_decision_loss(
+            scored,
+            prediction_col=prediction_col,
+            rps_tiebreak_weight=M6_INVESTMENT_RPS_TIEBREAK_WEIGHT,
+        )
     if objective == "owa_proxy":
         metrics = evaluate_metrics(scored, prediction_col, train, season_length=season_length)
         return float(0.5 * metrics["mase"] + 0.5 * metrics["smape"])
@@ -1664,6 +2325,19 @@ def benchmark_objective_artifacts(
     season_length: int,
     cartoboost_config: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    if source in {"m1", "m3", "m4"}:
+        label = source.upper()
+        return {
+            "primary_metric": "owa_proxy",
+            "objective": f"{label}-style sMAPE/MASE/OWA proxy against seasonal naive",
+            source: m_series_owa_artifact(
+                train_table,
+                scored,
+                source=source,
+                model_names=model_names,
+                season_length=season_length,
+            ),
+        }
     if source == "m5":
         return {
             "primary_metric": "wrmsse",
@@ -1684,8 +2358,8 @@ def benchmark_objective_artifacts(
             cartoboost_config=cartoboost_config,
         )
         return {
-            "primary_metric": "rank_probability_score",
-            "objective": "M6-style rank-probability scoring plus deterministic decisions",
+            "primary_metric": "investment_decision_return",
+            "objective": "M6-style deterministic decision return with RPS audit reporting",
             "m6": m6_rps_artifact(
                 scored,
                 model_names=model_names,
@@ -1693,6 +2367,166 @@ def benchmark_objective_artifacts(
             ),
         }
     return {}
+
+
+def aggregate_m_series_suite_official_metrics(
+    source: str,
+    group_order: list[str],
+    results: dict[str, Any],
+) -> dict[str, Any]:
+    label = source.upper()
+    group_artifacts = {
+        group: results[group]["official_metrics"][source]
+        for group in group_order
+        if group in results and source in results[group].get("official_metrics", {})
+    }
+    if not group_artifacts:
+        return {}
+    model_names = sorted(
+        {model for artifact in group_artifacts.values() for model in artifact.get("models", {})}
+    )
+    models: dict[str, Any] = {}
+    expected_group_count = len(group_artifacts)
+    for model in model_names:
+        rows = [
+            (group, artifact["models"][model])
+            for group, artifact in group_artifacts.items()
+            if model in artifact.get("models", {})
+        ]
+        if not rows:
+            continue
+        scored_groups = {group for group, _row in rows}
+        missing_groups = [group for group in group_artifacts if group not in scored_groups]
+        models[model] = {
+            "group_count": len(rows),
+            "complete_group_coverage": len(rows) == expected_group_count,
+            "missing_groups": missing_groups,
+            "mean_smape": float(np.mean([row["smape"] for _group, row in rows])),
+            "mean_mase": float(np.mean([row["mase"] for _group, row in rows])),
+            "mean_smape_ratio_to_seasonal_naive": float(
+                np.mean([row["smape_ratio_to_seasonal_naive"] for _group, row in rows])
+            ),
+            "mean_mase_ratio_to_seasonal_naive": float(
+                np.mean([row["mase_ratio_to_seasonal_naive"] for _group, row in rows])
+            ),
+            "mean_owa_proxy": float(np.mean([row["owa_proxy"] for _group, row in rows])),
+            "group_owa_proxy": {group: float(row["owa_proxy"]) for group, row in rows},
+        }
+    complete_models = [name for name, row in models.items() if row["complete_group_coverage"]]
+    incomplete_models = {
+        name: row["missing_groups"]
+        for name, row in models.items()
+        if not row["complete_group_coverage"]
+    }
+    ranking = sorted(complete_models, key=lambda name: (models[name]["mean_owa_proxy"], name))
+    incomplete_ranking = sorted(
+        incomplete_models,
+        key=lambda name: (-models[name]["group_count"], models[name]["mean_owa_proxy"], name),
+    )
+    return {
+        "primary_metric": "mean_owa_proxy",
+        "objective": f"{label}-style suite mean of per-group sMAPE/MASE/OWA proxy scores",
+        source: {
+            "group_order": list(group_order),
+            "group_count": len(group_artifacts),
+            "models": models,
+            "ranking": ranking,
+            "ranking_scope": "complete_group_coverage",
+            "incomplete_models": incomplete_models,
+            "incomplete_ranking": incomplete_ranking,
+            "notes": [
+                f"Suite score is the unweighted mean of per-group {label}-style OWA proxy scores.",
+                "Primary suite ranking includes only models scored on every available group; "
+                "partial-coverage models are listed separately.",
+                "Each group OWA proxy is computed against the local seasonal-naive baseline "
+                "on the benchmark holdout tail.",
+            ],
+        },
+    }
+
+
+def m_series_owa_artifact(
+    table: Any,
+    scored: Any,
+    *,
+    source: str,
+    model_names: list[str],
+    season_length: int,
+) -> dict[str, Any]:
+    pl = require_polars()
+    cutoff = scored.select(pl.col("timestamp").min()).item()
+    train = table.filter(pl.col("date") < cutoff)
+    if train.is_empty():
+        raise ValueError(f"{source.upper()} OWA proxy artifact requires pre-origin training rows")
+    horizon = int(scored.select(pl.col("horizon").max()).item())
+    naive = seasonal_naive_forecast_frame(
+        train,
+        horizon,
+        season_length=season_length,
+        prediction_col="m4_seasonal_naive2",
+    )
+    scored_with_naive = scored.join(
+        naive,
+        on=["series_id", "timestamp", "horizon"],
+        how="inner",
+    )
+    if scored_with_naive.height != scored.height:
+        raise RuntimeError(f"{source.upper()} OWA proxy seasonal-naive alignment dropped rows")
+    ordered_scored = scored_with_naive.sort(["series_id", "timestamp", "horizon"])
+    training_series = [
+        row["loads"]
+        for row in train.sort(["lane_id", "date"])
+        .group_by("lane_id", maintain_order=True)
+        .agg(pl.col("loads"))
+        .iter_rows(named=True)
+    ]
+    actual_values = ordered_scored["actual"].to_list()
+    baseline = m_competition_metrics(
+        training_series,
+        actual_values,
+        ordered_scored["m4_seasonal_naive2"].to_list(),
+        seasonality=season_length,
+    )
+    baseline_smape = max(float(baseline["smape"]), 1.0e-12)
+    baseline_mase = max(float(baseline["mase"]), 1.0e-12)
+    models: dict[str, Any] = {}
+    for model in model_names:
+        metrics = m_competition_metrics(
+            training_series,
+            actual_values,
+            ordered_scored[model].to_list(),
+            seasonality=season_length,
+            baseline_smape=baseline_smape,
+            baseline_mase=baseline_mase,
+        )
+        smape_ratio = float(metrics["smape_ratio_to_baseline"])
+        mase_ratio = float(metrics["mase_ratio_to_baseline"])
+        models[model] = {
+            "smape": float(metrics["smape"]),
+            "mase": float(metrics["mase"]),
+            "smape_ratio_to_seasonal_naive": smape_ratio,
+            "mase_ratio_to_seasonal_naive": mase_ratio,
+            "owa_proxy": float(metrics["owa"]),
+        }
+    ranking = sorted(model_names, key=lambda name: (models[name]["owa_proxy"], name))
+    return {
+        "season_length": int(season_length),
+        "horizon": horizon,
+        "baseline_model": "seasonal_naive2_proxy",
+        "baseline": {
+            "smape": float(baseline["smape"]),
+            "mase": float(baseline["mase"]),
+        },
+        "models": models,
+        "ranking": ranking,
+        "notes": [
+            f"This is a {source.upper()}-style local proxy over the benchmark holdout because "
+            f"the harness scores withheld tails from the training panel, not the official "
+            f"{source.upper()} test file.",
+            "OWA proxy is 0.5 * (model sMAPE / seasonal-naive sMAPE + "
+            "model MASE / seasonal-naive MASE).",
+        ],
+    }
 
 
 def m5_wrmsse_artifact(
@@ -1708,15 +2542,10 @@ def m5_wrmsse_artifact(
     if train.is_empty():
         raise ValueError("M5 WRMSSE artifact requires pre-origin training rows")
 
-    metadata = train.select("lane_id", *STATIC_COVARIATES).unique(subset=["lane_id"])
+    metadata_columns = [*STATIC_COVARIATES, *available_m5_hierarchy_covariates(train)]
+    metadata = train.select("lane_id", *metadata_columns).unique(subset=["lane_id"])
     actual = scored.select("series_id", "timestamp", "horizon", "actual").unique()
-    levels = [
-        ("total", None),
-        ("state", "pickup_borough_code"),
-        ("store", "pickup_zone"),
-        ("item", "dropoff_zone"),
-        ("item_store", None),
-    ]
+    levels = m5_wrmsse_level_specs(train)
     level_artifacts = {
         level_name: m5_wrmsse_level_artifact(
             train,
@@ -1730,14 +2559,21 @@ def m5_wrmsse_artifact(
         )
         for level_name, group_column in levels
     }
-    model_scores: dict[str, float] = {}
+    model_scores: dict[str, float | None] = {}
+    model_level_contributions: dict[str, Any] = {}
     for model in model_names:
         available_scores = [
-            level["models"][model]["wrmsse"]
-            for level in level_artifacts.values()
+            (level_name, level["models"][model]["wrmsse"])
+            for level_name, level in level_artifacts.items()
             if model in level["models"] and level["models"][model]["wrmsse"] is not None
         ]
-        model_scores[model] = float(np.mean(available_scores)) if available_scores else None
+        if available_scores:
+            aggregate = m5_equal_level_wrmsse(available_scores, return_breakdown=True)
+            model_scores[model] = float(aggregate["wrmsse"])
+            model_level_contributions[model] = aggregate["levels"]
+        else:
+            model_scores[model] = None
+            model_level_contributions[model] = []
     ranking = sorted(
         model_scores,
         key=lambda name: (
@@ -1750,10 +2586,13 @@ def m5_wrmsse_artifact(
         "level_order": list(level_artifacts),
         "levels": level_artifacts,
         "model_scores": model_scores,
+        "model_level_contributions": model_level_contributions,
         "ranking": ranking,
         "notes": [
-            "Weights use recent unit-sales volume from the benchmark panel because sell prices "
-            "are not present in the shared forecasting frame.",
+            "Top-level M5 WRMSSE uses equal weight across available hierarchy levels; "
+            "within each level, value weights are normalized across that level's series.",
+            "Weights use recent dollar sales when sell_prices.csv is available in the M5 frame; "
+            "older artifacts without weight_value used recent unit-sales volume.",
             "Flat zero-scale series are reported under skipped_zero_scale_series rather than "
             "assigned an artificial denominator.",
         ],
@@ -1767,7 +2606,7 @@ def m5_wrmsse_level_artifact(
     metadata: Any,
     *,
     level_name: str,
-    group_column: str | None,
+    group_column: str | list[str] | None,
     model_names: list[str],
     seasonal_period: int,
 ) -> dict[str, Any]:
@@ -1851,24 +2690,68 @@ def m5_wrmsse_level_artifact(
     }
 
 
-def m5_level_frame(train: Any, *, level_name: str, group_column: str | None) -> Any:
+def m5_wrmsse_level_specs(train: Any) -> list[tuple[str, list[str] | None]]:
+    if all(column in train.columns for column in M5_HIERARCHY_COVARIATES):
+        return [
+            ("total", None),
+            ("state", ["m5_state_code"]),
+            ("store", ["m5_store_code"]),
+            ("category", ["m5_cat_code"]),
+            ("department", ["m5_dept_code"]),
+            ("state_category", ["m5_state_code", "m5_cat_code"]),
+            ("state_department", ["m5_state_code", "m5_dept_code"]),
+            ("store_category", ["m5_store_code", "m5_cat_code"]),
+            ("store_department", ["m5_store_code", "m5_dept_code"]),
+            ("item", ["m5_item_code"]),
+            ("state_item", ["m5_state_code", "m5_item_code"]),
+            ("item_store", None),
+        ]
+    return [
+        ("total", None),
+        ("state", ["pickup_borough_code"]),
+        ("store", ["pickup_zone"]),
+        ("item", ["dropoff_zone"]),
+        ("item_store", None),
+    ]
+
+
+def available_m5_hierarchy_covariates(frame: Any) -> list[str]:
+    return [column for column in M5_HIERARCHY_COVARIATES if column in frame.columns]
+
+
+def m5_level_id_expr(group_column: str | list[str]) -> Any:
     pl = require_polars()
+    columns = [group_column] if isinstance(group_column, str) else list(group_column)
+    if len(columns) == 1:
+        return pl.col(columns[0]).cast(pl.Utf8).alias("level_id")
+    return pl.concat_str([pl.col(column).cast(pl.Utf8) for column in columns], separator="/").alias(
+        "level_id"
+    )
+
+
+def m5_level_frame(train: Any, *, level_name: str, group_column: str | list[str] | None) -> Any:
+    pl = require_polars()
+    value_columns = ["loads"]
+    aggregations = [pl.col("loads").sum()]
+    if "weight_value" in train.columns:
+        value_columns.append("weight_value")
+        aggregations.append(pl.col("weight_value").sum())
     if level_name == "total":
         return (
             train.with_columns(pl.lit("total").alias("level_id"))
             .group_by(["level_id", "date"], maintain_order=True)
-            .agg(pl.col("loads").sum())
+            .agg(aggregations)
         )
     if level_name == "item_store":
         return train.with_columns(pl.col("lane_id").cast(pl.Utf8).alias("level_id")).select(
-            "level_id", "date", "loads"
+            "level_id", "date", *value_columns
         )
     if group_column is None:
         raise ValueError(f"M5 level {level_name!r} requires a group column")
     return (
-        train.with_columns(pl.col(group_column).cast(pl.Utf8).alias("level_id"))
+        train.with_columns(m5_level_id_expr(group_column))
         .group_by(["level_id", "date"], maintain_order=True)
-        .agg(pl.col("loads").sum())
+        .agg(aggregations)
     )
 
 
@@ -1877,7 +2760,7 @@ def m5_level_scored_frame(
     metadata: Any,
     *,
     level_name: str,
-    group_column: str | None,
+    group_column: str | list[str] | None,
     value_column: str,
 ) -> Any:
     pl = require_polars()
@@ -1895,7 +2778,7 @@ def m5_level_scored_frame(
     if group_column is None:
         raise ValueError(f"M5 level {level_name!r} requires a group column")
     return (
-        joined.with_columns(pl.col(group_column).cast(pl.Utf8).alias("level_id"))
+        joined.with_columns(m5_level_id_expr(group_column))
         .group_by(["level_id", "timestamp", "horizon"], maintain_order=True)
         .agg(pl.col(value_column).sum())
     )
@@ -1903,17 +2786,22 @@ def m5_level_scored_frame(
 
 def m5_level_weights(train_level: Any, ids: list[Any]) -> dict[str, float]:
     pl = require_polars()
+    weight_column = "weight_value" if "weight_value" in train_level.columns else "loads"
     weight_rows = (
         train_level.sort(["level_id", "date"])
         .group_by("level_id", maintain_order=True)
-        .agg(pl.col("loads").tail(28).sum().alias("weight"))
+        .agg(pl.col(weight_column).tail(28).sum().alias("weight"))
     )
-    weights = {
-        str(row["level_id"]): float(row["weight"]) for row in weight_rows.iter_rows(named=True)
+    return {
+        str(level_id): float(weight)
+        for level_id, weight in _native.ordered_nonnegative_weights_value(
+            [str(level_id) for level_id in ids],
+            [
+                (str(row["level_id"]), float(row["weight"]))
+                for row in weight_rows.iter_rows(named=True)
+            ],
+        ).items()
     }
-    if sum(max(weights.get(str(level_id), 0.0), 0.0) for level_id in ids) <= 0.0:
-        return {str(level_id): 1.0 for level_id in ids}
-    return {str(level_id): max(weights.get(str(level_id), 0.0), 0.0) for level_id in ids}
 
 
 def m6_validation_scored_frame(
@@ -1994,10 +2882,17 @@ def m6_rps_artifact(
         for model in model_names
     }
     ranking = sorted(model_names, key=lambda name: (summaries[name]["mean_rps"], name))
+    investment_ranking = sorted(
+        model_names,
+        key=lambda name: (-summaries[name]["decision_return"], name),
+    )
     return {
         "rank_bucket_count": 5,
         "models": summaries,
-        "ranking": ranking,
+        "ranking": investment_ranking,
+        "primary_ranking": investment_ranking,
+        "rps_ranking": ranking,
+        "investment_ranking": investment_ranking,
         "notes": [
             "Rank probabilities are deterministic five-bucket distributions derived from "
             "predicted cumulative holdout returns.",
@@ -2022,45 +2917,67 @@ def m6_model_rps_summary(
         )
         .sort("series_id")
     )
-    actual_values = returns["actual_return"].to_list()
-    predicted_values = returns["predicted_return"].to_list()
-    actual_buckets = rank_buckets(actual_values, bucket_count=5)
-    predicted_buckets = rank_buckets(predicted_values, bucket_count=5)
-    rows = []
-    rps_values = []
     calibration = m6_calibration_from_scored(
         calibration_scored,
         prediction_col=prediction_col,
         bucket_count=5,
     )
-    for idx, row in enumerate(returns.iter_rows(named=True)):
-        probabilities = calibrated_rank_bucket_probabilities(
-            predicted_buckets[idx],
-            bucket_count=5,
-            calibration=calibration,
+    summary = json.loads(
+        _native.rank_portfolio_summary_value(
+            [
+                (
+                    str(row["series_id"]),
+                    float(row["actual_return"]),
+                    float(row["predicted_return"]),
+                )
+                for row in returns.iter_rows(named=True)
+            ],
+            5,
+            calibration["probabilities"],
+            float(calibration["shrinkage"]),
         )
-        rps = rank_probability_score(probabilities, actual_buckets[idx])
-        rps_values.append(rps)
-        rows.append(
-            {
-                "series_id": str(row["series_id"]),
-                "actual_return": float(row["actual_return"]),
-                "predicted_return": float(row["predicted_return"]),
-                "observed_rank_bucket": int(actual_buckets[idx]),
-                "predicted_rank_bucket": int(predicted_buckets[idx]),
-                "rank_probabilities": probabilities,
-                "rps": float(rps),
-            }
+    )
+    summary["rank_probability_calibration"] = calibration["metadata"]
+    return summary
+
+
+def m6_investment_decision_loss(
+    scored: Any,
+    *,
+    prediction_col: str,
+    rps_tiebreak_weight: float,
+) -> float:
+    pl = require_polars()
+    returns = (
+        scored.group_by("series_id", maintain_order=True)
+        .agg(
+            pl.col("actual").sum().alias("actual_return"),
+            pl.col(prediction_col).sum().alias("predicted_return"),
         )
-    decisions = m6_decision_rows(rows)
-    return {
-        "mean_rps": float(np.mean(rps_values)) if rps_values else float("nan"),
-        "asset_count": len(rows),
-        "rank_probability_calibration": calibration["metadata"],
-        "assets": rows,
-        "decisions": decisions,
-        "decision_return": float(sum(row["actual_return"] * row["weight"] for row in decisions)),
-    }
+        .sort("series_id")
+    )
+    calibration = rank_probability_calibration(
+        [],
+        [],
+        bucket_count=5,
+        validation_support=0,
+    )
+    return float(
+        _native.rank_portfolio_decision_loss_value(
+            [
+                (
+                    str(row["series_id"]),
+                    float(row["actual_return"]),
+                    float(row["predicted_return"]),
+                )
+                for row in returns.iter_rows(named=True)
+            ],
+            5,
+            calibration["probabilities"],
+            float(calibration["shrinkage"]),
+            float(rps_tiebreak_weight),
+        )
+    )
 
 
 def m6_calibration_from_scored(
@@ -2070,7 +2987,7 @@ def m6_calibration_from_scored(
     bucket_count: int,
 ) -> dict[str, Any]:
     if calibration_scored is None or prediction_col not in calibration_scored.columns:
-        return m6_rank_probability_calibration(
+        return rank_probability_calibration(
             [],
             [],
             bucket_count=bucket_count,
@@ -2086,7 +3003,7 @@ def m6_calibration_from_scored(
         .sort("series_id")
     )
     if returns.is_empty():
-        return m6_rank_probability_calibration(
+        return rank_probability_calibration(
             [],
             [],
             bucket_count=bucket_count,
@@ -2097,7 +3014,7 @@ def m6_calibration_from_scored(
         returns["predicted_return"].to_list(),
         bucket_count=bucket_count,
     )
-    return m6_rank_probability_calibration(
+    return rank_probability_calibration(
         actual_buckets,
         predicted_buckets,
         bucket_count=bucket_count,
@@ -2106,108 +3023,60 @@ def m6_calibration_from_scored(
 
 
 def rank_buckets(values: list[float], *, bucket_count: int) -> list[int]:
-    if bucket_count <= 0:
-        raise ValueError("bucket_count must be positive")
-    order = sorted(range(len(values)), key=lambda idx: (values[idx], idx))
-    buckets = [0] * len(values)
-    for rank, idx in enumerate(order):
-        buckets[idx] = min(bucket_count - 1, int(rank * bucket_count / max(len(values), 1)))
-    return buckets
+    return [
+        int(bucket)
+        for bucket in _native.rank_buckets_value(
+            [float(value) for value in values],
+            int(bucket_count),
+        )
+    ]
 
 
-def rank_bucket_probabilities(predicted_bucket: int, *, bucket_count: int) -> list[float]:
-    if predicted_bucket < 0 or predicted_bucket >= bucket_count:
-        raise ValueError("predicted_bucket must be inside bucket_count")
-    weights = []
-    for bucket in range(bucket_count):
-        distance = abs(bucket - predicted_bucket)
-        weights.append(1.0 / (1.0 + distance * distance))
-    total = sum(weights)
-    return [float(weight / total) for weight in weights]
-
-
-def m6_rank_probability_calibration(
+def rank_probability_calibration(
     actual_buckets: list[int],
     predicted_buckets: list[int],
     *,
     bucket_count: int,
     validation_support: int,
 ) -> dict[str, Any]:
-    if len(actual_buckets) != len(predicted_buckets):
-        raise ValueError("actual and predicted bucket lists must have the same length")
-    prior = 1.0
-    rows = [[prior for _bucket in range(bucket_count)] for _bucket in range(bucket_count)]
-    for actual_bucket, predicted_bucket in zip(actual_buckets, predicted_buckets, strict=True):
-        if 0 <= predicted_bucket < bucket_count and 0 <= actual_bucket < bucket_count:
-            rows[predicted_bucket][actual_bucket] += 1.0
-    probabilities = []
-    for row in rows:
-        total = sum(row)
-        probabilities.append([float(value / total) for value in row])
-
-    support = max(int(validation_support), 0)
-    shrinkage = float(support / (support + bucket_count * 20.0)) if support else 0.0
-    return {
-        "probabilities": probabilities,
-        "shrinkage": shrinkage,
-        "metadata": {
-            "method": "dirichlet_confusion_with_uniform_shrinkage",
-            "bucket_count": bucket_count,
-            "validation_support": support,
-            "dirichlet_prior": prior,
-            "shrinkage_to_confusion": shrinkage,
-            "fallback": "none" if support else "uniform_when_no_validation_support",
-        },
-    }
-
-
-def calibrated_rank_bucket_probabilities(
-    predicted_bucket: int,
-    *,
-    bucket_count: int,
-    calibration: dict[str, Any],
-) -> list[float]:
-    if predicted_bucket < 0 or predicted_bucket >= bucket_count:
-        raise ValueError("predicted_bucket must be inside bucket_count")
-    uniform = [1.0 / bucket_count for _bucket in range(bucket_count)]
-    row = calibration["probabilities"][predicted_bucket]
-    shrinkage = float(calibration["shrinkage"])
-    return [
-        float(shrinkage * row_value + (1.0 - shrinkage) * uniform_value)
-        for row_value, uniform_value in zip(row, uniform, strict=True)
-    ]
+    return native_rank_probability_calibration(
+        actual_buckets,
+        predicted_buckets,
+        bucket_count=bucket_count,
+        validation_support=validation_support,
+    )
 
 
 def m6_decision_rows(asset_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    if not asset_rows:
-        return []
-    ordered = sorted(asset_rows, key=lambda row: (row["predicted_return"], row["series_id"]))
-    side_count = max(1, len(ordered) // 5)
-    shorts = ordered[:side_count]
-    longs = ordered[-side_count:]
-    long_weight = 0.5 / len(longs)
-    short_weight = -0.5 / len(shorts)
-    decisions = [
+    return [
         {
-            "series_id": row["series_id"],
-            "side": "short",
-            "weight": float(short_weight),
-            "actual_return": float(row["actual_return"]),
-            "predicted_return": float(row["predicted_return"]),
+            "series_id": str(series_id),
+            "side": str(side),
+            "weight": float(weight),
+            "actual_return": float(actual_return),
+            "predicted_return": float(predicted_return),
         }
-        for row in shorts
+        for series_id, side, weight, actual_return, predicted_return in (
+            _native.extreme_portfolio_decisions_value(
+                [
+                    (
+                        str(row["series_id"]),
+                        float(row["actual_return"]),
+                        float(row["predicted_return"]),
+                    )
+                    for row in asset_rows
+                ]
+            )
+        )
     ]
-    decisions.extend(
-        {
-            "series_id": row["series_id"],
-            "side": "long",
-            "weight": float(long_weight),
-            "actual_return": float(row["actual_return"]),
-            "predicted_return": float(row["predicted_return"]),
-        }
-        for row in longs
-    )
-    return sorted(decisions, key=lambda row: (row["side"], row["series_id"]))
+
+
+def portfolio_summary(decisions: list[dict[str, Any]]) -> dict[str, float | int]:
+    return native_portfolio_summary(decisions)
+
+
+def rank_hit_rates(asset_rows: list[dict[str, Any]]) -> dict[str, float | int]:
+    return native_rank_hit_rates(asset_rows, bucket_count=5)
 
 
 def forecast_model_roster(
@@ -2218,6 +3087,7 @@ def forecast_model_roster(
     cartoboost_config: dict[str, Any],
     model_names: list[str],
     source: str = "synthetic",
+    known_future: Any | None = None,
     skip_m5_raw_auto_candidate: bool = False,
     skip_m6_raw_auto_candidate: bool = False,
     skip_non_m_raw_auto_candidate: bool = False,
@@ -2232,6 +3102,7 @@ def forecast_model_roster(
             season_length=season_length,
             config=native_config,
             prediction_col="cartoboost_lag",
+            known_future=known_future,
         )
         forecast_frames.append(cartoboost_predictions)
         model_timing["cartoboost_lag"] = cartoboost_timing
@@ -2312,9 +3183,10 @@ def forecast_model_roster(
                 season_length=season_length,
                 config=auto_config,
                 prediction_col="cartoboost_auto_forecast",
+                known_future=known_future,
             )
             auto_predictions = auto_predictions.with_columns(
-                pl.col("cartoboost_auto_forecast").alias("cartoboost_m6_point_auto")
+                pl.col("cartoboost_auto_forecast").alias("cartoboost_point_auto")
             )
             auto_timing = {
                 **auto_timing,
@@ -2327,6 +3199,7 @@ def forecast_model_roster(
                 season_length=season_length,
                 config=native_config,
                 prediction_col="cartoboost_auto_forecast",
+                known_future=known_future,
             )
         if include_autostats_candidate(source=source, season_length=season_length, horizon=horizon):
             autostats_predictions, autostats_timing = cartoboost_autostats_forecast(
@@ -2410,6 +3283,7 @@ def forecast_model_roster(
             horizon,
             season_length=season_length,
             config=cartoboost_config,
+            known_future=known_future,
         )
         forecast_frames.append(
             tree_predictions.select(
@@ -2443,10 +3317,16 @@ def apply_shared_candidate_selection(
     started = perf_counter()
     timestamps = train.select(pl.col("date").unique().sort()).to_series().to_list()
     if len(timestamps) <= horizon + 2:
-        return raw_predictions, {
+        selected_predictions, selected = validation_unavailable_selected_predictions(
+            raw_predictions,
+            model_names=model_names,
+            source=source,
+        )
+        return selected_predictions, {
             "calibration_seconds": perf_counter() - started,
             "inner_origin_count": 0.0,
-            "selected_candidates": {model: model for model in model_names},
+            "selected_candidates": selected,
+            "selection_error": "not enough training timestamps for inner validation",
         }
 
     selector_model_names = candidate_selection_model_names(model_names)
@@ -2468,10 +3348,15 @@ def apply_shared_candidate_selection(
         validation_cache=validation_cache,
     )
     if not inner_scores:
-        return raw_predictions, {
+        selected_predictions, selected = validation_unavailable_selected_predictions(
+            raw_predictions,
+            model_names=model_names,
+            source=source,
+        )
+        return selected_predictions, {
             "calibration_seconds": perf_counter() - started,
             "inner_origin_count": 0.0,
-            "selected_candidates": {model: model for model in model_names},
+            "selected_candidates": selected,
             "selection_error": "inner forecast roster failed or produced no aligned rows",
         }
 
@@ -2481,6 +3366,7 @@ def apply_shared_candidate_selection(
     origin_consistency_guarded: dict[str, dict[str, Any]] = {}
     low_support_guarded: dict[str, dict[str, Any]] = {}
     raw_auto_override_guarded: dict[str, dict[str, Any]] = {}
+    m6_raw_auto_guarded: dict[str, dict[str, Any]] = {}
     validation_cache_hits = count_validation_cache_hits(validation_cache)
     validation_cache_misses = count_validation_cache_misses(validation_cache)
     objective = auto_selection_objective(source)
@@ -2511,7 +3397,7 @@ def apply_shared_candidate_selection(
         )
         consistency_guard = lag_origin_consistency_guard(
             best_candidate,
-            source=source,
+            source=native_selection_profile(source),
             inner_scores=inner_scores,
         )
         if consistency_guard is not None:
@@ -2571,7 +3457,7 @@ def apply_shared_candidate_selection(
             best_candidate = model
             consistency_guard = lag_origin_consistency_guard(
                 best_candidate,
-                source=source,
+                source=native_selection_profile(source),
                 inner_scores=inner_scores,
             )
             if consistency_guard is not None:
@@ -2602,6 +3488,26 @@ def apply_shared_candidate_selection(
             and 1.0 - candidate_scores[best_candidate] / lag_loss < AUTO_SELECTION_MIN_RELATIVE_GAIN
         ):
             best_candidate = "cartoboost_lag"
+        if (
+            source == "m6"
+            and best_candidate != model
+            and math.isfinite(base_loss)
+            and math.isfinite(candidate_scores[best_candidate])
+            and base_loss > 0.0
+        ):
+            relative_gain = 1.0 - candidate_scores[best_candidate] / base_loss
+            if not _native.forecast_relative_loss_displacement_allowed_value(
+                base_loss,
+                candidate_scores[best_candidate],
+                M6_RAW_AUTO_DISPLACEMENT_MIN_RELATIVE_GAIN,
+            ):
+                m6_raw_auto_guarded[model] = {
+                    "candidate": best_candidate,
+                    "reason": "m6_rank_selection_requires_material_rps_gain_vs_raw_auto",
+                    "relative_gain_vs_raw_auto": relative_gain,
+                    "required_relative_gain": M6_RAW_AUTO_DISPLACEMENT_MIN_RELATIVE_GAIN,
+                }
+                best_candidate = model
         best_loss = candidate_scores[best_candidate]
         if (
             best_candidate != model
@@ -2628,6 +3534,29 @@ def apply_shared_candidate_selection(
         cartoboost_config=cartoboost_config,
         required_columns=set(selected.values()),
     )
+    magnitude_guarded: dict[str, dict[str, Any]] = {}
+    for model, selected_candidate in list(selected.items()):
+        if source != "m5" or model != "cartoboost_auto_forecast":
+            continue
+        if (
+            selected_candidate == "cartoboost_lag"
+            or selected_candidate not in outer_candidates.columns
+        ):
+            continue
+        replacement = stable_hierarchy_candidate_choice(
+            train,
+            outer_candidates,
+            candidate_scores_by_model=candidate_losses_by_model.get(model, {}),
+            selected_candidate=selected_candidate,
+            inner_origin_count=inner_origin_count,
+        )
+        if replacement != selected_candidate:
+            magnitude_guarded[model] = {
+                "candidate": selected_candidate,
+                "replacement": replacement,
+                "reason": "forecast_magnitude_exceeds_training_scale_guard",
+            }
+            selected[model] = replacement
     selected_columns = [
         pl.col(selected[model]).alias(model)
         if selected[model] in selectable_candidate_names(model, source=source)
@@ -2649,6 +3578,8 @@ def apply_shared_candidate_selection(
         "origin_consistency_guarded": origin_consistency_guarded,
         "low_support_guarded": low_support_guarded,
         "raw_auto_override_guarded": raw_auto_override_guarded,
+        "m6_raw_auto_guarded": m6_raw_auto_guarded,
+        "magnitude_guarded": magnitude_guarded,
         "inner_losses": inner_losses,
         "inner_candidate_losses": candidate_losses_by_model,
         "inner_rmse": inner_losses if objective == "rmse" else {},
@@ -2657,8 +3588,66 @@ def apply_shared_candidate_selection(
     }
 
 
+def validation_unavailable_selected_predictions(
+    raw_predictions: Any,
+    *,
+    model_names: list[str],
+    source: str,
+) -> tuple[Any, dict[str, str]]:
+    pl = require_polars()
+    validation_profile = native_validation_profile(source) or "robust"
+    available_candidates = [model for model in model_names if model in raw_predictions.columns]
+    selected = {
+        model: _native.forecast_validation_unavailable_candidate_choice_value(
+            model,
+            validation_profile,
+            available_candidates,
+        )
+        for model in model_names
+    }
+    selected_columns = [
+        pl.col(selected[model]).alias(model)
+        if selected[model] in raw_predictions.columns
+        else pl.col(model)
+        for model in model_names
+    ]
+    return (
+        raw_predictions.select("series_id", "timestamp", "horizon", *selected_columns),
+        selected,
+    )
+
+
 def finite_loss_or_none(loss: float) -> float | None:
     return float(loss) if math.isfinite(loss) else None
+
+
+def stable_hierarchy_candidate_choice(
+    train: Any,
+    outer_candidates: Any,
+    *,
+    candidate_scores_by_model: dict[str, float],
+    selected_candidate: str,
+    inner_origin_count: int,
+) -> str:
+    pl = require_polars()
+    training_max_abs = float(train.select(pl.col("loads").abs().max()).item() or 0.0)
+    forecast_max_abs_by_candidate: dict[str, float] = {}
+    for candidate, loss in candidate_scores_by_model.items():
+        if candidate not in outer_candidates.columns or not math.isfinite(loss):
+            continue
+        forecast_max_abs = float(
+            outer_candidates.select(pl.col(candidate).abs().max()).item() or 0.0
+        )
+        forecast_max_abs_by_candidate[candidate] = forecast_max_abs
+    return str(
+        _native.forecast_stable_magnitude_candidate_choice_value(
+            selected_candidate,
+            {str(candidate): float(loss) for candidate, loss in candidate_scores_by_model.items()},
+            forecast_max_abs_by_candidate,
+            training_max_abs,
+            inner_origin_count,
+        )
+    )
 
 
 def increment_validation_cache_stat(cache: dict[Any, dict[str, float]], name: str) -> None:
@@ -2680,13 +3669,16 @@ def count_validation_cache_misses(cache: dict[Any, dict[str, float]] | None) -> 
 
 def native_auto_raw_candidate_is_confident(model_timing: dict[str, Any]) -> bool:
     auto_timing = model_timing.get("cartoboost_auto_forecast", {})
-    if auto_timing.get("selected_candidate") != "cartoboost_raw":
-        return False
     try:
         relative_gain = float(auto_timing.get("inner_raw_relative_rmse_gain", 0.0))
     except (TypeError, ValueError):
-        return False
-    return relative_gain >= NATIVE_AUTO_RAW_KEEP_RELATIVE_GAIN
+        relative_gain = None
+    return bool(
+        _native.forecast_native_auto_raw_candidate_is_confident_value(
+            auto_timing.get("selected_candidate"),
+            relative_gain,
+        )
+    )
 
 
 def lag_origin_consistency_guard(
@@ -2695,31 +3687,31 @@ def lag_origin_consistency_guard(
     source: str,
     inner_scores: dict[str, list[float]],
 ) -> dict[str, Any] | None:
-    if source in {"m4", "m5", "m6"} or candidate == "cartoboost_lag":
-        return None
     lag_scores = inner_scores.get("cartoboost_lag")
     candidate_scores = inner_scores.get(candidate)
     if not lag_scores or not candidate_scores:
         return None
-    paired = [
-        (candidate_loss, lag_loss)
-        for candidate_loss, lag_loss in zip(candidate_scores, lag_scores, strict=False)
-        if math.isfinite(candidate_loss) and math.isfinite(lag_loss) and lag_loss > 0.0
-    ]
-    if len(paired) < 2:
-        return None
-    losing_origin_count = sum(1 for candidate_loss, lag_loss in paired if candidate_loss > lag_loss)
-    if losing_origin_count == 0:
-        return None
-    gains = [1.0 - candidate_loss / lag_loss for candidate_loss, lag_loss in paired]
-    return {
-        "candidate": candidate,
-        "reason": "candidate_lost_at_least_one_inner_origin_to_lag",
-        "origin_count": len(paired),
-        "losing_origin_count": losing_origin_count,
-        "min_relative_gain_vs_lag": min(gains),
-        "mean_relative_gain_vs_lag": sum(gains) / len(gains),
-    }
+    profile = normalized_selection_profile(source)
+    guard = _native.forecast_lag_origin_consistency_guard_value(
+        candidate,
+        profile,
+        [float(loss) for loss in lag_scores],
+        [float(loss) for loss in candidate_scores],
+    )
+    return None if guard is None else json.loads(str(guard))
+
+
+def normalized_selection_profile(source: str) -> str:
+    if source in {
+        "classical_competition",
+        "classical_competition_full",
+        "hierarchical_reconciliation",
+        "rank_portfolio",
+        "low_frequency_competition",
+        "robust",
+    }:
+        return source
+    return native_selection_profile(source)
 
 
 def candidate_selection_model_names(model_names: list[str]) -> list[str]:
@@ -2781,6 +3773,7 @@ def shared_candidate_validation_scores(
                     cartoboost_config=cartoboost_config,
                     model_names=origin_model_names,
                     source=source,
+                    known_future=known_future_covariate_frame(train),
                 )
             except Exception:
                 continue
@@ -2875,6 +3868,7 @@ def candidate_selection_forecast_roster(
     cartoboost_config: dict[str, Any],
     model_names: list[str],
     source: str,
+    known_future: Any | None = None,
 ) -> tuple[Any, dict[str, Any]]:
     if source == "m5" and "cartoboost_auto_forecast" in model_names:
         return m5_candidate_selection_forecast_roster(
@@ -2883,6 +3877,7 @@ def candidate_selection_forecast_roster(
             season_length=season_length,
             cartoboost_config=cartoboost_config,
             model_names=model_names,
+            known_future=known_future,
         )
     if source == "m4" and "cartoboost_auto_forecast" in model_names:
         return m4_candidate_selection_forecast_roster(
@@ -2893,6 +3888,9 @@ def candidate_selection_forecast_roster(
             model_names=model_names,
         )
     if source not in {"m4", "m5", "m6"} and "cartoboost_auto_forecast" in model_names:
+        kwargs: dict[str, Any] = {}
+        if known_future is not None:
+            kwargs["known_future"] = known_future
         return forecast_model_roster(
             train,
             horizon,
@@ -2901,8 +3899,12 @@ def candidate_selection_forecast_roster(
             model_names=model_names,
             source=source,
             skip_non_m_raw_auto_candidate=True,
+            **kwargs,
         )
     if source != "m6" or "cartoboost_auto_forecast" not in model_names:
+        kwargs = {}
+        if known_future is not None:
+            kwargs["known_future"] = known_future
         return forecast_model_roster(
             train,
             horizon,
@@ -2910,6 +3912,7 @@ def candidate_selection_forecast_roster(
             cartoboost_config=cartoboost_config,
             model_names=model_names,
             source=source,
+            **kwargs,
         )
 
     frames = []
@@ -2921,6 +3924,7 @@ def candidate_selection_forecast_roster(
             season_length=season_length,
             config=cartoboost_config,
             prediction_col="cartoboost_lag",
+            known_future=known_future,
         )
         frames.append(lag_predictions)
         timing["models"]["cartoboost_lag"] = lag_timing
@@ -2932,10 +3936,26 @@ def candidate_selection_forecast_roster(
             prediction_col="__m6_validation_anchor",
         )
         frames.append(anchor)
+    auto_config = cartoboost_auto_config(
+        cartoboost_config,
+        season_length=season_length,
+        horizon=horizon,
+    )
+    auto_predictions, auto_timing = cartoboost_raw_forecast(
+        train,
+        horizon,
+        season_length=season_length,
+        config=auto_config,
+        prediction_col="cartoboost_auto_forecast",
+        known_future=known_future,
+    )
+    auto_predictions = auto_predictions.with_columns(
+        require_polars().col("cartoboost_auto_forecast").alias("cartoboost_point_auto")
+    )
+    frames.append(auto_predictions)
     timing["models"]["cartoboost_auto_forecast"] = {
-        "selector_mode": "m6_inner_validation_skips_raw_auto",
-        "fit_predict_seconds": 0.0,
-        "total_seconds": 0.0,
+        **auto_timing,
+        "selector_mode": "m6_inner_validation_includes_raw_auto",
     }
     return combine_forecast_frames(frames), timing
 
@@ -2947,6 +3967,7 @@ def m4_candidate_selection_forecast_roster(
     season_length: int,
     cartoboost_config: dict[str, Any],
     model_names: list[str],
+    known_future: Any | None = None,
 ) -> tuple[Any, dict[str, Any]]:
     frames = []
     timing: dict[str, Any] = {"models": {}}
@@ -2957,6 +3978,7 @@ def m4_candidate_selection_forecast_roster(
             season_length=season_length,
             config=cartoboost_config,
             prediction_col="cartoboost_lag",
+            known_future=known_future,
         )
         frames.append(lag_predictions)
         timing["models"]["cartoboost_lag"] = lag_timing
@@ -2973,6 +3995,15 @@ def m4_candidate_selection_forecast_roster(
         "fit_predict_seconds": 0.0,
         "total_seconds": 0.0,
     }
+    if include_autostats_candidate(source="m4", season_length=season_length, horizon=horizon):
+        autostats_predictions, autostats_timing = cartoboost_autostats_forecast(
+            train,
+            horizon,
+            season_length=season_length,
+            prediction_col="cartoboost_autostats_bank",
+        )
+        frames.append(autostats_predictions)
+        timing["models"]["cartoboost_autostats_bank"] = autostats_timing
     return combine_forecast_frames(frames), timing
 
 
@@ -2983,6 +4014,7 @@ def m5_candidate_selection_forecast_roster(
     season_length: int,
     cartoboost_config: dict[str, Any],
     model_names: list[str],
+    known_future: Any | None = None,
 ) -> tuple[Any, dict[str, Any]]:
     frames = []
     timing: dict[str, Any] = {"models": {}}
@@ -2993,6 +4025,7 @@ def m5_candidate_selection_forecast_roster(
             season_length=season_length,
             config=cartoboost_config,
             prediction_col="cartoboost_lag",
+            known_future=known_future,
         )
         frames.append(lag_predictions)
         timing["models"]["cartoboost_lag"] = lag_timing
@@ -3022,72 +4055,40 @@ def shared_candidate_validation_cutoffs(
     horizon: int,
     source: str | None = None,
 ) -> list[Any]:
-    if len(timestamps) <= horizon + 2:
-        return []
+    cutoff_indices = _native.forecast_candidate_validation_cutoff_indices_value(
+        len(timestamps),
+        int(horizon),
+        native_validation_profile(source),
+    )
+    return [timestamps[int(index)] for index in cutoff_indices]
+
+
+def native_validation_profile(source: str | None) -> str | None:
+    if source is None:
+        return None
+    if source == "m5":
+        return "hierarchical_reconciliation"
     if source == "m6":
-        max_origins = 1
-    elif source == "m5":
-        max_origins = 2
-    elif source == "m4":
-        max_origins = 3
-    elif source is None:
-        max_origins = 3
-    else:
-        max_origins = 2
-    cutoffs: list[Any] = []
-    for origin in range(max_origins, 0, -1):
-        index = len(timestamps) - origin * horizon
-        min_train = max(14, horizon)
-        if index >= min_train and index + horizon <= len(timestamps):
-            cutoffs.append(timestamps[index])
-    return cutoffs
+        return "rank_portfolio"
+    if source in {"m1", "m3"}:
+        return "classical_competition_full"
+    if source == "m4":
+        return "classical_competition"
+    return "robust"
 
 
 def selectable_candidate_names(model: str, *, source: str) -> list[str]:
-    candidates = shared_candidate_names()
-    if model == "cartoboost_auto_forecast":
-        candidates = ["cartoboost_lag", *candidates]
-    if source == "m4" and model == "cartoboost_auto_forecast":
-        candidates = [*candidates, "cartoboost_autostats_bank"]
-    if source == "m5" and model == "cartoboost_auto_forecast":
-        candidates = [
-            *candidates,
-            "cartoboost_autostats_bank",
-            "shared_m5_calendar_autostats_blend",
-            "shared_m5_phase14_total_reconciled_020",
-            "shared_m5_phase14_total_reconciled_035",
-            "shared_m5_phase14_total_reconciled_050",
-            "shared_m5_wrmsse_autostats_blend",
-            "shared_m5_point_autostats_phase14_blend",
-            "shared_m5_total_reconciled_auto",
-        ]
-    if source == "m6" and model == "cartoboost_auto_forecast":
-        candidates = [
-            *candidates,
-            "shared_m6_market_neutral_zero",
-            "shared_m6_phase14_rank_blend",
-            "cartoboost_m6_point_auto",
-        ]
-    return candidates
+    return [
+        str(candidate)
+        for candidate in _native.forecast_selectable_candidate_names_value(
+            model,
+            native_selection_profile(source),
+        )
+    ]
 
 
 def robust_candidate_choice(candidate_scores: dict[str, float]) -> str:
-    finite_scores = {
-        candidate: loss
-        for candidate, loss in candidate_scores.items()
-        if math.isfinite(loss) and loss >= 0.0
-    }
-    if not finite_scores:
-        return min(candidate_scores, key=candidate_scores.__getitem__)
-    best_loss = min(finite_scores.values())
-    tolerance = best_loss * (1.0 + AUTO_SELECTION_ROBUST_RELATIVE_TOLERANCE)
-    close_candidates = {
-        candidate: loss for candidate, loss in finite_scores.items() if loss <= tolerance
-    }
-    return min(
-        close_candidates,
-        key=lambda candidate: (candidate_complexity_rank(candidate), close_candidates[candidate]),
-    )
+    return native_candidate_choice(candidate_scores, source="synthetic")
 
 
 def candidate_choice_for_source(
@@ -3096,128 +4097,74 @@ def candidate_choice_for_source(
     source: str,
     inner_origin_count: int | None = None,
 ) -> str:
-    if source == "m5":
-        finite_scores = {
-            candidate: loss
-            for candidate, loss in candidate_scores.items()
-            if math.isfinite(loss) and loss >= 0.0
-        }
-        if finite_scores:
-            best_loss = min(finite_scores.values())
-            lag_loss = finite_scores.get("cartoboost_lag")
+    return native_candidate_choice(
+        candidate_scores,
+        source=source,
+        inner_origin_count=inner_origin_count,
+    )
 
-            def clears_lag_guard(candidate: str) -> bool:
-                if candidate == "cartoboost_lag" or lag_loss is None or lag_loss <= 0.0:
-                    return True
-                candidate_loss = finite_scores[candidate]
-                return 1.0 - candidate_loss / lag_loss >= AUTO_SELECTION_MIN_RELATIVE_GAIN
 
-            wrmsse_blend = "shared_m5_wrmsse_autostats_blend"
-            if (
-                wrmsse_blend in finite_scores
-                and (inner_origin_count is None or inner_origin_count <= 1)
-                and finite_scores[wrmsse_blend] <= best_loss * 1.001
-                and clears_lag_guard(wrmsse_blend)
-            ):
-                return wrmsse_blend
-            reconciled_candidates = {
-                candidate: loss
-                for candidate, loss in finite_scores.items()
-                if candidate.startswith("shared_m5_phase14_total_reconciled_")
-                and loss <= best_loss * 1.015
-                and clears_lag_guard(candidate)
-            }
-            point_blend = "shared_m5_point_autostats_phase14_blend"
-            if (
-                point_blend in finite_scores
-                and (inner_origin_count is None or inner_origin_count <= 1)
-                and finite_scores[point_blend] <= best_loss * 1.015
-                and clears_lag_guard(point_blend)
-            ):
-                return point_blend
-            if reconciled_candidates:
-                return max(
-                    reconciled_candidates,
-                    key=lambda candidate: (
-                        candidate_complexity_rank(candidate),
-                        -reconciled_candidates[candidate],
-                    ),
-                )
-            selected = min(
-                finite_scores, key=lambda candidate: (finite_scores[candidate], candidate)
-            )
-            if not clears_lag_guard(selected) and lag_loss is not None:
-                return "cartoboost_lag"
-            return selected
-    if source == "m6":
-        finite_scores = {
-            candidate: loss
-            for candidate, loss in candidate_scores.items()
-            if math.isfinite(loss) and loss >= 0.0
-        }
-        if finite_scores:
-            return min(finite_scores, key=lambda candidate: (finite_scores[candidate], candidate))
-    return robust_candidate_choice(candidate_scores)
+def native_candidate_choice(
+    candidate_scores: dict[str, float],
+    *,
+    source: str,
+    inner_origin_count: int | None = None,
+) -> str:
+    return str(
+        _native.forecast_candidate_choice_value(
+            native_selection_profile(source),
+            {str(candidate): float(loss) for candidate, loss in candidate_scores.items()},
+            inner_origin_count,
+        )
+    )
 
 
 def candidate_complexity_rank(candidate: str) -> int:
-    ranks = {
-        "cartoboost_lag": 0,
-        "cartoboost_autostats_bank": 1,
-        "shared_seasonal_base": 2,
-        "shared_half_drift": 3,
-        "shared_drift": 4,
-        "shared_seasonal_drift": 5,
-        "shared_seasonal_cycle_drift_050": 6,
-        "shared_seasonal_cycle_drift_075": 7,
-        "cartoboost_auto_forecast": 8,
-        AUTO_ENSEMBLE_CANDIDATE: 9,
-        "shared_calendar_dom": 10,
-        "shared_calendar_phase14": 11,
-        "shared_m6_market_neutral_zero": 12,
-        "shared_m6_phase14_rank_blend": 13,
-        "shared_m5_calendar_autostats_blend": 14,
-        "shared_m5_phase14_total_reconciled_020": 15,
-        "shared_m5_phase14_total_reconciled_035": 16,
-        "shared_m5_phase14_total_reconciled_050": 17,
-        "shared_m5_wrmsse_autostats_blend": 19,
-        "shared_m5_point_autostats_phase14_blend": 20,
-        "shared_m5_total_reconciled_auto": 20,
-        "cartoboost_m6_point_auto": 24,
-    }
-    return ranks.get(candidate, 20)
+    return int(_native.forecast_candidate_complexity_rank_value(candidate))
 
 
 def include_autostats_candidate(*, source: str, season_length: int, horizon: int) -> bool:
-    if source == "m5":
-        return True
-    return source == "m4" and season_length in {1, 4, 12} and horizon <= 24
+    return bool(
+        _native.forecast_include_autostats_candidate_value(
+            native_selection_profile(source),
+            int(season_length),
+            int(horizon),
+        )
+    )
 
 
 def m4_requires_lag_spine(*, season_length: int, horizon: int) -> bool:
-    return season_length in {12, 24} or (season_length == 1 and horizon > 6)
+    return requires_lag_spine(source="m4", season_length=season_length, horizon=horizon)
 
 
 def requires_lag_spine(*, source: str, season_length: int, horizon: int) -> bool:
-    # Keep this narrow. The selector must not force the lag spine just because a
-    # fixture belongs to the maintained synthetic suite; that would overfit the
-    # benchmark source instead of the series structure.
+    return bool(
+        _native.forecast_requires_lag_spine_value(
+            native_lag_spine_profile(source),
+            int(season_length),
+            int(horizon),
+        )
+    )
+
+
+def native_selection_profile(source: str) -> str:
+    if source in {"m1", "m3"}:
+        return "classical_competition_full"
     if source == "m4":
-        return m4_requires_lag_spine(season_length=season_length, horizon=horizon)
-    return False
+        return "classical_competition"
+    if source == "m5":
+        return "hierarchical_reconciliation"
+    if source == "m6":
+        return "rank_portfolio"
+    return "robust"
+
+
+def native_lag_spine_profile(source: str) -> str:
+    return "low_frequency_competition" if source == "m4" else "robust"
 
 
 def shared_candidate_names() -> list[str]:
-    return [
-        "shared_seasonal_base",
-        "shared_calendar_dom",
-        "shared_calendar_phase14",
-        "shared_drift",
-        "shared_half_drift",
-        "shared_seasonal_drift",
-        "shared_seasonal_cycle_drift_050",
-        "shared_seasonal_cycle_drift_075",
-    ]
+    return [str(candidate) for candidate in _native.forecast_shared_candidate_names_value()]
 
 
 def add_shared_candidate_columns(
@@ -3240,35 +4187,35 @@ def add_shared_candidate_columns(
         return required is None or bool(required.intersection(columns))
 
     base_dependencies = {
-        "shared_m6_phase14_rank_blend": {
-            "shared_calendar_phase14",
+        "shared_elapsed_phase_rank_blend": {
+            "shared_calendar_elapsed_phase",
             "shared_seasonal_base",
         },
-        "shared_m5_calendar_autostats_blend": {
-            "shared_calendar_phase14",
+        "shared_calendar_autostats_blend": {
+            "shared_calendar_elapsed_phase",
             "cartoboost_autostats_bank",
         },
-        "shared_m5_phase14_total_reconciled_020": {
-            "shared_calendar_phase14",
+        "shared_elapsed_phase_total_reconciled_020": {
+            "shared_calendar_elapsed_phase",
             "cartoboost_autostats_bank",
         },
-        "shared_m5_phase14_total_reconciled_035": {
-            "shared_calendar_phase14",
+        "shared_elapsed_phase_total_reconciled_035": {
+            "shared_calendar_elapsed_phase",
             "cartoboost_autostats_bank",
         },
-        "shared_m5_phase14_total_reconciled_050": {
-            "shared_calendar_phase14",
+        "shared_elapsed_phase_total_reconciled_050": {
+            "shared_calendar_elapsed_phase",
             "cartoboost_autostats_bank",
         },
-        "shared_m5_wrmsse_autostats_blend": {
-            "shared_calendar_phase14",
+        "shared_reconciled_autostats_blend": {
+            "shared_calendar_elapsed_phase",
             "cartoboost_autostats_bank",
         },
-        "shared_m5_point_autostats_phase14_blend": {
-            "shared_calendar_phase14",
+        "shared_point_autostats_elapsed_phase_blend": {
+            "shared_calendar_elapsed_phase",
             "cartoboost_autostats_bank",
         },
-        "shared_m5_total_reconciled_auto": {"cartoboost_auto_forecast"},
+        "shared_total_reconciled_auto": {"cartoboost_auto_forecast"},
     }
     expanded_required = set(required) if required is not None else None
     if expanded_required is not None:
@@ -3301,13 +4248,14 @@ def add_shared_candidate_columns(
                 mode="day_of_month",
             )
         )
-    if needs("shared_calendar_phase14"):
+    if needs("shared_calendar_elapsed_phase"):
         shared_frames.append(
             calendar_profile_forecast_frame(
                 train,
                 horizon,
-                prediction_col="shared_calendar_phase14",
-                mode="phase14",
+                prediction_col="shared_calendar_elapsed_phase",
+                mode="elapsed_phase",
+                elapsed_phase_period=CALENDAR_PROFILE_ELAPSED_PHASE_PERIOD,
             )
         )
     if needs("shared_drift"):
@@ -3364,55 +4312,78 @@ def add_shared_candidate_columns(
     for frame in shared_frames:
         combined = combined.join(frame, on=["series_id", "timestamp", "horizon"], how="inner")
     if source == "m6" and needs_any(
-        {"shared_m6_market_neutral_zero", "shared_m6_phase14_rank_blend"}
+        {"shared_market_neutral_zero", "shared_elapsed_phase_rank_blend"}
     ):
         expressions = []
-        if needs("shared_m6_market_neutral_zero"):
-            expressions.append(pl.lit(0.0).alias("shared_m6_market_neutral_zero"))
-        if needs("shared_m6_phase14_rank_blend"):
+        if needs("shared_market_neutral_zero"):
+            expressions.append(pl.lit(0.0).alias("shared_market_neutral_zero"))
+        if needs("shared_elapsed_phase_rank_blend"):
             expressions.append(
-                (
-                    0.85 * pl.col("shared_calendar_phase14") + 0.15 * pl.col("shared_seasonal_base")
-                ).alias("shared_m6_phase14_rank_blend")
+                pl.Series(
+                    "shared_elapsed_phase_rank_blend",
+                    _native.forecast_weighted_blend_candidate_value(
+                        combined["shared_calendar_elapsed_phase"].to_list(),
+                        combined["shared_seasonal_base"].to_list(),
+                        0.85,
+                    ),
+                )
             )
         combined = combined.with_columns(
             *expressions,
         )
     m5_columns = {
-        "shared_m5_calendar_autostats_blend",
-        "shared_m5_phase14_total_reconciled_020",
-        "shared_m5_phase14_total_reconciled_035",
-        "shared_m5_phase14_total_reconciled_050",
-        "shared_m5_wrmsse_autostats_blend",
-        "shared_m5_point_autostats_phase14_blend",
-        "shared_m5_total_reconciled_auto",
+        "shared_calendar_autostats_blend",
+        "shared_elapsed_phase_total_reconciled_020",
+        "shared_elapsed_phase_total_reconciled_035",
+        "shared_elapsed_phase_total_reconciled_050",
+        "shared_reconciled_autostats_blend",
+        "shared_point_autostats_elapsed_phase_blend",
+        "shared_total_reconciled_auto",
     }
     if source == "m5" and "cartoboost_auto_forecast" in combined.columns and needs_any(m5_columns):
         if "cartoboost_autostats_bank" in combined.columns:
-            combined = combined.with_columns(
-                (
-                    0.35 * pl.col("cartoboost_auto_forecast")
-                    + 0.50 * pl.col("shared_calendar_phase14")
-                    + 0.15 * pl.col("cartoboost_autostats_bank")
-                ).alias("shared_m5_calendar_autostats_blend")
-            )
-            combined = add_m5_phase14_total_reconciled_candidates(
-                combined,
-                base_col="shared_m5_calendar_autostats_blend",
-                target_col="shared_calendar_phase14",
-            )
-            combined = combined.with_columns(
-                (
-                    0.90 * pl.col("shared_m5_phase14_total_reconciled_050")
-                    + 0.10 * pl.col("cartoboost_autostats_bank")
-                ).alias("shared_m5_wrmsse_autostats_blend")
-            )
-            combined = combined.with_columns(
-                (
-                    0.70 * pl.col("cartoboost_autostats_bank")
-                    + 0.30 * pl.col("shared_calendar_phase14")
-                ).alias("shared_m5_point_autostats_phase14_blend")
-            )
+            calendar_blend_columns = {
+                "shared_calendar_autostats_blend",
+                "shared_elapsed_phase_total_reconciled_020",
+                "shared_elapsed_phase_total_reconciled_035",
+                "shared_elapsed_phase_total_reconciled_050",
+                "shared_reconciled_autostats_blend",
+                "shared_point_autostats_elapsed_phase_blend",
+            }
+            phase_reconciled_columns = {
+                "shared_elapsed_phase_total_reconciled_020",
+                "shared_elapsed_phase_total_reconciled_035",
+                "shared_elapsed_phase_total_reconciled_050",
+                "shared_reconciled_autostats_blend",
+            }
+            if needs_any(calendar_blend_columns):
+                combined = combined.with_columns(
+                    (
+                        0.35 * pl.col("cartoboost_auto_forecast")
+                        + 0.50 * pl.col("shared_calendar_elapsed_phase")
+                        + 0.15 * pl.col("cartoboost_autostats_bank")
+                    ).alias("shared_calendar_autostats_blend")
+                )
+            if needs_any(phase_reconciled_columns):
+                combined = add_hierarchical_elapsed_phase_total_reconciled_candidates(
+                    combined,
+                    base_col="shared_calendar_autostats_blend",
+                    target_col="shared_calendar_elapsed_phase",
+                )
+            if needs("shared_reconciled_autostats_blend"):
+                combined = combined.with_columns(
+                    (
+                        0.90 * pl.col("shared_elapsed_phase_total_reconciled_050")
+                        + 0.10 * pl.col("cartoboost_autostats_bank")
+                    ).alias("shared_reconciled_autostats_blend")
+                )
+            if needs("shared_point_autostats_elapsed_phase_blend"):
+                combined = combined.with_columns(
+                    (
+                        0.70 * pl.col("cartoboost_autostats_bank")
+                        + 0.30 * pl.col("shared_calendar_elapsed_phase")
+                    ).alias("shared_point_autostats_elapsed_phase_blend")
+                )
         reconciled = m5_autostats_reconciled_forecast_frame(
             train,
             horizon,
@@ -3420,7 +4391,7 @@ def add_shared_candidate_columns(
             predictions=combined,
             group_column=None,
             base_col="cartoboost_auto_forecast",
-            prediction_col="shared_m5_total_reconciled_auto",
+            prediction_col="shared_total_reconciled_auto",
         )
         combined = combined.join(
             reconciled,
@@ -3430,38 +4401,50 @@ def add_shared_candidate_columns(
     return combined
 
 
-def add_m5_phase14_total_reconciled_candidates(
+def add_hierarchical_elapsed_phase_total_reconciled_candidates(
     frame: Any,
     *,
     base_col: str,
     target_col: str,
 ) -> Any:
     pl = require_polars()
-    sums = frame.group_by(["timestamp", "horizon"], maintain_order=True).agg(
-        pl.col(base_col).sum().alias("__m5_phase_base_sum"),
-        pl.col(target_col).sum().alias("__m5_phase_target_sum"),
+    gammas = [(0.20, "020"), (0.35, "035"), (0.50, "050")]
+    indexed = frame.with_row_index("__m5_reconcile_row")
+    reconciliation_rows: list[dict[str, float | int]] = []
+    grouped = (
+        indexed.select("__m5_reconcile_row", "timestamp", "horizon", base_col, target_col)
+        .sort(["timestamp", "horizon", "__m5_reconcile_row"])
+        .group_by(["timestamp", "horizon"], maintain_order=True)
+        .agg(
+            pl.col("__m5_reconcile_row"),
+            pl.col(base_col),
+            pl.col(target_col).sum().alias("__m5_target_total"),
+        )
     )
-    reconciled_col = "__m5_phase_total_reconciled"
-    with_reconciled = (
-        frame.join(sums, on=["timestamp", "horizon"], how="left")
-        .with_columns(
-            pl.when(pl.col("__m5_phase_base_sum").abs() > 1.0e-12)
-            .then(
-                pl.col(base_col) * (pl.col("__m5_phase_target_sum") / pl.col("__m5_phase_base_sum"))
+    for row in grouped.iter_rows(named=True):
+        row_indices = [int(value) for value in row["__m5_reconcile_row"]]
+        base_values = [float(value) for value in row[base_col]]
+        target_total = float(row["__m5_target_total"])
+        reconciled_by_suffix = {
+            suffix: _native.forecast_proportional_total_reconciliation_value(
+                base_values,
+                target_total,
+                gamma,
             )
-            .otherwise(pl.col(base_col))
-            .alias(reconciled_col)
-        )
-        .with_columns(
-            *[
-                ((1.0 - gamma) * pl.col(base_col) + gamma * pl.col(reconciled_col)).alias(
-                    f"shared_m5_phase14_total_reconciled_{suffix}"
-                )
-                for gamma, suffix in [(0.20, "020"), (0.35, "035"), (0.50, "050")]
-            ]
-        )
-    )
-    return with_reconciled.drop("__m5_phase_base_sum", "__m5_phase_target_sum", reconciled_col)
+            for gamma, suffix in gammas
+        }
+        for offset, row_index in enumerate(row_indices):
+            reconciliation_rows.append(
+                {
+                    "__m5_reconcile_row": row_index,
+                    **{
+                        f"shared_elapsed_phase_total_reconciled_{suffix}": float(values[offset])
+                        for suffix, values in reconciled_by_suffix.items()
+                    },
+                }
+            )
+    reconciled = pl.DataFrame(reconciliation_rows)
+    return indexed.join(reconciled, on="__m5_reconcile_row", how="inner").drop("__m5_reconcile_row")
 
 
 def m5_autostats_reconciled_forecast_frame(
@@ -3541,6 +4524,7 @@ def cartoboost_forecast(
     season_length: int,
     config: dict[str, Any],
     prediction_col: str = "cartoboost_auto_forecast",
+    known_future: Any | None = None,
 ) -> tuple[Any, dict[str, float]]:
     pl = require_polars()
     auto_config = cartoboost_auto_config(config, season_length=season_length, horizon=horizon)
@@ -3550,6 +4534,7 @@ def cartoboost_forecast(
         season_length=season_length,
         config=auto_config,
         prediction_col="cartoboost_raw",
+        known_future=known_future,
     )
     seasonal_base = seasonal_naive_forecast_frame(
         train,
@@ -3574,11 +4559,12 @@ def cartoboost_forecast(
         prediction_col="cartoboost_calendar_dom",
         mode="day_of_month",
     )
-    calendar_phase14 = calendar_profile_forecast_frame(
+    calendar_elapsed_phase = calendar_profile_forecast_frame(
         train,
         horizon,
-        prediction_col="cartoboost_calendar_phase14",
-        mode="phase14",
+        prediction_col="cartoboost_calendar_elapsed_phase",
+        mode="elapsed_phase",
+        elapsed_phase_period=CALENDAR_PROFILE_ELAPSED_PHASE_PERIOD,
     )
     drift = trend_forecast_frame(
         train,
@@ -3618,7 +4604,7 @@ def cartoboost_forecast(
     candidates = (
         raw_forecast.join(seasonal_base, on=["series_id", "timestamp", "horizon"], how="inner")
         .join(calendar_dom, on=["series_id", "timestamp", "horizon"], how="inner")
-        .join(calendar_phase14, on=["series_id", "timestamp", "horizon"], how="inner")
+        .join(calendar_elapsed_phase, on=["series_id", "timestamp", "horizon"], how="inner")
         .join(drift, on=["series_id", "timestamp", "horizon"], how="inner")
         .join(half_drift, on=["series_id", "timestamp", "horizon"], how="inner")
         .join(seasonal_drift, on=["series_id", "timestamp", "horizon"], how="inner")
@@ -3634,8 +4620,9 @@ def cartoboost_forecast(
             "cartoboost_calendar_dom_blend"
         ),
         (
-            0.5 * pl.col("cartoboost_seasonal_base") + 0.5 * pl.col("cartoboost_calendar_phase14")
-        ).alias("cartoboost_calendar_phase14_blend"),
+            0.5 * pl.col("cartoboost_seasonal_base")
+            + 0.5 * pl.col("cartoboost_calendar_elapsed_phase")
+        ).alias("cartoboost_calendar_elapsed_phase_blend"),
     ).with_columns(weighted_candidate_expr(ensemble_weights).alias(AUTO_ENSEMBLE_CANDIDATE))
     blended = candidates.select(
         "series_id",
@@ -3678,13 +4665,29 @@ def cartoboost_auto_config(
 def cartoboost_source_config(config: dict[str, Any], *, source: str) -> dict[str, Any]:
     native = dict(config)
     use_route_context = source in {"synthetic", "polars", "duckdb", "nyc-taxi"}
-    native["use_static_covariates"] = use_route_context
+    use_known_future_context = source == "m5"
+    use_rolling_stat_context = use_route_context or source == "m6"
+    use_elapsed_calendar_context = source == "m3"
+    native["use_static_covariates"] = use_route_context or use_known_future_context
+    native["use_known_future_covariates"] = use_known_future_context
+    native["use_elapsed_calendar_features"] = use_elapsed_calendar_context
     native["use_rich_calendar_features"] = use_route_context
-    native["use_native_rolling_stat_features"] = use_route_context
+    native["use_native_rolling_stat_features"] = use_rolling_stat_context
     native["use_native_partial_rolling_mean_features"] = source == "nyc-taxi"
     native["use_native_ewm_features"] = False
     native["use_covariate_calendar_interactions"] = use_route_context
     return native
+
+
+def cartoboost_elapsed_calendar_periods(
+    season_length: int,
+    config: dict[str, Any],
+) -> list[int]:
+    if not config.get("use_elapsed_calendar_features", False):
+        return []
+    if season_length < 2:
+        return []
+    return [int(season_length)]
 
 
 def calibrate_cartoboost_candidate(
@@ -3734,11 +4737,12 @@ def calibrate_cartoboost_candidate(
             prediction_col="cartoboost_calendar_dom",
             mode="day_of_month",
         )
-        calendar_phase14 = calendar_profile_forecast_frame(
+        calendar_elapsed_phase = calendar_profile_forecast_frame(
             inner_train,
             horizon,
-            prediction_col="cartoboost_calendar_phase14",
-            mode="phase14",
+            prediction_col="cartoboost_calendar_elapsed_phase",
+            mode="elapsed_phase",
+            elapsed_phase_period=CALENDAR_PROFILE_ELAPSED_PHASE_PERIOD,
         )
         drift = trend_forecast_frame(
             inner_train,
@@ -3803,7 +4807,7 @@ def calibrate_cartoboost_candidate(
         actual.join(raw, on=["series_id", "timestamp", "horizon"], how="inner")
         .join(base, on=["series_id", "timestamp", "horizon"], how="inner")
         .join(calendar_dom, on=["series_id", "timestamp", "horizon"], how="inner")
-        .join(calendar_phase14, on=["series_id", "timestamp", "horizon"], how="inner")
+        .join(calendar_elapsed_phase, on=["series_id", "timestamp", "horizon"], how="inner")
         .join(drift, on=["series_id", "timestamp", "horizon"], how="inner")
         .join(half_drift, on=["series_id", "timestamp", "horizon"], how="inner")
         .join(seasonal_drift, on=["series_id", "timestamp", "horizon"], how="inner")
@@ -3815,9 +4819,9 @@ def calibrate_cartoboost_candidate(
         "cartoboost_raw",
         "cartoboost_seasonal_base",
         "cartoboost_calendar_dom",
-        "cartoboost_calendar_phase14",
+        "cartoboost_calendar_elapsed_phase",
         "cartoboost_calendar_dom_blend",
-        "cartoboost_calendar_phase14_blend",
+        "cartoboost_calendar_elapsed_phase_blend",
         "cartoboost_drift",
         "cartoboost_half_drift",
         "cartoboost_seasonal_drift",
@@ -3829,8 +4833,9 @@ def calibrate_cartoboost_candidate(
             "cartoboost_calendar_dom_blend"
         ),
         (
-            0.5 * pl.col("cartoboost_seasonal_base") + 0.5 * pl.col("cartoboost_calendar_phase14")
-        ).alias("cartoboost_calendar_phase14_blend"),
+            0.5 * pl.col("cartoboost_seasonal_base")
+            + 0.5 * pl.col("cartoboost_calendar_elapsed_phase")
+        ).alias("cartoboost_calendar_elapsed_phase_blend"),
     ).select(*select_columns)
     if scored.is_empty():
         return (
@@ -3877,11 +4882,11 @@ def calibrate_cartoboost_candidate(
         "cartoboost_seasonal_base": base_rmse,
         "cartoboost_residual_blend": best_rmse,
         "cartoboost_calendar_dom": rmse_expr(scored, "cartoboost_calendar_dom"),
-        "cartoboost_calendar_phase14": rmse_expr(scored, "cartoboost_calendar_phase14"),
+        "cartoboost_calendar_elapsed_phase": rmse_expr(scored, "cartoboost_calendar_elapsed_phase"),
         "cartoboost_calendar_dom_blend": rmse_expr(scored, "cartoboost_calendar_dom_blend"),
-        "cartoboost_calendar_phase14_blend": rmse_expr(
+        "cartoboost_calendar_elapsed_phase_blend": rmse_expr(
             scored,
-            "cartoboost_calendar_phase14_blend",
+            "cartoboost_calendar_elapsed_phase_blend",
         ),
         "cartoboost_drift": rmse_expr(scored, "cartoboost_drift"),
         "cartoboost_half_drift": rmse_expr(scored, "cartoboost_half_drift"),
@@ -3920,7 +4925,9 @@ def calibrate_cartoboost_candidate(
             "inner_selected_relative_rmse_gain": selected_gain,
             "inner_validation_ensemble_rmse": candidate_scores[AUTO_ENSEMBLE_CANDIDATE],
             "inner_calendar_dom_rmse": candidate_scores["cartoboost_calendar_dom"],
-            "inner_calendar_phase14_rmse": candidate_scores["cartoboost_calendar_phase14"],
+            "inner_calendar_elapsed_phase_rmse": candidate_scores[
+                "cartoboost_calendar_elapsed_phase"
+            ],
             "inner_drift_rmse": candidate_scores["cartoboost_drift"],
             "inner_half_drift_rmse": candidate_scores["cartoboost_half_drift"],
             "inner_seasonal_drift_rmse": candidate_scores["cartoboost_seasonal_drift"],
@@ -3935,19 +4942,12 @@ def calibrate_cartoboost_candidate(
 
 
 def validation_ensemble_weights(candidate_scores: dict[str, float]) -> dict[str, float]:
-    finite_scores = [
-        (name, score)
-        for name, score in candidate_scores.items()
-        if math.isfinite(score) and score > 0.0
-    ]
-    if not finite_scores:
-        return {"cartoboost_raw": 1.0}
-    ranked = sorted(finite_scores, key=lambda item: (item[1], item[0]))[:4]
-    inv = [(name, 1.0 / max(score * score, 1.0e-12)) for name, score in ranked]
-    total = sum(weight for _name, weight in inv)
-    if total <= 0.0 or not math.isfinite(total):
-        return {ranked[0][0]: 1.0}
-    return {name: weight / total for name, weight in inv}
+    return {
+        str(name): float(weight)
+        for name, weight in _native.forecast_validation_ensemble_weights_value(
+            {str(name): float(score) for name, score in candidate_scores.items()}
+        ).items()
+    }
 
 
 def weighted_candidate_expr(weights: dict[str, float]) -> Any:
@@ -3973,6 +4973,7 @@ def cartoboost_raw_forecast(
     season_length: int,
     config: dict[str, Any],
     prediction_col: str,
+    known_future: Any | None = None,
 ) -> tuple[Any, dict[str, float]]:
     pl = require_polars()
     pd = require_pandas_for_benchmark()
@@ -3983,12 +4984,47 @@ def cartoboost_raw_forecast(
         config,
         train=train,
     )
-    selected_columns = ["lane_id", "date", "loads"]
-    if config.get("use_static_covariates", False):
-        selected_columns.extend(STATIC_COVARIATES)
+    covariate_features = cartoboost_native_covariate_features(train, config)
+    selected_columns = ["lane_id", "date", "loads", *covariate_features]
     training_frame = train.select(*selected_columns).to_pandas()
     if not isinstance(training_frame, pd.DataFrame):
         raise TypeError("CartoBoost native benchmark training conversion did not return pandas")
+    known_future_frame = None
+    if known_future is not None and covariate_features:
+        known_future_columns = [
+            column for column in covariate_features if column in known_future.columns
+        ]
+        if known_future_columns:
+            future = known_future.select(
+                "lane_id",
+                "date",
+                *known_future_columns,
+            ).unique(subset=["lane_id", "date"])
+            metadata_columns = [
+                column
+                for column in covariate_features
+                if column not in known_future_columns and column in train.columns
+            ]
+            if metadata_columns:
+                metadata = train.select("lane_id", *metadata_columns).unique(subset=["lane_id"])
+                future = future.join(metadata, on="lane_id", how="left")
+            missing_future_columns = [
+                column for column in covariate_features if column not in future.columns
+            ]
+            if missing_future_columns:
+                raise ValueError(
+                    "known_future is missing required CartoBoost covariates: "
+                    f"{missing_future_columns}"
+                )
+            known_future_frame = future.select(
+                "lane_id",
+                "date",
+                *covariate_features,
+            ).to_pandas()
+            if not isinstance(known_future_frame, pd.DataFrame):
+                raise TypeError(
+                    "CartoBoost native benchmark known-future conversion did not return pandas"
+                )
     feature_seconds = perf_counter() - feature_start
     model = CartoBoostLagForecaster(
         time_col="date",
@@ -4002,7 +5038,11 @@ def cartoboost_raw_forecast(
     fit_seconds = perf_counter() - fit_start
 
     predict_start = perf_counter()
-    result = model.predict(horizon)
+    result = (
+        model.predict(horizon, known_future=known_future_frame)
+        if known_future_frame is not None
+        else model.predict(horizon)
+    )
     predictions = pl.DataFrame(
         result.predictions(),
         schema=["series_id", "timestamp", "horizon", "model", prediction_col],
@@ -4090,6 +5130,7 @@ def external_tree_lag_forecasts(
     *,
     season_length: int,
     config: dict[str, Any],
+    known_future: Any | None = None,
 ) -> tuple[Any, dict[str, dict[str, float]]]:
     try:
         import lightgbm as lgb
@@ -4131,6 +5172,7 @@ def external_tree_lag_forecasts(
             season_length=season_length,
             model=model,
             prediction_col=name,
+            known_future=known_future,
         )
         forecasts.append(forecast)
         timings[name] = timing
@@ -4144,6 +5186,7 @@ def external_tree_lag_forecast(
     season_length: int,
     model: Any,
     prediction_col: str,
+    known_future: Any | None = None,
 ) -> tuple[Any, dict[str, float]]:
     pl = require_polars()
     feature_start = perf_counter()
@@ -4170,7 +5213,7 @@ def external_tree_lag_forecast(
     history_schema = history.schema
     forecast_frames = []
     for step in range(1, horizon + 1):
-        future = next_future_rows(history)
+        future = next_future_rows(history, known_future=known_future)
         future_features = build_future_features(
             history,
             future,
@@ -4194,11 +5237,10 @@ def external_tree_lag_forecast(
         ).with_columns(pl.Series(prediction_col, predictions))
         forecast_frames.append(step_forecast)
         predicted_future = future_features.with_columns(pl.Series(prediction_col, predictions))
-        append_frame = predicted_future.select(
-            pl.col("lane_id").cast(history_schema["lane_id"]),
-            pl.col("date").cast(history_schema["date"]),
-            pl.col(prediction_col).alias("loads").cast(history_schema["loads"]),
-            *[pl.col(column).cast(history_schema[column]) for column in STATIC_COVARIATES],
+        append_frame = recursive_history_append_frame(
+            predicted_future,
+            history_schema,
+            prediction_col=prediction_col,
         )
         history = pl.concat([history, append_frame], how="vertical")
     predict_seconds = perf_counter() - predict_start
@@ -4211,6 +5253,28 @@ def external_tree_lag_forecast(
         "feature_count": float(len(feature_columns)),
         "target_mode_delta": float(target_mode == "delta_from_last"),
     }
+
+
+def recursive_history_append_frame(
+    predicted_future: Any,
+    history_schema: dict[str, Any],
+    *,
+    prediction_col: str,
+) -> Any:
+    pl = require_polars()
+    expressions = [
+        pl.col("lane_id").cast(history_schema["lane_id"]),
+        pl.col("date").cast(history_schema["date"]),
+        pl.col(prediction_col).alias("loads").cast(history_schema["loads"]),
+    ]
+    for column, dtype in history_schema.items():
+        if column in {"lane_id", "date", "loads"}:
+            continue
+        if column in predicted_future.columns:
+            expressions.append(pl.col(column).cast(dtype))
+        else:
+            expressions.append(pl.lit(None).cast(dtype).alias(column))
+    return predicted_future.select(*expressions)
 
 
 def cartoboost_native_forecaster_params(
@@ -4241,7 +5305,7 @@ def cartoboost_native_forecaster_params(
     )
     if not lags:
         lags = [1]
-    covariate_features = STATIC_COVARIATES if config.get("use_static_covariates", False) else []
+    covariate_features = cartoboost_native_covariate_features(train, config)
     return {
         "lags": lags,
         "rolling_windows": rolling_windows,
@@ -4254,6 +5318,8 @@ def cartoboost_native_forecaster_params(
         "rolling_trend_windows": rolling_trend_windows,
         "calendar_features": True,
         "rich_calendar_features": config.get("use_rich_calendar_features", False),
+        "elapsed_calendar_features": config.get("use_elapsed_calendar_features", False),
+        "elapsed_calendar_periods": cartoboost_elapsed_calendar_periods(season_length, config),
         "covariate_features": covariate_features,
         "covariate_indicator_values": low_cardinality_covariate_indicators(
             train,
@@ -4471,7 +5537,7 @@ def seasonal_naive_forecast_frame(
         for row in next_future_rows(history).iter_rows(named=True):
             _dates, values = histories[row["lane_id"]]
             prediction = float(
-                values[-season_length] if len(values) >= season_length else values[-1]
+                _native.forecast_seasonal_naive_candidate_value(values, int(season_length))
             )
             rows.append({**row, prediction_col: prediction, "horizon": step})
         future = pl.DataFrame(rows)
@@ -4483,11 +5549,10 @@ def seasonal_naive_forecast_frame(
                 prediction_col,
             )
         )
-        append_frame = future.select(
-            pl.col("lane_id").cast(history_schema["lane_id"]),
-            pl.col("date").cast(history_schema["date"]),
-            pl.col(prediction_col).alias("loads").cast(history_schema["loads"]),
-            *[pl.col(column).cast(history_schema[column]) for column in STATIC_COVARIATES],
+        append_frame = recursive_history_append_frame(
+            future,
+            history_schema,
+            prediction_col=prediction_col,
         )
         history = pl.concat([history, append_frame], how="vertical")
     return pl.concat(forecast_frames, how="vertical")
@@ -4499,6 +5564,7 @@ def calendar_profile_forecast_frame(
     *,
     prediction_col: str,
     mode: str,
+    elapsed_phase_period: int | None = None,
 ) -> Any:
     pl = require_polars()
     history = train.clone()
@@ -4514,6 +5580,7 @@ def calendar_profile_forecast_frame(
                 values,
                 row["date"],
                 mode=mode,
+                elapsed_phase_period=elapsed_phase_period,
             )
             rows.append({**row, prediction_col: prediction, "horizon": step})
         future = pl.DataFrame(rows)
@@ -4525,11 +5592,10 @@ def calendar_profile_forecast_frame(
                 prediction_col,
             )
         )
-        append_frame = future.select(
-            pl.col("lane_id").cast(history_schema["lane_id"]),
-            pl.col("date").cast(history_schema["date"]),
-            pl.col(prediction_col).alias("loads").cast(history_schema["loads"]),
-            *[pl.col(column).cast(history_schema[column]) for column in STATIC_COVARIATES],
+        append_frame = recursive_history_append_frame(
+            future,
+            history_schema,
+            prediction_col=prediction_col,
         )
         history = pl.concat([history, append_frame], how="vertical")
     return pl.concat(forecast_frames, how="vertical")
@@ -4568,11 +5634,10 @@ def trend_forecast_frame(
                 prediction_col,
             )
         )
-        append_frame = future.select(
-            pl.col("lane_id").cast(history_schema["lane_id"]),
-            pl.col("date").cast(history_schema["date"]),
-            pl.col(prediction_col).alias("loads").cast(history_schema["loads"]),
-            *[pl.col(column).cast(history_schema[column]) for column in STATIC_COVARIATES],
+        append_frame = recursive_history_append_frame(
+            future,
+            history_schema,
+            prediction_col=prediction_col,
         )
         history = pl.concat([history, append_frame], how="vertical")
     return pl.concat(forecast_frames, how="vertical")
@@ -4585,30 +5650,14 @@ def trend_prediction(
     season_length: int,
     mode: str,
 ) -> float:
-    if not values:
-        raise ValueError("trend forecast requires non-empty lane history")
-    if len(values) == 1:
-        return values[-1]
-    slope = (values[-1] - values[0]) / (len(values) - 1)
-    if mode == "drift":
-        return values[-1] + step * slope
-    if mode == "half_drift":
-        return values[-1] + 0.5 * step * slope
-    if mode == "seasonal_drift":
-        baseline = (
-            values[-season_length]
-            if season_length > 1 and len(values) >= season_length
-            else values[-1]
+    return float(
+        _native.forecast_trend_candidate_value(
+            values,
+            int(step),
+            int(season_length),
+            mode,
         )
-        return baseline + step * slope
-    if mode.startswith("seasonal_cycle_drift_"):
-        if season_length <= 1 or len(values) < 2 * season_length:
-            return values[-1]
-        alpha = float(mode.rsplit("_", maxsplit=1)[-1]) / 100.0
-        baseline = values[-season_length]
-        seasonal_slope = (values[-season_length] - values[-2 * season_length]) / season_length
-        return baseline + alpha * step * seasonal_slope
-    raise ValueError(f"unsupported trend forecast mode {mode!r}")
+    )
 
 
 def calendar_profile_prediction(
@@ -4617,20 +5666,17 @@ def calendar_profile_prediction(
     timestamp: datetime,
     *,
     mode: str,
+    elapsed_phase_period: int | None = None,
 ) -> float:
-    if not values:
-        raise ValueError("calendar profile requires non-empty lane history")
-    fallback = float(values[-7] if len(values) >= 7 else values[-1])
-    if mode == "day_of_month":
-        matches = [
-            value for date, value in zip(dates, values, strict=True) if date.day == timestamp.day
-        ]
-        return float(np.mean(matches)) if matches else fallback
-    if mode == "phase14":
-        future_phase = len(values) % 14
-        matches = [value for index, value in enumerate(values) if index % 14 == future_phase]
-        return float(np.mean(matches)) if matches else fallback
-    raise ValueError(f"unsupported calendar profile mode {mode!r}")
+    return float(
+        _native.forecast_calendar_profile_candidate_value(
+            values,
+            [int(date.day) for date in dates],
+            int(timestamp.day),
+            mode,
+            elapsed_phase_period,
+        )
+    )
 
 
 def unique_positive_ints(values: list[int]) -> list[int]:
@@ -4687,10 +5733,37 @@ def select_cartoboost_feature_columns(feature_frame: Any, *, season_length: int)
     for drop_count in range(len(ranked_drop_candidates) + 1):
         dropped = {name for name, _cost in ranked_drop_candidates[:drop_count]}
         target_columns = [name for name, _cost in target_specs if name not in dropped]
-        columns = [*target_columns, *EXOGENOUS_FEATURE_COLUMNS]
+        columns = [*target_columns, *benchmark_exogenous_feature_columns(feature_frame)]
         if feature_frame.drop_nulls(columns).height > 0:
             return columns
     raise ValueError("CartoBoost lag benchmark has no complete lag feature rows")
+
+
+def benchmark_exogenous_feature_columns(frame: Any) -> list[str]:
+    return [*EXOGENOUS_FEATURE_COLUMNS, *known_future_covariate_columns(frame)]
+
+
+def known_future_covariate_columns(frame: Any | None) -> list[str]:
+    if frame is None:
+        return []
+    return [column for column in M5_KNOWN_FUTURE_COVARIATES if column in frame.columns]
+
+
+def cartoboost_native_covariate_features(frame: Any, config: dict[str, Any]) -> list[str]:
+    features = []
+    if config.get("use_static_covariates", False):
+        features.extend(column for column in STATIC_COVARIATES if column in frame.columns)
+        features.extend(available_m5_hierarchy_covariates(frame))
+    if config.get("use_known_future_covariates", False):
+        features.extend(known_future_covariate_columns(frame))
+    return list(dict.fromkeys(features))
+
+
+def known_future_covariate_frame(frame: Any) -> Any | None:
+    columns = known_future_covariate_columns(frame)
+    if not columns:
+        return None
+    return frame.select("lane_id", "date", *columns).unique(subset=["lane_id", "date"])
 
 
 def build_history_features(frame: Any, *, season_length: int) -> Any:
@@ -4730,15 +5803,23 @@ def build_history_features(frame: Any, *, season_length: int) -> Any:
     )
 
 
-def next_future_rows(history: Any) -> Any:
+def next_future_rows(history: Any, *, known_future: Any | None = None) -> Any:
     pl = require_polars()
-    return (
+    future = (
         history.sort(["lane_id", "date"])
         .group_by("lane_id", maintain_order=True)
         .tail(1)
         .with_columns((pl.col("date") + pl.duration(days=1)).alias("date"))
         .select("lane_id", "date", *STATIC_COVARIATES)
     )
+    known_columns = known_future_covariate_columns(known_future)
+    if not known_columns:
+        return future
+    return future.join(
+        known_future.select("lane_id", "date", *known_columns).unique(subset=["lane_id", "date"]),
+        on=["lane_id", "date"],
+        how="left",
+    ).with_columns([pl.col(column).fill_null(0.0) for column in known_columns])
 
 
 def build_future_features(history: Any, future: Any, *, season_length: int) -> Any:

@@ -1,15 +1,17 @@
-"""M6 metric helpers for probabilistic forecasts and portfolio scoring."""
+"""rank portfolio metric helpers for probabilistic forecasts and portfolio scoring."""
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
+from cartoboost import _native
 
 
 @dataclass(frozen=True)
-class M6MetricSummary:
+class RankPortfolioMetricSummary:
     pinball_loss: float
     rank_probability_score: float
     combined_score: float
@@ -35,7 +37,7 @@ def rank_probability_score(probabilities: Any, observed_rank: int) -> float:
     return float(np.mean((predicted_cdf - observed_cdf) ** 2))
 
 
-def m6_combined_score(pinball: float, rps: float) -> float:
+def rank_portfolio_combined_score(pinball: float, rps: float) -> float:
     pinball = float(pinball)
     rps = float(rps)
     if not np.isfinite(pinball) or pinball < 0.0:
@@ -45,20 +47,93 @@ def m6_combined_score(pinball: float, rps: float) -> float:
     return 0.5 * pinball + 0.5 * rps
 
 
-def evaluate_m6_metrics(
+def evaluate_rank_portfolio_metrics(
     actual_returns: Any,
     quantile_predictions: Any,
     quantile: float,
     rank_probabilities: Any,
     observed_rank: int,
-) -> M6MetricSummary:
+) -> RankPortfolioMetricSummary:
     pinball = pinball_loss(actual_returns, quantile_predictions, quantile)
     rps = rank_probability_score(rank_probabilities, observed_rank)
-    return M6MetricSummary(
+    return RankPortfolioMetricSummary(
         pinball_loss=pinball,
         rank_probability_score=rps,
-        combined_score=m6_combined_score(pinball, rps),
+        combined_score=rank_portfolio_combined_score(pinball, rps),
     )
+
+
+def portfolio_summary(decisions: list[dict[str, Any]]) -> dict[str, float | int]:
+    rows = [
+        (
+            str(row["side"]),
+            float(row["weight"]),
+            float(row["actual_return"]),
+            float(row["predicted_return"]),
+        )
+        for row in decisions
+    ]
+    summary = _native.portfolio_summary_value(rows)
+    return {
+        "long_count": int(summary["long_count"]),
+        "short_count": int(summary["short_count"]),
+        "gross_exposure": float(summary["gross_exposure"]),
+        "net_exposure": float(summary["net_exposure"]),
+        "long_return": float(summary["long_return"]),
+        "short_return": float(summary["short_return"]),
+        "net_return": float(summary["net_return"]),
+    }
+
+
+def rank_hit_rates(
+    asset_rows: list[dict[str, Any]],
+    *,
+    bucket_count: int = 5,
+) -> dict[str, float | int]:
+    rows = [
+        (int(row["observed_rank_bucket"]), int(row["predicted_rank_bucket"])) for row in asset_rows
+    ]
+    summary = _native.rank_hit_rates_value(rows, int(bucket_count))
+    return {
+        "asset_count": int(summary["asset_count"]),
+        "exact_bucket_rate": float(summary["exact_bucket_rate"]),
+        "within_one_bucket_rate": float(summary["within_one_bucket_rate"]),
+        "directional_extreme_count": int(summary["directional_extreme_count"]),
+        "directional_extreme_rate": float(summary["directional_extreme_rate"]),
+    }
+
+
+def rank_probability_calibration(
+    actual_buckets: list[int],
+    predicted_buckets: list[int],
+    *,
+    bucket_count: int,
+    validation_support: int,
+) -> dict[str, Any]:
+    payload = _native.rank_probability_calibration_value(
+        [int(bucket) for bucket in actual_buckets],
+        [int(bucket) for bucket in predicted_buckets],
+        int(bucket_count),
+        max(int(validation_support), 0),
+    )
+    return json.loads(payload)
+
+
+def calibrated_rank_bucket_probabilities(
+    predicted_bucket: int,
+    *,
+    bucket_count: int,
+    calibration: dict[str, Any],
+) -> list[float]:
+    return [
+        float(value)
+        for value in _native.calibrated_rank_bucket_probabilities_value(
+            int(predicted_bucket),
+            int(bucket_count),
+            calibration["probabilities"],
+            float(calibration["shrinkage"]),
+        )
+    ]
 
 
 def _paired(

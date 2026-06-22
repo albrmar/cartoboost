@@ -2,8 +2,9 @@
   "search_spaces": [
     {"model_family": "cartoboost", "budget": "standard", "parameters": ["n_estimators", "learning_rate", "max_depth", "splitters"]},
     {"model_family": "cartoboost_graph", "budget": "standard", "parameters": ["graph_encoder", "embedding_dim", "walk_length", "n_estimators", "learning_rate", "max_depth"]},
-    {"model_family": "gnn_baseline", "budget": "standard", "parameters": ["architecture", "layers", "hidden_dim", "dropout", "learning_rate", "weight_decay"]},
-    {"model_family": "tabularized_graph_baseline", "budget": "standard", "parameters": ["graph_features", "gbdt_parameters"]}
+    {"model_family": "node2vec_baseline", "budget": "standard", "parameters": ["embedding_dim", "walk_length", "context_size", "epochs", "downstream_regressor"]},
+    {"model_family": "graphsage_baseline", "budget": "standard", "parameters": ["layers", "hidden_dim", "dropout", "learning_rate", "weight_decay"]},
+    {"model_family": "tabularized_graph_baseline", "budget": "standard", "parameters": ["graph_features", "gbdt_parameters"]},
+    {"model_family": "mean", "budget": "fixed", "parameters": []}
   ]
 }
-

@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import json
+from collections.abc import Iterable
 from pathlib import Path
 from typing import Literal
 
 import numpy as np
+
+from . import _native
 
 __path__ = [str(Path(__file__).with_suffix(""))]
 
@@ -15,6 +19,8 @@ __all__ = [
     "interval_coverage",
     "jitter_volatility",
     "mean_interval_width",
+    "m_competition_metrics",
+    "m5_equal_level_wrmsse",
     "pinball_loss",
     "residual_morans_i",
     "rmsse_scale",
@@ -133,13 +139,7 @@ def rmsse_scale(y_train: object, *, seasonal_period: int = 1) -> float:
     if seasonal_period <= 0:
         raise ValueError("seasonal_period must be positive")
     train = _as_float_vector(y_train, "y_train")
-    if train.size <= seasonal_period:
-        raise ValueError("y_train must be longer than seasonal_period")
-    diffs = train[seasonal_period:] - train[:-seasonal_period]
-    scale = float(np.mean(diffs * diffs))
-    if scale <= 0.0:
-        raise ValueError("RMSSE scale is zero")
-    return scale
+    return float(_native.rmsse_scale_value(train.tolist(), int(seasonal_period)))
 
 
 def wrmsse(
@@ -173,13 +173,6 @@ def wrmsse(
     weight_arr = _as_float_vector(weights, "weights")
     if weight_arr.shape[0] != truth.shape[0]:
         raise ValueError("weights length must match the number of series")
-    if np.any(weight_arr < 0.0):
-        raise ValueError("weights must be non-negative")
-    total_weight = float(np.sum(weight_arr))
-    if total_weight <= 0.0:
-        raise ValueError("weights must sum to a positive value")
-    normalized_weights = weight_arr / total_weight
-
     if series_ids is None:
         ids = [str(idx) for idx in range(truth.shape[0])]
     else:
@@ -190,30 +183,76 @@ def wrmsse(
         if any(not value for value in ids):
             raise ValueError("series_ids must be non-empty")
 
-    scales = np.array(
-        [rmsse_scale(row, seasonal_period=seasonal_period) for row in train],
-        dtype=float,
-    )
-    mse = np.mean((truth - pred) ** 2, axis=1)
-    rmsse = np.sqrt(mse / scales)
-    contributions = normalized_weights * rmsse
-    score = float(np.sum(contributions))
+    series = [
+        (
+            ids[idx],
+            train[idx].tolist(),
+            truth[idx].tolist(),
+            pred[idx].tolist(),
+            float(weight_arr[idx]),
+        )
+        for idx in range(truth.shape[0])
+    ]
+    result = json.loads(_native.wrmsse_value(series, int(seasonal_period)))
+    score = float(result["wrmsse"])
 
     if not return_breakdown:
         return score
 
-    rows = [
-        {
-            "series_id": ids[idx],
-            "weight": float(weight_arr[idx]),
-            "normalized_weight": float(normalized_weights[idx]),
-            "scale": float(scales[idx]),
-            "rmsse": float(rmsse[idx]),
-            "contribution": float(contributions[idx]),
-        }
-        for idx in range(truth.shape[0])
+    return result
+
+
+def m5_equal_level_wrmsse(
+    level_scores: Iterable[dict[str, object] | tuple[object, object]],
+    *,
+    return_breakdown: bool = False,
+) -> float | dict[str, object]:
+    """Aggregate the 12 M5 hierarchy-level WRMSSE values with equal level weight."""
+
+    rows: list[tuple[str, float]] = []
+    for row in level_scores:
+        if isinstance(row, dict):
+            level = str(row["level"])
+            score = float(row["wrmsse"])
+        else:
+            level, score = row
+            level = str(level)
+            score = float(score)
+        rows.append((level, score))
+    result = json.loads(_native.m5_equal_level_wrmsse_value(rows))
+    score = float(result["wrmsse"])
+    if not return_breakdown:
+        return score
+    return result
+
+
+def m_competition_metrics(
+    training_series: object,
+    y_true: object,
+    y_pred: object,
+    *,
+    seasonality: int,
+    baseline_smape: float | None = None,
+    baseline_mase: float | None = None,
+) -> dict[str, float | None]:
+    """Return M/M1-M3-M4 style sMAPE, MASE, and optional OWA metrics."""
+
+    if seasonality <= 0:
+        raise ValueError("seasonality must be positive")
+    train_rows = [
+        _as_float_vector(row, "training_series row").tolist()
+        for row in np.asarray(training_series, dtype=object)
     ]
-    return {"wrmsse": score, "series": rows}
+    truth, pred = _paired_vectors(y_true, y_pred, "y_true", "y_pred")
+    payload = _native.m_competition_metrics_value(
+        train_rows,
+        truth.tolist(),
+        pred.tolist(),
+        int(seasonality),
+        baseline_smape,
+        baseline_mase,
+    )
+    return json.loads(payload)
 
 
 def jitter_volatility(

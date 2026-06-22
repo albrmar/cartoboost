@@ -5,10 +5,14 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import importlib
 import json
 import math
+import os
+import platform
 import struct
+import subprocess
 import sys
 import time
 import urllib.request
@@ -2230,7 +2234,15 @@ def run_benchmarks(tasks: list[BenchmarkTask], args: argparse.Namespace) -> dict
     results: dict[str, Any] = {
         "artifact_version": 1,
         "dataset": dataset_metadata(args, tasks),
+        "git_commit": read_git_commit(),
+        "dataset_hash": benchmark_dataset_hash(args, tasks),
+        "source_file_hashes": source_file_hashes(args),
+        "benchmark_integrity": benchmark_integrity(args),
+        "resource_usage": resource_usage_snapshot(),
         "models_requested": models,
+        "model_roster": models,
+        "split_definitions": split_definitions(),
+        "feature_access_policy": feature_access_policy(args),
         "model_config": {
             "baseline_n_estimators": int(args.n_estimators),
             "cartoboost_n_estimators": int(args.cartoboost_n_estimators),
@@ -2348,6 +2360,7 @@ def dataset_metadata(args: argparse.Namespace, tasks: list[BenchmarkTask]) -> di
         return {
             "source": "synthetic_smoke",
             "source_url": None,
+            "dataset_hash": benchmark_dataset_hash(args, tasks),
             "task_rows": {task.name: len(task.target) for task in tasks},
         }
     return {
@@ -2357,8 +2370,135 @@ def dataset_metadata(args: argparse.Namespace, tasks: list[BenchmarkTask]) -> di
         "year": args.year,
         "months": parse_months(args.months),
         "sample_size": args.sample_size,
+        "dataset_hash": benchmark_dataset_hash(args, tasks),
         "task_rows": {task.name: len(task.target) for task in tasks},
     }
+
+
+def benchmark_dataset_hash(args: argparse.Namespace, tasks: list[BenchmarkTask]) -> str:
+    hasher = hashlib.sha256()
+    descriptor = {
+        "source": "synthetic_smoke" if args.synthetic_smoke else "nyc_tlc_trip_records",
+        "taxi_type": getattr(args, "taxi_type", None),
+        "year": getattr(args, "year", None),
+        "months": parse_months(args.months) if not args.synthetic_smoke else None,
+        "sample_size": getattr(args, "sample_size", None),
+        "seed": int(args.seed),
+        "tasks": [task.name for task in tasks],
+    }
+    hasher.update(json.dumps(descriptor, sort_keys=True).encode("utf-8"))
+    for task in sorted(tasks, key=lambda item: item.name):
+        hasher.update(task.name.encode("utf-8"))
+        for array in [task.features, task.target, task.pickup_zones]:
+            materialized = np.ascontiguousarray(array)
+            hasher.update(str(materialized.dtype).encode("utf-8"))
+            hasher.update(json.dumps(materialized.shape).encode("utf-8"))
+            hasher.update(materialized.tobytes())
+        hasher.update(json.dumps(task.feature_names, sort_keys=True).encode("utf-8"))
+    return hasher.hexdigest()
+
+
+def source_file_hashes(args: argparse.Namespace) -> dict[str, str]:
+    paths = getattr(args, "_source_paths", [])
+    hashes = {}
+    for path in sorted((Path(item) for item in paths), key=lambda item: str(item)):
+        if path.exists() and path.is_file():
+            hashes[str(path)] = file_sha256(path)
+    return hashes
+
+
+def file_sha256(path: Path) -> str:
+    hasher = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            hasher.update(chunk)
+    return hasher.hexdigest()
+
+
+def read_git_commit() -> str | None:
+    try:
+        completed = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=ROOT,
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    commit = completed.stdout.strip()
+    return commit or None
+
+
+def benchmark_integrity(args: argparse.Namespace) -> dict[str, Any]:
+    return {
+        "seed": int(args.seed),
+        "synthetic_smoke": bool(args.synthetic_smoke),
+        "no_download": bool(args.no_download),
+        "model_roster": [part.strip() for part in args.models.split(",") if part.strip()],
+        "split_modes": ["random", "spatial_holdout"],
+        "hpo": "fixed_settings_no_hpo",
+        "target_transforms": {
+            "duration": "log_trip_duration_seconds",
+            "fare": "log_total_amount",
+            "pickup_demand": "log_pickup_trip_count",
+        },
+        "feature_access_policy": feature_access_policy(args),
+    }
+
+
+def feature_access_policy(args: argparse.Namespace) -> dict[str, Any]:
+    return {
+        "zone_treatment": args.zone_treatment,
+        "zone_target_encoding": (
+            "train_only_smoothed_target_mean" if args.zone_treatment == "target_mean" else "none"
+        ),
+        "zone_target_smoothing": float(args.zone_target_smoothing),
+        "cartoboost_splitters": parse_splitters(args.cartoboost_splitters),
+        "graph_features": "train_split_graph_augmented_features_for_graph_rows",
+        "neural_features": "train_split_residual_embedding_features_for_neural_rows",
+        "baseline_feature_access": "same_dense_rows_plus_train_only_zone_features_when_enabled",
+    }
+
+
+def split_definitions() -> dict[str, dict[str, str]]:
+    return {
+        "random": {
+            "kind": "seeded_row_shuffle",
+            "train_fraction": "0.8",
+            "purpose": "interpolation across rows drawn from the same task distribution",
+        },
+        "spatial_holdout": {
+            "kind": "pickup_zone_holdout",
+            "train_fraction": "zone_blocked_approximately_0.8_by_row",
+            "purpose": "generalization to held-out pickup zones where eligible",
+        },
+    }
+
+
+def resource_usage_snapshot() -> dict[str, Any]:
+    return {
+        "cpu": platform.processor() or platform.machine(),
+        "threads": os.cpu_count(),
+        "os": platform.platform(),
+        "python": sys.version.split()[0],
+        "numpy": np.__version__,
+        "rustc": rustc_version(),
+    }
+
+
+def rustc_version() -> str | None:
+    try:
+        completed = subprocess.run(
+            ["rustc", "--version"],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+    except (OSError, subprocess.CalledProcessError):
+        return None
+    version = completed.stdout.strip()
+    return version or None
 
 
 def write_prediction_plots(
@@ -2779,15 +2919,55 @@ def modeled_comparison_rows() -> list[dict[str, str]]:
 def write_outputs(results: dict[str, Any], output_dir: Path) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "results.json").write_text(json.dumps(results, indent=2) + "\n", encoding="utf-8")
+    write_jsonl_results(results, output_dir / "results.jsonl")
     write_markdown(results, output_dir)
     write_metric_plot(results, output_dir)
     write_speed_plots(results, output_dir)
+
+
+def write_jsonl_results(results: dict[str, Any], output: Path) -> None:
+    rows = []
+    for task_name, task in results["tasks"].items():
+        for split_name, split in task["splits"].items():
+            for model_name, model in split["models"].items():
+                if model.get("status") != "ok":
+                    continue
+                for metric, value in model["metrics"].items():
+                    rows.append(
+                        {
+                            "track": "spatial",
+                            "task_id": task_name,
+                            "split_id": split_name,
+                            "model_family": model_name,
+                            "metric": metric,
+                            "value": float(value),
+                        }
+                    )
+                timing = model.get("timing", {})
+                for metric in [
+                    "train_seconds",
+                    "predict_seconds",
+                    "predict_rows_per_second",
+                ]:
+                    if metric in timing:
+                        rows.append(
+                            {
+                                "track": "spatial",
+                                "task_id": task_name,
+                                "split_id": split_name,
+                                "model_family": model_name,
+                                "metric": metric,
+                                "value": float(timing[metric]),
+                            }
+                        )
+    output.write_text("\n".join(json.dumps(row, sort_keys=True) for row in rows) + "\n")
 
 
 def main() -> None:
     args = parse_args()
     if args.synthetic_smoke:
         tasks = synthetic_tasks()
+        args._source_paths = []
     else:
         months = parse_months(args.months)
         paths = ensure_parquet_files(
@@ -2802,6 +2982,10 @@ def main() -> None:
             cache_dir=args.cache_dir,
             no_download=args.no_download,
         )
+        args._source_paths = [*paths, args.cache_dir / "taxi_zone_lookup.csv"]
+        zones_zip = args.cache_dir / "taxi_zones.zip"
+        if zones_zip.exists():
+            args._source_paths.append(zones_zip)
         zone_centroids = (
             ensure_zone_centroids(
                 cache_dir=args.cache_dir,

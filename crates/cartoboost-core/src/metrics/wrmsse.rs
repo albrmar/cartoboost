@@ -43,6 +43,20 @@ pub struct WrmsseScore {
     pub series: Vec<WrmsseSeriesScore>,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub struct M5LevelWrmsseScore {
+    pub level: String,
+    pub wrmsse: f64,
+    pub level_weight: f64,
+    pub contribution: f64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct M5AggregateWrmsseScore {
+    pub score: f64,
+    pub levels: Vec<M5LevelWrmsseScore>,
+}
+
 pub fn wrmsse(series: &[WrmsseSeries], seasonal_period: usize) -> Result<WrmsseScore> {
     if series.is_empty() {
         return Err(CartoBoostError::InvalidInput(
@@ -95,6 +109,74 @@ pub fn wrmsse(series: &[WrmsseSeries], seasonal_period: usize) -> Result<WrmsseS
         score: total,
         series: scores,
     })
+}
+
+pub fn m5_equal_level_wrmsse(level_scores: &[(String, f64)]) -> Result<M5AggregateWrmsseScore> {
+    if level_scores.is_empty() {
+        return Err(CartoBoostError::InvalidInput(
+            "M5 aggregate WRMSSE requires at least one hierarchy level".to_string(),
+        ));
+    }
+    let mut score = 0.0;
+    let level_weight = 1.0 / level_scores.len() as f64;
+    let mut levels = Vec::with_capacity(level_scores.len());
+    for (level, wrmsse) in level_scores {
+        if level.is_empty() {
+            return Err(CartoBoostError::InvalidInput(
+                "M5 hierarchy level names must be non-empty".to_string(),
+            ));
+        }
+        if !wrmsse.is_finite() || *wrmsse < 0.0 {
+            return Err(CartoBoostError::InvalidInput(
+                "M5 hierarchy level WRMSSE values must be finite and non-negative".to_string(),
+            ));
+        }
+        let contribution = level_weight * wrmsse;
+        score += contribution;
+        levels.push(M5LevelWrmsseScore {
+            level: level.clone(),
+            wrmsse: *wrmsse,
+            level_weight,
+            contribution,
+        });
+    }
+    Ok(M5AggregateWrmsseScore { score, levels })
+}
+
+pub fn ordered_nonnegative_weights(
+    ids: &[String],
+    raw_weights: &[(String, f64)],
+) -> Result<Vec<(String, f64)>> {
+    if ids.is_empty() {
+        return Err(CartoBoostError::InvalidInput(
+            "ordered weights require at least one id".to_string(),
+        ));
+    }
+    let mut weights = std::collections::BTreeMap::new();
+    for (id, weight) in raw_weights {
+        if id.trim().is_empty() {
+            return Err(CartoBoostError::InvalidInput(
+                "ordered weight ids must be non-empty".to_string(),
+            ));
+        }
+        if !weight.is_finite() {
+            return Err(CartoBoostError::InvalidInput(
+                "ordered weights must be finite".to_string(),
+            ));
+        }
+        weights.insert(id.clone(), *weight);
+    }
+    let positive_total = ids
+        .iter()
+        .map(|id| weights.get(id).copied().unwrap_or(0.0).max(0.0))
+        .sum::<f64>();
+    if positive_total <= 0.0 {
+        return Ok(ids.iter().map(|id| (id.clone(), 1.0)).collect());
+    }
+    Ok(ids
+        .iter()
+        .map(|id| (id.clone(), weights.get(id).copied().unwrap_or(0.0).max(0.0)))
+        .collect())
 }
 
 pub fn rmsse_scale(train: &[f64], seasonal_period: usize) -> Result<f64> {

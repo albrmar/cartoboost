@@ -1,11 +1,30 @@
 use cartoboost_core::data::{FeatureSchema, SparseSetColumn};
 use cartoboost_core::forecasting::{
+    calendar_profile_candidate_prediction as core_calendar_profile_candidate_prediction,
+    candidate_complexity_rank as core_candidate_complexity_rank, evaluate_m_competition_metrics,
+    forecast_magnitude_guard_allows,
+    include_autostats_candidate as core_include_autostats_candidate,
+    lag_origin_consistency_guard as core_lag_origin_consistency_guard,
+    native_auto_raw_candidate_is_confident as core_native_auto_raw_candidate_is_confident,
+    proportional_total_reconciliation as core_proportional_total_reconciliation,
+    relative_loss_displacement_allowed as core_relative_loss_displacement_allowed,
+    requires_lag_spine as core_requires_lag_spine,
+    seasonal_naive_candidate_prediction as core_seasonal_naive_candidate_prediction,
+    selectable_candidate_names as core_selectable_candidate_names,
+    shared_candidate_names as core_shared_candidate_names,
+    stable_magnitude_candidate_choice as core_stable_magnitude_candidate_choice,
+    trend_candidate_prediction as core_trend_candidate_prediction,
+    validation_ensemble_weights as core_validation_ensemble_weights,
+    validation_unavailable_candidate_choice as core_validation_unavailable_candidate_choice,
+    weighted_blend_candidate_forecast as core_weighted_blend_candidate_forecast,
     ArimaForecaster as CoreArimaForecaster, AutoARIMAForecaster as CoreAutoARIMAForecaster,
     AutoForecastConfig as CoreAutoForecastConfig, AutoForecastModel as CoreAutoForecastModel,
     AutoKalmanForecaster as CoreAutoKalmanForecaster,
     AutoLocalLevelKalmanForecaster as CoreAutoLocalLevelKalmanForecaster,
     AutoStatsBank as CoreAutoStatsBank, BacktestFoldResult as CoreBacktestFoldResult,
     BacktestResult as CoreBacktestResult, CalendarFeature,
+    CandidateSelectionPolicy as CoreCandidateSelectionPolicy,
+    CandidateValidationCutoffSchedule as CoreCandidateValidationCutoffSchedule,
     CartoBoostLagForecaster as CoreCartoBoostLagForecaster, ETSForecaster as CoreETSForecaster,
     ForecastActual, ForecastFold as CoreForecastFold, ForecastFrame as CoreForecastFrame,
     ForecastFrameMetadata, ForecastFrequency, ForecastMetricSet as CoreForecastMetricSet,
@@ -28,6 +47,15 @@ use cartoboost_core::geo::{
     validate_equal_row_count, validate_parent_levels, GeoGridKind,
 };
 use cartoboost_core::loss::{HuberLossConfig, LogL2LossConfig, LossConfig, QuantileLossConfig};
+use cartoboost_core::metrics::{
+    calibrated_rank_bucket_probabilities, extreme_portfolio_decisions,
+    m5_equal_level_wrmsse as core_m5_equal_level_wrmsse,
+    ordered_nonnegative_weights as core_ordered_nonnegative_weights, portfolio_summary,
+    rank_buckets, rank_hit_rates, rank_portfolio_decision_loss, rank_portfolio_summary,
+    rank_probability_calibration, rank_scored_assets, rmsse_scale as core_rmsse_scale,
+    wrmsse as core_wrmsse, PortfolioAsset, PortfolioDecision, PortfolioSide, RankBucketPrediction,
+    WrmsseSeries,
+};
 use cartoboost_core::tree::{FlatAxisPredictor, FuzzyKernel, LeafPredictorKind, SplitterKind};
 use cartoboost_core::utilities::{
     empirical_variogram, fit_local_level_kalman, fit_local_linear_kalman,
@@ -57,10 +85,12 @@ use pyo3::types::{PyAny, PyModule, PyType};
 use rayon::ThreadPoolBuilder;
 use serde_json::{json, Value};
 use std::cmp::Ordering;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
 type StringTypedEdges = Vec<(String, String, String)>;
+type PyWrmsseSeries = (String, Vec<f64>, Vec<f64>, Vec<f64>, f64);
+type PyPortfolioDecisionRow = (String, String, f64, f64, f64);
 type PyKrigingPrediction = (f64, f64, f64, Vec<f64>);
 type PyDetailedKrigingPrediction = (f64, f64, f64, f64, Vec<f64>, Vec<usize>);
 
@@ -2028,7 +2058,7 @@ struct NativeAutoForecastModel {
 #[pymethods]
 impl NativeAutoForecastModel {
     #[new]
-    #[pyo3(signature = (lags=None, rolling_windows=None, partial_rolling_mean_windows=None, rolling_std_windows=None, rolling_min_windows=None, rolling_max_windows=None, ewm_alpha_percents=None, difference_lags=None, rolling_trend_windows=None, covariate_features=None, covariate_indicator_values=None, covariate_calendar_interactions=false, calendar_features=true, rich_calendar_features=false, season_length=7, validation_window=None, validation_origin_count=2, objective="rmse_wape", baseline_displacement_gain=0.03, hard_winner_relative_gain=0.05, min_blend_weight=0.15, max_blend_weight=0.85, max_direct_horizon=28, recursive=true, n_estimators=None, learning_rate=None, max_depth=None, min_samples_leaf=None, min_gain=None, splitters=None, trend_features=true, target_mode="level"))]
+    #[pyo3(signature = (lags=None, rolling_windows=None, partial_rolling_mean_windows=None, rolling_std_windows=None, rolling_min_windows=None, rolling_max_windows=None, ewm_alpha_percents=None, difference_lags=None, rolling_trend_windows=None, covariate_features=None, covariate_indicator_values=None, covariate_calendar_interactions=false, calendar_features=true, rich_calendar_features=false, elapsed_calendar_features=false, elapsed_calendar_periods=None, season_length=7, validation_window=None, validation_origin_count=2, objective="rmse_wape", baseline_displacement_gain=0.03, hard_winner_relative_gain=0.05, min_blend_weight=0.15, max_blend_weight=0.85, max_direct_horizon=28, recursive=true, n_estimators=None, learning_rate=None, max_depth=None, min_samples_leaf=None, min_gain=None, splitters=None, trend_features=true, target_mode="level"))]
     #[allow(clippy::too_many_arguments)]
     fn new(
         lags: Option<Vec<usize>>,
@@ -2045,6 +2075,8 @@ impl NativeAutoForecastModel {
         covariate_calendar_interactions: bool,
         calendar_features: bool,
         rich_calendar_features: bool,
+        elapsed_calendar_features: bool,
+        elapsed_calendar_periods: Option<Vec<usize>>,
         season_length: usize,
         validation_window: Option<usize>,
         validation_origin_count: usize,
@@ -2098,7 +2130,12 @@ impl NativeAutoForecastModel {
             rolling_min_windows,
             rolling_max_windows,
             ewm_alpha_percents: ewm_alpha_percents.unwrap_or_default(),
-            calendar_features: calendar_feature_config(calendar_features, rich_calendar_features),
+            calendar_features: calendar_feature_config(
+                calendar_features,
+                rich_calendar_features,
+                elapsed_calendar_features,
+                elapsed_calendar_periods.as_deref(),
+            ),
             covariate_features: covariate_features.unwrap_or_default(),
             covariate_indicator_values: covariate_indicator_values.unwrap_or_default(),
             covariate_calendar_interactions,
@@ -2174,7 +2211,7 @@ impl NativeAutoForecastModel {
 #[pymethods]
 impl NativeCartoBoostLagForecaster {
     #[new]
-    #[pyo3(signature = (lags=None, rolling_windows=None, partial_rolling_mean_windows=None, rolling_std_windows=None, rolling_min_windows=None, rolling_max_windows=None, ewm_alpha_percents=None, difference_lags=None, rolling_trend_windows=None, covariate_features=None, covariate_indicator_values=None, covariate_calendar_interactions=false, calendar_features=true, rich_calendar_features=false, recursive=true, prediction_interval_levels=None, n_estimators=None, learning_rate=None, max_depth=None, min_samples_leaf=None, min_gain=None, splitters=None, trend_features=true, target_mode="level"))]
+    #[pyo3(signature = (lags=None, rolling_windows=None, partial_rolling_mean_windows=None, rolling_std_windows=None, rolling_min_windows=None, rolling_max_windows=None, ewm_alpha_percents=None, difference_lags=None, rolling_trend_windows=None, covariate_features=None, covariate_indicator_values=None, covariate_calendar_interactions=false, calendar_features=true, rich_calendar_features=false, elapsed_calendar_features=false, elapsed_calendar_periods=None, recursive=true, prediction_interval_levels=None, n_estimators=None, learning_rate=None, max_depth=None, min_samples_leaf=None, min_gain=None, splitters=None, trend_features=true, target_mode="level"))]
     #[allow(clippy::too_many_arguments)]
     fn new(
         lags: Option<Vec<usize>>,
@@ -2191,6 +2228,8 @@ impl NativeCartoBoostLagForecaster {
         covariate_calendar_interactions: bool,
         calendar_features: bool,
         rich_calendar_features: bool,
+        elapsed_calendar_features: bool,
+        elapsed_calendar_periods: Option<Vec<usize>>,
         recursive: bool,
         prediction_interval_levels: Option<Vec<f64>>,
         n_estimators: Option<usize>,
@@ -2237,7 +2276,12 @@ impl NativeCartoBoostLagForecaster {
             rolling_min_windows,
             rolling_max_windows,
             ewm_alpha_percents: ewm_alpha_percents.unwrap_or_default(),
-            calendar_features: calendar_feature_config(calendar_features, rich_calendar_features),
+            calendar_features: calendar_feature_config(
+                calendar_features,
+                rich_calendar_features,
+                elapsed_calendar_features,
+                elapsed_calendar_periods.as_deref(),
+            ),
             covariate_features: covariate_features.unwrap_or_default(),
             covariate_indicator_values: covariate_indicator_values.unwrap_or_default(),
             covariate_calendar_interactions,
@@ -2291,6 +2335,25 @@ impl NativeCartoBoostLagForecaster {
 
     fn predict(&self, py: Python<'_>, horizon: usize) -> PyResult<NativeForecastResult> {
         predict_forecaster_py(py, &self.model, horizon)
+    }
+
+    fn predict_with_known_future(
+        &self,
+        py: Python<'_>,
+        horizon: usize,
+        frame: &NativeForecastFrame,
+    ) -> PyResult<NativeForecastResult> {
+        let mut covariates = BTreeMap::new();
+        for row in frame.frame.rows() {
+            covariates.insert(
+                (row.series_id.clone(), row.timestamp),
+                row.covariates.clone(),
+            );
+        }
+        forecast_to_py(py.allow_threads(|| {
+            self.model
+                .predict_with_known_future_covariates(horizon, &covariates)
+        }))
     }
 
     fn metadata_json(&self) -> PyResult<String> {
@@ -2544,9 +2607,19 @@ fn validate_interval_levels(levels: Option<&[f64]>) -> PyResult<()> {
     Ok(())
 }
 
-fn calendar_feature_config(enabled: bool, rich: bool) -> Vec<CalendarFeature> {
+fn calendar_feature_config(
+    enabled: bool,
+    rich: bool,
+    elapsed_only: bool,
+    elapsed_periods: Option<&[usize]>,
+) -> Vec<CalendarFeature> {
     if !enabled {
         return Vec::new();
+    }
+    if elapsed_only {
+        let mut features = vec![CalendarFeature::ElapsedIndex];
+        push_elapsed_calendar_periods(&mut features, elapsed_periods);
+        return features;
     }
     let mut features = vec![
         CalendarFeature::DayOfWeek,
@@ -2565,9 +2638,21 @@ fn calendar_feature_config(enabled: bool, rich: bool) -> Vec<CalendarFeature> {
         features.push(CalendarFeature::MonthEnd);
         features.push(CalendarFeature::DayOfYear);
         features.push(CalendarFeature::ElapsedIndex);
-        features.push(CalendarFeature::ElapsedPhase14);
+        push_elapsed_calendar_periods(&mut features, elapsed_periods);
     }
     features
+}
+
+fn push_elapsed_calendar_periods(
+    features: &mut Vec<CalendarFeature>,
+    elapsed_periods: Option<&[usize]>,
+) {
+    let mut periods = BTreeSet::new();
+    for period in elapsed_periods.unwrap_or(&[]) {
+        if *period >= 2 && periods.insert(*period) {
+            features.push(CalendarFeature::ElapsedPhase(*period));
+        }
+    }
 }
 
 fn parse_theta_seasonality(
@@ -5061,6 +5146,694 @@ fn graph_materialize_source_target_pair_nodes(
 }
 
 #[pyfunction]
+#[pyo3(signature = (train, seasonal_period=1))]
+fn rmsse_scale_value(py: Python<'_>, train: Vec<f64>, seasonal_period: usize) -> PyResult<f64> {
+    py.allow_threads(|| core_rmsse_scale(&train, seasonal_period))
+        .map_err(to_py_value_error)
+}
+
+#[pyfunction]
+#[pyo3(signature = (series, seasonal_period=1))]
+fn wrmsse_value(
+    py: Python<'_>,
+    series: Vec<PyWrmsseSeries>,
+    seasonal_period: usize,
+) -> PyResult<String> {
+    let series = series
+        .into_iter()
+        .map(|(id, train, actual, forecast, weight)| {
+            WrmsseSeries::new(id, train, actual, forecast, weight)
+        })
+        .collect::<Vec<_>>();
+    let score = py
+        .allow_threads(|| core_wrmsse(&series, seasonal_period))
+        .map_err(to_py_value_error)?;
+    let payload = json!({
+        "wrmsse": score.score,
+        "series": score
+            .series
+            .into_iter()
+            .map(|row| {
+                json!({
+                    "series_id": row.id,
+                    "weight": row.weight,
+                    "normalized_weight": row.normalized_weight,
+                    "scale": row.scale,
+                    "rmsse": row.rmsse,
+                    "contribution": row.contribution,
+                })
+            })
+            .collect::<Vec<_>>(),
+    });
+    serde_json::to_string(&payload).map_err(|err| PyRuntimeError::new_err(err.to_string()))
+}
+
+#[pyfunction]
+fn m5_equal_level_wrmsse_value(
+    py: Python<'_>,
+    level_scores: Vec<(String, f64)>,
+) -> PyResult<String> {
+    let score = py
+        .allow_threads(|| core_m5_equal_level_wrmsse(&level_scores))
+        .map_err(to_py_value_error)?;
+    let payload = json!({
+        "wrmsse": score.score,
+        "levels": score
+            .levels
+            .into_iter()
+            .map(|row| {
+                json!({
+                    "level": row.level,
+                    "wrmsse": row.wrmsse,
+                    "level_weight": row.level_weight,
+                    "contribution": row.contribution,
+                })
+            })
+            .collect::<Vec<_>>(),
+    });
+    serde_json::to_string(&payload).map_err(|err| PyRuntimeError::new_err(err.to_string()))
+}
+
+#[pyfunction]
+fn ordered_nonnegative_weights_value(
+    py: Python<'_>,
+    ids: Vec<String>,
+    raw_weights: Vec<(String, f64)>,
+) -> PyResult<BTreeMap<String, f64>> {
+    py.allow_threads(|| core_ordered_nonnegative_weights(&ids, &raw_weights))
+        .map(|weights| weights.into_iter().collect())
+        .map_err(to_py_value_error)
+}
+
+#[pyfunction]
+#[pyo3(signature = (training_series, actuals, forecasts, seasonality, baseline_smape=None, baseline_mase=None))]
+fn m_competition_metrics_value(
+    py: Python<'_>,
+    training_series: Vec<Vec<f64>>,
+    actuals: Vec<f64>,
+    forecasts: Vec<f64>,
+    seasonality: usize,
+    baseline_smape: Option<f64>,
+    baseline_mase: Option<f64>,
+) -> PyResult<String> {
+    let baseline = match (baseline_smape, baseline_mase) {
+        (Some(smape), Some(mase)) => Some((smape, mase)),
+        (None, None) => None,
+        _ => {
+            return Err(PyValueError::new_err(
+                "baseline_smape and baseline_mase must be provided together",
+            ));
+        }
+    };
+    let metrics = py
+        .allow_threads(|| {
+            evaluate_m_competition_metrics(
+                &training_series,
+                &actuals,
+                &forecasts,
+                seasonality,
+                baseline,
+            )
+        })
+        .map_err(to_py_value_error)?;
+    serde_json::to_string(&metrics).map_err(|err| PyRuntimeError::new_err(err.to_string()))
+}
+
+#[pyfunction]
+#[pyo3(signature = (source, candidate_scores, inner_origin_count=None))]
+fn forecast_candidate_choice_value(
+    py: Python<'_>,
+    source: &str,
+    candidate_scores: BTreeMap<String, f64>,
+    inner_origin_count: Option<usize>,
+) -> PyResult<String> {
+    let source = source.to_string();
+    py.allow_threads(|| {
+        CoreCandidateSelectionPolicy::new(source, inner_origin_count)?
+            .select(&candidate_scores)
+            .map(|selection| selection.candidate)
+    })
+    .map_err(to_py_value_error)
+}
+
+#[pyfunction]
+fn forecast_validation_unavailable_candidate_choice_value(
+    py: Python<'_>,
+    model: &str,
+    validation_profile: &str,
+    available_candidates: Vec<String>,
+) -> PyResult<String> {
+    let model = model.to_string();
+    let validation_profile = validation_profile.to_string();
+    py.allow_threads(|| {
+        core_validation_unavailable_candidate_choice(
+            &model,
+            &validation_profile,
+            &available_candidates,
+        )
+    })
+    .map_err(to_py_value_error)
+}
+
+#[pyfunction]
+#[pyo3(signature = (timestamp_count, horizon, validation_profile=None))]
+fn forecast_candidate_validation_cutoff_indices_value(
+    py: Python<'_>,
+    timestamp_count: usize,
+    horizon: usize,
+    validation_profile: Option<String>,
+) -> PyResult<Vec<usize>> {
+    py.allow_threads(|| {
+        CoreCandidateValidationCutoffSchedule::new(
+            timestamp_count,
+            horizon,
+            validation_profile.as_deref(),
+        )
+        .map(|schedule| schedule.cutoff_indices)
+    })
+    .map_err(to_py_value_error)
+}
+
+#[pyfunction]
+fn forecast_magnitude_guard_allows_value(
+    py: Python<'_>,
+    forecast_max_abs: f64,
+    training_max_abs: f64,
+) -> PyResult<bool> {
+    py.allow_threads(|| forecast_magnitude_guard_allows(forecast_max_abs, training_max_abs))
+        .map_err(to_py_value_error)
+}
+
+#[pyfunction]
+fn forecast_requires_lag_spine_value(
+    py: Python<'_>,
+    source: &str,
+    season_length: usize,
+    horizon: usize,
+) -> PyResult<bool> {
+    let source = source.to_string();
+    Ok(py.allow_threads(|| core_requires_lag_spine(&source, season_length, horizon)))
+}
+
+#[pyfunction]
+fn forecast_seasonal_naive_candidate_value(
+    py: Python<'_>,
+    values: Vec<f64>,
+    season_length: usize,
+) -> PyResult<f64> {
+    py.allow_threads(|| core_seasonal_naive_candidate_prediction(&values, season_length))
+        .map_err(to_py_value_error)
+}
+
+#[pyfunction]
+fn forecast_trend_candidate_value(
+    py: Python<'_>,
+    values: Vec<f64>,
+    step: usize,
+    season_length: usize,
+    mode: &str,
+) -> PyResult<f64> {
+    let mode = mode.to_string();
+    py.allow_threads(|| core_trend_candidate_prediction(&values, step, season_length, &mode))
+        .map_err(to_py_value_error)
+}
+
+#[pyfunction]
+#[pyo3(signature = (values, day_of_months, target_day_of_month, mode, elapsed_phase_period=None))]
+fn forecast_calendar_profile_candidate_value(
+    py: Python<'_>,
+    values: Vec<f64>,
+    day_of_months: Vec<u32>,
+    target_day_of_month: u32,
+    mode: &str,
+    elapsed_phase_period: Option<usize>,
+) -> PyResult<f64> {
+    let mode = mode.to_string();
+    py.allow_threads(|| {
+        core_calendar_profile_candidate_prediction(
+            &values,
+            &day_of_months,
+            target_day_of_month,
+            &mode,
+            elapsed_phase_period,
+        )
+    })
+    .map_err(to_py_value_error)
+}
+
+#[pyfunction]
+fn forecast_validation_ensemble_weights_value(
+    py: Python<'_>,
+    candidate_scores: BTreeMap<String, f64>,
+) -> PyResult<BTreeMap<String, f64>> {
+    Ok(py.allow_threads(|| core_validation_ensemble_weights(&candidate_scores)))
+}
+
+#[pyfunction]
+fn forecast_shared_candidate_names_value(py: Python<'_>) -> PyResult<Vec<String>> {
+    Ok(py.allow_threads(core_shared_candidate_names))
+}
+
+#[pyfunction]
+fn forecast_selectable_candidate_names_value(
+    py: Python<'_>,
+    model: &str,
+    source: &str,
+) -> PyResult<Vec<String>> {
+    let model = model.to_string();
+    let source = source.to_string();
+    Ok(py.allow_threads(|| core_selectable_candidate_names(&model, &source)))
+}
+
+#[pyfunction]
+fn forecast_include_autostats_candidate_value(
+    py: Python<'_>,
+    source: &str,
+    season_length: usize,
+    horizon: usize,
+) -> PyResult<bool> {
+    let source = source.to_string();
+    Ok(py.allow_threads(|| core_include_autostats_candidate(&source, season_length, horizon)))
+}
+
+#[pyfunction]
+fn forecast_candidate_complexity_rank_value(py: Python<'_>, candidate: &str) -> PyResult<usize> {
+    let candidate = candidate.to_string();
+    Ok(py.allow_threads(|| core_candidate_complexity_rank(&candidate)))
+}
+
+#[pyfunction(signature = (selected_candidate=None, inner_raw_relative_rmse_gain=None))]
+fn forecast_native_auto_raw_candidate_is_confident_value(
+    py: Python<'_>,
+    selected_candidate: Option<String>,
+    inner_raw_relative_rmse_gain: Option<f64>,
+) -> PyResult<bool> {
+    Ok(py.allow_threads(|| {
+        core_native_auto_raw_candidate_is_confident(
+            selected_candidate.as_deref(),
+            inner_raw_relative_rmse_gain,
+        )
+    }))
+}
+
+#[pyfunction]
+fn forecast_lag_origin_consistency_guard_value(
+    py: Python<'_>,
+    candidate: &str,
+    source: &str,
+    lag_scores: Vec<f64>,
+    candidate_scores: Vec<f64>,
+) -> PyResult<Option<String>> {
+    let candidate = candidate.to_string();
+    let source = source.to_string();
+    py.allow_threads(|| {
+        core_lag_origin_consistency_guard(&candidate, &source, &lag_scores, &candidate_scores)
+            .map(|guard| guard.map(|value| value.to_string()))
+    })
+    .map_err(to_py_value_error)
+}
+
+#[pyfunction]
+fn forecast_relative_loss_displacement_allowed_value(
+    py: Python<'_>,
+    baseline_loss: f64,
+    candidate_loss: f64,
+    min_relative_gain: f64,
+) -> PyResult<bool> {
+    py.allow_threads(|| {
+        core_relative_loss_displacement_allowed(baseline_loss, candidate_loss, min_relative_gain)
+    })
+    .map_err(to_py_value_error)
+}
+
+#[pyfunction(signature = (
+    selected_candidate,
+    candidate_scores,
+    candidate_forecast_max_abs,
+    training_max_abs,
+    inner_origin_count=None
+))]
+fn forecast_stable_magnitude_candidate_choice_value(
+    py: Python<'_>,
+    selected_candidate: &str,
+    candidate_scores: BTreeMap<String, f64>,
+    candidate_forecast_max_abs: BTreeMap<String, f64>,
+    training_max_abs: f64,
+    inner_origin_count: Option<usize>,
+) -> PyResult<String> {
+    let selected_candidate = selected_candidate.to_string();
+    py.allow_threads(|| {
+        core_stable_magnitude_candidate_choice(
+            &selected_candidate,
+            &candidate_scores,
+            &candidate_forecast_max_abs,
+            training_max_abs,
+            inner_origin_count,
+        )
+    })
+    .map_err(to_py_value_error)
+}
+
+#[pyfunction]
+fn forecast_proportional_total_reconciliation_value(
+    py: Python<'_>,
+    base_values: Vec<f64>,
+    target_total: f64,
+    gamma: f64,
+) -> PyResult<Vec<f64>> {
+    py.allow_threads(|| core_proportional_total_reconciliation(&base_values, target_total, gamma))
+        .map_err(to_py_value_error)
+}
+
+#[pyfunction]
+fn forecast_weighted_blend_candidate_value(
+    py: Python<'_>,
+    primary_forecast: Vec<f64>,
+    secondary_forecast: Vec<f64>,
+    primary_weight: f64,
+) -> PyResult<Vec<f64>> {
+    py.allow_threads(|| {
+        core_weighted_blend_candidate_forecast(
+            &primary_forecast,
+            &secondary_forecast,
+            primary_weight,
+        )
+    })
+    .map_err(to_py_value_error)
+}
+
+#[pyfunction]
+fn extreme_portfolio_decisions_value(
+    py: Python<'_>,
+    asset_rows: Vec<(String, f64, f64)>,
+) -> PyResult<Vec<PyPortfolioDecisionRow>> {
+    let rows = asset_rows
+        .into_iter()
+        .map(
+            |(series_id, actual_return, predicted_return)| PortfolioAsset {
+                series_id,
+                actual_return,
+                predicted_return,
+            },
+        )
+        .collect::<Vec<_>>();
+    let decisions = py
+        .allow_threads(|| extreme_portfolio_decisions(&rows))
+        .map_err(to_py_value_error)?;
+    Ok(decisions
+        .into_iter()
+        .map(|decision| {
+            let side = match decision.side {
+                PortfolioSide::Long => "long",
+                PortfolioSide::Short => "short",
+            };
+            (
+                decision.series_id,
+                side.to_string(),
+                decision.weight,
+                decision.actual_return,
+                decision.predicted_return,
+            )
+        })
+        .collect())
+}
+
+#[pyfunction]
+fn portfolio_summary_value(
+    py: Python<'_>,
+    decisions: Vec<(String, f64, f64, f64)>,
+) -> PyResult<BTreeMap<String, f64>> {
+    let parsed = decisions
+        .into_iter()
+        .map(|(side, weight, actual_return, predicted_return)| {
+            let side = match side.as_str() {
+                "long" => Ok(PortfolioSide::Long),
+                "short" => Ok(PortfolioSide::Short),
+                _ => Err(PyValueError::new_err("side must be 'long' or 'short'")),
+            }?;
+            Ok(PortfolioDecision {
+                side,
+                weight,
+                actual_return,
+                predicted_return,
+            })
+        })
+        .collect::<PyResult<Vec<_>>>()?;
+    let summary = py
+        .allow_threads(|| portfolio_summary(&parsed))
+        .map_err(to_py_value_error)?;
+    Ok(BTreeMap::from([
+        ("long_count".to_string(), summary.long_count as f64),
+        ("short_count".to_string(), summary.short_count as f64),
+        ("gross_exposure".to_string(), summary.gross_exposure),
+        ("net_exposure".to_string(), summary.net_exposure),
+        ("long_return".to_string(), summary.long_return),
+        ("short_return".to_string(), summary.short_return),
+        ("net_return".to_string(), summary.net_return),
+    ]))
+}
+
+#[pyfunction]
+#[pyo3(signature = (asset_rows, bucket_count=5))]
+fn rank_hit_rates_value(
+    py: Python<'_>,
+    asset_rows: Vec<(usize, usize)>,
+    bucket_count: usize,
+) -> PyResult<BTreeMap<String, f64>> {
+    let rows = asset_rows
+        .into_iter()
+        .map(|(observed_bucket, predicted_bucket)| RankBucketPrediction {
+            observed_bucket,
+            predicted_bucket,
+        })
+        .collect::<Vec<_>>();
+    let summary = py
+        .allow_threads(|| rank_hit_rates(&rows, bucket_count))
+        .map_err(to_py_value_error)?;
+    Ok(BTreeMap::from([
+        ("asset_count".to_string(), summary.asset_count as f64),
+        ("exact_bucket_rate".to_string(), summary.exact_bucket_rate),
+        (
+            "within_one_bucket_rate".to_string(),
+            summary.within_one_bucket_rate,
+        ),
+        (
+            "directional_extreme_count".to_string(),
+            summary.directional_extreme_count as f64,
+        ),
+        (
+            "directional_extreme_rate".to_string(),
+            summary.directional_extreme_rate,
+        ),
+    ]))
+}
+
+#[pyfunction]
+#[pyo3(signature = (values, bucket_count=5))]
+fn rank_buckets_value(
+    py: Python<'_>,
+    values: Vec<f64>,
+    bucket_count: usize,
+) -> PyResult<Vec<usize>> {
+    py.allow_threads(|| rank_buckets(&values, bucket_count))
+        .map_err(to_py_value_error)
+}
+
+#[pyfunction]
+#[pyo3(signature = (asset_rows, bucket_count, calibration_probabilities, shrinkage))]
+fn rank_scored_assets_value(
+    py: Python<'_>,
+    asset_rows: Vec<(String, f64, f64)>,
+    bucket_count: usize,
+    calibration_probabilities: Vec<Vec<f64>>,
+    shrinkage: f64,
+) -> PyResult<String> {
+    let rows = asset_rows
+        .into_iter()
+        .map(
+            |(series_id, actual_return, predicted_return)| PortfolioAsset {
+                series_id,
+                actual_return,
+                predicted_return,
+            },
+        )
+        .collect::<Vec<_>>();
+    let scored = py
+        .allow_threads(|| {
+            rank_scored_assets(&rows, bucket_count, &calibration_probabilities, shrinkage)
+        })
+        .map_err(to_py_value_error)?;
+    let payload = scored
+        .into_iter()
+        .map(|row| {
+            json!({
+                "series_id": row.series_id,
+                "actual_return": row.actual_return,
+                "predicted_return": row.predicted_return,
+                "observed_rank_bucket": row.observed_rank_bucket,
+                "predicted_rank_bucket": row.predicted_rank_bucket,
+                "rank_probabilities": row.rank_probabilities,
+                "rps": row.rps,
+            })
+        })
+        .collect::<Vec<_>>();
+    serde_json::to_string(&payload).map_err(|err| PyRuntimeError::new_err(err.to_string()))
+}
+
+#[pyfunction]
+#[pyo3(signature = (asset_rows, bucket_count, calibration_probabilities, shrinkage))]
+fn rank_portfolio_summary_value(
+    py: Python<'_>,
+    asset_rows: Vec<(String, f64, f64)>,
+    bucket_count: usize,
+    calibration_probabilities: Vec<Vec<f64>>,
+    shrinkage: f64,
+) -> PyResult<String> {
+    let rows = asset_rows
+        .into_iter()
+        .map(
+            |(series_id, actual_return, predicted_return)| PortfolioAsset {
+                series_id,
+                actual_return,
+                predicted_return,
+            },
+        )
+        .collect::<Vec<_>>();
+    let summary = py
+        .allow_threads(|| {
+            rank_portfolio_summary(&rows, bucket_count, &calibration_probabilities, shrinkage)
+        })
+        .map_err(to_py_value_error)?;
+    let assets = summary
+        .assets
+        .into_iter()
+        .map(|row| {
+            json!({
+                "series_id": row.series_id,
+                "actual_return": row.actual_return,
+                "predicted_return": row.predicted_return,
+                "observed_rank_bucket": row.observed_rank_bucket,
+                "predicted_rank_bucket": row.predicted_rank_bucket,
+                "rank_probabilities": row.rank_probabilities,
+                "rps": row.rps,
+            })
+        })
+        .collect::<Vec<_>>();
+    let decisions = summary
+        .decisions
+        .into_iter()
+        .map(|decision| {
+            let side = match decision.side {
+                PortfolioSide::Long => "long",
+                PortfolioSide::Short => "short",
+            };
+            json!({
+                "series_id": decision.series_id,
+                "side": side,
+                "weight": decision.weight,
+                "actual_return": decision.actual_return,
+                "predicted_return": decision.predicted_return,
+            })
+        })
+        .collect::<Vec<_>>();
+    let payload = json!({
+        "mean_rps": summary.mean_rps,
+        "asset_count": summary.asset_count,
+        "assets": assets,
+        "decisions": decisions,
+        "decision_return": summary.portfolio.net_return,
+        "portfolio": {
+            "long_count": summary.portfolio.long_count,
+            "short_count": summary.portfolio.short_count,
+            "gross_exposure": summary.portfolio.gross_exposure,
+            "net_exposure": summary.portfolio.net_exposure,
+            "long_return": summary.portfolio.long_return,
+            "short_return": summary.portfolio.short_return,
+            "net_return": summary.portfolio.net_return,
+        },
+        "rank_hit_rates": {
+            "asset_count": summary.hit_rates.asset_count,
+            "exact_bucket_rate": summary.hit_rates.exact_bucket_rate,
+            "within_one_bucket_rate": summary.hit_rates.within_one_bucket_rate,
+            "directional_extreme_count": summary.hit_rates.directional_extreme_count,
+            "directional_extreme_rate": summary.hit_rates.directional_extreme_rate,
+        },
+    });
+    serde_json::to_string(&payload).map_err(|err| PyRuntimeError::new_err(err.to_string()))
+}
+
+#[pyfunction]
+fn rank_portfolio_decision_loss_value(
+    py: Python<'_>,
+    asset_rows: Vec<(String, f64, f64)>,
+    bucket_count: usize,
+    calibration_probabilities: Vec<Vec<f64>>,
+    shrinkage: f64,
+    rps_tiebreak_weight: f64,
+) -> PyResult<f64> {
+    let rows = asset_rows
+        .into_iter()
+        .map(
+            |(series_id, actual_return, predicted_return)| PortfolioAsset {
+                series_id,
+                actual_return,
+                predicted_return,
+            },
+        )
+        .collect::<Vec<_>>();
+    py.allow_threads(|| {
+        rank_portfolio_decision_loss(
+            &rows,
+            bucket_count,
+            &calibration_probabilities,
+            shrinkage,
+            rps_tiebreak_weight,
+        )
+    })
+    .map_err(to_py_value_error)
+}
+
+#[pyfunction]
+fn rank_probability_calibration_value(
+    py: Python<'_>,
+    actual_buckets: Vec<usize>,
+    predicted_buckets: Vec<usize>,
+    bucket_count: usize,
+    validation_support: usize,
+) -> PyResult<String> {
+    let calibration = py
+        .allow_threads(|| {
+            rank_probability_calibration(
+                &actual_buckets,
+                &predicted_buckets,
+                bucket_count,
+                validation_support,
+            )
+        })
+        .map_err(to_py_value_error)?;
+    serde_json::to_string(&calibration).map_err(|err| PyRuntimeError::new_err(err.to_string()))
+}
+
+#[pyfunction]
+fn calibrated_rank_bucket_probabilities_value(
+    py: Python<'_>,
+    predicted_bucket: usize,
+    bucket_count: usize,
+    calibration_probabilities: Vec<Vec<f64>>,
+    shrinkage: f64,
+) -> PyResult<Vec<f64>> {
+    py.allow_threads(|| {
+        calibrated_rank_bucket_probabilities(
+            predicted_bucket,
+            bucket_count,
+            &calibration_probabilities,
+            shrinkage,
+        )
+    })
+    .map_err(to_py_value_error)
+}
+
+#[pyfunction]
 fn h3_normalize_id_text(value: &str) -> PyResult<u64> {
     normalize_h3_id_text(value).map_err(to_py_value_error)
 }
@@ -6029,6 +6802,84 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(graph_validate_directed_metapath, m)?)?;
     m.add_function(wrap_pyfunction!(
         graph_materialize_source_target_pair_nodes,
+        m
+    )?)?;
+    m.add_function(wrap_pyfunction!(rmsse_scale_value, m)?)?;
+    m.add_function(wrap_pyfunction!(wrmsse_value, m)?)?;
+    m.add_function(wrap_pyfunction!(m5_equal_level_wrmsse_value, m)?)?;
+    m.add_function(wrap_pyfunction!(ordered_nonnegative_weights_value, m)?)?;
+    m.add_function(wrap_pyfunction!(m_competition_metrics_value, m)?)?;
+    m.add_function(wrap_pyfunction!(forecast_candidate_choice_value, m)?)?;
+    m.add_function(wrap_pyfunction!(
+        forecast_validation_unavailable_candidate_choice_value,
+        m
+    )?)?;
+    m.add_function(wrap_pyfunction!(
+        forecast_candidate_validation_cutoff_indices_value,
+        m
+    )?)?;
+    m.add_function(wrap_pyfunction!(forecast_magnitude_guard_allows_value, m)?)?;
+    m.add_function(wrap_pyfunction!(forecast_requires_lag_spine_value, m)?)?;
+    m.add_function(wrap_pyfunction!(
+        forecast_seasonal_naive_candidate_value,
+        m
+    )?)?;
+    m.add_function(wrap_pyfunction!(forecast_trend_candidate_value, m)?)?;
+    m.add_function(wrap_pyfunction!(
+        forecast_calendar_profile_candidate_value,
+        m
+    )?)?;
+    m.add_function(wrap_pyfunction!(
+        forecast_validation_ensemble_weights_value,
+        m
+    )?)?;
+    m.add_function(wrap_pyfunction!(forecast_shared_candidate_names_value, m)?)?;
+    m.add_function(wrap_pyfunction!(
+        forecast_selectable_candidate_names_value,
+        m
+    )?)?;
+    m.add_function(wrap_pyfunction!(
+        forecast_include_autostats_candidate_value,
+        m
+    )?)?;
+    m.add_function(wrap_pyfunction!(
+        forecast_candidate_complexity_rank_value,
+        m
+    )?)?;
+    m.add_function(wrap_pyfunction!(
+        forecast_native_auto_raw_candidate_is_confident_value,
+        m
+    )?)?;
+    m.add_function(wrap_pyfunction!(
+        forecast_lag_origin_consistency_guard_value,
+        m
+    )?)?;
+    m.add_function(wrap_pyfunction!(
+        forecast_relative_loss_displacement_allowed_value,
+        m
+    )?)?;
+    m.add_function(wrap_pyfunction!(
+        forecast_stable_magnitude_candidate_choice_value,
+        m
+    )?)?;
+    m.add_function(wrap_pyfunction!(
+        forecast_proportional_total_reconciliation_value,
+        m
+    )?)?;
+    m.add_function(wrap_pyfunction!(
+        forecast_weighted_blend_candidate_value,
+        m
+    )?)?;
+    m.add_function(wrap_pyfunction!(portfolio_summary_value, m)?)?;
+    m.add_function(wrap_pyfunction!(extreme_portfolio_decisions_value, m)?)?;
+    m.add_function(wrap_pyfunction!(rank_hit_rates_value, m)?)?;
+    m.add_function(wrap_pyfunction!(rank_buckets_value, m)?)?;
+    m.add_function(wrap_pyfunction!(rank_scored_assets_value, m)?)?;
+    m.add_function(wrap_pyfunction!(rank_portfolio_summary_value, m)?)?;
+    m.add_function(wrap_pyfunction!(rank_portfolio_decision_loss_value, m)?)?;
+    m.add_function(wrap_pyfunction!(rank_probability_calibration_value, m)?)?;
+    m.add_function(wrap_pyfunction!(
+        calibrated_rank_bucket_probabilities_value,
         m
     )?)?;
     m.add_function(wrap_pyfunction!(h3_normalize_id_text, m)?)?;

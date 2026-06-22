@@ -77,10 +77,60 @@ def test_model_benchmark_suite_smoke(tmp_path):
     )
 
     results = output_dir / "results.json"
+    jsonl = output_dir / "results.jsonl"
     report = output_dir / "results.md"
     assert results.exists()
+    assert jsonl.exists()
     assert report.exists()
     assert "Normal dense" in report.read_text(encoding="utf-8")
+    first_row = json.loads(jsonl.read_text(encoding="utf-8").splitlines()[0])
+    assert first_row["track"] == "diagnostic"
+
+
+def test_model_benchmark_suite_public_workloads_smoke(tmp_path):
+    repo_root = Path(__file__).resolve().parents[2]
+    output_dir = tmp_path / "model_public_benchmarks"
+
+    subprocess.run(
+        [
+            sys.executable,
+            str(repo_root / "scripts" / "run_model_benchmark_suite.py"),
+            "--output-dir",
+            str(output_dir),
+            "--datasets",
+            "diabetes,karate",
+            "--models",
+            "mean,cartoboost",
+            "--n-estimators",
+            "4",
+            "--graph-dim",
+            "2",
+            "--graph-epochs",
+            "1",
+            "--no-plots",
+        ],
+        cwd=repo_root,
+        check=True,
+    )
+
+    results = json.loads((output_dir / "results.json").read_text(encoding="utf-8"))
+    assert set(results["workloads"]) == {"diabetes", "karate"}
+    assert results["workloads"]["diabetes"]["row_count"] == 442
+    assert results["workloads"]["karate"]["row_count"] == 78
+
+    rows = [
+        json.loads(line)
+        for line in (output_dir / "results.jsonl").read_text(encoding="utf-8").splitlines()
+        if line
+    ]
+    assert ("tabular", "diabetes", "random", "cartoboost", "rmse") in {
+        (row["track"], row["task_id"], row["split_id"], row["model_family"], row["metric"])
+        for row in rows
+    }
+    assert ("graph", "karate", "random", "cartoboost", "rmse") in {
+        (row["track"], row["task_id"], row["split_id"], row["model_family"], row["metric"])
+        for row in rows
+    }
 
 
 def test_model_benchmark_suite_reports_best_cartoboost_vs_lightgbm():
@@ -195,7 +245,28 @@ def test_forecasting_benchmark_loads_m5_local_competition_files(tmp_path):
         encoding="utf-8",
     )
     (data_dir / "calendar.csv").write_text(
-        "d,date\n" + "\n".join(f"d_{day},2020-01-{day:02d}" for day in range(1, days + 1)) + "\n",
+        "d,date,wm_yr_wk,event_name_1,event_type_1,snap_CA,snap_TX,snap_WI\n"
+        + "\n".join(
+            (
+                f"d_{day},2020-01-{day:02d},1001,"
+                f"{'Promo' if day % 7 == 0 else ''},"
+                f"{'Event' if day % 7 == 0 else ''},"
+                f"{day % 2},{(day + 1) % 2},0"
+            )
+            for day in range(1, days + 1)
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    (data_dir / "sell_prices.csv").write_text(
+        "\n".join(
+            [
+                "store_id,item_id,wm_yr_wk,sell_price",
+                "CA_1,FOODS_1_001,1001,2.0",
+                "TX_1,HOBBIES_1_001,1001,3.0",
+            ]
+        )
+        + "\n",
         encoding="utf-8",
     )
 
@@ -208,6 +279,71 @@ def test_forecasting_benchmark_loads_m5_local_competition_files(tmp_path):
     assert dataset["series"] == 2
     assert dataset["horizon"] == 28
     assert table.height == 70
+    assert {
+        "lane_id",
+        "date",
+        "loads",
+        "weight_value",
+        "m5_sell_price",
+        "m5_event_name_1_code",
+        "m5_event_type_1_code",
+        "m5_snap_CA",
+        "m5_snap_TX",
+        "m5_snap_WI",
+        *benchmark.M5_HIERARCHY_COVARIATES,
+        *benchmark.STATIC_COVARIATES,
+    } <= set(table.columns)
+    assert dataset["official_style_inputs"]["sell_prices_present"] is True
+    assert dataset["known_future_covariates"] == [
+        column for column in benchmark.M5_KNOWN_FUTURE_COVARIATES if column in table.columns
+    ]
+    assert dataset["hierarchy_covariates"] == benchmark.M5_HIERARCHY_COVARIATES
+
+
+def test_forecasting_benchmark_loads_m1_local_tsf(tmp_path):
+    repo_root = Path(__file__).resolve().parents[2]
+    module_path = repo_root / "scripts" / "forecasting_library_benchmark.py"
+    spec = importlib.util.spec_from_file_location("forecasting_library_benchmark_m1", module_path)
+    assert spec is not None
+    assert spec.loader is not None
+    benchmark = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = benchmark
+    spec.loader.exec_module(benchmark)
+
+    tsf_dir = tmp_path / "m1"
+    tsf_dir.mkdir()
+    (tsf_dir / "m1_yearly_dataset.tsf").write_text(
+        "\n".join(
+            [
+                "@attribute series_name string",
+                "@frequency yearly",
+                "@horizon 2",
+                "@missing false",
+                "@equallength false",
+                "@data",
+                "Y1:1,2,3,4,5,6,7,8",
+                "Y2:2,3,4,5,6,7,8,9",
+            ]
+        )
+        + "\n",
+        encoding="cp1252",
+    )
+
+    table, dataset = benchmark.load_m1_fixture(
+        types.SimpleNamespace(
+            cache_dir=tmp_path,
+            m1_group="Yearly",
+            m1_series_limit=1,
+            no_download=True,
+        )
+    )
+
+    assert dataset["source"] == "m1_zenodo_tsf"
+    assert dataset["series"] == 1
+    assert dataset["available_series"] == 2
+    assert dataset["horizon"] == 2
+    assert dataset["season_length"] == 1
+    assert table.height == 8
     assert {"lane_id", "date", "loads", *benchmark.STATIC_COVARIATES} <= set(table.columns)
 
 
@@ -263,9 +399,18 @@ def test_forecasting_benchmark_auto_objectives_are_metric_aware():
     sys.modules[spec.name] = benchmark
     spec.loader.exec_module(benchmark)
 
+    args = types.SimpleNamespace(source="m")
+    assert benchmark.normalize_competition_source(args) is args
+    assert args.source == "m1"
+    assert args.requested_source == "m"
+    assert args.source_alias == "m"
+
+    assert benchmark.auto_selection_objective("m") == "owa_proxy"
+    assert benchmark.auto_selection_objective("m1") == "owa_proxy"
+    assert benchmark.auto_selection_objective("m3") == "owa_proxy"
     assert benchmark.auto_selection_objective("m4") == "owa_proxy"
-    assert benchmark.auto_selection_objective("m5") == "rmse"
-    assert benchmark.auto_selection_objective("m6") == "rmse"
+    assert benchmark.auto_selection_objective("m5") == "wrmsse"
+    assert benchmark.auto_selection_objective("m6") == "investment_decision_return_then_rps"
     assert benchmark.auto_selection_objective("nyc-taxi") == "rmse"
     assert benchmark.auto_selection_objective("synthetic") == "rmse"
 
@@ -304,7 +449,9 @@ def test_forecasting_benchmark_shared_candidate_cutoffs_are_deterministic():
         86,
     ]
     assert benchmark.shared_candidate_validation_cutoffs(timestamps, horizon=14, source="m6") == [
-        86
+        58,
+        72,
+        86,
     ]
     assert benchmark.shared_candidate_validation_cutoffs(list(range(62)), horizon=28) == [34]
     assert benchmark.shared_candidate_validation_cutoffs(list(range(20)), horizon=14) == []
@@ -836,6 +983,32 @@ def test_forecasting_benchmark_m4_suite_keeps_group_order(tmp_path, monkeypatch)
             None,
         ),
     )
+    monkeypatch.setattr(
+        benchmark,
+        "benchmark_objective_artifacts",
+        lambda source, **_kwargs: {
+            "primary_metric": "owa_proxy",
+            source: {
+                "models": {
+                    "cartoboost_auto_forecast": {
+                        "mase": 1.0,
+                        "mase_ratio_to_seasonal_naive": 1.0,
+                        "owa_proxy": 1.0,
+                        "smape": 1.0,
+                        "smape_ratio_to_seasonal_naive": 1.0,
+                    },
+                    "cartoboost_lag": {
+                        "mase": 2.0,
+                        "mase_ratio_to_seasonal_naive": 2.0,
+                        "owa_proxy": 2.0,
+                        "smape": 2.0,
+                        "smape_ratio_to_seasonal_naive": 2.0,
+                    },
+                },
+                "ranking": ["cartoboost_auto_forecast", "cartoboost_lag"],
+            },
+        },
+    )
 
     output = tmp_path / "m4_suite.json"
     args = types.SimpleNamespace(
@@ -856,6 +1029,275 @@ def test_forecasting_benchmark_m4_suite_keeps_group_order(tmp_path, monkeypatch)
     assert payload["dataset"]["groups"] == groups
     assert set(payload["groups"]) == set(groups)
     assert set(payload["timing"]["groups"]) == set(groups)
+    assert payload["groups"]["Hourly"]["official_metrics"]["primary_metric"] == "owa_proxy"
+    assert payload["official_metrics"]["primary_metric"] == "mean_owa_proxy"
+    assert payload["official_metrics"]["m4"]["ranking"] == [
+        "cartoboost_auto_forecast",
+        "cartoboost_lag",
+    ]
+
+
+def test_forecasting_benchmark_m1_suite_keeps_group_order(tmp_path, monkeypatch):
+    repo_root = Path(__file__).resolve().parents[2]
+    module_path = repo_root / "scripts" / "forecasting_library_benchmark.py"
+    spec = importlib.util.spec_from_file_location(
+        "forecasting_library_benchmark_m1_serial_suite",
+        module_path,
+    )
+    assert spec is not None
+    assert spec.loader is not None
+    benchmark = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = benchmark
+    spec.loader.exec_module(benchmark)
+
+    groups = ["Yearly", "Monthly"]
+    monkeypatch.setattr(benchmark, "M1_GROUPS", groups)
+    monkeypatch.setattr(
+        benchmark,
+        "load_m1_fixture",
+        lambda group_args: (
+            group_args.m1_group,
+            {
+                "group": group_args.m1_group,
+                "horizon": 1,
+                "season_length": 1,
+                "tsf_file": str(tmp_path / f"{group_args.m1_group}.tsf"),
+            },
+        ),
+    )
+    monkeypatch.setattr(benchmark, "canonical_dataset_hash", lambda table: f"hash-{table}")
+    monkeypatch.setattr(benchmark, "source_file_hashes", lambda _dataset: {})
+    monkeypatch.setattr(
+        benchmark,
+        "score_models",
+        lambda table, **_kwargs: (
+            {
+                "cartoboost_auto_forecast": {
+                    "rmse": 1.0,
+                    "mae": 1.0,
+                    "wape": 1.0,
+                },
+                "cartoboost_lag": {
+                    "rmse": 2.0,
+                    "mae": 2.0,
+                    "wape": 2.0,
+                },
+            },
+            {"winner": "cartoboost_auto_forecast"},
+            {"models": {}, "candidate_selection": {"calibration_seconds": 0.0}},
+            None,
+        ),
+    )
+    monkeypatch.setattr(
+        benchmark,
+        "benchmark_objective_artifacts",
+        lambda source, **_kwargs: {
+            "primary_metric": "owa_proxy",
+            source: {
+                "models": {
+                    "cartoboost_auto_forecast": {
+                        "mase": 1.0,
+                        "mase_ratio_to_seasonal_naive": 1.0,
+                        "owa_proxy": 1.0,
+                        "smape": 1.0,
+                        "smape_ratio_to_seasonal_naive": 1.0,
+                    },
+                    "cartoboost_lag": {
+                        "mase": 2.0,
+                        "mase_ratio_to_seasonal_naive": 2.0,
+                        "owa_proxy": 2.0,
+                        "smape": 2.0,
+                        "smape_ratio_to_seasonal_naive": 2.0,
+                    },
+                },
+                "ranking": ["cartoboost_auto_forecast", "cartoboost_lag"],
+            },
+        },
+    )
+
+    output = tmp_path / "m1_suite.json"
+    args = types.SimpleNamespace(
+        output=output,
+        source="m1",
+        m1_suite=True,
+        m1_group="Yearly",
+        m1_series_limit=96,
+        model_roster="cartoboost",
+        no_hyperopt=True,
+        no_candidate_selection=False,
+        seed=42,
+    )
+
+    assert benchmark.run_m1_suite(args, {"n_estimators": 1}, benchmark.perf_counter()) == 0
+    payload = json.loads(output.read_text(encoding="utf-8"))
+
+    assert payload["dataset"]["groups"] == groups
+    assert set(payload["groups"]) == set(groups)
+    assert payload["groups"]["Yearly"]["official_metrics"]["primary_metric"] == "owa_proxy"
+    assert payload["official_metrics"]["primary_metric"] == "mean_owa_proxy"
+    assert payload["official_metrics"]["m1"]["ranking"] == [
+        "cartoboost_auto_forecast",
+        "cartoboost_lag",
+    ]
+
+
+def test_forecasting_benchmark_m3_suite_keeps_group_order(tmp_path, monkeypatch):
+    repo_root = Path(__file__).resolve().parents[2]
+    module_path = repo_root / "scripts" / "forecasting_library_benchmark.py"
+    spec = importlib.util.spec_from_file_location(
+        "forecasting_library_benchmark_m3_serial_suite",
+        module_path,
+    )
+    assert spec is not None
+    assert spec.loader is not None
+    benchmark = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = benchmark
+    spec.loader.exec_module(benchmark)
+
+    groups = ["Yearly", "Monthly"]
+    monkeypatch.setattr(benchmark, "M3_GROUPS", groups)
+    monkeypatch.setattr(
+        benchmark,
+        "load_m3_fixture",
+        lambda group_args: (
+            group_args.m3_group,
+            {
+                "group": group_args.m3_group,
+                "horizon": 1,
+                "season_length": 1,
+            },
+        ),
+    )
+    monkeypatch.setattr(benchmark, "canonical_dataset_hash", lambda table: f"hash-{table}")
+    monkeypatch.setattr(
+        benchmark,
+        "score_models",
+        lambda table, **_kwargs: (
+            {
+                "cartoboost_auto_forecast": {
+                    "rmse": 1.0,
+                    "mae": 1.0,
+                    "wape": 1.0,
+                },
+                "cartoboost_lag": {
+                    "rmse": 2.0,
+                    "mae": 2.0,
+                    "wape": 2.0,
+                },
+            },
+            {"winner": "cartoboost_auto_forecast"},
+            {"models": {}, "candidate_selection": {"calibration_seconds": 0.0}},
+            None,
+        ),
+    )
+    monkeypatch.setattr(
+        benchmark,
+        "benchmark_objective_artifacts",
+        lambda source, **_kwargs: {
+            "primary_metric": "owa_proxy",
+            source: {
+                "models": {
+                    "cartoboost_auto_forecast": {
+                        "mase": 1.0,
+                        "mase_ratio_to_seasonal_naive": 1.0,
+                        "owa_proxy": 1.0,
+                        "smape": 1.0,
+                        "smape_ratio_to_seasonal_naive": 1.0,
+                    },
+                    "cartoboost_lag": {
+                        "mase": 2.0,
+                        "mase_ratio_to_seasonal_naive": 2.0,
+                        "owa_proxy": 2.0,
+                        "smape": 2.0,
+                        "smape_ratio_to_seasonal_naive": 2.0,
+                    },
+                },
+                "ranking": ["cartoboost_auto_forecast", "cartoboost_lag"],
+            },
+        },
+    )
+
+    output = tmp_path / "m3_suite.json"
+    args = types.SimpleNamespace(
+        output=output,
+        source="m3",
+        m3_suite=True,
+        m3_group="Yearly",
+        m3_series_limit=96,
+        model_roster="cartoboost",
+        no_hyperopt=True,
+        no_candidate_selection=False,
+        seed=42,
+    )
+
+    assert benchmark.run_m3_suite(args, {"n_estimators": 1}, benchmark.perf_counter()) == 0
+    payload = json.loads(output.read_text(encoding="utf-8"))
+
+    assert payload["dataset"]["groups"] == groups
+    assert set(payload["groups"]) == set(groups)
+    assert payload["groups"]["Yearly"]["official_metrics"]["primary_metric"] == "owa_proxy"
+    assert payload["official_metrics"]["primary_metric"] == "mean_owa_proxy"
+    assert payload["official_metrics"]["m3"]["ranking"] == [
+        "cartoboost_auto_forecast",
+        "cartoboost_lag",
+    ]
+
+
+def test_forecasting_benchmark_m_series_suite_ranking_requires_group_coverage():
+    repo_root = Path(__file__).resolve().parents[2]
+    module_path = repo_root / "scripts" / "forecasting_library_benchmark.py"
+    spec = importlib.util.spec_from_file_location(
+        "forecasting_library_benchmark_suite_coverage",
+        module_path,
+    )
+    assert spec is not None
+    assert spec.loader is not None
+    benchmark = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = benchmark
+    spec.loader.exec_module(benchmark)
+
+    def row(owa: float) -> dict[str, float]:
+        return {
+            "mase": owa,
+            "mase_ratio_to_seasonal_naive": owa,
+            "owa_proxy": owa,
+            "smape": owa,
+            "smape_ratio_to_seasonal_naive": owa,
+        }
+
+    artifact = benchmark.aggregate_m_series_suite_official_metrics(
+        "m4",
+        ["Yearly", "Monthly"],
+        {
+            "Yearly": {
+                "official_metrics": {
+                    "m4": {
+                        "models": {
+                            "complete_model": row(1.0),
+                            "partial_model": row(0.1),
+                        }
+                    }
+                }
+            },
+            "Monthly": {
+                "official_metrics": {
+                    "m4": {
+                        "models": {
+                            "complete_model": row(1.2),
+                        }
+                    }
+                }
+            },
+        },
+    )
+
+    m4 = artifact["m4"]
+    assert m4["ranking_scope"] == "complete_group_coverage"
+    assert m4["ranking"] == ["complete_model"]
+    assert m4["models"]["complete_model"]["complete_group_coverage"]
+    assert not m4["models"]["partial_model"]["complete_group_coverage"]
+    assert m4["incomplete_models"] == {"partial_model": ["Monthly"]}
+    assert m4["incomplete_ranking"] == ["partial_model"]
 
 
 def test_forecasting_m4_wrapper_runs_committed_suite(monkeypatch, tmp_path):
@@ -896,6 +1338,77 @@ def test_forecasting_m4_wrapper_runs_committed_suite(monkeypatch, tmp_path):
     assert "--m4-suite-workers" not in cmd
     assert "--m4-suite" in cmd
     assert cmd[cmd.index("--output") + 1] == str(output)
+
+
+def test_forecasting_benchmark_emits_native_backed_m_series_owa_artifact():
+    pl = pytest.importorskip("polars")
+    repo_root = Path(__file__).resolve().parents[2]
+    module_path = repo_root / "scripts" / "forecasting_library_benchmark.py"
+    spec = importlib.util.spec_from_file_location(
+        "forecasting_library_benchmark_m_series_owa_artifact",
+        module_path,
+    )
+    assert spec is not None
+    assert spec.loader is not None
+    benchmark = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = benchmark
+    spec.loader.exec_module(benchmark)
+
+    start = date(2026, 1, 1)
+    table = pl.DataFrame(
+        [
+            {
+                "lane_id": lane,
+                "date": start + timedelta(days=offset),
+                "loads": value,
+                "pickup_zone": pickup_zone,
+                "dropoff_zone": pickup_zone + 10.0,
+                "distance_miles": 1.0,
+                "airport_lane": 0.0,
+                "pickup_borough_code": pickup_zone,
+            }
+            for lane, (values, pickup_zone) in {
+                "series_a": ([10.0, 12.0, 14.0], 1.0),
+                "series_b": ([20.0, 23.0, 26.0], 2.0),
+            }.items()
+            for offset, value in enumerate(values)
+        ]
+    ).with_columns(pl.col("date").cast(pl.Datetime("us")))
+    scored = pl.DataFrame(
+        [
+            {
+                "series_id": "series_a",
+                "timestamp": start + timedelta(days=3),
+                "horizon": 1,
+                "actual": 16.0,
+                "cartoboost_lag": 14.0,
+                "cartoboost_auto_forecast": 16.0,
+            },
+            {
+                "series_id": "series_b",
+                "timestamp": start + timedelta(days=3),
+                "horizon": 1,
+                "actual": 29.0,
+                "cartoboost_lag": 26.0,
+                "cartoboost_auto_forecast": 29.0,
+            },
+        ]
+    ).with_columns(pl.col("timestamp").cast(pl.Datetime("us")))
+
+    artifact = benchmark.benchmark_objective_artifacts(
+        "m4",
+        train_table=table,
+        scored=scored,
+        model_names=["cartoboost_lag", "cartoboost_auto_forecast"],
+        season_length=1,
+    )
+
+    m4 = artifact["m4"]
+    assert artifact["primary_metric"] == "owa_proxy"
+    assert m4["ranking"] == ["cartoboost_auto_forecast", "cartoboost_lag"]
+    assert m4["baseline"]["mase"] == pytest.approx(1.0)
+    assert m4["models"]["cartoboost_auto_forecast"]["owa_proxy"] == pytest.approx(0.0)
+    assert m4["models"]["cartoboost_lag"]["owa_proxy"] == pytest.approx(1.0)
 
 
 def test_forecasting_benchmark_metrics_include_r2():
@@ -1026,22 +1539,22 @@ def test_forecasting_benchmark_robust_selector_prefers_simple_close_candidate():
     assert (
         benchmark.candidate_choice_for_source(
             {
-                "shared_calendar_phase14": 0.7025,
-                "shared_m5_phase14_total_reconciled_020": 0.7194,
-                "shared_m5_phase14_total_reconciled_035": 0.7142,
-                "shared_m5_phase14_total_reconciled_050": 0.7096,
-                "shared_m5_wrmsse_autostats_blend": 0.7091,
-                "shared_m5_point_autostats_phase14_blend": 0.7187,
+                "shared_calendar_elapsed_phase": 0.7025,
+                "shared_elapsed_phase_total_reconciled_020": 0.7194,
+                "shared_elapsed_phase_total_reconciled_035": 0.7142,
+                "shared_elapsed_phase_total_reconciled_050": 0.7096,
+                "shared_reconciled_autostats_blend": 0.7091,
+                "shared_point_autostats_elapsed_phase_blend": 0.7187,
             },
             source="m5",
         )
-        == "shared_m5_phase14_total_reconciled_050"
+        == "shared_elapsed_phase_total_reconciled_050"
     )
     assert (
         benchmark.candidate_choice_for_source(
             {
                 "cartoboost_lag": 3.7045505738956943,
-                "shared_m5_point_autostats_phase14_blend": 3.640384191677357,
+                "shared_point_autostats_elapsed_phase_blend": 3.640384191677357,
             },
             source="m5",
             inner_origin_count=1,
@@ -1052,13 +1565,13 @@ def test_forecasting_benchmark_robust_selector_prefers_simple_close_candidate():
         benchmark.candidate_choice_for_source(
             {
                 "cartoboost_auto_forecast": 0.1996633147694055,
-                "shared_calendar_phase14": 0.19966331430819997,
+                "shared_calendar_elapsed_phase": 0.19966331430819997,
                 "cartoboost_lag": 0.19966331443943974,
-                "shared_m6_market_neutral_zero": 0.19966331426201722,
+                "shared_market_neutral_zero": 0.19966331426201722,
             },
             source="m6",
         )
-        == "shared_m6_market_neutral_zero"
+        == "shared_market_neutral_zero"
     )
     assert (
         benchmark.candidate_choice_for_source(
@@ -1168,7 +1681,7 @@ def test_forecasting_benchmark_keeps_confident_native_raw_auto(monkeypatch):
     assert selected["cartoboost_auto_forecast"].to_list() == [1.0]
 
 
-def test_forecasting_benchmark_autostats_candidate_targets_m4_and_m5():
+def test_forecasting_benchmark_autostats_candidate_targets_m_series_and_m5():
     repo_root = Path(__file__).resolve().parents[2]
     module_path = repo_root / "scripts" / "forecasting_library_benchmark.py"
     spec = importlib.util.spec_from_file_location(
@@ -1181,75 +1694,113 @@ def test_forecasting_benchmark_autostats_candidate_targets_m4_and_m5():
     sys.modules[spec.name] = benchmark
     spec.loader.exec_module(benchmark)
 
+    assert benchmark.include_autostats_candidate(source="m1", season_length=12, horizon=18)
+    assert benchmark.include_autostats_candidate(source="m3", season_length=4, horizon=8)
     assert benchmark.include_autostats_candidate(source="m4", season_length=12, horizon=18)
     assert benchmark.include_autostats_candidate(source="m4", season_length=4, horizon=8)
     assert not benchmark.include_autostats_candidate(source="m4", season_length=24, horizon=48)
+    assert benchmark.requires_lag_spine(source="m4", season_length=1, horizon=14)
+    assert benchmark.requires_lag_spine(source="m4", season_length=12, horizon=18)
+    assert not benchmark.requires_lag_spine(source="m4", season_length=24, horizon=48)
+    assert not benchmark.requires_lag_spine(source="m3", season_length=12, horizon=18)
     assert benchmark.include_autostats_candidate(source="m5", season_length=1, horizon=28)
-    assert "shared_m5_phase14_total_reconciled_035" in benchmark.selectable_candidate_names(
+    assert "cartoboost_autostats_bank" in benchmark.selectable_candidate_names(
+        "cartoboost_auto_forecast",
+        source="m1",
+    )
+    assert "cartoboost_autostats_bank" in benchmark.selectable_candidate_names(
+        "cartoboost_auto_forecast",
+        source="m3",
+    )
+    assert "shared_elapsed_phase_total_reconciled_035" in benchmark.selectable_candidate_names(
         "cartoboost_auto_forecast",
         source="m5",
     )
-    assert "shared_m5_point_autostats_phase14_blend" in benchmark.selectable_candidate_names(
+    assert "shared_point_autostats_elapsed_phase_blend" in benchmark.selectable_candidate_names(
         "cartoboost_auto_forecast",
         source="m5",
     )
-    assert "shared_m5_wrmsse_autostats_blend" in benchmark.selectable_candidate_names(
+    assert "shared_reconciled_autostats_blend" in benchmark.selectable_candidate_names(
         "cartoboost_auto_forecast",
         source="m5",
     )
-    assert "shared_m5_total_reconciled_auto" in benchmark.selectable_candidate_names(
+    assert "shared_total_reconciled_auto" in benchmark.selectable_candidate_names(
         "cartoboost_auto_forecast",
         source="m5",
     )
-    assert "shared_m5_state_reconciled_auto" not in benchmark.selectable_candidate_names(
+    assert "shared_state_reconciled_auto" not in benchmark.selectable_candidate_names(
         "cartoboost_auto_forecast",
         source="m5",
     )
-    assert "shared_m5_store_reconciled_auto" not in benchmark.selectable_candidate_names(
+    assert "shared_store_reconciled_auto" not in benchmark.selectable_candidate_names(
         "cartoboost_auto_forecast",
         source="m5",
     )
     assert (
         benchmark.candidate_choice_for_source(
             {
-                "shared_m5_phase14_total_reconciled_035": 1.0,
-                "shared_m5_point_autostats_phase14_blend": 1.015,
+                "shared_elapsed_phase_total_reconciled_035": 1.0,
+                "shared_point_autostats_elapsed_phase_blend": 1.015,
             },
             source="m5",
         )
-        == "shared_m5_point_autostats_phase14_blend"
+        == "shared_point_autostats_elapsed_phase_blend"
     )
     assert (
         benchmark.candidate_choice_for_source(
             {
-                "shared_m5_phase14_total_reconciled_035": 1.0,
-                "shared_m5_point_autostats_phase14_blend": 1.016,
+                "shared_elapsed_phase_total_reconciled_035": 1.0,
+                "shared_point_autostats_elapsed_phase_blend": 1.016,
             },
             source="m5",
         )
-        == "shared_m5_phase14_total_reconciled_035"
+        == "shared_elapsed_phase_total_reconciled_035"
     )
     assert (
         benchmark.candidate_choice_for_source(
             {
-                "shared_m5_phase14_total_reconciled_035": 1.0,
-                "shared_m5_wrmsse_autostats_blend": 1.0005,
+                "shared_elapsed_phase_total_reconciled_035": 1.0,
+                "shared_reconciled_autostats_blend": 1.0005,
             },
             source="m5",
             inner_origin_count=1,
         )
-        == "shared_m5_wrmsse_autostats_blend"
+        == "shared_reconciled_autostats_blend"
     )
     assert (
         benchmark.candidate_choice_for_source(
             {
-                "shared_m5_phase14_total_reconciled_035": 1.0,
-                "shared_m5_wrmsse_autostats_blend": 1.0005,
+                "shared_elapsed_phase_total_reconciled_035": 1.0,
+                "shared_reconciled_autostats_blend": 1.0005,
             },
             source="m5",
             inner_origin_count=3,
         )
-        == "shared_m5_phase14_total_reconciled_035"
+        == "shared_elapsed_phase_total_reconciled_035"
+    )
+
+    pl = pytest.importorskip("polars")
+    train = pl.DataFrame({"loads": [0.0, 1.0, 10.0]})
+    candidates = pl.DataFrame(
+        {
+            "cartoboost_lag": [1.0, 2.0],
+            "shared_calendar_elapsed_phase": [3.0, 4.0],
+            "shared_elapsed_phase_total_reconciled_050": [2.0e9, 4.0],
+        }
+    )
+    assert (
+        benchmark.stable_hierarchy_candidate_choice(
+            train,
+            candidates,
+            candidate_scores_by_model={
+                "shared_elapsed_phase_total_reconciled_050": 0.60,
+                "shared_calendar_elapsed_phase": 0.70,
+                "cartoboost_lag": 0.80,
+            },
+            selected_candidate="shared_elapsed_phase_total_reconciled_050",
+            inner_origin_count=2,
+        )
+        == "shared_calendar_elapsed_phase"
     )
 
 
@@ -1279,6 +1830,15 @@ def test_forecasting_benchmark_shared_candidate_helpers_preserve_outputs():
             "distance_miles": [3.5] * 16,
             "airport_lane": [0] * 16,
             "pickup_borough_code": [4] * 16,
+            "weight_value": [10.0] * 16,
+            "m5_sell_price": [1.25] * 16,
+            "m5_event_name_1_code": [0.0] * 16,
+            "m5_snap_CA": [1.0] * 16,
+            "m5_state_code": [0.0] * 16,
+            "m5_store_code": [0.0] * 16,
+            "m5_cat_code": [0.0] * 16,
+            "m5_dept_code": [0.0] * 16,
+            "m5_item_code": [0.0] * 16,
         }
     ).with_columns(pl.col("date").cast(pl.Datetime("us")))
 
@@ -1292,7 +1852,8 @@ def test_forecasting_benchmark_shared_candidate_helpers_preserve_outputs():
         train,
         2,
         prediction_col="prediction",
-        mode="phase14",
+        mode="elapsed_phase",
+        elapsed_phase_period=14,
     )
     trend = benchmark.trend_forecast_frame(
         train,
@@ -1320,6 +1881,42 @@ def test_forecasting_benchmark_shared_candidate_helpers_preserve_outputs():
         ("a", 2, pytest.approx(8.875)),
         ("b", 2, pytest.approx(18.875)),
     ]
+
+    candidate_frame = pl.DataFrame(
+        {
+            "series_id": ["a", "b"],
+            "timestamp": [start + timedelta(days=8), start + timedelta(days=8)],
+            "horizon": [1, 1],
+            "base": [2.0, 3.0],
+            "target": [6.0, 4.0],
+        }
+    ).with_columns(pl.col("timestamp").cast(pl.Datetime("us")))
+    reconciled = benchmark.add_hierarchical_elapsed_phase_total_reconciled_candidates(
+        candidate_frame,
+        base_col="base",
+        target_col="target",
+    ).sort("series_id")
+
+    assert reconciled["shared_elapsed_phase_total_reconciled_020"].to_list() == pytest.approx(
+        [2.4, 3.6]
+    )
+    assert reconciled["shared_elapsed_phase_total_reconciled_050"].to_list() == pytest.approx(
+        [3.0, 4.5]
+    )
+
+    m6_anchor = seasonal.select("series_id", "timestamp", "horizon")
+    m6_candidates = benchmark.add_shared_candidate_columns(
+        train,
+        2,
+        season_length=7,
+        predictions=m6_anchor,
+        source="m6",
+        required_columns={"shared_elapsed_phase_rank_blend"},
+    ).sort(["horizon", "series_id"])
+
+    assert m6_candidates["shared_elapsed_phase_rank_blend"].to_list() == pytest.approx(
+        [2.0, 12.0, 3.0, 13.0]
+    )
 
 
 def test_forecasting_benchmark_future_feature_builder_preserves_outputs():
@@ -1419,6 +2016,231 @@ def test_forecasting_benchmark_future_feature_builder_preserves_outputs():
     ]
 
 
+def test_forecasting_benchmark_m5_known_future_features_use_future_calendar():
+    pl = pytest.importorskip("polars")
+    repo_root = Path(__file__).resolve().parents[2]
+    module_path = repo_root / "scripts" / "forecasting_library_benchmark.py"
+    spec = importlib.util.spec_from_file_location(
+        "forecasting_library_benchmark_m5_known_future_features",
+        module_path,
+    )
+    assert spec is not None
+    assert spec.loader is not None
+    benchmark = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = benchmark
+    spec.loader.exec_module(benchmark)
+
+    start = datetime(2026, 1, 1)
+    history = pl.DataFrame(
+        {
+            "lane_id": ["a"],
+            "date": [start],
+            "loads": [1.0],
+            "pickup_zone": [1.0],
+            "dropoff_zone": [2.0],
+            "distance_miles": [3.0],
+            "airport_lane": [0.0],
+            "pickup_borough_code": [4.0],
+            "m5_event_name_1_code": [0.0],
+            "m5_snap_CA": [0.0],
+            "m5_sell_price": [2.0],
+        }
+    ).with_columns(pl.col("date").cast(pl.Datetime("us")))
+    known_future = pl.DataFrame(
+        {
+            "lane_id": ["a"],
+            "date": [start + timedelta(days=1)],
+            "m5_event_name_1_code": [3.0],
+            "m5_snap_CA": [1.0],
+            "m5_sell_price": [2.5],
+        }
+    ).with_columns(pl.col("date").cast(pl.Datetime("us")))
+
+    future = benchmark.next_future_rows(history, known_future=known_future)
+    features = benchmark.build_future_features(history, future, season_length=1)
+
+    assert future.select("m5_event_name_1_code", "m5_snap_CA", "m5_sell_price").row(0) == (
+        3.0,
+        1.0,
+        2.5,
+    )
+    assert {
+        "m5_event_name_1_code",
+        "m5_snap_CA",
+        "m5_sell_price",
+    } <= set(benchmark.benchmark_exogenous_feature_columns(features))
+
+
+def test_forecasting_benchmark_external_tree_uses_m5_known_future_features():
+    pl = pytest.importorskip("polars")
+    repo_root = Path(__file__).resolve().parents[2]
+    module_path = repo_root / "scripts" / "forecasting_library_benchmark.py"
+    spec = importlib.util.spec_from_file_location(
+        "forecasting_library_benchmark_m5_known_future_tree",
+        module_path,
+    )
+    assert spec is not None
+    assert spec.loader is not None
+    benchmark = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = benchmark
+    spec.loader.exec_module(benchmark)
+
+    start = datetime(2026, 1, 1)
+    dates = [start + timedelta(days=offset) for offset in range(8)]
+    history = pl.DataFrame(
+        {
+            "lane_id": ["a"] * 8,
+            "date": dates,
+            "loads": list(range(1, 9)),
+            "pickup_zone": [1.0] * 8,
+            "dropoff_zone": [2.0] * 8,
+            "distance_miles": [3.0] * 8,
+            "airport_lane": [0.0] * 8,
+            "pickup_borough_code": [4.0] * 8,
+            "m5_event_name_1_code": [0.0] * 8,
+            "m5_snap_CA": [0.0] * 8,
+            "m5_sell_price": [2.0] * 8,
+            "weight_value": [2.0] * 8,
+        }
+    ).with_columns(pl.col("date").cast(pl.Datetime("us")))
+    known_future = pl.DataFrame(
+        {
+            "lane_id": ["a"],
+            "date": [start + timedelta(days=8)],
+            "m5_event_name_1_code": [4.0],
+            "m5_snap_CA": [1.0],
+            "m5_sell_price": [2.75],
+        }
+    ).with_columns(pl.col("date").cast(pl.Datetime("us")))
+    feature_columns = benchmark.select_cartoboost_feature_columns(
+        benchmark.build_history_features(history, season_length=1),
+        season_length=1,
+    )
+    captured: dict[str, object] = {}
+
+    class FakeModel:
+        def fit(self, x, y):
+            captured["fit_shape"] = x.shape
+
+        def predict(self, x):
+            captured["predict_row"] = x[0]
+            return [9.0]
+
+    forecast, _timing = benchmark.external_tree_lag_forecast(
+        history,
+        1,
+        season_length=1,
+        model=FakeModel(),
+        prediction_col="fake_tree",
+        known_future=known_future,
+    )
+
+    predicted_row = captured["predict_row"]
+    assert predicted_row[feature_columns.index("m5_event_name_1_code")] == pytest.approx(4.0)
+    assert predicted_row[feature_columns.index("m5_snap_CA")] == pytest.approx(1.0)
+    assert predicted_row[feature_columns.index("m5_sell_price")] == pytest.approx(2.75)
+    assert forecast["fake_tree"].to_list() == [9.0]
+
+
+def test_forecasting_benchmark_cartoboost_uses_m5_known_future_features(monkeypatch):
+    pl = pytest.importorskip("polars")
+    repo_root = Path(__file__).resolve().parents[2]
+    module_path = repo_root / "scripts" / "forecasting_library_benchmark.py"
+    spec = importlib.util.spec_from_file_location(
+        "forecasting_library_benchmark_m5_known_future_cartoboost",
+        module_path,
+    )
+    assert spec is not None
+    assert spec.loader is not None
+    benchmark = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = benchmark
+    spec.loader.exec_module(benchmark)
+
+    start = datetime(2026, 1, 1)
+    history = pl.DataFrame(
+        {
+            "lane_id": ["a"] * 8,
+            "date": [start + timedelta(days=offset) for offset in range(8)],
+            "loads": list(range(1, 9)),
+            "m5_state_code": [1.0] * 8,
+            "m5_store_code": [2.0] * 8,
+            "m5_cat_code": [3.0] * 8,
+            "m5_dept_code": [4.0] * 8,
+            "m5_item_code": [5.0] * 8,
+            "m5_event_name_1_code": [0.0] * 8,
+            "m5_snap_CA": [0.0] * 8,
+            "m5_sell_price": [2.0] * 8,
+            "weight_value": [2.0] * 8,
+        }
+    ).with_columns(pl.col("date").cast(pl.Datetime("us")))
+    known_future = pl.DataFrame(
+        {
+            "lane_id": ["a"],
+            "date": [start + timedelta(days=8)],
+            "m5_event_name_1_code": [4.0],
+            "m5_snap_CA": [1.0],
+            "m5_sell_price": [2.75],
+        }
+    ).with_columns(pl.col("date").cast(pl.Datetime("us")))
+    captured: dict[str, object] = {}
+
+    class FakeResult:
+        def predictions(self):
+            return [("a", "2026-01-09T00:00:00", 1, "fake", 9.0)]
+
+    class FakeCartoBoostLagForecaster:
+        metadata_ = {"feature_names": ["target_lag_1", "m5_sell_price"]}
+
+        def __init__(self, **params):
+            captured["params"] = params
+
+        def fit(self, frame):
+            captured["fit_columns"] = list(frame.columns)
+            return self
+
+        def predict(self, horizon, *, known_future=None):
+            captured["horizon"] = horizon
+            captured["known_future_columns"] = (
+                [] if known_future is None else list(known_future.columns)
+            )
+            captured["known_future_row"] = (
+                None if known_future is None else known_future.iloc[0].to_dict()
+            )
+            return FakeResult()
+
+    monkeypatch.setattr(
+        benchmark,
+        "CartoBoostLagForecaster",
+        FakeCartoBoostLagForecaster,
+    )
+    config = benchmark.cartoboost_source_config(
+        {
+            "n_estimators": 1,
+            "learning_rate": 0.06,
+            "max_depth": 2,
+            "min_samples_leaf": 1,
+        },
+        source="m5",
+    )
+
+    forecast, _timing = benchmark.cartoboost_raw_forecast(
+        history,
+        1,
+        season_length=1,
+        config=config,
+        prediction_col="cartoboost_lag",
+        known_future=known_future,
+    )
+
+    assert "m5_store_code" in captured["fit_columns"]
+    assert "m5_sell_price" in captured["params"]["covariate_features"]
+    assert "m5_store_code" in captured["known_future_columns"]
+    assert "m5_sell_price" in captured["known_future_columns"]
+    assert captured["known_future_row"]["m5_store_code"] == pytest.approx(2.0)
+    assert captured["known_future_row"]["m5_sell_price"] == pytest.approx(2.75)
+    assert forecast["cartoboost_lag"].to_list() == [9.0]
+
+
 def test_forecasting_benchmark_m5_selector_uses_raw_auto_without_nested_calibration(monkeypatch):
     pl = pytest.importorskip("polars")
     repo_root = Path(__file__).resolve().parents[2]
@@ -1495,6 +2317,81 @@ def test_forecasting_benchmark_m5_selector_uses_raw_auto_without_nested_calibrat
     )
 
 
+def test_forecasting_benchmark_m4_selector_scores_autostats_candidate(monkeypatch):
+    pl = pytest.importorskip("polars")
+    repo_root = Path(__file__).resolve().parents[2]
+    module_path = repo_root / "scripts" / "forecasting_library_benchmark.py"
+    spec = importlib.util.spec_from_file_location(
+        "forecasting_library_benchmark_m4_selector_autostats",
+        module_path,
+    )
+    assert spec is not None
+    assert spec.loader is not None
+    benchmark = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = benchmark
+    spec.loader.exec_module(benchmark)
+
+    calls: list[tuple[str, str]] = []
+    timestamp = datetime(2026, 1, 1)
+
+    def forecast_frame(prediction_col: str, value: float):
+        return pl.DataFrame(
+            {
+                "series_id": ["PU1->DO1"],
+                "timestamp": [timestamp],
+                "horizon": [1],
+                prediction_col: [value],
+            }
+        ).with_columns(pl.col("timestamp").cast(pl.Datetime("us")))
+
+    def fake_raw_forecast(*_args, prediction_col: str, **_kwargs):
+        calls.append(("raw", prediction_col))
+        return forecast_frame(prediction_col, 1.0), {"total_seconds": 0.01}
+
+    def fake_auto_forecast(*_args, prediction_col: str, **_kwargs):
+        calls.append(("auto", prediction_col))
+        return forecast_frame(prediction_col, 2.0), {"total_seconds": 99.0}
+
+    def fake_autostats_forecast(*_args, prediction_col: str, **_kwargs):
+        calls.append(("autostats", prediction_col))
+        return forecast_frame(prediction_col, 3.0), {"total_seconds": 0.02}
+
+    monkeypatch.setattr(benchmark, "cartoboost_raw_forecast", fake_raw_forecast)
+    monkeypatch.setattr(benchmark, "cartoboost_forecast", fake_auto_forecast)
+    monkeypatch.setattr(benchmark, "cartoboost_autostats_forecast", fake_autostats_forecast)
+
+    train = pl.DataFrame(
+        {
+            "lane_id": ["PU1->DO1"],
+            "date": [timestamp],
+            "loads": [1.0],
+        }
+    ).with_columns(pl.col("date").cast(pl.Datetime("us")))
+
+    predictions, timing = benchmark.candidate_selection_forecast_roster(
+        train,
+        8,
+        season_length=4,
+        cartoboost_config={
+            "n_estimators": 1,
+            "learning_rate": 0.06,
+            "max_depth": 2,
+            "min_samples_leaf": 1,
+        },
+        model_names=["cartoboost_lag", "cartoboost_auto_forecast"],
+        source="m4",
+    )
+
+    assert ("auto", "cartoboost_auto_forecast") not in calls
+    assert ("raw", "cartoboost_lag") in calls
+    assert ("autostats", "cartoboost_autostats_bank") in calls
+    assert "cartoboost_autostats_bank" in predictions.columns
+    assert (
+        timing["models"]["cartoboost_auto_forecast"]["selector_mode"]
+        == "m4_inner_validation_skips_raw_auto"
+    )
+
+
 def test_forecasting_benchmark_outer_candidates_only_build_required_columns():
     pl = pytest.importorskip("polars")
     repo_root = Path(__file__).resolve().parents[2]
@@ -1509,7 +2406,7 @@ def test_forecasting_benchmark_outer_candidates_only_build_required_columns():
     sys.modules[spec.name] = benchmark
     spec.loader.exec_module(benchmark)
 
-    timestamp = datetime(2026, 1, 8)
+    timestamp = datetime(2026, 1, 15)
     train = pl.DataFrame(
         {
             "lane_id": ["PU1->DO1"] * 7,
@@ -1537,6 +2434,107 @@ def test_forecasting_benchmark_outer_candidates_only_build_required_columns():
     )
 
     assert selected.columns == predictions.columns
+
+
+def test_forecasting_benchmark_m5_required_blend_builds_dependencies():
+    pl = pytest.importorskip("polars")
+    repo_root = Path(__file__).resolve().parents[2]
+    module_path = repo_root / "scripts" / "forecasting_library_benchmark.py"
+    spec = importlib.util.spec_from_file_location(
+        "forecasting_library_benchmark_m5_required_dependencies",
+        module_path,
+    )
+    assert spec is not None
+    assert spec.loader is not None
+    benchmark = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = benchmark
+    spec.loader.exec_module(benchmark)
+
+    timestamp = datetime(2026, 1, 15)
+    train = pl.DataFrame(
+        {
+            "lane_id": ["PU1->DO1"] * 14,
+            "date": [datetime(2026, 1, day) for day in range(1, 15)],
+            "loads": [1.0, 2.0, 1.0, 3.0, 2.0, 4.0, 3.0] * 2,
+            "pickup_zone": [1.0] * 14,
+            "dropoff_zone": [2.0] * 14,
+            "distance_miles": [3.0] * 14,
+            "airport_lane": [0.0] * 14,
+            "pickup_borough_code": [4.0] * 14,
+        }
+    ).with_columns(pl.col("date").cast(pl.Datetime("us")))
+    predictions = pl.DataFrame(
+        {
+            "series_id": ["PU1->DO1"],
+            "timestamp": [timestamp],
+            "horizon": [1],
+            "cartoboost_auto_forecast": [2.0],
+            "cartoboost_autostats_bank": [3.0],
+        }
+    ).with_columns(pl.col("timestamp").cast(pl.Datetime("us")))
+
+    selected = benchmark.add_shared_candidate_columns(
+        train,
+        1,
+        season_length=7,
+        predictions=predictions,
+        source="m5",
+        required_columns={"shared_calendar_autostats_blend"},
+    )
+
+    assert "shared_calendar_elapsed_phase" in selected.columns
+    assert "shared_calendar_autostats_blend" in selected.columns
+    assert selected.height == 1
+
+
+def test_forecasting_benchmark_m5_total_reconciled_does_not_require_calendar_blend():
+    pl = pytest.importorskip("polars")
+    repo_root = Path(__file__).resolve().parents[2]
+    module_path = repo_root / "scripts" / "forecasting_library_benchmark.py"
+    spec = importlib.util.spec_from_file_location(
+        "forecasting_library_benchmark_m5_total_required_dependencies",
+        module_path,
+    )
+    assert spec is not None
+    assert spec.loader is not None
+    benchmark = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = benchmark
+    spec.loader.exec_module(benchmark)
+
+    timestamp = datetime(2026, 1, 15)
+    train = pl.DataFrame(
+        {
+            "lane_id": ["PU1->DO1"] * 14,
+            "date": [datetime(2026, 1, day) for day in range(1, 15)],
+            "loads": [1.0, 2.0, 1.0, 3.0, 2.0, 4.0, 3.0] * 2,
+            "pickup_zone": [1.0] * 14,
+            "dropoff_zone": [2.0] * 14,
+            "distance_miles": [3.0] * 14,
+            "airport_lane": [0.0] * 14,
+            "pickup_borough_code": [4.0] * 14,
+        }
+    ).with_columns(pl.col("date").cast(pl.Datetime("us")))
+    predictions = pl.DataFrame(
+        {
+            "series_id": ["PU1->DO1"],
+            "timestamp": [timestamp],
+            "horizon": [1],
+            "cartoboost_auto_forecast": [2.0],
+        }
+    ).with_columns(pl.col("timestamp").cast(pl.Datetime("us")))
+
+    selected = benchmark.add_shared_candidate_columns(
+        train,
+        1,
+        season_length=7,
+        predictions=predictions,
+        source="m5",
+        required_columns={"shared_total_reconciled_auto"},
+    )
+
+    assert "shared_calendar_elapsed_phase" not in selected.columns
+    assert "shared_total_reconciled_auto" in selected.columns
+    assert selected.height == 1
 
 
 def test_forecasting_benchmark_m6_point_candidate_uses_raw_auto(monkeypatch):
@@ -1601,9 +2599,9 @@ def test_forecasting_benchmark_m6_point_candidate_uses_raw_auto(monkeypatch):
 
     assert ("auto", "cartoboost_auto_forecast") not in calls
     assert ("raw", "cartoboost_auto_forecast") in calls
-    assert ("auto", "cartoboost_m6_point_auto") not in calls
-    assert ("raw", "cartoboost_m6_point_auto") not in calls
-    assert "cartoboost_m6_point_auto" in predictions.columns
+    assert ("auto", "cartoboost_point_auto") not in calls
+    assert ("raw", "cartoboost_point_auto") not in calls
+    assert "cartoboost_point_auto" in predictions.columns
     assert (
         timing["models"]["cartoboost_auto_forecast"]["selector_mode"]
         == "m6_raw_auto_outer_no_nested_calibration"
@@ -1719,7 +2717,12 @@ def test_forecasting_benchmark_m6_outer_selection_skips_raw_auto(monkeypatch):
         calls.append(("raw", prediction_col))
         return forecast_frame(prediction_col, 1.0), {"total_seconds": 0.01}
 
+    def fake_autostats_forecast(*_args, prediction_col: str, **_kwargs):
+        calls.append(("autostats", prediction_col))
+        return forecast_frame(prediction_col, 2.0), {"total_seconds": 0.02}
+
     monkeypatch.setattr(benchmark, "cartoboost_raw_forecast", fake_raw_forecast)
+    monkeypatch.setattr(benchmark, "cartoboost_autostats_forecast", fake_autostats_forecast)
 
     train = pl.DataFrame(
         {
@@ -1747,7 +2750,7 @@ def test_forecasting_benchmark_m6_outer_selection_skips_raw_auto(monkeypatch):
     assert ("raw", "cartoboost_lag") in calls
     assert ("raw", "cartoboost_auto_forecast") not in calls
     assert "cartoboost_auto_forecast" in predictions.columns
-    assert "cartoboost_m6_point_auto" not in predictions.columns
+    assert "cartoboost_point_auto" not in predictions.columns
     assert (
         timing["models"]["cartoboost_auto_forecast"]["selector_mode"]
         == "m6_outer_skips_raw_auto_candidate"
@@ -1785,7 +2788,12 @@ def test_forecasting_benchmark_m4_inner_validation_skips_raw_auto(monkeypatch):
         calls.append(("raw", prediction_col))
         return forecast_frame(prediction_col, 1.0), {"total_seconds": 0.01}
 
+    def fake_autostats_forecast(*_args, prediction_col: str, **_kwargs):
+        calls.append(("autostats", prediction_col))
+        return forecast_frame(prediction_col, 2.0), {"total_seconds": 0.02}
+
     monkeypatch.setattr(benchmark, "cartoboost_raw_forecast", fake_raw_forecast)
+    monkeypatch.setattr(benchmark, "cartoboost_autostats_forecast", fake_autostats_forecast)
 
     train = pl.DataFrame(
         {
@@ -1811,14 +2819,16 @@ def test_forecasting_benchmark_m4_inner_validation_skips_raw_auto(monkeypatch):
 
     assert ("raw", "cartoboost_lag") in calls
     assert ("raw", "cartoboost_auto_forecast") not in calls
+    assert ("autostats", "cartoboost_autostats_bank") in calls
     assert "cartoboost_lag" in predictions.columns
+    assert "cartoboost_autostats_bank" in predictions.columns
     assert (
         timing["models"]["cartoboost_auto_forecast"]["selector_mode"]
         == "m4_inner_validation_skips_raw_auto"
     )
 
 
-def test_forecasting_benchmark_m6_inner_validation_skips_raw_auto(monkeypatch):
+def test_forecasting_benchmark_m6_inner_validation_includes_raw_auto(monkeypatch):
     pl = pytest.importorskip("polars")
     repo_root = Path(__file__).resolve().parents[2]
     module_path = repo_root / "scripts" / "forecasting_library_benchmark.py"
@@ -1874,12 +2884,71 @@ def test_forecasting_benchmark_m6_inner_validation_skips_raw_auto(monkeypatch):
     )
 
     assert ("raw", "cartoboost_lag") in calls
-    assert ("raw", "cartoboost_auto_forecast") not in calls
+    assert ("raw", "cartoboost_auto_forecast") in calls
     assert "cartoboost_lag" in predictions.columns
+    assert "cartoboost_auto_forecast" in predictions.columns
+    assert "cartoboost_point_auto" in predictions.columns
     assert (
         timing["models"]["cartoboost_auto_forecast"]["selector_mode"]
-        == "m6_inner_validation_skips_raw_auto"
+        == "m6_inner_validation_includes_raw_auto"
     )
+
+
+def test_forecasting_benchmark_m6_selection_keeps_raw_auto_on_tiny_rps_gain(monkeypatch):
+    pl = pytest.importorskip("polars")
+    repo_root = Path(__file__).resolve().parents[2]
+    module_path = repo_root / "scripts" / "forecasting_library_benchmark.py"
+    spec = importlib.util.spec_from_file_location(
+        "forecasting_library_benchmark_m6_raw_auto_guard",
+        module_path,
+    )
+    assert spec is not None
+    assert spec.loader is not None
+    benchmark = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = benchmark
+    spec.loader.exec_module(benchmark)
+
+    start = datetime(2026, 1, 1)
+    train = pl.DataFrame(
+        {
+            "lane_id": ["AAA"] * 5,
+            "date": [start + timedelta(days=offset) for offset in range(5)],
+            "loads": [0.01, -0.01, 0.02, -0.02, 0.01],
+        }
+    ).with_columns(pl.col("date").cast(pl.Datetime("us")))
+    raw_predictions = pl.DataFrame(
+        {
+            "series_id": ["AAA"],
+            "timestamp": [start + timedelta(days=5)],
+            "horizon": [1],
+            "cartoboost_lag": [0.02],
+            "cartoboost_auto_forecast": [0.03],
+        }
+    ).with_columns(pl.col("timestamp").cast(pl.Datetime("us")))
+
+    def fake_scores(*_args, **_kwargs):
+        return {
+            "cartoboost_auto_forecast": [0.2000000000],
+            "cartoboost_lag": [0.1999999995],
+        }
+
+    monkeypatch.setattr(benchmark, "shared_candidate_validation_scores", fake_scores)
+
+    selected, timing = benchmark.apply_shared_candidate_selection(
+        train,
+        1,
+        season_length=1,
+        source="m6",
+        raw_predictions=raw_predictions,
+        cartoboost_config={"n_estimators": 1},
+        model_names=["cartoboost_lag", "cartoboost_auto_forecast"],
+    )
+
+    assert timing["selected_candidates"]["cartoboost_auto_forecast"] == "cartoboost_auto_forecast"
+    assert timing["m6_raw_auto_guarded"]["cartoboost_auto_forecast"]["candidate"] == (
+        "cartoboost_lag"
+    )
+    assert selected["cartoboost_auto_forecast"].to_list() == [pytest.approx(0.03)]
 
 
 def test_forecasting_benchmark_m5_inner_validation_skips_raw_auto(monkeypatch):
@@ -1980,6 +3049,8 @@ def test_forecasting_benchmark_static_covariates_are_source_gated():
 
     synthetic = benchmark.cartoboost_source_config(base, source="synthetic")
     taxi = benchmark.cartoboost_source_config(base, source="nyc-taxi")
+    m1 = benchmark.cartoboost_source_config(base, source="m1")
+    m3 = benchmark.cartoboost_source_config(base, source="m3")
     m4 = benchmark.cartoboost_source_config(base, source="m4")
     m5 = benchmark.cartoboost_source_config(base, source="m5")
     m6 = benchmark.cartoboost_source_config(base, source="m6")
@@ -1996,24 +3067,133 @@ def test_forecasting_benchmark_static_covariates_are_source_gated():
     assert taxi["use_native_partial_rolling_mean_features"]
     assert not taxi["use_native_ewm_features"]
     assert taxi["use_covariate_calendar_interactions"]
+    assert not m1["use_elapsed_calendar_features"]
+    assert not m1["use_static_covariates"]
+    assert not m1["use_known_future_covariates"]
+    assert m3["use_elapsed_calendar_features"]
+    assert not m3["use_static_covariates"]
+    assert not m3["use_known_future_covariates"]
+    assert not m4["use_elapsed_calendar_features"]
     assert not m4["use_static_covariates"]
+    assert not m4["use_known_future_covariates"]
     assert not m4["use_rich_calendar_features"]
     assert not m4["use_native_rolling_stat_features"]
     assert not m4["use_native_partial_rolling_mean_features"]
     assert not m4["use_native_ewm_features"]
     assert not m4["use_covariate_calendar_interactions"]
-    assert not m5["use_static_covariates"]
+    assert m5["use_static_covariates"]
+    assert m5["use_known_future_covariates"]
+    assert not m5["use_elapsed_calendar_features"]
     assert not m5["use_rich_calendar_features"]
     assert not m5["use_native_rolling_stat_features"]
     assert not m5["use_native_partial_rolling_mean_features"]
     assert not m5["use_native_ewm_features"]
     assert not m5["use_covariate_calendar_interactions"]
     assert not m6["use_static_covariates"]
+    assert not m6["use_known_future_covariates"]
+    assert not m6["use_elapsed_calendar_features"]
     assert not m6["use_rich_calendar_features"]
-    assert not m6["use_native_rolling_stat_features"]
+    assert m6["use_native_rolling_stat_features"]
     assert not m6["use_native_partial_rolling_mean_features"]
     assert not m6["use_native_ewm_features"]
     assert not m6["use_covariate_calendar_interactions"]
+
+
+def test_forecasting_benchmark_native_params_respect_elapsed_calendar_feature_gate():
+    pl = pytest.importorskip("polars")
+    repo_root = Path(__file__).resolve().parents[2]
+    module_path = repo_root / "scripts" / "forecasting_library_benchmark.py"
+    spec = importlib.util.spec_from_file_location(
+        "forecasting_library_benchmark_elapsed_calendar_gate",
+        module_path,
+    )
+    assert spec is not None
+    assert spec.loader is not None
+    benchmark = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = benchmark
+    spec.loader.exec_module(benchmark)
+
+    frame = pl.DataFrame(
+        {
+            "lane_id": ["a", "a", "a", "a"],
+            "date": [
+                datetime(2026, 1, 1),
+                datetime(2026, 1, 2),
+                datetime(2026, 1, 3),
+                datetime(2026, 1, 4),
+            ],
+            "loads": [1.0, 2.0, 3.0, 4.0],
+        }
+    ).with_columns(pl.col("date").cast(pl.Datetime("us")))
+    base = {
+        "n_estimators": 1,
+        "learning_rate": 0.06,
+        "max_depth": 2,
+        "min_samples_leaf": 1,
+    }
+
+    m3_config = benchmark.cartoboost_source_config(base, source="m3")
+    m4_config = benchmark.cartoboost_source_config(base, source="m4")
+
+    m3_params = benchmark.cartoboost_native_forecaster_params(
+        12,
+        1,
+        m3_config,
+        train=frame,
+    )
+    assert m3_params["elapsed_calendar_features"]
+    assert m3_params["elapsed_calendar_periods"] == [12]
+    assert (
+        benchmark.cartoboost_native_forecaster_params(
+            1,
+            1,
+            m3_config,
+            train=frame,
+        )["elapsed_calendar_periods"]
+        == []
+    )
+    m4_params = benchmark.cartoboost_native_forecaster_params(
+        1,
+        1,
+        m4_config,
+        train=frame,
+    )
+    assert not m4_params["elapsed_calendar_features"]
+    assert m4_params["elapsed_calendar_periods"] == []
+
+
+def test_forecasting_benchmark_validation_unavailable_fallback_prefers_lag_for_classical_auto():
+    pl = pytest.importorskip("polars")
+    repo_root = Path(__file__).resolve().parents[2]
+    module_path = repo_root / "scripts" / "forecasting_library_benchmark.py"
+    spec = importlib.util.spec_from_file_location(
+        "forecasting_library_benchmark_validation_unavailable_fallback",
+        module_path,
+    )
+    assert spec is not None
+    assert spec.loader is not None
+    benchmark = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = benchmark
+    spec.loader.exec_module(benchmark)
+
+    raw = pl.DataFrame(
+        {
+            "series_id": ["a", "a"],
+            "timestamp": [datetime(2026, 1, 1), datetime(2026, 1, 2)],
+            "horizon": [1, 2],
+            "cartoboost_lag": [10.0, 12.0],
+            "cartoboost_auto_forecast": [0.0, 0.0],
+        }
+    )
+
+    selected, choices = benchmark.validation_unavailable_selected_predictions(
+        raw,
+        model_names=["cartoboost_lag", "cartoboost_auto_forecast"],
+        source="m3",
+    )
+
+    assert choices["cartoboost_auto_forecast"] == "cartoboost_lag"
+    assert selected["cartoboost_auto_forecast"].to_list() == [10.0, 12.0]
 
 
 def test_forecasting_benchmark_m4_lag_spine_targets_high_frequency_risk():
@@ -2194,7 +3374,7 @@ def test_forecasting_benchmark_docs_match_committed_artifacts():
     m6_full_second_rmse_model = m6_full_rmse_ranking[1]
     m6_full_second_rmse = m6_full["metrics"][m6_full_second_rmse_model]["rmse"]
     m6_full_rps = m6_full["official_metrics"]["m6"]
-    m6_full_rps_winner = m6_full_rps["ranking"][0]
+    m6_full_rps_winner = m6_full_rps["rps_ranking"][0]
     m6_full_rps_winner_score = m6_full_rps["models"][m6_full_rps_winner]["mean_rps"]
     m6_full_auto_rps = m6_full_rps["models"]["cartoboost_auto_forecast"]["mean_rps"]
     assert (
@@ -2226,6 +3406,37 @@ def test_committed_forecasting_artifacts_include_provenance_fields():
         assert artifact["benchmark_integrity"]["seed"] == 42
         assert artifact["resource_usage"]["peak_rss_mb"] > 0.0
         assert artifact["resource_usage"]["process_cpu_seconds"] >= 0.0
+
+
+def test_forecasting_benchmark_invocation_metadata_quotes_argv(monkeypatch):
+    repo_root = Path(__file__).resolve().parents[2]
+    module_path = repo_root / "scripts" / "forecasting_library_benchmark.py"
+    spec = importlib.util.spec_from_file_location(
+        "forecasting_library_benchmark_invocation",
+        module_path,
+    )
+    assert spec is not None
+    assert spec.loader is not None
+    benchmark = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = benchmark
+    spec.loader.exec_module(benchmark)
+
+    monkeypatch.setattr(
+        benchmark.sys,
+        "argv",
+        ["scripts/forecasting_library_benchmark.py", "--output", "target/path with spaces.json"],
+    )
+
+    metadata = benchmark.invocation_metadata()
+
+    assert metadata["argv"] == [
+        "scripts/forecasting_library_benchmark.py",
+        "--output",
+        "target/path with spaces.json",
+    ]
+    assert metadata["command"] == (
+        "scripts/forecasting_library_benchmark.py --output 'target/path with spaces.json'"
+    )
 
 
 def test_forecasting_benchmark_m5_requires_real_local_files(tmp_path):
@@ -2466,15 +3677,15 @@ def test_forecasting_benchmark_loads_m6_assets_file(tmp_path):
     assert dataset["days"] == 90
     assert table.height == 180
     assert {"lane_id", "date", "loads", *benchmark.STATIC_COVARIATES} <= set(table.columns)
-    assert "shared_m6_phase14_rank_blend" in benchmark.selectable_candidate_names(
+    assert "shared_elapsed_phase_rank_blend" in benchmark.selectable_candidate_names(
         "cartoboost_auto_forecast",
         source="m6",
     )
-    assert "shared_m6_market_neutral_zero" in benchmark.selectable_candidate_names(
+    assert "shared_market_neutral_zero" in benchmark.selectable_candidate_names(
         "cartoboost_auto_forecast",
         source="m6",
     )
-    assert "shared_m6_phase14_rank_blend" not in benchmark.selectable_candidate_names(
+    assert "shared_elapsed_phase_rank_blend" not in benchmark.selectable_candidate_names(
         "cartoboost_auto_forecast",
         source="m5",
     )
@@ -2508,6 +3719,11 @@ def test_forecasting_benchmark_emits_m5_wrmsse_artifact():
                     "distance_miles": 1.0,
                     "airport_lane": 0.0,
                     "pickup_borough_code": pickup_zone,
+                    "m5_state_code": pickup_zone,
+                    "m5_store_code": pickup_zone,
+                    "m5_cat_code": 1.0,
+                    "m5_dept_code": pickup_zone,
+                    "m5_item_code": pickup_zone + 10.0,
                 }
             )
     table = pl.DataFrame(rows).with_columns(pl.col("date").cast(pl.Datetime("us")))
@@ -2537,10 +3753,35 @@ def test_forecasting_benchmark_emits_m5_wrmsse_artifact():
     m5 = artifact["m5"]
     assert artifact["primary_metric"] == "wrmsse"
     assert m5["ranking"] == ["cartoboost_auto_forecast", "cartoboost_lag"]
-    assert set(m5["levels"]) == {"total", "state", "store", "item", "item_store"}
+    assert m5["model_level_contributions"]["cartoboost_auto_forecast"][0] == {
+        "level": "total",
+        "wrmsse": pytest.approx(0.0),
+        "level_weight": pytest.approx(1.0 / 12.0),
+        "contribution": pytest.approx(0.0),
+    }
+    assert set(m5["levels"]) == {
+        "total",
+        "state",
+        "store",
+        "category",
+        "department",
+        "state_category",
+        "state_department",
+        "store_category",
+        "store_department",
+        "item",
+        "state_item",
+        "item_store",
+    }
     total = m5["levels"]["total"]["models"]
     assert total["cartoboost_auto_forecast"]["wrmsse"] == pytest.approx(0.0)
     assert total["cartoboost_lag"]["wrmsse"] > 0.0
+
+    state_item_ids = {
+        series["series_id"]
+        for series in m5["levels"]["state_item"]["models"]["cartoboost_auto_forecast"]["series"]
+    }
+    assert state_item_ids == {"1.0/11.0", "2.0/12.0"}
 
 
 def test_forecasting_benchmark_exposes_lag_as_traceable_auto_candidate():
@@ -2610,12 +3851,23 @@ def test_forecasting_benchmark_emits_m6_rps_artifact():
     )
 
     m6 = artifact["m6"]
-    assert artifact["primary_metric"] == "rank_probability_score"
+    assert artifact["primary_metric"] == "investment_decision_return"
+    assert m6["ranking"] == m6["investment_ranking"]
+    assert "rps_ranking" in m6
+    assert m6["investment_ranking"][0] == "cartoboost_auto_forecast"
     auto = m6["models"]["cartoboost_auto_forecast"]
     assert auto["asset_count"] == 5
     assert auto["rank_probability_calibration"]["fallback"] == "uniform_when_no_validation_support"
     assert auto["mean_rps"] == pytest.approx(m6["models"]["cartoboost_lag"]["mean_rps"])
     assert sum(row["weight"] for row in auto["decisions"]) == pytest.approx(0.0)
+    assert auto["portfolio"]["gross_exposure"] == pytest.approx(1.0)
+    assert auto["portfolio"]["net_exposure"] == pytest.approx(0.0)
+    assert auto["decision_return"] == pytest.approx(auto["portfolio"]["net_return"])
+    assert auto["portfolio"]["long_count"] == 1
+    assert auto["portfolio"]["short_count"] == 1
+    assert auto["rank_hit_rates"]["exact_bucket_rate"] == pytest.approx(1.0)
+    assert auto["rank_hit_rates"]["within_one_bucket_rate"] == pytest.approx(1.0)
+    assert auto["rank_hit_rates"]["directional_extreme_count"] == 2
 
 
 def test_forecasting_benchmark_m6_rps_uses_validation_calibration():
@@ -2679,7 +3931,62 @@ def test_forecasting_benchmark_m6_rps_uses_validation_calibration():
     assert auto["rank_probability_calibration"]["validation_support"] == 5
     assert auto["rank_probability_calibration"]["shrinkage_to_confusion"] > 0.0
     assert auto["mean_rps"] < lag["mean_rps"]
-    assert artifact["ranking"][0] == "cartoboost_auto_forecast"
+    assert artifact["rps_ranking"][0] == "cartoboost_auto_forecast"
+
+
+def test_forecasting_benchmark_m6_objective_prefers_decision_return():
+    pl = pytest.importorskip("polars")
+    repo_root = Path(__file__).resolve().parents[2]
+    module_path = repo_root / "scripts" / "forecasting_library_benchmark.py"
+    spec = importlib.util.spec_from_file_location(
+        "forecasting_library_benchmark_m6_decision_objective",
+        module_path,
+    )
+    assert spec is not None
+    assert spec.loader is not None
+    benchmark = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = benchmark
+    spec.loader.exec_module(benchmark)
+
+    scored = pl.DataFrame(
+        [
+            {
+                "series_id": symbol,
+                "timestamp": date(2026, 3, 1) + timedelta(days=horizon),
+                "horizon": horizon + 1,
+                "actual": actual,
+                "profitable_rank": actual,
+                "bad_rank": -actual,
+            }
+            for symbol, actual in [
+                ("AAA", -0.05),
+                ("BBB", -0.02),
+                ("CCC", 0.00),
+                ("DDD", 0.02),
+                ("EEE", 0.05),
+            ]
+            for horizon in range(2)
+        ]
+    ).with_columns(pl.col("timestamp").cast(pl.Datetime("us")))
+
+    objective = benchmark.auto_selection_objective("m6")
+    profitable_loss = benchmark.forecast_objective_loss(
+        objective,
+        train=scored,
+        scored=scored,
+        prediction_col="profitable_rank",
+        season_length=1,
+    )
+    bad_loss = benchmark.forecast_objective_loss(
+        objective,
+        train=scored,
+        scored=scored,
+        prediction_col="bad_rank",
+        season_length=1,
+    )
+
+    assert profitable_loss < bad_loss
+    assert profitable_loss < 0.0
 
 
 def test_model_benchmark_suite_graph_families_smoke(tmp_path):

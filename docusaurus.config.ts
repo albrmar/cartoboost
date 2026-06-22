@@ -19,7 +19,7 @@ function llmsTxtDocsPlugin(): Plugin {
 const config: Config = {
   title: 'CartoBoost',
   tagline: 'Temporal, spatial, geotemporal, and graph-aware regression',
-  favicon: 'img/logo.svg',
+  favicon: 'img/cartoboost-route-splitter-logo.svg',
 
   url: 'https://theculliganman.github.io',
   baseUrl: '/CartoBoost/',
@@ -102,11 +102,12 @@ const config: Config = {
       title: 'CartoBoost',
       logo: {
         alt: 'CartoBoost',
-        src: 'img/logo.svg',
+        src: 'img/cartoboost-route-splitter-logo.svg',
       },
       items: [
         { to: '/docs/installation', label: 'Get Started', position: 'left' },
         { to: '/docs/user-guide/model-types', label: 'Guides', position: 'left' },
+        { to: '/forecast-lab', label: 'Forecast Lab', position: 'left' },
         { to: '/docs/reference/python-api', label: 'Reference', position: 'left' },
         { to: '/docs/benchmarks', label: 'Benchmarks', position: 'left' },
         {

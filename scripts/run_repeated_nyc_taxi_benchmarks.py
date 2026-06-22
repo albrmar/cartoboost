@@ -13,15 +13,21 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from benchmarks.runners.significance import normal_mean_ci, paired_bootstrap_ci  # noqa: E402
+
 BENCHMARK_SCRIPT = ROOT / "scripts" / "run_nyc_taxi_quality_benchmarks.py"
 DEFAULT_RUN_DIR = ROOT / "target" / "nyc_taxi_repeated"
 DEFAULT_SUMMARY_JSON = ROOT / "docs" / "assets" / "nyc_taxi_benchmarks" / "repeated_results.json"
 DEFAULT_SUMMARY_MD = ROOT / "docs" / "assets" / "nyc_taxi_benchmarks" / "repeated_results.md"
+DEFAULT_SEEDS_CONFIG = ROOT / "benchmarks" / "configs" / "seeds.json"
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--runs", type=int, default=5)
+    parser.add_argument("--runs", type=int, default=3)
     parser.add_argument("--run-dir", type=Path, default=DEFAULT_RUN_DIR)
     parser.add_argument("--summary-json", type=Path, default=DEFAULT_SUMMARY_JSON)
     parser.add_argument("--summary-md", type=Path, default=DEFAULT_SUMMARY_MD)
@@ -29,6 +35,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--months", default="1")
     parser.add_argument("--sample-size", type=int, default=25_000)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument(
+        "--seeds-config",
+        type=Path,
+        default=DEFAULT_SEEDS_CONFIG,
+        help="Benchmark seed config. Used for repeated runs when available.",
+    )
     parser.add_argument("--tasks", default="")
     parser.add_argument(
         "--models",
@@ -146,13 +158,26 @@ def benchmark_command(args: argparse.Namespace, output_dir: Path) -> list[str]:
     return command
 
 
-def run_once(args: argparse.Namespace, run_index: int) -> dict[str, Any]:
+def benchmark_seeds(args: argparse.Namespace) -> list[int]:
+    if args.runs == 1:
+        return [int(args.seed)]
+    if args.seeds_config.exists():
+        config = json.loads(args.seeds_config.read_text(encoding="utf-8"))
+        seeds = [int(seed) for seed in config.get("benchmark_seeds", [])]
+        if seeds:
+            return seeds[: args.runs]
+    return [int(args.seed) + run_index - 1 for run_index in range(1, args.runs + 1)]
+
+
+def run_once(args: argparse.Namespace, run_index: int, seed: int) -> dict[str, Any]:
     output_dir = args.run_dir / f"run_{run_index:02d}"
     output_dir.mkdir(parents=True, exist_ok=True)
     env = None
     if args.profile_fit:
         env = {**os.environ, "CARTOBOOST_PROFILE_FIT": "1"}
-    subprocess.run(benchmark_command(args, output_dir), cwd=ROOT, check=True, env=env)
+    run_args = argparse.Namespace(**vars(args))
+    run_args.seed = seed
+    subprocess.run(benchmark_command(run_args, output_dir), cwd=ROOT, check=True, env=env)
     return json.loads((output_dir / "results.json").read_text(encoding="utf-8"))
 
 
@@ -232,6 +257,100 @@ def collect_ratios(results: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def collect_quality(results: list[dict[str, Any]]) -> dict[str, Any]:
+    rows: dict[str, dict[str, dict[str, Any]]] = {}
+    win_counts: dict[str, dict[str, int]] = {}
+    for result in results:
+        for task_name, task in result["tasks"].items():
+            for split_name, split in task["splits"].items():
+                key = f"{task_name}/{split_name}"
+                ok_models = {
+                    model_name: model
+                    for model_name, model in split["models"].items()
+                    if model.get("status") == "ok"
+                }
+                if not ok_models:
+                    continue
+                best_rmse = min(float(model["metrics"]["rmse"]) for model in ok_models.values())
+                for model_name, model in ok_models.items():
+                    model_rows = rows.setdefault(key, {}).setdefault(
+                        model_name,
+                        {
+                            "metrics": {"rmse": [], "mae": [], "r2": []},
+                            "timing": {
+                                "train_seconds": [],
+                                "predict_seconds": [],
+                                "predict_rows_per_second": [],
+                            },
+                        },
+                    )
+                    for metric in ["rmse", "mae", "r2"]:
+                        model_rows["metrics"][metric].append(float(model["metrics"][metric]))
+                    for timing_name in [
+                        "train_seconds",
+                        "predict_seconds",
+                        "predict_rows_per_second",
+                    ]:
+                        model_rows["timing"][timing_name].append(
+                            float(model["timing"][timing_name])
+                        )
+                    if float(model["metrics"]["rmse"]) == best_rmse:
+                        win_counts.setdefault(key, {})[model_name] = (
+                            win_counts.setdefault(key, {}).get(model_name, 0) + 1
+                        )
+
+    summary: dict[str, Any] = {}
+    for key, model_rows in sorted(rows.items()):
+        summary[key] = {"models": {}, "paired_deltas": {}}
+        for model_name, payload in sorted(model_rows.items()):
+            summary[key]["models"][model_name] = {
+                "metrics": {
+                    metric: ci_payload(values)
+                    for metric, values in sorted(payload["metrics"].items())
+                },
+                "timing": {
+                    timing_name: median_payload(values)
+                    for timing_name, values in sorted(payload["timing"].items())
+                },
+                "rmse_wins_or_ties": win_counts.get(key, {}).get(model_name, 0),
+            }
+        for baseline in ["lightgbm", "xgboost"]:
+            if baseline not in model_rows:
+                continue
+            baseline_rmse = model_rows[baseline]["metrics"]["rmse"]
+            baseline_r2 = model_rows[baseline]["metrics"]["r2"]
+            for challenger in sorted(name for name in model_rows if name.startswith("cartoboost")):
+                challenger_rmse = model_rows[challenger]["metrics"]["rmse"]
+                challenger_r2 = model_rows[challenger]["metrics"]["r2"]
+                if len(challenger_rmse) != len(baseline_rmse):
+                    continue
+                rmse_delta = paired_bootstrap_ci(challenger_rmse, baseline_rmse, seed=11)
+                r2_delta = paired_bootstrap_ci(challenger_r2, baseline_r2, seed=11)
+                summary[key]["paired_deltas"][f"{challenger}_vs_{baseline}"] = {
+                    "rmse_delta_mean": rmse_delta[0],
+                    "rmse_delta_ci95_low": rmse_delta[1],
+                    "rmse_delta_ci95_high": rmse_delta[2],
+                    "r2_delta_mean": r2_delta[0],
+                    "r2_delta_ci95_low": r2_delta[1],
+                    "r2_delta_ci95_high": r2_delta[2],
+                }
+    return summary
+
+
+def ci_payload(values: list[float]) -> dict[str, float | int]:
+    center, low, high = normal_mean_ci(values)
+    return {"n": len(values), "mean": center, "ci95_low": low, "ci95_high": high}
+
+
+def median_payload(values: list[float]) -> dict[str, float | int]:
+    return {
+        "n": len(values),
+        "median": statistics.median(values),
+        "min": min(values),
+        "max": max(values),
+    }
+
+
 def reference_delta_summary(values: list[dict[str, float]]) -> dict[str, float | None]:
     rmse = [
         item["rmse_delta_vs_cartoboost_reference"]
@@ -275,8 +394,15 @@ def passes_xgboost_gate(row: dict[str, Any]) -> bool:
 
 def write_markdown(summary: dict[str, Any], output: Path) -> None:
     lines = [
-        "# Repeated NYC Taxi Speed Benchmark",
+        "# Repeated NYC Taxi Benchmark",
         "",
+        (
+            "This report reruns the maintained NYC taxi benchmark and summarizes quality "
+            "confidence intervals, paired baseline deltas, and speed ratios."
+        ),
+        "",
+        f"- runs: {summary['runs']}",
+        f"- seeds: {', '.join(str(seed) for seed in summary['seeds'])}",
         (
             f"- baseline estimators: {summary['model_config']['baseline_n_estimators']}; "
             f"CartoBoost candidate estimators: {summary['model_config']['cartoboost_n_estimators']}"
@@ -295,12 +421,62 @@ def write_markdown(summary: dict[str, Any], output: Path) -> None:
             "lower RMSE than XGBoost, and R2 no worse than XGBoost."
         ),
         "",
-        "| task/split | train ratio vs XGBoost median | train ratio min-max | "
-        "predict rps ratio vs XGBoost median | predict rps ratio min-max | "
-        "RMSE delta vs Carto ref | R2 delta vs Carto ref | "
-        "RMSE delta vs XGB | R2 delta vs XGB | gate |",
-        "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
+        "## Quality Summary",
+        "",
+        (
+            "| task/split | model | RMSE mean | RMSE 95% CI | MAE mean | R2 mean | "
+            "RMSE wins/ties | train median sec | predict rows/sec median |"
+        ),
+        "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
     ]
+    for key, quality in summary["quality"].items():
+        for model_name, model in quality["models"].items():
+            rmse = model["metrics"]["rmse"]
+            mae = model["metrics"]["mae"]
+            r2 = model["metrics"]["r2"]
+            train = model["timing"]["train_seconds"]
+            throughput = model["timing"]["predict_rows_per_second"]
+            lines.append(
+                f"| {key} | {model_name} | {rmse['mean']:.6f} | "
+                f"{rmse['ci95_low']:.6f}-{rmse['ci95_high']:.6f} | "
+                f"{mae['mean']:.6f} | {r2['mean']:.6f} | "
+                f"{model['rmse_wins_or_ties']} | {train['median']:.6f} | "
+                f"{throughput['median']:.2f} |"
+            )
+    lines.extend(
+        [
+            "",
+            "## Paired Baseline Deltas",
+            "",
+            "Negative RMSE deltas favor the CartoBoost-family row. Positive R2 deltas favor it.",
+            "",
+            (
+                "| task/split | comparison | RMSE delta mean | RMSE delta 95% CI | "
+                "R2 delta mean | R2 delta 95% CI |"
+            ),
+            "| --- | --- | ---: | ---: | ---: | ---: |",
+        ]
+    )
+    for key, quality in summary["quality"].items():
+        for comparison, deltas in quality["paired_deltas"].items():
+            lines.append(
+                f"| {key} | {comparison} | {deltas['rmse_delta_mean']:.6f} | "
+                f"{deltas['rmse_delta_ci95_low']:.6f}-{deltas['rmse_delta_ci95_high']:.6f} | "
+                f"{deltas['r2_delta_mean']:.6f} | "
+                f"{deltas['r2_delta_ci95_low']:.6f}-{deltas['r2_delta_ci95_high']:.6f} |"
+            )
+    lines.extend(
+        [
+            "",
+            "## Speed Ratios",
+            "",
+            "| task/split | train ratio vs XGBoost median | train ratio min-max | "
+            "predict rps ratio vs XGBoost median | predict rps ratio min-max | "
+            "RMSE delta vs Carto ref | R2 delta vs Carto ref | "
+            "RMSE delta vs XGB | R2 delta vs XGB | gate |",
+            "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
+        ]
+    )
     for key, row in summary["ratios"].items():
         train_median = row["median_train_ratio_vs_xgboost"]
         predict_median = row["median_predict_rps_ratio_vs_xgboost"]
@@ -326,12 +502,22 @@ def main() -> None:
     args = parse_args()
     if args.runs <= 0:
         raise SystemExit("--runs must be positive")
+    seeds = benchmark_seeds(args)
+    if len(seeds) < args.runs:
+        raise SystemExit(
+            f"requested {args.runs} runs but only {len(seeds)} benchmark seeds are available"
+        )
     args.run_dir.mkdir(parents=True, exist_ok=True)
-    results = [run_once(args, run_index) for run_index in range(1, args.runs + 1)]
+    results = [
+        run_once(args, run_index, seed)
+        for run_index, seed in enumerate(seeds[: args.runs], start=1)
+    ]
     ratios = collect_ratios(results)
+    quality = collect_quality(results)
     summary = {
         "artifact_version": 1,
         "runs": args.runs,
+        "seeds": seeds[: args.runs],
         "target": {
             "train_ratio_vs_xgboost_max": 1.0,
             "predict_rps_ratio_vs_xgboost_min": 1.0,
@@ -358,6 +544,7 @@ def main() -> None:
             "zone_target_smoothing": args.zone_target_smoothing,
         },
         "ratios": ratios,
+        "quality": quality,
     }
     summary["all_gates_pass"] = all(passes_xgboost_gate(row) for row in ratios.values())
     args.summary_json.parent.mkdir(parents=True, exist_ok=True)

@@ -30,6 +30,87 @@ GRAPH_MODEL_FAMILIES = {
     "cartoboost_graph_hetero_graphsage": "hetero_graphsage",
     "cartoboost_graph_hinsage": "hinsage",
 }
+KARATE_CLUB_EDGES_1_INDEXED = [
+    (2, 1),
+    (3, 1),
+    (3, 2),
+    (4, 1),
+    (4, 2),
+    (4, 3),
+    (5, 1),
+    (6, 1),
+    (7, 1),
+    (7, 5),
+    (7, 6),
+    (8, 1),
+    (8, 2),
+    (8, 3),
+    (8, 4),
+    (9, 1),
+    (9, 3),
+    (10, 3),
+    (11, 1),
+    (11, 5),
+    (11, 6),
+    (12, 1),
+    (13, 1),
+    (13, 4),
+    (14, 1),
+    (14, 2),
+    (14, 3),
+    (14, 4),
+    (17, 6),
+    (17, 7),
+    (18, 1),
+    (18, 2),
+    (20, 1),
+    (20, 2),
+    (22, 1),
+    (22, 2),
+    (26, 24),
+    (26, 25),
+    (28, 3),
+    (28, 24),
+    (28, 25),
+    (29, 3),
+    (30, 24),
+    (30, 27),
+    (31, 2),
+    (31, 9),
+    (32, 1),
+    (32, 25),
+    (32, 26),
+    (32, 29),
+    (33, 3),
+    (33, 9),
+    (33, 15),
+    (33, 16),
+    (33, 19),
+    (33, 21),
+    (33, 23),
+    (33, 24),
+    (33, 30),
+    (33, 31),
+    (33, 32),
+    (34, 9),
+    (34, 10),
+    (34, 14),
+    (34, 15),
+    (34, 16),
+    (34, 19),
+    (34, 20),
+    (34, 21),
+    (34, 23),
+    (34, 24),
+    (34, 27),
+    (34, 28),
+    (34, 29),
+    (34, 30),
+    (34, 31),
+    (34, 32),
+    (34, 33),
+]
+KARATE_CLUB_MR_HI_ZERO_INDEXED = {0, 1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 16, 17, 19, 21}
 STANDALONE_MODELS = {
     "neural_embedding_regressor",
     "node2vec_regressor",
@@ -84,7 +165,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--datasets",
         default="normal,neural,graph",
-        help="Comma-separated workloads from: normal, neural, graph",
+        help="Comma-separated workloads from: normal, neural, graph, diabetes, karate",
     )
     parser.add_argument(
         "--models",
@@ -219,12 +300,85 @@ def graph_workload(*, n_rows: int, seed: int) -> Workload:
     )
 
 
+def diabetes_workload(*, n_rows: int, seed: int) -> Workload:
+    del n_rows, seed
+    from sklearn.datasets import load_diabetes
+
+    dataset = load_diabetes()
+    return Workload(
+        name="diabetes",
+        display_name="sklearn diabetes",
+        description=(
+            "Frozen public scikit-learn diabetes regression workload with 442 rows, "
+            "10 numeric features, and disease-progression target."
+        ),
+        features=np.asarray(dataset.data, dtype=np.float64),
+        target=np.asarray(dataset.target, dtype=np.float64),
+    )
+
+
+def karate_workload(*, n_rows: int, seed: int) -> Workload:
+    del n_rows, seed
+    edges = np.asarray(
+        [(source - 1, target - 1) for source, target in KARATE_CLUB_EDGES_1_INDEXED],
+        dtype=np.int64,
+    )
+    source = edges[:, 0]
+    target = edges[:, 1]
+    node_count = 34
+    degrees = np.zeros(node_count, dtype=np.float64)
+    for left, right in edges:
+        degrees[int(left)] += 1.0
+        degrees[int(right)] += 1.0
+    labels = np.asarray(
+        [1.0 if node in KARATE_CLUB_MR_HI_ZERO_INDEXED else 0.0 for node in range(node_count)],
+        dtype=np.float64,
+    )
+    y = (labels[source] == labels[target]).astype(np.float64)
+    features = np.column_stack(
+        [
+            source.astype(np.float64),
+            target.astype(np.float64),
+            degrees[source],
+            degrees[target],
+            np.abs(degrees[source] - degrees[target]),
+        ]
+    )
+    node_axis = np.linspace(0.0, 2.0 * np.pi, node_count, endpoint=False)
+    node_features = np.column_stack(
+        [
+            degrees,
+            labels,
+            np.sin(node_axis),
+            np.cos(node_axis),
+        ]
+    )
+    return Workload(
+        name="karate",
+        display_name="Zachary karate club",
+        description=(
+            "Frozen public 78-edge Zachary karate club graph workload. Rows are observed "
+            "edges; the regression target is whether the two endpoints share the same "
+            "post-split club label."
+        ),
+        features=features.astype(np.float64),
+        target=y.astype(np.float64),
+        split_group=source.astype(np.int64),
+        graph_source=source,
+        graph_target=target,
+        graph_edges=[(int(left), int(right)) for left, right in edges],
+        graph_node_features=node_features.astype(np.float64),
+    )
+
+
 def build_workloads(args: argparse.Namespace) -> list[Workload]:
     requested = [part.strip() for part in args.datasets.split(",") if part.strip()]
     builders = {
         "normal": dense_normal_workload,
         "neural": neural_workload,
         "graph": graph_workload,
+        "diabetes": diabetes_workload,
+        "karate": karate_workload,
     }
     unknown = sorted(set(requested) - set(builders))
     if unknown:
@@ -1408,6 +1562,7 @@ def plot_metric(rows: list[dict[str, Any]], metric: str, title: str, output_path
 def write_outputs(payload: dict[str, Any], args: argparse.Namespace) -> None:
     args.output_dir.mkdir(parents=True, exist_ok=True)
     (args.output_dir / "results.json").write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    write_jsonl_results(payload, args.output_dir / "results.jsonl")
     write_markdown(payload, args.output_dir / "results.md")
     if not args.no_plots:
         rows = ok_rows(payload)
@@ -1426,6 +1581,51 @@ def write_outputs(payload: dict[str, Any], args: argparse.Namespace) -> None:
             "Prediction throughput by model, workload, and split",
             args.output_dir / "prediction_throughput_by_model.png",
         )
+
+
+def workload_track(workload_name: str) -> str:
+    if workload_name == "diabetes":
+        return "tabular"
+    if workload_name == "karate":
+        return "graph"
+    return "diagnostic"
+
+
+def write_jsonl_results(payload: dict[str, Any], output: Path) -> None:
+    rows = []
+    for workload_name, workload in payload["workloads"].items():
+        for split_name, split in workload["splits"].items():
+            for model_name, result in split["models"].items():
+                if result.get("status") != "ok":
+                    continue
+                for metric, value in result.get("metrics", {}).items():
+                    rows.append(
+                        {
+                            "track": workload_track(workload_name),
+                            "task_id": workload_name,
+                            "split_id": split_name,
+                            "model_family": model_name,
+                            "metric": metric,
+                            "value": float(value),
+                        }
+                    )
+                for metric in [
+                    "train_seconds",
+                    "predict_seconds",
+                    "predict_rows_per_second",
+                ]:
+                    if metric in result.get("timing", {}):
+                        rows.append(
+                            {
+                                "track": workload_track(workload_name),
+                                "task_id": workload_name,
+                                "split_id": split_name,
+                                "model_family": model_name,
+                                "metric": metric,
+                                "value": float(result["timing"][metric]),
+                            }
+                        )
+    output.write_text("\n".join(json.dumps(row, sort_keys=True) for row in rows) + "\n")
 
 
 def main() -> None:

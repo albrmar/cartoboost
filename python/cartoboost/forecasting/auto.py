@@ -30,6 +30,8 @@ class AutoForecasterConfig:
     covariate_features: tuple[str, ...] | None = None
     covariate_calendar_interactions: bool = False
     rich_calendar_features: bool = False
+    elapsed_calendar_features: bool = False
+    elapsed_calendar_periods: tuple[int, ...] = ()
     ewm_alpha_percents: tuple[int, ...] = ()
     partial_rolling_mean_windows: tuple[int, ...] = ()
 
@@ -60,6 +62,8 @@ class AutoForecaster(BaseForecaster):
         covariate_features: Sequence[str] | None = None,
         covariate_calendar_interactions: bool = False,
         rich_calendar_features: bool = False,
+        elapsed_calendar_features: bool = False,
+        elapsed_calendar_periods: Sequence[int] | None = None,
         ewm_alpha_percents: Sequence[int] | None = None,
         partial_rolling_mean_windows: Sequence[int] | None = None,
         **cartoboost_params: Any,
@@ -83,6 +87,10 @@ class AutoForecaster(BaseForecaster):
             ),
             covariate_calendar_interactions=bool(covariate_calendar_interactions),
             rich_calendar_features=bool(rich_calendar_features),
+            elapsed_calendar_features=bool(elapsed_calendar_features),
+            elapsed_calendar_periods=_normalize_elapsed_calendar_periods(
+                elapsed_calendar_periods,
+            ),
             ewm_alpha_percents=_normalize_ewm_alpha_percents(ewm_alpha_percents),
             partial_rolling_mean_windows=_normalize_positive_ints(
                 partial_rolling_mean_windows,
@@ -112,6 +120,8 @@ class AutoForecaster(BaseForecaster):
             "ewm_alpha_percents": list(self.config.ewm_alpha_percents),
             "calendar_features": True,
             "rich_calendar_features": self.config.rich_calendar_features,
+            "elapsed_calendar_features": self.config.elapsed_calendar_features,
+            "elapsed_calendar_periods": list(self.config.elapsed_calendar_periods),
             "covariate_features": effective_covariates,
             "covariate_calendar_interactions": self.config.covariate_calendar_interactions,
             "season_length": self.config.season_length or 7,
@@ -157,6 +167,8 @@ class AutoForecaster(BaseForecaster):
             ),
             "covariate_calendar_interactions": self.config.covariate_calendar_interactions,
             "rich_calendar_features": self.config.rich_calendar_features,
+            "elapsed_calendar_features": self.config.elapsed_calendar_features,
+            "elapsed_calendar_periods": list(self.config.elapsed_calendar_periods),
             "ewm_alpha_percents": list(self.config.ewm_alpha_percents),
             "partial_rolling_mean_windows": list(self.config.partial_rolling_mean_windows),
             "effective_covariate_features": list(self._effective_covariate_features or []),
@@ -223,21 +235,27 @@ def _normalize_positive_ints(values: Sequence[int] | None, *, name: str) -> tupl
     return result
 
 
-def evaluate_m4(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
-    raise RuntimeError("Use scripts/forecasting_m4.py --committed --no-hyperopt for M4 scoring")
+def _normalize_minimum_ints(
+    values: Sequence[int] | None,
+    *,
+    name: str,
+    minimum: int,
+) -> tuple[int, ...]:
+    raw_values = () if values is None else tuple(values)
+    result = tuple(int(value) for value in raw_values)
+    if any(value < minimum for value in result):
+        raise ValueError(f"{name} must contain integers greater than or equal to {minimum}")
+    if len(set(result)) != len(result):
+        raise ValueError(f"{name} must not contain duplicate values")
+    return result
 
 
-def evaluate_m5(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
-    raise RuntimeError(
-        "Use scripts/forecasting_m5.py --committed --official-wrmsse --no-hyperopt for M5 scoring"
+def _normalize_elapsed_calendar_periods(values: Sequence[int] | None) -> tuple[int, ...]:
+    result = _normalize_minimum_ints(
+        values,
+        name="elapsed_calendar_periods",
+        minimum=2,
     )
-
-
-def evaluate_m6_proxy(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
-    raise RuntimeError("Use scripts/forecasting_library_benchmark.py --source m6 for proxy scoring")
-
-
-def evaluate_m6_official_style(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
-    raise RuntimeError(
-        "Use scripts/forecasting_m6.py --committed --official-style --no-hyperopt for M6 scoring"
-    )
+    if len(result) > 1:
+        raise ValueError("elapsed_calendar_periods supports at most one value")
+    return result

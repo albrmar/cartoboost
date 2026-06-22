@@ -217,3 +217,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+node_modules
+.docusaurus/*
+tmp/*
+static/.DS_Store
+.playwright-cli/*

@@ -1,7 +1,5 @@
 {
   "splits": [
-    {"id": "spatial_block_k5_3seed", "kind": "spatial_blocked_cv", "outer_folds": 5, "seeds": "benchmark_seeds", "hpo_scope": "spatial_train_validation_only"},
-    {"id": "out_of_time_rolling_month", "kind": "temporal_holdout", "outer_folds": 3, "seeds": "benchmark_seeds", "hpo_scope": "past_train_validation_only"}
+    {"id": "random_and_pickup_zone_holdout_3seed", "kind": "repeated_random_plus_pickup_zone_holdout", "outer_folds": 2, "seeds": "benchmark_seeds", "hpo_scope": "fixed_settings_no_hpo"}
   ]
 }
-

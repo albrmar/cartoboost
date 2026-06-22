@@ -49,6 +49,8 @@ def test_auto_forecaster_delegates_to_native_auto_model(install_fake_native):
             "ewm_alpha_percents": [],
             "calendar_features": True,
             "rich_calendar_features": False,
+            "elapsed_calendar_features": False,
+            "elapsed_calendar_periods": [],
             "covariate_features": [],
             "covariate_calendar_interactions": False,
             "season_length": 7,
@@ -126,6 +128,42 @@ def test_auto_forecaster_can_opt_into_ewm_alpha_percents(install_fake_native):
     AutoForecaster(ewm_alpha_percents=[90]).fit(frame)
 
     assert native.calls[0][1]["ewm_alpha_percents"] == [90]
+
+
+def test_auto_forecaster_can_opt_into_elapsed_calendar_features(install_fake_native):
+    native = install_fake_native("AutoForecastModel")
+    frame = ForecastFrame.from_pandas(
+        pd.DataFrame(
+            {
+                "lane_id": ["PU1-DO2"] * 8,
+                "pickup_day": pd.date_range("2026-01-01", periods=8, freq="D"),
+                "pickup_trips": [10.0, 11.0, 13.0, 16.0, 18.0, 21.0, 23.0, 26.0],
+            }
+        ),
+        timestamp_col="pickup_day",
+        target_col="pickup_trips",
+        series_id_col="lane_id",
+        freq="D",
+    )
+
+    model = AutoForecaster(
+        elapsed_calendar_features=True,
+        elapsed_calendar_periods=[7],
+    ).fit(frame)
+
+    assert native.calls[0][1]["elapsed_calendar_features"] is True
+    assert native.calls[0][1]["elapsed_calendar_periods"] == [7]
+    assert model.get_metadata()["auto_forecaster"]["elapsed_calendar_features"] is True
+    assert model.get_metadata()["auto_forecaster"]["elapsed_calendar_periods"] == [7]
+
+
+def test_auto_forecaster_rejects_invalid_elapsed_calendar_periods():
+    with pytest.raises(ValueError, match="elapsed_calendar_periods"):
+        AutoForecaster(elapsed_calendar_periods=[1])
+    with pytest.raises(ValueError, match="duplicate"):
+        AutoForecaster(elapsed_calendar_periods=[7, 7])
+    with pytest.raises(ValueError, match="at most one"):
+        AutoForecaster(elapsed_calendar_periods=[7, 12])
 
 
 def test_auto_forecaster_uses_static_covariates_by_default(install_fake_native):

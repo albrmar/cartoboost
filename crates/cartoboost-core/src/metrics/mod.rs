@@ -1,13 +1,24 @@
 use rayon::prelude::*;
 
-pub mod m6;
 pub mod pinball;
+pub mod rank_portfolio;
 pub mod rps;
 pub mod wrmsse;
-pub use m6::{evaluate_m6_metrics, m6_combined_score, M6MetricSummary};
 pub use pinball::pinball_loss;
+pub use rank_portfolio::{
+    calibrated_rank_bucket_probabilities, evaluate_rank_portfolio_metrics,
+    extreme_portfolio_decisions, portfolio_summary, rank_buckets, rank_hit_rates,
+    rank_portfolio_combined_score, rank_portfolio_decision_loss, rank_portfolio_summary,
+    rank_probability_calibration, rank_scored_assets, PortfolioAsset, PortfolioDecision,
+    PortfolioDecisionRow, PortfolioSide, PortfolioSummary, RankBucketPrediction,
+    RankHitRateSummary, RankPortfolioMetricSummary, RankPortfolioSummary,
+    RankProbabilityCalibration, RankProbabilityCalibrationMetadata, RankScoredAsset,
+};
 pub use rps::rank_probability_score;
-pub use wrmsse::{rmsse_scale, wrmsse, WrmsseScore, WrmsseSeries, WrmsseSeriesScore};
+pub use wrmsse::{
+    m5_equal_level_wrmsse, ordered_nonnegative_weights, rmsse_scale, wrmsse,
+    M5AggregateWrmsseScore, M5LevelWrmsseScore, WrmsseScore, WrmsseSeries, WrmsseSeriesScore,
+};
 
 pub fn mae(y_true: &[f64], y_pred: &[f64]) -> f64 {
     y_true

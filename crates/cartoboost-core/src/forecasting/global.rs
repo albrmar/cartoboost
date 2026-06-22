@@ -10,6 +10,10 @@ use rayon::prelude::*;
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 
+const RECURSIVE_FORECAST_RANGE_MARGIN_MULTIPLIER: f64 = 3.0;
+const RECURSIVE_FORECAST_SCALE_MARGIN_FRACTION: f64 = 0.25;
+const RECURSIVE_FORECAST_ABSOLUTE_MARGIN_FLOOR: f64 = 1.0;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum GlobalForecastTargetMode {
     Level,
@@ -98,6 +102,89 @@ impl CartoBoostLagForecaster {
     pub fn training_rows(&self) -> Option<usize> {
         self.fitted.as_ref().map(|state| state.training_rows)
     }
+
+    pub fn predict_with_known_future_covariates(
+        &self,
+        horizon: usize,
+        known_future_covariates: &BTreeMap<(String, chrono::NaiveDateTime), BTreeMap<String, f64>>,
+    ) -> Result<ForecastResult> {
+        validate_horizon(horizon)?;
+        let fitted = self.fitted.as_ref().ok_or_else(not_fitted)?;
+        let predictions = fitted
+            .history_by_series
+            .iter()
+            .collect::<Vec<_>>()
+            .into_par_iter()
+            .map(|(series_id, fitted_history)| {
+                let mut history = fitted_history.clone();
+                let value_bounds = forecast_value_bounds(fitted_history)?;
+                let last = history
+                    .last()
+                    .ok_or_else(|| {
+                        CartoBoostError::InvalidInput("empty series history".to_string())
+                    })?
+                    .clone();
+                let mut predictions = Vec::with_capacity(horizon);
+                for step in 1..=horizon {
+                    let timestamp = fitted.frame.frequency().advance(last.timestamp, step)?;
+                    let future_covariates =
+                        known_future_covariates.get(&(series_id.clone(), timestamp));
+                    let features = self
+                        .lag_builder
+                        .transform_next_sorted_prior_with_covariates(
+                            series_id,
+                            &history,
+                            timestamp,
+                            future_covariates,
+                        )?;
+                    let raw_prediction = fitted.model.predict_one(&features);
+                    let mean = match self.target_mode {
+                        GlobalForecastTargetMode::Level => raw_prediction,
+                        GlobalForecastTargetMode::DeltaFromLast => {
+                            let previous = history.last().ok_or_else(|| {
+                                CartoBoostError::InvalidInput(format!(
+                                    "series {series_id} has no previous target for delta forecast"
+                                ))
+                            })?;
+                            previous.target + raw_prediction
+                        }
+                        GlobalForecastTargetMode::SeasonalDelta { season_length } => {
+                            let seasonal = seasonal_target_before(&history, season_length)
+                                .ok_or_else(|| {
+                                    CartoBoostError::InvalidInput(format!(
+                                        "series {series_id} does not have enough seasonal history"
+                                    ))
+                                })?;
+                            seasonal + raw_prediction
+                        }
+                    };
+                    let mean = clamp_forecast_value(mean, &value_bounds);
+                    predictions.push(ForecastPrediction {
+                        series_id: series_id.clone(),
+                        timestamp,
+                        horizon: step,
+                        model: self.model_name().to_string(),
+                        mean,
+                    });
+                    let covariates = future_covariates
+                        .cloned()
+                        .or_else(|| history.last().map(|row| row.covariates.clone()))
+                        .unwrap_or_default();
+                    history.push(ForecastRow::with_covariates(
+                        series_id.clone(),
+                        timestamp,
+                        mean,
+                        covariates,
+                    ));
+                }
+                Ok(predictions)
+            })
+            .collect::<Result<Vec<_>>>()?
+            .into_iter()
+            .flatten()
+            .collect();
+        ForecastResult::new(predictions)
+    }
 }
 
 impl Forecaster for CartoBoostLagForecaster {
@@ -150,6 +237,7 @@ impl Forecaster for CartoBoostLagForecaster {
             .into_par_iter()
             .map(|(series_id, fitted_history)| {
                 let mut history = fitted_history.clone();
+                let value_bounds = forecast_value_bounds(fitted_history)?;
                 let last = history
                     .last()
                     .ok_or_else(|| {
@@ -183,6 +271,7 @@ impl Forecaster for CartoBoostLagForecaster {
                             seasonal + raw_prediction
                         }
                     };
+                    let mean = clamp_forecast_value(mean, &value_bounds);
                     predictions.push(ForecastPrediction {
                         series_id: series_id.clone(),
                         timestamp,
@@ -239,6 +328,51 @@ fn validate_horizon(horizon: usize) -> Result<()> {
         ));
     }
     Ok(())
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ForecastValueBounds {
+    lower: f64,
+    upper: f64,
+}
+
+fn forecast_value_bounds(history: &[ForecastRow]) -> Result<ForecastValueBounds> {
+    if history.is_empty() {
+        return Err(CartoBoostError::InvalidInput(
+            "forecast bounds require non-empty history".to_string(),
+        ));
+    }
+    let mut min_value = f64::INFINITY;
+    let mut max_value = f64::NEG_INFINITY;
+    let mut max_abs = 0.0_f64;
+    for row in history {
+        if !row.target.is_finite() {
+            return Err(CartoBoostError::InvalidInput(
+                "forecast bounds require finite history targets".to_string(),
+            ));
+        }
+        min_value = min_value.min(row.target);
+        max_value = max_value.max(row.target);
+        max_abs = max_abs.max(row.target.abs());
+    }
+    let range = max_value - min_value;
+    let margin = (range * RECURSIVE_FORECAST_RANGE_MARGIN_MULTIPLIER)
+        .max(max_abs * RECURSIVE_FORECAST_SCALE_MARGIN_FRACTION)
+        .max(RECURSIVE_FORECAST_ABSOLUTE_MARGIN_FLOOR);
+    Ok(ForecastValueBounds {
+        lower: min_value - margin,
+        upper: max_value + margin,
+    })
+}
+
+fn clamp_forecast_value(value: f64, bounds: &ForecastValueBounds) -> f64 {
+    if value.is_finite() {
+        value.clamp(bounds.lower, bounds.upper)
+    } else if value.is_sign_negative() {
+        bounds.lower
+    } else {
+        bounds.upper
+    }
 }
 
 fn validate_target_mode(target_mode: GlobalForecastTargetMode) -> Result<()> {
@@ -412,5 +546,37 @@ pub(crate) fn sample_weight_mode_name(mode: GlobalForecastSampleWeightMode) -> S
         GlobalForecastSampleWeightMode::ExponentialRecency { half_life } => {
             format!("exponential_recency_half_life_{half_life}")
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::NaiveDate;
+
+    fn ts(day: u32) -> chrono::NaiveDateTime {
+        NaiveDate::from_ymd_opt(2026, 1, day)
+            .and_then(|date| date.and_hms_opt(0, 0, 0))
+            .expect("valid timestamp")
+    }
+
+    #[test]
+    fn recursive_forecast_value_bounds_limit_unstable_extrapolation() {
+        let history = vec![
+            ForecastRow::new("series", ts(1), 10.0),
+            ForecastRow::new("series", ts(2), 20.0),
+            ForecastRow::new("series", ts(3), 30.0),
+        ];
+        let bounds = forecast_value_bounds(&history).expect("bounds");
+
+        assert_eq!(clamp_forecast_value(25.0, &bounds), 25.0);
+        assert_eq!(clamp_forecast_value(1_000_000.0, &bounds), bounds.upper);
+        assert_eq!(clamp_forecast_value(f64::INFINITY, &bounds), bounds.upper);
+        assert_eq!(
+            clamp_forecast_value(f64::NEG_INFINITY, &bounds),
+            bounds.lower
+        );
+        assert!(bounds.upper < 100.0);
+        assert!(bounds.lower < 10.0);
     }
 }

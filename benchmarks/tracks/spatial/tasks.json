@@ -1,19 +1,25 @@
 {
   "tasks": [
     {
-      "id": "fare_spatial_cold_zone",
+      "id": "fare_geotemporal_regression",
       "dataset_id": "nyc_tlc_yellow_taxi_q1_2024_v1",
-      "split_id": "spatial_block_k5_3seed",
+      "split_id": "random_and_pickup_zone_holdout_3seed",
       "primary_metric": "rmse",
-      "required_model_families": ["cartoboost", "gbdt_spatial_baseline", "deep_or_metric_baseline"]
+      "required_model_families": ["cartoboost", "cartoboost_neural", "cartoboost_graph", "lightgbm", "xgboost", "mean"]
     },
     {
-      "id": "duration_temporal_holdout",
+      "id": "duration_geotemporal_regression",
       "dataset_id": "nyc_tlc_yellow_taxi_q1_2024_v1",
-      "split_id": "out_of_time_rolling_month",
+      "split_id": "random_and_pickup_zone_holdout_3seed",
       "primary_metric": "rmse",
-      "required_model_families": ["cartoboost", "gbdt_spatial_baseline", "deep_or_metric_baseline"]
+      "required_model_families": ["cartoboost", "cartoboost_neural", "cartoboost_graph", "lightgbm", "xgboost", "mean"]
+    },
+    {
+      "id": "pickup_demand_zone_time_regression",
+      "dataset_id": "nyc_tlc_yellow_taxi_q1_2024_v1",
+      "split_id": "random_and_pickup_zone_holdout_3seed",
+      "primary_metric": "rmse",
+      "required_model_families": ["cartoboost", "cartoboost_neural", "cartoboost_graph", "lightgbm", "xgboost", "mean"]
     }
   ]
 }
-

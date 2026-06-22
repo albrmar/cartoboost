@@ -1,7 +1,6 @@
 {
-  "tabular": ["cartoboost", "gbdt_baseline", "deep_tabular_baseline"],
-  "spatial": ["cartoboost", "gbdt_spatial_baseline", "deep_or_metric_baseline"],
-  "graph": ["cartoboost_graph", "gnn_baseline", "tabularized_graph_baseline"],
+  "tabular": ["cartoboost", "lightgbm", "xgboost", "mean", "deep_tabular_baseline"],
+  "spatial": ["cartoboost", "cartoboost_neural", "cartoboost_graph", "lightgbm", "xgboost", "mean"],
+  "graph": ["cartoboost", "cartoboost_graph", "node2vec_baseline", "graphsage_baseline", "tabularized_graph_baseline", "mean"],
   "forecasting": ["cartoboost_lag", "statistical_forecaster", "global_forecaster"]
 }
-

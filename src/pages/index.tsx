@@ -18,8 +18,8 @@ const paths = [
   },
   {
     title: 'Forecast taxi demand',
-    detail: 'Build leakage-aware panel forecasts with rolling-origin evaluation.',
-    href: '/docs/forecasting',
+    detail: 'Drag in a dataset and run Rust-native forecasts in the browser.',
+    href: '/forecast-lab',
   },
   {
     title: 'Validate the evidence',

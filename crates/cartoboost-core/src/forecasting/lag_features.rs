@@ -20,7 +20,7 @@ pub enum CalendarFeature {
     MonthEnd,
     DayOfYear,
     ElapsedIndex,
-    ElapsedPhase14,
+    ElapsedPhase(usize),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -267,6 +267,16 @@ impl LagFeatureBuilder {
         history: &[ForecastRow],
         timestamp: NaiveDateTime,
     ) -> Result<Vec<f64>> {
+        self.transform_next_sorted_prior_with_covariates(series_id, history, timestamp, None)
+    }
+
+    pub(crate) fn transform_next_sorted_prior_with_covariates(
+        &self,
+        series_id: &str,
+        history: &[ForecastRow],
+        timestamp: NaiveDateTime,
+        covariates: Option<&BTreeMap<String, f64>>,
+    ) -> Result<Vec<f64>> {
         if history.is_empty() {
             return Err(CartoBoostError::InvalidInput(format!(
                 "series {series_id} has no history for lag features"
@@ -286,12 +296,23 @@ impl LagFeatureBuilder {
             )));
         }
         let prior_end = history.partition_point(|row| row.timestamp < timestamp);
-        self.features_from_prior(series_id, &history[..prior_end], timestamp, None)?
-            .ok_or_else(|| {
-                CartoBoostError::InvalidInput(format!(
-                    "series {series_id} does not have enough prior history for lag features"
-                ))
-            })
+        let covariate_source = covariates.map(|values| ForecastRow {
+            series_id: series_id.to_string(),
+            timestamp,
+            target: 0.0,
+            covariates: values.clone(),
+        });
+        self.features_from_prior(
+            series_id,
+            &history[..prior_end],
+            timestamp,
+            covariate_source.as_ref(),
+        )?
+        .ok_or_else(|| {
+            CartoBoostError::InvalidInput(format!(
+                "series {series_id} does not have enough prior history for lag features"
+            ))
+        })
     }
 
     #[cfg(test)]
@@ -878,6 +899,22 @@ fn validate_config(config: &LagFeatureConfig) -> Result<()> {
             "rolling trend windows must be at least 2".to_string(),
         ));
     }
+    let mut elapsed_phase_count = 0;
+    for feature in &config.calendar_features {
+        if let CalendarFeature::ElapsedPhase(period) = feature {
+            elapsed_phase_count += 1;
+            if *period < 2 {
+                return Err(CartoBoostError::InvalidInput(
+                    "elapsed calendar phase periods must be at least 2".to_string(),
+                ));
+            }
+        }
+    }
+    if elapsed_phase_count > 1 {
+        return Err(CartoBoostError::InvalidInput(
+            "at most one elapsed calendar phase period is supported".to_string(),
+        ));
+    }
     let mut covariate_names = std::collections::HashSet::new();
     for name in &config.covariate_features {
         if name.is_empty() {
@@ -990,7 +1027,7 @@ fn calendar_feature_name(feature: &CalendarFeature) -> String {
         CalendarFeature::MonthEnd => "calendar_month_end".to_string(),
         CalendarFeature::DayOfYear => "calendar_day_of_year".to_string(),
         CalendarFeature::ElapsedIndex => "calendar_elapsed_index".to_string(),
-        CalendarFeature::ElapsedPhase14 => "calendar_elapsed_phase_14".to_string(),
+        CalendarFeature::ElapsedPhase(_) => "calendar_elapsed_phase".to_string(),
     }
 }
 
@@ -1010,7 +1047,7 @@ fn calendar_feature_allows_covariate_interaction(feature: &CalendarFeature) -> b
         | CalendarFeature::MonthEnd
         | CalendarFeature::DayOfYear
         | CalendarFeature::ElapsedIndex
-        | CalendarFeature::ElapsedPhase14 => true,
+        | CalendarFeature::ElapsedPhase(_) => true,
     }
 }
 
@@ -1059,7 +1096,7 @@ fn calendar_feature_value(
         }
         CalendarFeature::DayOfYear => f64::from(timestamp.ordinal()),
         CalendarFeature::ElapsedIndex => prior_len as f64,
-        CalendarFeature::ElapsedPhase14 => (prior_len % 14) as f64,
+        CalendarFeature::ElapsedPhase(period) => (prior_len % *period) as f64,
     }
 }
 
@@ -1370,6 +1407,58 @@ mod tests {
     }
 
     #[test]
+    fn sorted_prior_next_features_use_known_future_covariates() {
+        let mut rows = Vec::new();
+        for day in 1..=4 {
+            let mut covariates = BTreeMap::new();
+            covariates.insert("promo".to_string(), f64::from(day));
+            rows.push(ForecastRow::with_covariates(
+                "store_item",
+                ts(day),
+                f64::from(day * 10),
+                covariates,
+            ));
+        }
+        let builder = LagFeatureBuilder::new(LagFeatureConfig {
+            lags: vec![1],
+            rolling_mean_windows: Vec::new(),
+            partial_rolling_mean_windows: Vec::new(),
+            rolling_std_windows: Vec::new(),
+            rolling_min_windows: Vec::new(),
+            rolling_max_windows: Vec::new(),
+            ewm_alpha_percents: Vec::new(),
+            calendar_features: Vec::new(),
+            difference_lags: Vec::new(),
+            rolling_trend_windows: Vec::new(),
+            covariate_features: vec!["promo".to_string()],
+            covariate_indicator_values: Default::default(),
+            covariate_calendar_interactions: false,
+        })
+        .expect("builder");
+        let mut future_covariates = BTreeMap::new();
+        future_covariates.insert("promo".to_string(), 99.0);
+
+        let stale = builder
+            .transform_next_sorted_prior("store_item", &rows, ts(5))
+            .expect("stale features");
+        let known = builder
+            .transform_next_sorted_prior_with_covariates(
+                "store_item",
+                &rows,
+                ts(5),
+                Some(&future_covariates),
+            )
+            .expect("known future features");
+
+        assert_eq!(
+            builder.feature_names(),
+            &["target_lag_1", "covariate_promo"]
+        );
+        assert_eq!(stale, vec![40.0, 4.0]);
+        assert_eq!(known, vec![40.0, 99.0]);
+    }
+
+    #[test]
     fn cached_training_features_match_position_builder() {
         let mut rows = Vec::new();
         for day in 1..=8 {
@@ -1395,7 +1484,7 @@ mod tests {
             calendar_features: vec![
                 CalendarFeature::DayOfYear,
                 CalendarFeature::ElapsedIndex,
-                CalendarFeature::ElapsedPhase14,
+                CalendarFeature::ElapsedPhase(14),
             ],
             difference_lags: vec![2],
             rolling_trend_windows: vec![4],
@@ -1457,7 +1546,7 @@ mod tests {
             calendar_features: vec![
                 CalendarFeature::DayOfYear,
                 CalendarFeature::ElapsedIndex,
-                CalendarFeature::ElapsedPhase14,
+                CalendarFeature::ElapsedPhase(14),
             ],
             difference_lags: Vec::new(),
             rolling_trend_windows: Vec::new(),
@@ -1474,7 +1563,7 @@ mod tests {
                 "target_lag_1".to_string(),
                 "calendar_day_of_year".to_string(),
                 "calendar_elapsed_index".to_string(),
-                "calendar_elapsed_phase_14".to_string(),
+                "calendar_elapsed_phase".to_string(),
                 "covariate_distance_miles".to_string(),
             ]
         );
@@ -1484,6 +1573,66 @@ mod tests {
             .transform_next("lane_a", frame.rows(), ts(3))
             .expect("next");
         assert_eq!(next, vec![12.0, 3.0, 2.0, 2.0, 2.5]);
+    }
+
+    #[test]
+    fn elapsed_phase_calendar_feature_uses_configured_period() {
+        let frame = ForecastFrame::new(
+            vec![
+                ForecastRow::new("lane_a", ts(1), 10.0),
+                ForecastRow::new("lane_a", ts(2), 12.0),
+                ForecastRow::new("lane_a", ts(3), 14.0),
+            ],
+            crate::forecasting::ForecastFrequency::Daily,
+        )
+        .expect("frame");
+        let builder = LagFeatureBuilder::new(LagFeatureConfig {
+            lags: vec![1],
+            rolling_mean_windows: Vec::new(),
+            partial_rolling_mean_windows: Vec::new(),
+            rolling_std_windows: Vec::new(),
+            rolling_min_windows: Vec::new(),
+            rolling_max_windows: Vec::new(),
+            ewm_alpha_percents: Vec::new(),
+            calendar_features: vec![CalendarFeature::ElapsedPhase(7)],
+            difference_lags: Vec::new(),
+            rolling_trend_windows: Vec::new(),
+            covariate_features: Vec::new(),
+            covariate_indicator_values: Default::default(),
+            covariate_calendar_interactions: false,
+        })
+        .expect("builder");
+
+        assert_eq!(
+            builder.feature_names(),
+            &[
+                "target_lag_1".to_string(),
+                "calendar_elapsed_phase".to_string(),
+            ]
+        );
+        let rows = builder.transform_frame(&frame).expect("features");
+        assert_eq!(rows[0].features, vec![10.0, 1.0]);
+        let next = builder
+            .transform_next("lane_a", frame.rows(), ts(4))
+            .expect("next");
+        assert_eq!(next, vec![14.0, 3.0]);
+
+        let invalid = LagFeatureBuilder::new(LagFeatureConfig {
+            lags: Vec::new(),
+            rolling_mean_windows: Vec::new(),
+            partial_rolling_mean_windows: Vec::new(),
+            rolling_std_windows: Vec::new(),
+            rolling_min_windows: Vec::new(),
+            rolling_max_windows: Vec::new(),
+            ewm_alpha_percents: Vec::new(),
+            calendar_features: vec![CalendarFeature::ElapsedPhase(1)],
+            difference_lags: Vec::new(),
+            rolling_trend_windows: Vec::new(),
+            covariate_features: Vec::new(),
+            covariate_indicator_values: Default::default(),
+            covariate_calendar_interactions: false,
+        });
+        assert!(invalid.is_err());
     }
 
     #[test]
@@ -1508,7 +1657,7 @@ mod tests {
             rolling_min_windows: Vec::new(),
             rolling_max_windows: Vec::new(),
             ewm_alpha_percents: Vec::new(),
-            calendar_features: vec![CalendarFeature::Day, CalendarFeature::ElapsedPhase14],
+            calendar_features: vec![CalendarFeature::Day, CalendarFeature::ElapsedPhase(14)],
             difference_lags: Vec::new(),
             rolling_trend_windows: Vec::new(),
             covariate_features: vec!["airport_lane".to_string()],
@@ -1522,10 +1671,10 @@ mod tests {
             &[
                 "target_lag_1".to_string(),
                 "calendar_day".to_string(),
-                "calendar_elapsed_phase_14".to_string(),
+                "calendar_elapsed_phase".to_string(),
                 "covariate_airport_lane".to_string(),
                 "covariate_airport_lane_x_calendar_day".to_string(),
-                "covariate_airport_lane_x_calendar_elapsed_phase_14".to_string(),
+                "covariate_airport_lane_x_calendar_elapsed_phase".to_string(),
             ]
         );
         let rows = builder.transform_frame(&frame).expect("features");

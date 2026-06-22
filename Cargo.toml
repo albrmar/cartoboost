@@ -4,6 +4,7 @@ members = [
     "crates/cartoboost-neural",
     "crates/cartoboost-cli",
     "crates/cartoboost-py",
+    "crates/cartoboost-wasm",
 ]
 resolver = "2"
 

@@ -1,12 +1,16 @@
 {
   "datasets": [
     {
-      "id": "ogb_public_graph_tasks_v1",
-      "source": "Open Graph Benchmark task family",
-      "hash": "to_be_frozen",
+      "id": "zachary_karate_club_78_edge_v1",
+      "source": "Zachary karate club standard 78-edge social network",
+      "source_url": "https://networkx.org/documentation/stable/reference/generated/networkx.generators.social.karate_club_graph.html",
+      "source_identity": "Zachary karate club graph, 34 nodes, standard 78-edge 1-indexed edge list; NetworkX documents this as derived from Zachary 1977 Table 3/Table 1 split labels.",
+      "hash": "sha256:7bfc486096b1d1868d3adb94cb1f7fe579bd7e5d5ddfce51be1b6f75587e3ef2",
+      "hash_material": "canonical JSON of dataset name, 1-indexed node convention, node count, edge count, and sorted standard 78-edge list",
+      "node_count": 34,
+      "edge_count": 78,
       "datasheet": "benchmarks/reports/dataset_card_template.md",
-      "notes": "Use public fixed splits and evaluators where dependency constraints permit."
+      "notes": "Small frozen public graph task used for graph-runner plumbing and baseline policy validation; not a broad graph benchmark by itself."
     }
   ]
 }
-

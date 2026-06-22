@@ -1,8 +1,9 @@
 {
   "search_spaces": [
     {"model_family": "cartoboost", "budget": "standard", "parameters": ["n_estimators", "learning_rate", "max_depth", "min_samples_leaf", "splitters"]},
-    {"model_family": "gbdt_baseline", "budget": "standard", "parameters": ["n_estimators", "learning_rate", "max_depth", "min_child_samples", "subsample"]},
+    {"model_family": "lightgbm", "budget": "standard", "parameters": ["n_estimators", "learning_rate", "max_depth", "min_child_samples", "subsample"]},
+    {"model_family": "xgboost", "budget": "standard", "parameters": ["n_estimators", "learning_rate", "max_depth", "tree_method", "max_bin", "subsample", "colsample_bytree"]},
+    {"model_family": "mean", "budget": "fixed", "parameters": []},
     {"model_family": "deep_tabular_baseline", "budget": "standard", "parameters": ["layers", "width", "dropout", "learning_rate", "weight_decay"]}
   ]
 }
-

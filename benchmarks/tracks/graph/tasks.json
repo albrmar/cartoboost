@@ -1,12 +1,11 @@
 {
   "tasks": [
     {
-      "id": "ogb_link_or_node_prediction",
-      "dataset_id": "ogb_public_graph_tasks_v1",
+      "id": "karate_club_edge_faction_agreement",
+      "dataset_id": "zachary_karate_club_78_edge_v1",
       "split_id": "ogb_official_split",
-      "primary_metric": "average_precision",
-      "required_model_families": ["cartoboost", "cartoboost_graph", "gnn_baseline", "tabularized_graph_baseline"]
+      "primary_metric": "rmse",
+      "required_model_families": ["cartoboost", "cartoboost_graph", "node2vec_baseline", "graphsage_baseline", "tabularized_graph_baseline", "mean"]
     }
   ]
 }
-

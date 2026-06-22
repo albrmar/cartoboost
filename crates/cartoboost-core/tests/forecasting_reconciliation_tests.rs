@@ -1,7 +1,10 @@
 use cartoboost_core::forecasting::{
-    HierarchySpec, Reconciler, ReconciliationMethod, TemporalAggregation, TemporalHierarchy,
+    proportional_total_reconciliation, HierarchySpec, Reconciler, ReconciliationMethod,
+    TemporalAggregation, TemporalHierarchy,
 };
-use cartoboost_core::metrics::{wrmsse, WrmsseSeries};
+use cartoboost_core::metrics::{
+    m5_equal_level_wrmsse, ordered_nonnegative_weights, wrmsse, WrmsseSeries,
+};
 
 fn taxi_hierarchy() -> HierarchySpec {
     HierarchySpec::from_edges(vec![
@@ -193,4 +196,63 @@ fn wrmsse_matches_manual_m5_style_reference() {
     assert!((score.series[0].rmsse - (10.0_f64 / 8.0).sqrt()).abs() < 1e-12);
     assert!((score.series[1].rmsse - (13.0_f64 / (2.0 * 14.0 / 3.0)).sqrt()).abs() < 1e-12);
     assert!((score.score - 1.138_753_888_734_651_6).abs() < 1e-12);
+}
+
+#[test]
+fn m5_equal_level_wrmsse_aggregates_hierarchy_levels() {
+    let score = m5_equal_level_wrmsse(&[
+        ("total".to_string(), 0.6),
+        ("state".to_string(), 0.9),
+        ("item_store".to_string(), 1.2),
+    ])
+    .expect("m5 aggregate wrmsse");
+
+    assert!((score.score - 0.9).abs() < 1e-12);
+    assert_eq!(score.levels.len(), 3);
+    assert_eq!(score.levels[0].level, "total");
+    assert!((score.levels[0].level_weight - (1.0 / 3.0)).abs() < 1e-12);
+    assert!((score.levels[2].contribution - 0.4).abs() < 1e-12);
+}
+
+#[test]
+fn ordered_nonnegative_weights_clip_missing_and_fallback_to_unit() {
+    let weighted = ordered_nonnegative_weights(
+        &["a".to_string(), "b".to_string(), "c".to_string()],
+        &[("a".to_string(), -2.0), ("b".to_string(), 4.0)],
+    )
+    .expect("weights");
+
+    assert_eq!(
+        weighted,
+        vec![
+            ("a".to_string(), 0.0),
+            ("b".to_string(), 4.0),
+            ("c".to_string(), 0.0),
+        ]
+    );
+
+    let fallback = ordered_nonnegative_weights(
+        &["a".to_string(), "b".to_string()],
+        &[("a".to_string(), -1.0)],
+    )
+    .expect("fallback");
+    assert_eq!(
+        fallback,
+        vec![("a".to_string(), 1.0), ("b".to_string(), 1.0)]
+    );
+}
+
+#[test]
+fn proportional_total_reconciliation_blends_toward_target_total() {
+    let reconciled =
+        proportional_total_reconciliation(&[2.0, 3.0, 5.0], 20.0, 0.5).expect("reconcile");
+
+    assert_eq!(reconciled, vec![3.0, 4.5, 7.5]);
+
+    let unchanged = proportional_total_reconciliation(&[0.0, 0.0], 10.0, 0.5).expect("zero sum");
+    assert_eq!(unchanged, vec![0.0, 0.0]);
+
+    let stable =
+        proportional_total_reconciliation(&[-99.0, 100.0], 100.0, 0.5).expect("signed base");
+    assert_eq!(stable, vec![-49.5, 100.0]);
 }

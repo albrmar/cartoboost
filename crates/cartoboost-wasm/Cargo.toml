@@ -1,0 +1,22 @@
+[package]
+name = "cartoboost-wasm"
+version = "0.1.77"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/theculliganman/cartoboost"
+description = "WebAssembly bindings for browser-based CartoBoost forecasting."
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+cartoboost-core = { path = "../cartoboost-core" }
+cartoboost-neural = { path = "../cartoboost-neural" }
+chrono.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+wasm-bindgen = "0.2"
+serde-wasm-bindgen = "0.6"
+
+[dev-dependencies]
+wasm-bindgen-test = "0.3"

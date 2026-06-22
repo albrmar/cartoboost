@@ -1,7 +1,8 @@
 use cartoboost_core::forecasting::{
-    ForecastActual, ForecastFrame, ForecastFrameMetadata, ForecastFrequency, ForecastResult,
-    ForecastRow, ForecastWindow, Forecaster, NaiveForecaster, RollingOriginBacktester,
-    RollingOriginSplitter, SeasonalNaiveForecaster,
+    evaluate_m_competition_metrics, CandidateValidationCutoffSchedule, ForecastActual,
+    ForecastFrame, ForecastFrameMetadata, ForecastFrequency, ForecastResult, ForecastRow,
+    ForecastWindow, Forecaster, NaiveForecaster, RollingOriginBacktester, RollingOriginSplitter,
+    SeasonalNaiveForecaster,
 };
 use chrono::{NaiveDate, NaiveDateTime};
 
@@ -320,6 +321,38 @@ fn metrics_reject_unmatched_forecast_rows() {
 }
 
 #[test]
+fn m_competition_metrics_compute_smape_mase_and_owa_ratios() {
+    let training_series = vec![vec![10.0, 12.0, 14.0], vec![20.0, 23.0, 26.0]];
+    let actuals = vec![16.0, 29.0];
+    let baseline =
+        evaluate_m_competition_metrics(&training_series, &actuals, &[14.0, 26.0], 1, None)
+            .expect("baseline metrics");
+
+    let metrics = evaluate_m_competition_metrics(
+        &training_series,
+        &actuals,
+        &[15.0, 30.0],
+        1,
+        Some((baseline.smape, baseline.mase)),
+    )
+    .expect("model metrics");
+
+    let expected_smape = 0.5 * (2.0 / 31.0 + 2.0 / 59.0);
+    let expected_mase = 1.0 / 2.5;
+    assert!((metrics.smape - expected_smape).abs() < 1e-12);
+    assert!((metrics.mase - expected_mase).abs() < 1e-12);
+    assert!(metrics.smape_ratio_to_baseline.expect("smape ratio") < 1.0);
+    assert!(metrics.mase_ratio_to_baseline.expect("mase ratio") < 1.0);
+    assert_eq!(
+        metrics.owa,
+        Some(
+            0.5 * (metrics.smape_ratio_to_baseline.unwrap()
+                + metrics.mase_ratio_to_baseline.unwrap())
+        )
+    );
+}
+
+#[test]
 fn rolling_origin_splitter_is_leakage_safe_and_deterministic() {
     let frame = taxi_panel_frame(6);
     let splitter = RollingOriginSplitter::new(2, 2, 3, None, None, ForecastWindow::Expanding)
@@ -340,6 +373,24 @@ fn rolling_origin_splitter_is_leakage_safe_and_deterministic() {
     assert_eq!(fold.metadata.train_timestamp_count, 3);
     assert_eq!(fold.metadata.validation_timestamp_count, 2);
     assert_eq!(fold.metadata.series_count, 2);
+}
+
+#[test]
+fn candidate_validation_cutoff_schedule_matches_benchmark_origins() {
+    let default_schedule = CandidateValidationCutoffSchedule::new(100, 14, None).expect("schedule");
+    let reconciliation_schedule =
+        CandidateValidationCutoffSchedule::new(100, 14, Some("hierarchical_reconciliation"))
+            .expect("schedule");
+    let rank_portfolio_schedule =
+        CandidateValidationCutoffSchedule::new(100, 14, Some("rank_portfolio")).expect("schedule");
+    let short_schedule =
+        CandidateValidationCutoffSchedule::new(20, 14, Some("classical_competition"))
+            .expect("schedule");
+
+    assert_eq!(default_schedule.cutoff_indices, vec![58, 72, 86]);
+    assert_eq!(reconciliation_schedule.cutoff_indices, vec![72, 86]);
+    assert_eq!(rank_portfolio_schedule.cutoff_indices, vec![58, 72, 86]);
+    assert_eq!(short_schedule.cutoff_indices, Vec::<usize>::new());
 }
 
 #[test]

@@ -4,6 +4,500 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 
+pub const AUTO_SELECTION_MIN_RELATIVE_GAIN: f64 = 0.03;
+pub const AUTO_SELECTION_ROBUST_RELATIVE_TOLERANCE: f64 = 0.05;
+pub const NATIVE_AUTO_RAW_KEEP_RELATIVE_GAIN: f64 = 0.50;
+pub const FORECAST_MAGNITUDE_GUARD_MULTIPLIER: f64 = 100.0;
+pub const FORECAST_MAGNITUDE_GUARD_ABSOLUTE_FLOOR: f64 = 1_000.0;
+
+pub fn seasonal_naive_candidate_prediction(values: &[f64], season_length: usize) -> Result<f64> {
+    if values.is_empty() {
+        return Err(CartoBoostError::InvalidInput(
+            "seasonal naive candidate requires non-empty history".to_string(),
+        ));
+    }
+    if season_length == 0 {
+        return Err(CartoBoostError::InvalidInput(
+            "seasonal naive candidate season_length must be positive".to_string(),
+        ));
+    }
+    let value = if values.len() >= season_length {
+        values[values.len() - season_length]
+    } else {
+        values[values.len() - 1]
+    };
+    validate_finite_forecast_value(value, "seasonal naive candidate")
+}
+
+pub fn trend_candidate_prediction(
+    values: &[f64],
+    step: usize,
+    season_length: usize,
+    mode: &str,
+) -> Result<f64> {
+    if values.is_empty() {
+        return Err(CartoBoostError::InvalidInput(
+            "trend candidate requires non-empty history".to_string(),
+        ));
+    }
+    if step == 0 {
+        return Err(CartoBoostError::InvalidInput(
+            "trend candidate step must be positive".to_string(),
+        ));
+    }
+    if season_length == 0 {
+        return Err(CartoBoostError::InvalidInput(
+            "trend candidate season_length must be positive".to_string(),
+        ));
+    }
+    validate_finite_series(values, "trend candidate history")?;
+    if values.len() == 1 {
+        return Ok(values[0]);
+    }
+    let step = step as f64;
+    let slope = (values[values.len() - 1] - values[0]) / (values.len() - 1) as f64;
+    let prediction = match mode {
+        "drift" => values[values.len() - 1] + step * slope,
+        "half_drift" => values[values.len() - 1] + 0.5 * step * slope,
+        "seasonal_drift" => {
+            let baseline = if season_length > 1 && values.len() >= season_length {
+                values[values.len() - season_length]
+            } else {
+                values[values.len() - 1]
+            };
+            baseline + step * slope
+        }
+        mode if mode.starts_with("seasonal_cycle_drift_") => {
+            if season_length <= 1 || values.len() < 2 * season_length {
+                values[values.len() - 1]
+            } else {
+                let alpha = mode
+                    .rsplit_once('_')
+                    .and_then(|(_, suffix)| suffix.parse::<f64>().ok())
+                    .ok_or_else(|| {
+                        CartoBoostError::InvalidInput(format!(
+                            "unsupported trend candidate mode '{mode}'"
+                        ))
+                    })?
+                    / 100.0;
+                let baseline = values[values.len() - season_length];
+                let seasonal_slope = (values[values.len() - season_length]
+                    - values[values.len() - 2 * season_length])
+                    / season_length as f64;
+                baseline + alpha * step * seasonal_slope
+            }
+        }
+        _ => {
+            return Err(CartoBoostError::InvalidInput(format!(
+                "unsupported trend candidate mode '{mode}'"
+            )));
+        }
+    };
+    validate_finite_forecast_value(prediction, "trend candidate")
+}
+
+pub fn calendar_profile_candidate_prediction(
+    values: &[f64],
+    day_of_months: &[u32],
+    target_day_of_month: u32,
+    mode: &str,
+    elapsed_phase_period: Option<usize>,
+) -> Result<f64> {
+    if values.is_empty() {
+        return Err(CartoBoostError::InvalidInput(
+            "calendar profile candidate requires non-empty history".to_string(),
+        ));
+    }
+    if values.len() != day_of_months.len() {
+        return Err(CartoBoostError::InvalidInput(
+            "calendar profile candidate history values and day indexes must align".to_string(),
+        ));
+    }
+    validate_finite_series(values, "calendar profile candidate history")?;
+    let fallback = if values.len() >= 7 {
+        values[values.len() - 7]
+    } else {
+        values[values.len() - 1]
+    };
+    let prediction = match mode {
+        "day_of_month" => {
+            let matches = values
+                .iter()
+                .zip(day_of_months)
+                .filter_map(|(&value, &day)| (day == target_day_of_month).then_some(value))
+                .collect::<Vec<_>>();
+            mean_or_fallback(&matches, fallback)
+        }
+        "elapsed_phase" => {
+            let period = elapsed_phase_period.ok_or_else(|| {
+                CartoBoostError::InvalidInput(
+                    "elapsed phase calendar profile requires a phase period".to_string(),
+                )
+            })?;
+            if period < 2 {
+                return Err(CartoBoostError::InvalidInput(
+                    "elapsed phase calendar profile period must be at least 2".to_string(),
+                ));
+            }
+            let future_phase = values.len() % period;
+            let matches = values
+                .iter()
+                .enumerate()
+                .filter_map(|(index, &value)| (index % period == future_phase).then_some(value))
+                .collect::<Vec<_>>();
+            mean_or_fallback(&matches, fallback)
+        }
+        _ => {
+            return Err(CartoBoostError::InvalidInput(format!(
+                "unsupported calendar profile candidate mode '{mode}'"
+            )));
+        }
+    };
+    validate_finite_forecast_value(prediction, "calendar profile candidate")
+}
+
+pub fn validation_ensemble_weights(
+    candidate_scores: &BTreeMap<String, f64>,
+) -> BTreeMap<String, f64> {
+    let mut finite_scores = candidate_scores
+        .iter()
+        .filter(|(_, score)| score.is_finite() && **score > 0.0)
+        .map(|(name, score)| (name.clone(), *score))
+        .collect::<Vec<_>>();
+    if finite_scores.is_empty() {
+        return BTreeMap::from([("cartoboost_raw".to_string(), 1.0)]);
+    }
+    finite_scores.sort_by(|left, right| {
+        left.1
+            .total_cmp(&right.1)
+            .then_with(|| left.0.cmp(&right.0))
+    });
+    finite_scores.truncate(4);
+    let inverse = finite_scores
+        .iter()
+        .map(|(name, score)| (name.clone(), 1.0 / score.powi(2).max(1.0e-12)))
+        .collect::<Vec<_>>();
+    let total = inverse.iter().map(|(_, weight)| weight).sum::<f64>();
+    if !total.is_finite() || total <= 0.0 {
+        return BTreeMap::from([(finite_scores[0].0.clone(), 1.0)]);
+    }
+    inverse
+        .into_iter()
+        .map(|(name, weight)| (name, weight / total))
+        .collect()
+}
+
+pub fn forecast_magnitude_guard_allows(
+    forecast_max_abs: f64,
+    training_max_abs: f64,
+) -> Result<bool> {
+    if !forecast_max_abs.is_finite() || forecast_max_abs < 0.0 {
+        return Err(CartoBoostError::InvalidInput(
+            "forecast magnitude must be finite and non-negative".to_string(),
+        ));
+    }
+    if !training_max_abs.is_finite() || training_max_abs < 0.0 {
+        return Err(CartoBoostError::InvalidInput(
+            "training magnitude must be finite and non-negative".to_string(),
+        ));
+    }
+    let limit = FORECAST_MAGNITUDE_GUARD_ABSOLUTE_FLOOR
+        .max(training_max_abs.max(1.0) * FORECAST_MAGNITUDE_GUARD_MULTIPLIER);
+    Ok(forecast_max_abs <= limit)
+}
+
+pub fn weighted_blend_candidate_forecast(
+    primary_forecast: &[f64],
+    secondary_forecast: &[f64],
+    primary_weight: f64,
+) -> Result<Vec<f64>> {
+    if primary_forecast.len() != secondary_forecast.len() {
+        return Err(CartoBoostError::InvalidInput(
+            "weighted blend forecast inputs must have equal length".to_string(),
+        ));
+    }
+    if !primary_weight.is_finite() || !(0.0..=1.0).contains(&primary_weight) {
+        return Err(CartoBoostError::InvalidInput(
+            "weighted blend forecast weight must be finite and between 0 and 1".to_string(),
+        ));
+    }
+    let secondary_weight = 1.0 - primary_weight;
+    primary_forecast
+        .iter()
+        .zip(secondary_forecast)
+        .map(|(&primary, &secondary)| {
+            if !primary.is_finite() || !secondary.is_finite() {
+                return Err(CartoBoostError::InvalidInput(
+                    "weighted blend forecast values must be finite".to_string(),
+                ));
+            }
+            Ok(primary_weight * primary + secondary_weight * secondary)
+        })
+        .collect()
+}
+
+pub fn requires_lag_spine(source: &str, season_length: usize, horizon: usize) -> bool {
+    if source != "low_frequency_competition" {
+        return false;
+    }
+    if season_length == 12 {
+        return true;
+    }
+    season_length == 1 && horizon > 6
+}
+
+pub fn validation_unavailable_candidate_choice(
+    model: &str,
+    validation_profile: &str,
+    available_candidates: &[String],
+) -> Result<String> {
+    if model.trim().is_empty() {
+        return Err(CartoBoostError::InvalidInput(
+            "model name must not be empty".to_string(),
+        ));
+    }
+    if validation_profile.trim().is_empty() {
+        return Err(CartoBoostError::InvalidInput(
+            "validation profile must not be empty".to_string(),
+        ));
+    }
+    if available_candidates.is_empty() {
+        return Err(CartoBoostError::InvalidInput(
+            "validation fallback requires at least one available candidate".to_string(),
+        ));
+    }
+    if matches!(
+        validation_profile,
+        "classical_competition" | "classical_competition_full"
+    ) && model == "cartoboost_auto_forecast"
+        && available_candidates
+            .iter()
+            .any(|candidate| candidate == "cartoboost_lag")
+    {
+        return Ok("cartoboost_lag".to_string());
+    }
+    if available_candidates
+        .iter()
+        .any(|candidate| candidate == model)
+    {
+        return Ok(model.to_string());
+    }
+    available_candidates
+        .iter()
+        .min_by_key(|candidate| candidate_complexity_rank(candidate))
+        .cloned()
+        .ok_or_else(|| {
+            CartoBoostError::InvalidInput(
+                "validation fallback requires at least one available candidate".to_string(),
+            )
+        })
+}
+
+pub fn shared_candidate_names() -> Vec<String> {
+    [
+        "shared_seasonal_base",
+        "shared_calendar_dom",
+        "shared_calendar_elapsed_phase",
+        "shared_drift",
+        "shared_half_drift",
+        "shared_seasonal_drift",
+        "shared_seasonal_cycle_drift_050",
+        "shared_seasonal_cycle_drift_075",
+    ]
+    .into_iter()
+    .map(str::to_string)
+    .collect()
+}
+
+pub fn selectable_candidate_names(model: &str, source: &str) -> Vec<String> {
+    let mut candidates = shared_candidate_names();
+    if model == "cartoboost_auto_forecast" {
+        candidates.insert(0, "cartoboost_lag".to_string());
+    }
+    if matches!(
+        source,
+        "classical_competition" | "classical_competition_full"
+    ) && model == "cartoboost_auto_forecast"
+    {
+        candidates.push("cartoboost_autostats_bank".to_string());
+    }
+    if source == "hierarchical_reconciliation" && model == "cartoboost_auto_forecast" {
+        candidates.extend(
+            [
+                "cartoboost_autostats_bank",
+                "shared_calendar_autostats_blend",
+                "shared_elapsed_phase_total_reconciled_020",
+                "shared_elapsed_phase_total_reconciled_035",
+                "shared_elapsed_phase_total_reconciled_050",
+                "shared_reconciled_autostats_blend",
+                "shared_point_autostats_elapsed_phase_blend",
+                "shared_total_reconciled_auto",
+            ]
+            .into_iter()
+            .map(str::to_string),
+        );
+    }
+    if source == "rank_portfolio" && model == "cartoboost_auto_forecast" {
+        candidates.extend(
+            [
+                "shared_market_neutral_zero",
+                "shared_elapsed_phase_rank_blend",
+                "cartoboost_point_auto",
+            ]
+            .into_iter()
+            .map(str::to_string),
+        );
+    }
+    candidates
+}
+
+pub fn include_autostats_candidate(source: &str, season_length: usize, horizon: usize) -> bool {
+    if source == "hierarchical_reconciliation" || source == "classical_competition_full" {
+        return true;
+    }
+    source == "classical_competition" && matches!(season_length, 1 | 4 | 12) && horizon <= 24
+}
+
+pub fn native_auto_raw_candidate_is_confident(
+    selected_candidate: Option<&str>,
+    inner_raw_relative_rmse_gain: Option<f64>,
+) -> bool {
+    selected_candidate == Some("cartoboost_raw")
+        && inner_raw_relative_rmse_gain
+            .is_some_and(|gain| gain.is_finite() && gain >= NATIVE_AUTO_RAW_KEEP_RELATIVE_GAIN)
+}
+
+pub fn relative_loss_displacement_allowed(
+    baseline_loss: f64,
+    candidate_loss: f64,
+    min_relative_gain: f64,
+) -> Result<bool> {
+    if !baseline_loss.is_finite() {
+        return Err(CartoBoostError::InvalidInput(
+            "baseline loss must be finite".to_string(),
+        ));
+    }
+    if !candidate_loss.is_finite() {
+        return Err(CartoBoostError::InvalidInput(
+            "candidate loss must be finite".to_string(),
+        ));
+    }
+    if !min_relative_gain.is_finite() || !(0.0..=1.0).contains(&min_relative_gain) {
+        return Err(CartoBoostError::InvalidInput(
+            "displacement relative gain must be finite and between 0 and 1".to_string(),
+        ));
+    }
+    let improvement = baseline_loss - candidate_loss;
+    let scale = baseline_loss.abs().max(1.0e-12);
+    Ok(improvement / scale >= min_relative_gain)
+}
+
+pub fn lag_origin_consistency_guard(
+    candidate: &str,
+    source: &str,
+    lag_scores: &[f64],
+    candidate_scores: &[f64],
+) -> Result<Option<Value>> {
+    if matches!(
+        source,
+        "classical_competition"
+            | "classical_competition_full"
+            | "hierarchical_reconciliation"
+            | "rank_portfolio"
+    ) || candidate == "cartoboost_lag"
+    {
+        return Ok(None);
+    }
+    let paired = candidate_scores
+        .iter()
+        .zip(lag_scores)
+        .filter_map(|(&candidate_loss, &lag_loss)| {
+            (candidate_loss.is_finite() && lag_loss.is_finite() && lag_loss > 0.0)
+                .then_some((candidate_loss, lag_loss))
+        })
+        .collect::<Vec<_>>();
+    if paired.len() < 2 {
+        return Ok(None);
+    }
+    let losing_origin_count = paired
+        .iter()
+        .filter(|(candidate_loss, lag_loss)| candidate_loss > lag_loss)
+        .count();
+    if losing_origin_count == 0 {
+        return Ok(None);
+    }
+    let gains = paired
+        .iter()
+        .map(|(candidate_loss, lag_loss)| 1.0 - candidate_loss / lag_loss)
+        .collect::<Vec<_>>();
+    let min_relative_gain_vs_lag = gains.iter().copied().fold(f64::INFINITY, f64::min);
+    let mean_relative_gain_vs_lag = gains.iter().sum::<f64>() / gains.len() as f64;
+    Ok(Some(json!({
+        "candidate": candidate,
+        "reason": "candidate_lost_at_least_one_inner_origin_to_lag",
+        "origin_count": paired.len(),
+        "losing_origin_count": losing_origin_count,
+        "min_relative_gain_vs_lag": min_relative_gain_vs_lag,
+        "mean_relative_gain_vs_lag": mean_relative_gain_vs_lag,
+    })))
+}
+
+pub fn stable_magnitude_candidate_choice(
+    selected_candidate: &str,
+    candidate_scores: &BTreeMap<String, f64>,
+    candidate_forecast_max_abs: &BTreeMap<String, f64>,
+    training_max_abs: f64,
+    inner_origin_count: Option<usize>,
+) -> Result<String> {
+    let mut stable_scores = BTreeMap::new();
+    for (candidate, loss) in candidate_scores {
+        if !loss.is_finite() {
+            continue;
+        }
+        let Some(forecast_max_abs) = candidate_forecast_max_abs.get(candidate) else {
+            continue;
+        };
+        if forecast_magnitude_guard_allows(*forecast_max_abs, training_max_abs)? {
+            stable_scores.insert(candidate.clone(), *loss);
+        }
+    }
+    if stable_scores.contains_key(selected_candidate) {
+        return Ok(selected_candidate.to_string());
+    }
+    if stable_scores.is_empty() {
+        return Ok("cartoboost_lag".to_string());
+    }
+    CandidateSelectionPolicy::new("hierarchical_reconciliation", inner_origin_count)?
+        .select(&stable_scores)
+        .map(|selection| selection.candidate)
+}
+
+fn validate_finite_series(values: &[f64], label: &str) -> Result<()> {
+    if values.iter().any(|value| !value.is_finite()) {
+        return Err(CartoBoostError::InvalidInput(format!(
+            "{label} values must be finite"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_finite_forecast_value(value: f64, label: &str) -> Result<f64> {
+    if !value.is_finite() {
+        return Err(CartoBoostError::InvalidInput(format!(
+            "{label} forecast must be finite"
+        )));
+    }
+    Ok(value)
+}
+
+fn mean_or_fallback(values: &[f64], fallback: f64) -> f64 {
+    if values.is_empty() {
+        fallback
+    } else {
+        values.iter().sum::<f64>() / values.len() as f64
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ExpertScore {
     pub expert: String,
@@ -144,6 +638,168 @@ pub struct RuleBasedGatingGuardrails {
     pub baseline_displacement_gain: Option<f64>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CandidateSelection {
+    pub candidate: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CandidateSelectionPolicy {
+    pub source: String,
+    pub inner_origin_count: Option<usize>,
+    pub robust_relative_tolerance: f64,
+    pub min_relative_gain: f64,
+}
+
+impl CandidateSelectionPolicy {
+    pub fn new(source: impl Into<String>, inner_origin_count: Option<usize>) -> Result<Self> {
+        Self::with_thresholds(
+            source,
+            inner_origin_count,
+            AUTO_SELECTION_ROBUST_RELATIVE_TOLERANCE,
+            AUTO_SELECTION_MIN_RELATIVE_GAIN,
+        )
+    }
+
+    pub fn with_thresholds(
+        source: impl Into<String>,
+        inner_origin_count: Option<usize>,
+        robust_relative_tolerance: f64,
+        min_relative_gain: f64,
+    ) -> Result<Self> {
+        let source = source.into();
+        if source.trim().is_empty() {
+            return Err(CartoBoostError::InvalidInput(
+                "candidate selection source must be non-empty".to_string(),
+            ));
+        }
+        validate_relative_gain(robust_relative_tolerance, "robust_relative_tolerance")?;
+        validate_relative_gain(min_relative_gain, "min_relative_gain")?;
+        Ok(Self {
+            source,
+            inner_origin_count,
+            robust_relative_tolerance,
+            min_relative_gain,
+        })
+    }
+
+    pub fn select(&self, candidate_scores: &BTreeMap<String, f64>) -> Result<CandidateSelection> {
+        if candidate_scores.is_empty() {
+            return Err(CartoBoostError::InvalidInput(
+                "candidate selection requires at least one score".to_string(),
+            ));
+        }
+        let candidate = match self.source.as_str() {
+            "classical_competition" | "classical_competition_full" | "rank_portfolio" => {
+                select_lowest_finite(candidate_scores)
+            }
+            "hierarchical_reconciliation" => self.select_hierarchical(candidate_scores),
+            _ => self.select_robust(candidate_scores),
+        };
+        Ok(CandidateSelection { candidate })
+    }
+
+    fn select_robust(&self, candidate_scores: &BTreeMap<String, f64>) -> String {
+        let finite_scores = finite_candidate_scores(candidate_scores);
+        if finite_scores.is_empty() {
+            return lowest_by_raw_value(candidate_scores);
+        }
+        let best_loss = finite_scores
+            .values()
+            .copied()
+            .fold(f64::INFINITY, f64::min);
+        let tolerance = best_loss * (1.0 + self.robust_relative_tolerance);
+        finite_scores
+            .iter()
+            .filter(|(_, loss)| **loss <= tolerance)
+            .min_by(|(left, left_loss), (right, right_loss)| {
+                candidate_complexity_rank(left)
+                    .cmp(&candidate_complexity_rank(right))
+                    .then_with(|| left_loss.total_cmp(right_loss))
+                    .then_with(|| left.cmp(right))
+            })
+            .map(|(candidate, _)| candidate.clone())
+            .expect("finite scores are non-empty")
+    }
+
+    fn select_hierarchical(&self, candidate_scores: &BTreeMap<String, f64>) -> String {
+        let finite_scores = finite_candidate_scores(candidate_scores);
+        if finite_scores.is_empty() {
+            return self.select_robust(candidate_scores);
+        }
+        let best_loss = finite_scores
+            .values()
+            .copied()
+            .fold(f64::INFINITY, f64::min);
+        let lag_loss = finite_scores.get("cartoboost_lag").copied();
+        let clears_lag_guard = |candidate: &str| -> bool {
+            if candidate == "cartoboost_lag" {
+                return true;
+            }
+            let Some(lag_loss) = lag_loss else {
+                return true;
+            };
+            if lag_loss <= 0.0 {
+                return true;
+            }
+            let Some(candidate_loss) = finite_scores.get(candidate) else {
+                return false;
+            };
+            1.0 - candidate_loss / lag_loss >= self.min_relative_gain
+        };
+
+        let reconciled_blend = "shared_reconciled_autostats_blend";
+        if finite_scores.get(reconciled_blend).is_some_and(|loss| {
+            (self.inner_origin_count.is_none_or(|count| count <= 1))
+                && *loss <= best_loss * 1.001
+                && clears_lag_guard(reconciled_blend)
+        }) {
+            return reconciled_blend.to_string();
+        }
+
+        let point_blend = "shared_point_autostats_elapsed_phase_blend";
+        if finite_scores.get(point_blend).is_some_and(|loss| {
+            (self.inner_origin_count.is_none_or(|count| count <= 1))
+                && *loss <= best_loss * 1.015
+                && clears_lag_guard(point_blend)
+        }) {
+            return point_blend.to_string();
+        }
+
+        let reconciled = finite_scores
+            .iter()
+            .filter(|(candidate, loss)| {
+                candidate.starts_with("shared_elapsed_phase_total_reconciled_")
+                    && **loss <= best_loss * 1.015
+                    && clears_lag_guard(candidate)
+            })
+            .max_by(|(left, left_loss), (right, right_loss)| {
+                candidate_complexity_rank(left)
+                    .cmp(&candidate_complexity_rank(right))
+                    .then_with(|| right_loss.total_cmp(left_loss))
+                    .then_with(|| left.cmp(right))
+            })
+            .map(|(candidate, _)| candidate.clone());
+        if let Some(candidate) = reconciled {
+            return candidate;
+        }
+
+        let selected = finite_scores
+            .iter()
+            .min_by(|(left, left_loss), (right, right_loss)| {
+                left_loss
+                    .total_cmp(right_loss)
+                    .then_with(|| left.cmp(right))
+            })
+            .map(|(candidate, _)| candidate.clone())
+            .expect("finite scores are non-empty");
+        if !clears_lag_guard(&selected) && lag_loss.is_some() {
+            return "cartoboost_lag".to_string();
+        }
+        selected
+    }
+}
+
 impl Default for RuleBasedGatingGuardrails {
     fn default() -> Self {
         Self {
@@ -154,6 +810,33 @@ impl Default for RuleBasedGatingGuardrails {
             baseline: None,
             baseline_displacement_gain: None,
         }
+    }
+}
+
+pub fn candidate_complexity_rank(candidate: &str) -> usize {
+    match candidate {
+        "cartoboost_lag" => 0,
+        "cartoboost_autostats_bank" => 1,
+        "shared_seasonal_base" => 2,
+        "shared_half_drift" => 3,
+        "shared_drift" => 4,
+        "shared_seasonal_drift" => 5,
+        "shared_seasonal_cycle_drift_050" => 6,
+        "shared_seasonal_cycle_drift_075" => 7,
+        "cartoboost_auto_forecast" => 8,
+        "cartoboost_validation_weighted_ensemble" => 9,
+        "shared_calendar_dom" => 10,
+        "shared_calendar_elapsed_phase" => 11,
+        "shared_market_neutral_zero" => 12,
+        "shared_elapsed_phase_rank_blend" => 13,
+        "shared_calendar_autostats_blend" => 14,
+        "shared_elapsed_phase_total_reconciled_020" => 15,
+        "shared_elapsed_phase_total_reconciled_035" => 16,
+        "shared_elapsed_phase_total_reconciled_050" => 17,
+        "shared_reconciled_autostats_blend" => 19,
+        "shared_point_autostats_elapsed_phase_blend" | "shared_total_reconciled_auto" => 20,
+        "cartoboost_point_auto" => 24,
+        _ => 20,
     }
 }
 
@@ -383,6 +1066,42 @@ fn normalize(raw: BTreeMap<String, f64>) -> Result<BTreeMap<String, f64>> {
         .into_iter()
         .map(|(expert, weight)| (expert, weight / total))
         .collect())
+}
+
+fn finite_candidate_scores(candidate_scores: &BTreeMap<String, f64>) -> BTreeMap<String, f64> {
+    candidate_scores
+        .iter()
+        .filter(|(_, loss)| loss.is_finite())
+        .map(|(candidate, loss)| (candidate.clone(), *loss))
+        .collect()
+}
+
+fn select_lowest_finite(candidate_scores: &BTreeMap<String, f64>) -> String {
+    let finite_scores = finite_candidate_scores(candidate_scores);
+    if finite_scores.is_empty() {
+        return lowest_by_raw_value(candidate_scores);
+    }
+    finite_scores
+        .iter()
+        .min_by(|(left, left_loss), (right, right_loss)| {
+            left_loss
+                .total_cmp(right_loss)
+                .then_with(|| left.cmp(right))
+        })
+        .map(|(candidate, _)| candidate.clone())
+        .expect("finite scores are non-empty")
+}
+
+fn lowest_by_raw_value(candidate_scores: &BTreeMap<String, f64>) -> String {
+    candidate_scores
+        .iter()
+        .min_by(|(left, left_loss), (right, right_loss)| {
+            left_loss
+                .total_cmp(right_loss)
+                .then_with(|| left.cmp(right))
+        })
+        .map(|(candidate, _)| candidate.clone())
+        .expect("candidate scores are non-empty")
 }
 
 fn normalize_with_bounds(

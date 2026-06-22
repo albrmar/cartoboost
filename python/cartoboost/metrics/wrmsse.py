@@ -2,6 +2,6 @@
 
 from __future__ import annotations
 
-from cartoboost.metrics import rmsse_scale, wrmsse
+from cartoboost.metrics import m5_equal_level_wrmsse, rmsse_scale, wrmsse
 
-__all__ = ["rmsse_scale", "wrmsse"]
+__all__ = ["m5_equal_level_wrmsse", "rmsse_scale", "wrmsse"]

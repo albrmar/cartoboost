@@ -4,9 +4,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
+
+ROOT = Path(__file__).resolve().parents[2]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 from benchmarks.runners.significance import normal_mean_ci
 
@@ -26,25 +31,34 @@ def read_jsonl(path: Path) -> list[dict[str, Any]]:
 
 
 def aggregate(rows: list[dict[str, Any]]) -> dict[str, Any]:
-    grouped: dict[tuple[str, str, str], list[float]] = defaultdict(list)
+    grouped: dict[tuple[str | None, str, str | None, str, str], list[float]] = defaultdict(list)
     for row in rows:
-        key = (row["task_id"], row["model_family"], row["metric"])
+        key = (
+            row.get("track"),
+            row["task_id"],
+            row.get("split_id"),
+            row["model_family"],
+            row["metric"],
+        )
         grouped[key].append(float(row["value"]))
 
     metrics = []
-    for (task_id, model_family, metric), values in sorted(grouped.items()):
+    for (track, task_id, split_id, model_family, metric), values in sorted(grouped.items()):
         center, low, high = normal_mean_ci(values)
-        metrics.append(
-            {
-                "task_id": task_id,
-                "model_family": model_family,
-                "metric": metric,
-                "n": len(values),
-                "mean": center,
-                "ci95_low": low,
-                "ci95_high": high,
-            }
-        )
+        metric_row = {
+            "task_id": task_id,
+            "model_family": model_family,
+            "metric": metric,
+            "n": len(values),
+            "mean": center,
+            "ci95_low": low,
+            "ci95_high": high,
+        }
+        if track is not None:
+            metric_row["track"] = track
+        if split_id is not None:
+            metric_row["split_id"] = split_id
+        metrics.append(metric_row)
     return {"metrics": metrics}
 
 

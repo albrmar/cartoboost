@@ -1,10 +1,17 @@
 use cartoboost_core::forecasting::{
-    AutoForecastConfig, AutoForecastModel, ExpertScore, ForecastEnsemble, ForecastFrame,
-    ForecastFrequency, ForecastMetricSet, ForecastObjective, ForecastRow, Forecaster,
-    LagFeatureConfig, NaiveForecaster, RuleBasedGating, RuleBasedGatingGuardrails,
-    SeasonalNaiveForecaster, ValidationScoreTable,
+    calendar_profile_candidate_prediction, candidate_complexity_rank,
+    forecast_magnitude_guard_allows, include_autostats_candidate, lag_origin_consistency_guard,
+    native_auto_raw_candidate_is_confident, relative_loss_displacement_allowed, requires_lag_spine,
+    seasonal_naive_candidate_prediction, selectable_candidate_names, shared_candidate_names,
+    stable_magnitude_candidate_choice, trend_candidate_prediction, validation_ensemble_weights,
+    validation_unavailable_candidate_choice, AutoForecastConfig, AutoForecastModel,
+    CandidateSelectionPolicy, ExpertScore, ForecastEnsemble, ForecastFrame, ForecastFrequency,
+    ForecastMetricSet, ForecastObjective, ForecastRow, Forecaster, LagFeatureConfig,
+    NaiveForecaster, RuleBasedGating, RuleBasedGatingGuardrails, SeasonalNaiveForecaster,
+    ValidationScoreTable,
 };
 use chrono::NaiveDate;
+use std::collections::BTreeMap;
 
 #[test]
 fn rule_based_gating_converts_validation_errors_to_weights() {
@@ -20,6 +27,236 @@ fn rule_based_gating_converts_validation_errors_to_weights() {
     assert_eq!(weights.len(), 2);
     assert!((weights["naive"] - (1.0 / 3.0)).abs() < 1e-12);
     assert!((weights["seasonal"] - (2.0 / 3.0)).abs() < 1e-12);
+}
+
+#[test]
+fn forecast_magnitude_guard_rejects_implausible_candidate_scale() {
+    assert!(forecast_magnitude_guard_allows(999.0, 2.0).expect("guard"));
+    assert!(!forecast_magnitude_guard_allows(2.0e9, 20.0).expect("guard"));
+}
+
+#[test]
+fn lag_spine_guard_keeps_low_frequency_but_allows_high_frequency_validation() {
+    assert!(requires_lag_spine("low_frequency_competition", 1, 14));
+    assert!(requires_lag_spine("low_frequency_competition", 12, 18));
+    assert!(!requires_lag_spine("low_frequency_competition", 24, 48));
+    assert!(!requires_lag_spine("classical_competition_full", 12, 18));
+}
+
+#[test]
+fn native_candidate_primitives_match_benchmark_formulas() {
+    let values = vec![10.0, 12.0, 14.0, 16.0, 18.0, 20.0, 22.0, 24.0];
+
+    assert_eq!(
+        seasonal_naive_candidate_prediction(&values, 4).expect("seasonal"),
+        18.0
+    );
+    assert_eq!(
+        trend_candidate_prediction(&values, 2, 4, "half_drift").expect("trend"),
+        26.0
+    );
+    assert_eq!(
+        trend_candidate_prediction(&values, 2, 4, "seasonal_cycle_drift_050").expect("trend"),
+        20.0
+    );
+    assert_eq!(
+        calendar_profile_candidate_prediction(
+            &values,
+            &[1, 2, 3, 4, 1, 2, 3, 4],
+            2,
+            "day_of_month",
+            None,
+        )
+        .expect("calendar"),
+        16.0
+    );
+    assert_eq!(
+        calendar_profile_candidate_prediction(
+            &values,
+            &[1, 2, 3, 4, 1, 2, 3, 4],
+            9,
+            "elapsed_phase",
+            Some(4),
+        )
+        .expect("calendar"),
+        14.0
+    );
+}
+
+#[test]
+fn native_validation_ensemble_weights_use_best_four_inverse_square_losses() {
+    let weights = validation_ensemble_weights(&BTreeMap::from([
+        ("b".to_string(), 2.0),
+        ("a".to_string(), 1.0),
+        ("c".to_string(), 4.0),
+        ("d".to_string(), 8.0),
+        ("e".to_string(), 16.0),
+    ]));
+
+    assert!(!weights.contains_key("e"));
+    assert!((weights.values().sum::<f64>() - 1.0).abs() < 1e-12);
+    assert!(weights["a"] > weights["b"]);
+}
+
+#[test]
+fn native_candidate_roster_policy_matches_forecast_benchmark_rosters() {
+    let shared = shared_candidate_names();
+    assert_eq!(shared[0], "shared_seasonal_base");
+    assert!(shared.contains(&"shared_calendar_elapsed_phase".to_string()));
+
+    let classical = selectable_candidate_names("cartoboost_auto_forecast", "classical_competition");
+    assert!(classical.contains(&"cartoboost_lag".to_string()));
+    assert!(classical.contains(&"cartoboost_autostats_bank".to_string()));
+
+    let hierarchical =
+        selectable_candidate_names("cartoboost_auto_forecast", "hierarchical_reconciliation");
+    assert!(hierarchical.contains(&"shared_elapsed_phase_total_reconciled_035".to_string()));
+    assert!(hierarchical.contains(&"shared_reconciled_autostats_blend".to_string()));
+    assert!(!hierarchical.contains(&"shared_state_reconciled_auto".to_string()));
+
+    let rank_portfolio = selectable_candidate_names("cartoboost_auto_forecast", "rank_portfolio");
+    assert!(rank_portfolio.contains(&"shared_elapsed_phase_rank_blend".to_string()));
+    assert!(rank_portfolio.contains(&"shared_market_neutral_zero".to_string()));
+    assert!(
+        !selectable_candidate_names("cartoboost_lag", "rank_portfolio")
+            .contains(&"shared_elapsed_phase_rank_blend".to_string())
+    );
+}
+
+#[test]
+fn native_autostats_and_raw_auto_policy_are_rust_owned() {
+    assert!(include_autostats_candidate(
+        "classical_competition_full",
+        12,
+        18
+    ));
+    assert!(include_autostats_candidate(
+        "classical_competition_full",
+        4,
+        8
+    ));
+    assert!(include_autostats_candidate("classical_competition", 12, 18));
+    assert!(!include_autostats_candidate(
+        "classical_competition",
+        24,
+        48
+    ));
+    assert!(include_autostats_candidate(
+        "hierarchical_reconciliation",
+        1,
+        28
+    ));
+
+    assert!(native_auto_raw_candidate_is_confident(
+        Some("cartoboost_raw"),
+        Some(0.50)
+    ));
+    assert!(!native_auto_raw_candidate_is_confident(
+        Some("cartoboost_raw"),
+        Some(0.49)
+    ));
+    assert!(!native_auto_raw_candidate_is_confident(
+        Some("cartoboost_residual_blend"),
+        Some(0.90)
+    ));
+}
+
+#[test]
+fn relative_loss_displacement_requires_material_gain() {
+    assert!(
+        !relative_loss_displacement_allowed(0.2000000000, 0.1999999995, 0.005).expect("tiny gain")
+    );
+    assert!(
+        relative_loss_displacement_allowed(0.2000000000, 0.1980000000, 0.005)
+            .expect("material gain")
+    );
+    assert!(
+        relative_loss_displacement_allowed(-0.004, -0.028, 0.005).expect("signed objective gain")
+    );
+    assert!(!relative_loss_displacement_allowed(-0.028, -0.004, 0.005)
+        .expect("signed objective regression"));
+    assert!(relative_loss_displacement_allowed(0.2, f64::NAN, 0.005).is_err());
+    assert!(relative_loss_displacement_allowed(0.2, 0.1, 1.5).is_err());
+}
+
+#[test]
+fn lowest_finite_candidate_policy_accepts_negative_losses() {
+    let policy = CandidateSelectionPolicy::new("rank_portfolio", Some(1)).expect("policy");
+    let selected = policy
+        .select(&BTreeMap::from([
+            ("cartoboost_auto_forecast".to_string(), -0.012),
+            ("cartoboost_lag".to_string(), -0.017),
+            ("shared_seasonal_drift".to_string(), 0.006),
+        ]))
+        .expect("selection");
+
+    assert_eq!(selected.candidate, "cartoboost_lag");
+}
+
+#[test]
+fn native_origin_consistency_guard_reports_lag_fallback_diagnostics() {
+    let guarded = lag_origin_consistency_guard(
+        "cartoboost_auto_forecast",
+        "synthetic",
+        &[1.0, 1.0, 1.0],
+        &[0.8, 1.1, 0.7],
+    )
+    .expect("guard")
+    .expect("diagnostic");
+
+    assert_eq!(guarded["candidate"], "cartoboost_auto_forecast");
+    assert_eq!(
+        guarded["reason"],
+        "candidate_lost_at_least_one_inner_origin_to_lag"
+    );
+    assert_eq!(guarded["origin_count"], 3);
+    assert_eq!(guarded["losing_origin_count"], 1);
+    assert!((guarded["min_relative_gain_vs_lag"].as_f64().unwrap() + 0.1).abs() < 1.0e-12);
+
+    assert!(lag_origin_consistency_guard(
+        "cartoboost_auto_forecast",
+        "synthetic",
+        &[1.0, 1.0, 1.0],
+        &[0.8, 0.9, 0.7],
+    )
+    .expect("guard")
+    .is_none());
+    assert!(lag_origin_consistency_guard(
+        "cartoboost_auto_forecast",
+        "classical_competition",
+        &[1.0, 1.0, 1.0],
+        &[0.8, 1.1, 0.7],
+    )
+    .expect("guard")
+    .is_none());
+}
+
+#[test]
+fn stable_magnitude_candidate_choice_filters_implausible_forecast_scales() {
+    let selected = stable_magnitude_candidate_choice(
+        "shared_elapsed_phase_total_reconciled_050",
+        &BTreeMap::from([
+            (
+                "shared_elapsed_phase_total_reconciled_050".to_string(),
+                0.60,
+            ),
+            ("shared_calendar_elapsed_phase".to_string(), 0.70),
+            ("cartoboost_lag".to_string(), 0.80),
+        ]),
+        &BTreeMap::from([
+            (
+                "shared_elapsed_phase_total_reconciled_050".to_string(),
+                2.0e9,
+            ),
+            ("shared_calendar_elapsed_phase".to_string(), 4.0),
+            ("cartoboost_lag".to_string(), 2.0),
+        ]),
+        10.0,
+        Some(2),
+    )
+    .expect("stable choice");
+
+    assert_eq!(selected, "shared_calendar_elapsed_phase");
 }
 
 #[test]
@@ -60,13 +297,13 @@ fn rule_based_gating_uses_series_scores_for_panel_frames() {
 #[test]
 fn rule_based_gating_can_use_hard_winner_when_validation_gap_is_decisive() {
     let table = ValidationScoreTable::new(vec![
-        ExpertScore::global("cartoboost_lag", "wrmsse", 0.50),
-        ExpertScore::global("classical_bank", "wrmsse", 0.80),
-        ExpertScore::global("direct_tree", "wrmsse", 0.90),
+        ExpertScore::global("cartoboost_lag", "scaled_error", 0.50),
+        ExpertScore::global("classical_bank", "scaled_error", 0.80),
+        ExpertScore::global("direct_tree", "scaled_error", 0.90),
     ])
     .expect("score table");
     let gating = RuleBasedGating::with_guardrails(
-        "wrmsse",
+        "scaled_error",
         table,
         RuleBasedGatingGuardrails {
             top_k: Some(3),
@@ -201,6 +438,143 @@ fn rule_based_gating_bounds_close_race_blends() {
         .values()
         .all(|weight| (0.15..=0.85).contains(weight)));
     assert!((weights.values().sum::<f64>() - 1.0).abs() < 1e-12);
+}
+
+#[test]
+fn candidate_selection_policy_prefers_simpler_close_candidate() {
+    let policy = CandidateSelectionPolicy::new("synthetic", None).expect("policy");
+    let selected = policy
+        .select(&BTreeMap::from([
+            ("cartoboost_auto_forecast".to_string(), 1.00),
+            ("shared_seasonal_base".to_string(), 1.03),
+            ("shared_calendar_dom".to_string(), 0.99),
+        ]))
+        .expect("selection");
+
+    assert_eq!(selected.candidate, "shared_seasonal_base");
+    assert!(
+        candidate_complexity_rank("cartoboost_lag")
+            < candidate_complexity_rank("cartoboost_auto_forecast")
+    );
+}
+
+#[test]
+fn candidate_selection_policy_uses_lowest_finite_for_classical_competitions() {
+    for profile in ["classical_competition_full", "classical_competition"] {
+        let policy = CandidateSelectionPolicy::new(profile, None).expect("policy");
+        let selected = policy
+            .select(&BTreeMap::from([
+                ("cartoboost_autostats_bank".to_string(), 1.244),
+                ("shared_seasonal_base".to_string(), 1.190),
+                ("cartoboost_lag".to_string(), 1.751),
+            ]))
+            .expect("selection");
+
+        assert_eq!(selected.candidate, "shared_seasonal_base");
+    }
+}
+
+#[test]
+fn classical_full_profile_does_not_apply_lag_origin_consistency_guard() {
+    let guard = lag_origin_consistency_guard(
+        "shared_seasonal_base",
+        "classical_competition_full",
+        &[1.0, 1.0],
+        &[0.5, 1.1],
+    )
+    .expect("guard");
+
+    assert!(guard.is_none());
+}
+
+#[test]
+fn validation_unavailable_fallback_keeps_lag_for_classical_auto() {
+    let available = vec![
+        "cartoboost_lag".to_string(),
+        "cartoboost_auto_forecast".to_string(),
+    ];
+
+    let selected = validation_unavailable_candidate_choice(
+        "cartoboost_auto_forecast",
+        "classical_competition_full",
+        &available,
+    )
+    .expect("selection");
+    assert_eq!(selected, "cartoboost_lag");
+
+    let robust =
+        validation_unavailable_candidate_choice("cartoboost_auto_forecast", "robust", &available)
+            .expect("selection");
+    assert_eq!(robust, "cartoboost_auto_forecast");
+}
+
+#[test]
+fn candidate_selection_policy_applies_hierarchical_reconciled_and_lag_guards() {
+    let policy =
+        CandidateSelectionPolicy::new("hierarchical_reconciliation", None).expect("policy");
+    let selected = policy
+        .select(&BTreeMap::from([
+            ("shared_calendar_elapsed_phase".to_string(), 0.7025),
+            (
+                "shared_elapsed_phase_total_reconciled_020".to_string(),
+                0.7194,
+            ),
+            (
+                "shared_elapsed_phase_total_reconciled_035".to_string(),
+                0.7142,
+            ),
+            (
+                "shared_elapsed_phase_total_reconciled_050".to_string(),
+                0.7096,
+            ),
+            ("shared_reconciled_autostats_blend".to_string(), 0.7091),
+            (
+                "shared_point_autostats_elapsed_phase_blend".to_string(),
+                0.7187,
+            ),
+        ]))
+        .expect("selection");
+    assert_eq!(
+        selected.candidate,
+        "shared_elapsed_phase_total_reconciled_050"
+    );
+
+    let low_support_policy =
+        CandidateSelectionPolicy::new("hierarchical_reconciliation", Some(1)).expect("policy");
+    let guarded = low_support_policy
+        .select(&BTreeMap::from([
+            ("cartoboost_lag".to_string(), 3.704_550_573_895_694_3),
+            (
+                "shared_point_autostats_elapsed_phase_blend".to_string(),
+                3.640_384_191_677_357,
+            ),
+        ]))
+        .expect("selection");
+    assert_eq!(guarded.candidate, "cartoboost_lag");
+}
+
+#[test]
+fn candidate_selection_policy_uses_lowest_finite_for_rank_portfolio_profile() {
+    let policy = CandidateSelectionPolicy::new("rank_portfolio", None).expect("policy");
+    let selected = policy
+        .select(&BTreeMap::from([
+            (
+                "cartoboost_auto_forecast".to_string(),
+                0.199_663_314_769_405_5,
+            ),
+            (
+                "shared_calendar_elapsed_phase".to_string(),
+                0.199_663_314_308_199_97,
+            ),
+            ("cartoboost_lag".to_string(), 0.199_663_314_439_439_74),
+            (
+                "shared_market_neutral_zero".to_string(),
+                0.199_663_314_262_017_22,
+            ),
+        ]))
+        .expect("selection");
+
+    assert_eq!(selected.candidate, "shared_market_neutral_zero");
 }
 
 #[test]

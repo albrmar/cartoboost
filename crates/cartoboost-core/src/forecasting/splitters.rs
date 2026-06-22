@@ -44,6 +44,54 @@ pub struct ForecastFoldMetadata {
     pub series_count: usize,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[allow(dead_code)]
+pub struct CandidateValidationCutoffSchedule {
+    pub validation_profile: Option<String>,
+    pub horizon: usize,
+    pub timestamp_count: usize,
+    pub cutoff_indices: Vec<usize>,
+}
+
+#[allow(dead_code)]
+impl CandidateValidationCutoffSchedule {
+    pub fn new(
+        timestamp_count: usize,
+        horizon: usize,
+        validation_profile: Option<&str>,
+    ) -> Result<Self> {
+        if horizon == 0 {
+            return Err(CartoBoostError::InvalidInput(
+                "candidate validation horizon must be positive".to_string(),
+            ));
+        }
+        let max_origins = match validation_profile {
+            Some("rank_portfolio") => 3,
+            Some("hierarchical_reconciliation") => 2,
+            Some("classical_competition") | Some("classical_competition_full") | None => 3,
+            Some(_) => 2,
+        };
+        let mut cutoff_indices = Vec::new();
+        if timestamp_count > horizon + 2 {
+            for origin in (1..=max_origins).rev() {
+                let Some(index) = timestamp_count.checked_sub(origin * horizon) else {
+                    continue;
+                };
+                let min_train = horizon.max(14);
+                if index >= min_train && index + horizon <= timestamp_count {
+                    cutoff_indices.push(index);
+                }
+            }
+        }
+        Ok(Self {
+            validation_profile: validation_profile.map(str::to_string),
+            horizon,
+            timestamp_count,
+            cutoff_indices,
+        })
+    }
+}
+
 impl RollingOriginSplitter {
     pub fn expanding(horizon: usize, min_train_size: usize) -> Result<Self> {
         Self::new(
