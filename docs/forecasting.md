@@ -1,29 +1,20 @@
 # Forecasting
 
-CartoBoost forecasting is for scientific forecasting work where the question is
-not only "what method can I call?" but "can another scientist reproduce the
-panel, the validation protocol, the features, and the evidence?"
+CartoBoost forecasting is organized around two docs surfaces:
 
-The Python forecasting surface is intentionally a wrapper layer. It gives you
+- this page, for `ForecastFrame`, validation, metrics, artifacts, CLI workflows,
+  and benchmark evidence rules;
+- the [forecasting model guides](user-guide/forecasting-models/index.md), for
+  choosing an individual model type such as naive, theta, ETS, ARIMA, Kalman,
+  piecewise linear seasonal, kriging, CartoBoost lag, AutoForecaster, or fixed
+  weighted ensembles.
+
+The Python forecasting package is intentionally a wrapper layer. It gives users
 dataframe ergonomics, explicit configuration, CLI entry points, and artifact
-handling. Forecasting behavior that affects model results lives in Rust under
-`crates/`: fitting, prediction, backtesting, metric evaluation, leakage checks,
-feature generation, intervals, reconciliation, and serialization contracts.
-Python does not provide fallback forecasting algorithms.
-
-Use these wrappers when you need:
-
-- reproducible taxi-zone or taxi-route panels with timestamp, target, frequency,
-  and series identity recorded before model fitting;
-- comparable rolling-origin evaluation instead of random validation splits that
-  leak future trip demand into training;
-- feature provenance for lag, rolling, trend, calendar, static, known-future,
-  and historical-only columns;
-- portable forecast artifacts whose manifests describe the data contract,
-  feature configuration, model settings, backtest metrics, and interval
-  metadata;
-- CLI runs that fail clearly when a native binding or optional dependency is not
-  available instead of silently changing the algorithm.
+handling. Behavior that affects model results lives in Rust under `crates/`:
+fitting, prediction, backtesting, metric evaluation, leakage checks, feature
+generation, intervals, reconciliation, and serialization contracts. Python does
+not provide fallback forecasting algorithms.
 
 ## Workflow
 
@@ -45,57 +36,152 @@ features, bounds, and backtest settings is hard to audit. CartoBoost artifacts
 store forecast rows beside a manifest so the result can be compared or reviewed
 without hidden Python process state.
 
-## Wrapper Surfaces
+## ForecastFrame
 
-The forecasting docs are organized by scientific concern:
+`ForecastFrame` is the production input contract. It records the timestamp
+column, target column, optional series id, frequency, static covariates,
+known-future covariates, and historical-only covariates before a model sees the
+data.
 
-- [Forecasting API](forecasting_api.md): `ForecastFrame`, `ForecastResult`,
-  prediction intervals, and base wrapper contracts.
-- [Forecasting backtesting](forecasting_backtesting.md): rolling-origin
-  splitters, keyed metrics, fold safety, and comparable evidence.
-- [Forecasting lag features](forecasting_lag_features.md): leakage-safe lag,
-  rolling, trend, and calendar feature construction for taxi panels.
-- [Forecasting artifacts](forecasting_artifacts.md): portable forecast
-  directories, manifests, registry names, strict config parsing, and optional
-  formats.
-- [Forecasting CLI](forecasting_cli.md): reproducible command-line fit,
-  predict, backtest, and compare workflows.
-- [Forecasting examples](forecasting_examples.md): taxi-domain examples that
-  show command shape, wrapper use, and evidence outputs.
+```python
+from cartoboost.forecasting import ForecastFrame
 
-Model selection guidance belongs in the model guide. These wrapper docs explain
-how CartoBoost preserves the experiment boundary around any supported model.
+frame = ForecastFrame.from_pandas(
+    hourly_zone_demand,
+    timestamp_col="pickup_hour",
+    target_col="pickup_trips",
+    series_id_col="PULocationID",
+    freq="h",
+    known_future_covariates=["hour", "day_of_week"],
+    static_covariates=["borough_id", "airport_zone"],
+)
+```
+
+`ForecastFrame` validation is deterministic: timestamps are sorted within each
+series, duplicate series/timestamp rows are rejected, targets must be finite,
+regular frequency is checked when provided, and covariate roles remain explicit.
+Known-future covariates are values available at forecast creation time; lagged
+targets, rolling summaries, and other history-derived features must be built
+from rows before the forecast origin.
+
+## Results And Metrics
+
+Forecast outputs use stable columns so model rows can be aligned across
+candidates:
+
+| Column | Meaning |
+| --- | --- |
+| `series_id` | Single-series id or panel id. |
+| `timestamp` | Forecasted timestamp. |
+| `model` | Native model name or benchmark alias. |
+| `horizon` | One-based horizon from the forecast origin. |
+| `forecast` | Point forecast. |
+| `lower_*`, `upper_*` | Optional interval bounds when the model emitted them. |
+
+`ForecastMetricSet` covers MAE, RMSE, MAPE, sMAPE, MASE, WAPE, bias, pinball
+loss, and interval metrics where bounds are present. For honest comparisons,
+score aligned rows from the same origin, horizon, and series ids.
+
+## Backtesting
+
+Use rolling-origin validation for forecasting claims. A fold trains on rows
+strictly before the origin and scores the next horizon only. Random row splits
+leak future demand and should not be used for taxi pickup, dropoff, or lane
+forecasts.
+
+```python
+from cartoboost.forecasting import RollingOriginBacktester, SeasonalNaiveForecaster
+
+backtester = RollingOriginBacktester(
+    horizon=24,
+    origin_count=3,
+    step=24,
+)
+result = backtester.run(
+    SeasonalNaiveForecaster(season_length=24),
+    frame,
+)
+```
+
+Comparable evidence means the same frame, origins, horizons, metric definitions,
+and baseline roster are reused across candidates. Report aggregate metrics and,
+for panels, horizon-level and series-level diagnostics when one zone or lane can
+hide failures in the average.
+
+## Artifacts And CLI
+
+`ForecastArtifact` saves forecast rows with a manifest that records the model
+settings, frame contract, metrics, interval metadata, and optional config. Use
+CSV for portable tables and Parquet only when the optional dependency is
+installed intentionally.
+
+The forecasting command scaffold is exposed through `scripts/forecast.py`:
+
+```sh
+python scripts/forecast.py fit \
+  --input examples/forecasting/forecast_cli_input.csv \
+  --timestamp-col timestamp \
+  --target-col pickup_demand \
+  --series-id-col PULocationID \
+  --freq D \
+  --model theta \
+  --horizon 7 \
+  --season-length 7 \
+  --artifact-dir target/forecasting/theta \
+  --output target/forecasting/theta_forecast.csv
+```
+
+| Command | Purpose |
+| --- | --- |
+| `fit` | Reads CSV history, writes model/config artifacts, and can emit forecast rows. |
+| `predict` | Reads a saved forecast artifact directory and writes a forecast CSV. |
+| `backtest` | Runs deterministic time-ordered validation and writes JSON metrics. |
+| `compare` | Scores multiple model names on the same holdout. |
+
+Invalid configs, missing columns, unknown model names, unavailable native
+bindings, and missing artifacts should fail clearly instead of silently changing
+the algorithm.
 
 ## Native Model Surface
 
-The public Python names with native PyO3 training and prediction bindings are:
+Use the model guides for modeling decisions:
 
-- `NaiveForecaster`
-- `SeasonalNaiveForecaster`
-- `ThetaForecaster`
-- `OptimizedThetaForecaster`
-- `ETSForecaster`
-- `AutoARIMAForecaster`
-- `CartoBoostLagForecaster`
-- `AutoForecaster`
-- `WeightedEnsembleForecaster`
+| Modeling type | Guide |
+| --- | --- |
+| Last-value and last-season baselines | [Naive And Seasonal Naive](user-guide/forecasting-models/naive-seasonal.md) |
+| Lightweight trend extrapolation | [Theta](user-guide/forecasting-models/theta.md) |
+| Additive level, trend, and seasonality | [ETS](user-guide/forecasting-models/ets.md) |
+| Autocorrelation and differencing | [ARIMA And AutoARIMA](user-guide/forecasting-models/arima.md) |
+| Noisy latent level and trend | [Kalman](user-guide/forecasting-models/kalman.md) |
+| Interpretable trend, changepoints, seasonalities, events, and regressors | [Piecewise Linear Seasonal](user-guide/forecasting-models/piecewise-linear-seasonal) |
+| Coordinate-aware panel borrowing | [Kriging](user-guide/forecasting-models/kriging.md) |
+| Shared supervised lag features across many panels | [CartoBoost Lag](user-guide/forecasting-models/cartoboost-lag.md) |
+| Guarded default selector over native candidates | [AutoForecaster](user-guide/forecasting-models/auto-forecaster.md) |
+| Fixed combinations of fitted native models | [Weighted Ensembles](user-guide/forecasting-models/ensembles.md) |
 
-Additional Rust-core forecasting behavior includes rolling-origin splitters,
-forecast metrics, result serialization, artifact manifests, reconciliation
-metadata, and leakage-safe lag features.
-
-Benchmark scripts also expose stable roster aliases for reproducible committed
-runs:
-
-| Benchmark alias | Python surface | Purpose |
-| --- | --- | --- |
-| `cartoboost_lag` | `CartoBoostLagForecaster` | Existing supervised lag baseline used for continuity with prior forecasting evidence. |
-| `cartoboost_auto_forecast` | [`AutoForecaster`](user-guide/forecasting-models/auto-forecaster.md) | Rust-native guarded selector over `cartoboost_lag`, `recency_weighted_lag`, `scaled_lag`, `delta_lag`, `scaled_delta_lag`, `seasonal_delta_lag`, `scaled_seasonal_delta_lag`, `ewm_lag`, dense-panel direct/rectified tree candidates, `log1p_scaled_lag`, `lag_plus`, sparse-panel `intermittent_demand`, and the classical expert bank, with lag protected unless validation clears the configured displacement threshold. Candidate scores average deterministic trailing rolling origins when history supports them. Static covariates declared on `ForecastFrame` are passed to the native lag spine by default. |
+Benchmark scripts expose stable aliases such as `cartoboost_lag` and
+`cartoboost_auto_forecast` for reproducible evidence tables. Keep competition or
+benchmark-specific aliases in benchmark orchestration, not in generic model
+names.
 
 Rust ETS is additive-only in this version. Rust AutoARIMA searches bounded
 ARIMA(p,d,q) candidates with residual-lag moving-average terms; seasonal
 AutoARIMA is rejected explicitly. Weighted ensembles require explicit native
-component models. Python never computes fallback forecasts.
+component models. Neural forecasting wrappers require compiled native bindings
+and should not be used for quality claims without real benchmark evidence.
+
+## Advanced Behavior
+
+Several advanced behaviors are Rust-core utilities rather than separate public
+docs pages:
+
+| Behavior | Where it belongs |
+| --- | --- |
+| Direct and rectified-recursive supervised strategies | Internal candidates for [AutoForecaster](user-guide/forecasting-models/auto-forecaster.md) and shared lag forecasting. |
+| STL/MSTL decomposition hybrids | Model roster entries described from the model guide index when exposed, with benchmark claims kept in [Forecasting Benchmarks](benchmarks/forecasting.md). |
+| Hierarchical reconciliation | Forecast artifact metadata and benchmark orchestration when pickup, dropoff, lane, or total demand must be coherent. |
+| Quantiles, conformal intervals, and rank probability score helpers | Metrics and interval evaluation; competition-specific scoring stays in benchmark adapters. |
+| Neural forecasting experts | Optional native-bound wrappers with no public quality claim unless a real benchmark run records commands, settings, timing, and metrics. |
 
 ## Evidence Standard
 

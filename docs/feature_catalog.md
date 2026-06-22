@@ -142,8 +142,7 @@ training, prediction, rolling-origin backtesting, metrics, and artifact behavior
 to `cartoboost._native`.
 
 See [General Utilities](general_utilities.md), [Forecasting](forecasting.md),
-[Forecasting API](forecasting_api.md), and the
-[AutoForecaster guide](user-guide/forecasting-models/auto-forecaster.md).
+and the [forecasting model guides](user-guide/forecasting-models/index.md).
 
 ## Command Line Interfaces
 
@@ -156,7 +155,7 @@ Use Python for sparse-set, graph-derived, neural embedding, and custom
 forecasting workflows that need richer in-memory objects.
 
 See [CLI Reference](reference/cli.md), [CLI User Guide](user-guide/cli.md), and
-[Forecasting CLI](forecasting_cli.md).
+[Forecasting](forecasting.md).
 
 ## Quality And Benchmark Reporting
 

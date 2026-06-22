@@ -15,7 +15,7 @@ appropriate, and artifact helpers.
 | --- | --- | --- |
 | Does each row describe one taxi trip, route observation, zone-hour aggregate, or residual to regress? | `cartoboost.CartoBoostRegressor` | [Python API Reference](../reference/python-api.md) |
 | Are you choosing how place, time, sparse memberships, losses, fuzzy routing, or local residual trends enter that row-level model? | `CartoBoostRegressor` parameters | [Parameters](parameters.md) |
-| Is the target one regular pickup-zone or lane series with its own history? | Local forecasters such as `SeasonalNaiveForecaster`, `ThetaForecaster`, `ETSForecaster`, `AutoARIMAForecaster`, or `KalmanForecaster` | [Model Guides](forecasting-models/index.md) |
+| Is the target one regular pickup-zone or lane series with its own history? | Local forecasters such as `SeasonalNaiveForecaster`, `ThetaForecaster`, `ETSForecaster`, `AutoARIMAForecaster`, or `KalmanForecaster` | [Forecasting Model Guides](forecasting-models/index.md) |
 | Are many related pickup zones, dropoff zones, or route panels forecast from shared lag features? | `CartoBoostLagForecaster` | [CartoBoost Lag](forecasting-models/cartoboost-lag.md) |
 | Should nearby coordinates borrow signal for a forecast panel? | `KrigingForecaster` | [Kriging](forecasting-models/kriging.md) |
 | Do you need a fixed combination of fitted native forecasters? | `WeightedEnsembleForecaster` | [Weighted Ensembles](forecasting-models/ensembles.md) |
@@ -99,7 +99,7 @@ Forecasting has two documentation layers:
 | Layer | Covers | Start here |
 | --- | --- | --- |
 | Forecasting wrapper | `ForecastFrame`, dataframe conversion, rolling-origin backtesting, forecast metrics, artifacts, CLI workflows, and leakage checks | [Forecasting](../forecasting.md) |
-| Model guides | Model-specific examples and tuning notes for native forecasting classes | [Model Guides](forecasting-models/index.md) |
+| Forecasting model guides | Model-specific examples and tuning notes for native forecasting classes | [Forecasting Model Guides](forecasting-models/index.md) |
 
 Use `ForecastFrame.from_pandas` for production taxi demand or fare-duration
 workflows because it validates timestamps, frequency, duplicate rows, target
@@ -127,8 +127,10 @@ Choose the model guide by series structure:
 | Additive level, trend, or seasonality | [ETS](forecasting-models/ets.md) |
 | Autocorrelation and differencing | [ARIMA And AutoARIMA](forecasting-models/arima.md) |
 | Noisy local level and trend | [Kalman](forecasting-models/kalman.md) |
+| Interpretable trend, changepoints, seasonality, events, and regressors | [Piecewise Linear Seasonal](forecasting-models/piecewise-linear-seasonal) |
 | Coordinate-aware panel interpolation | [Kriging](forecasting-models/kriging.md) |
 | Shared supervised lag model across many series | [CartoBoost Lag](forecasting-models/cartoboost-lag.md) |
+| Guarded default selector over native candidates | [AutoForecaster](forecasting-models/auto-forecaster.md) |
 | Fixed-weight combinations of native forecasters | [Weighted Ensembles](forecasting-models/ensembles.md) |
 
 Current Rust bindings intentionally reject unsupported modes such as damped ETS,
@@ -184,9 +186,9 @@ entry point used to produce the numbers.
 3. For row-level regression, read the [Python API Reference](../reference/python-api.md), then
    [Parameters](parameters.md), then [Temporal-Spatial Modeling](../spatial_modeling.md)
    and the relevant feature pages.
-4. For time-series work, read the [Forecasting Wrapper](../forecasting.md) page
+4. For time-series work, read the [Forecasting](../forecasting.md) page
    when you need `ForecastFrame`, backtesting, forecast artifacts, or the CLI.
-   Read [Model Guides](forecasting-models/index.md) when you need examples for
+   Read [Forecasting Model Guides](forecasting-models/index.md) when you need examples for
    a specific model class.
 5. For graph or neural work, start with the standalone model sections before
    using feature-generation helpers.

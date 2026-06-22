@@ -204,12 +204,12 @@ const neuralPipelineLabels: Record<string, string> = {
 };
 
 const graphNeuralPipelines = new Set(['node2vec', 'graphsage', 'hetero_graphsage', 'hinsage']);
-
-const sampleCsv = buildSampleCsv();
+type ActiveModelingSurface = 'forecast' | 'model' | 'neural';
 
 export default function ModelingLabClient(): React.ReactElement {
   const wasmJsUrl = useBaseUrl('/wasm/cartoboost/cartoboost_wasm.js');
   const wasmBinaryUrl = useBaseUrl('/wasm/cartoboost/cartoboost_wasm_bg.wasm');
+  const januaryTaxiParquetUrl = useBaseUrl('/samples/yellow_tripdata_2024-01-week1.parquet');
   const [table, setTable] = useState<ParsedTable | null>(null);
   const [timestampCol, setTimestampCol] = useState('timestamp');
   const [targetCol, setTargetCol] = useState('target');
@@ -227,6 +227,7 @@ export default function ModelingLabClient(): React.ReactElement {
   const [sparseFeatureCols, setSparseFeatureCols] = useState<string[]>([]);
   const [modelingMode, setModelingMode] = useState('full');
   const [modelingLoss, setModelingLoss] = useState('l2');
+  const [activeModelingSurface, setActiveModelingSurface] = useState<ActiveModelingSurface>('forecast');
   const [neuralPipeline, setNeuralPipeline] = useState('embedding');
   const [neuralIdCol, setNeuralIdCol] = useState('');
   const [graphSourceCol, setGraphSourceCol] = useState('');
@@ -263,8 +264,8 @@ export default function ModelingLabClient(): React.ReactElement {
 
   const loadText = useCallback((text: string, fileName: string) => {
     const parsed = parseDelimited(text, fileName);
-    const nextTimestampCol = guessColumn(parsed.columns, ['timestamp', 'pickup_datetime', 'date', 'ds', 'time']) ?? parsed.columns[0] ?? '';
-    const nextTargetCol = guessColumn(parsed.columns, ['target', 'y', 'demand', 'trips', 'count', 'fare', 'duration']) ?? parsed.columns[1] ?? '';
+    const nextTimestampCol = guessColumn(parsed.columns, ['timestamp', 'tpep_pickup_datetime', 'pickup_datetime', 'date', 'ds', 'time']) ?? parsed.columns[0] ?? '';
+    const nextTargetCol = guessColumn(parsed.columns, ['target', 'total_amount', 'fare_amount', 'trip_distance', 'y', 'demand', 'trips', 'count', 'fare', 'duration']) ?? parsed.columns[1] ?? '';
     const nextSeriesCol = guessColumn(parsed.columns, ['series_id', 'unique_id', 'PULocationID', 'DOLocationID', 'zone', 'route']) ?? '';
     setTable(parsed);
     setResult(null);
@@ -288,8 +289,8 @@ export default function ModelingLabClient(): React.ReactElement {
     async (file: File) => {
       if (file.name.toLowerCase().endsWith('.parquet')) {
         const parsed = await parseParquet(file);
-        const nextTimestampCol = guessColumn(parsed.columns, ['timestamp', 'pickup_datetime', 'date', 'ds', 'time']) ?? parsed.columns[0] ?? '';
-        const nextTargetCol = guessColumn(parsed.columns, ['target', 'y', 'demand', 'trips', 'count', 'fare', 'duration']) ?? parsed.columns[1] ?? '';
+        const nextTimestampCol = guessColumn(parsed.columns, ['timestamp', 'tpep_pickup_datetime', 'pickup_datetime', 'date', 'ds', 'time']) ?? parsed.columns[0] ?? '';
+        const nextTargetCol = guessColumn(parsed.columns, ['target', 'total_amount', 'fare_amount', 'trip_distance', 'y', 'demand', 'trips', 'count', 'fare', 'duration']) ?? parsed.columns[1] ?? '';
         const nextSeriesCol = guessColumn(parsed.columns, ['series_id', 'unique_id', 'PULocationID', 'DOLocationID', 'zone', 'route']) ?? '';
         setTable(parsed);
         setResult(null);
@@ -314,6 +315,37 @@ export default function ModelingLabClient(): React.ReactElement {
     },
     [loadText],
   );
+
+  const loadJanuaryTaxiParquet = useCallback(async () => {
+    setStatus('Loading real January 2024 yellow taxi Parquet week.');
+    const response = await fetch(januaryTaxiParquetUrl);
+    if (!response.ok) {
+      throw new Error(`Unable to load January taxi Parquet (${response.status}).`);
+    }
+    const parsed = await parseParquetBuffer(
+      await response.arrayBuffer(),
+      'yellow_tripdata_2024-01-week1.parquet',
+    );
+    const nextTimestampCol = guessColumn(parsed.columns, ['timestamp', 'tpep_pickup_datetime', 'pickup_datetime', 'date', 'ds', 'time']) ?? parsed.columns[0] ?? '';
+    const nextTargetCol = guessColumn(parsed.columns, ['target', 'total_amount', 'fare_amount', 'trip_distance', 'y', 'demand', 'trips', 'count', 'fare', 'duration']) ?? parsed.columns[1] ?? '';
+    const nextSeriesCol = guessColumn(parsed.columns, ['series_id', 'unique_id', 'PULocationID', 'DOLocationID', 'zone', 'route']) ?? '';
+    setTable(parsed);
+    setResult(null);
+    setComparisonResults([]);
+    setBacktestResults([]);
+    setRegressionResult(null);
+    setNeuralResult(null);
+    setTimestampCol(nextTimestampCol);
+    setTargetCol(nextTargetCol);
+    setSeriesCol(nextSeriesCol);
+    setFeatureCols(defaultFeatureColumns(parsed, nextTargetCol, nextTimestampCol, nextSeriesCol));
+    setSparseFeatureCols(defaultSparseFeatureColumns(parsed, nextTargetCol, nextTimestampCol, nextSeriesCol));
+    setNeuralIdCol(guessColumn(parsed.columns, ['pickup_zone_id', 'PULocationID', 'zone_id', 'id']) ?? '');
+    setGraphSourceCol(guessColumn(parsed.columns, ['pickup_zone_id', 'PULocationID', 'source', 'source_id']) ?? '');
+    setGraphTargetCol(guessColumn(parsed.columns, ['dropoff_zone_id', 'DOLocationID', 'target_node', 'target_id', 'destination']) ?? '');
+    setGraphWeightCol(guessColumn(parsed.columns, ['edge_weight', 'weight', 'trip_count']) ?? '');
+    setStatus(`Loaded ${parsed.rows.length.toLocaleString()} real January 2024 yellow taxi rows from week 1.`);
+  }, [januaryTaxiParquetUrl]);
 
   const onDrop = useCallback(
     async (event: React.DragEvent<HTMLLabelElement>) => {
@@ -669,8 +701,8 @@ export default function ModelingLabClient(): React.ReactElement {
             locally through WebAssembly. No dataset leaves the browser.
           </p>
         </div>
-        <button className={styles.secondaryButton} type="button" onClick={() => loadText(sampleCsv, 'sample-taxi-demand.csv')}>
-          Load sample
+        <button className={styles.secondaryButton} type="button" onClick={() => void loadJanuaryTaxiParquet()}>
+          Load taxi week
         </button>
       </section>
 
@@ -697,97 +729,127 @@ export default function ModelingLabClient(): React.ReactElement {
 
           <div className={styles.controlStack}>
             <ControlSection title="Dataset mapping">
-              <div className={styles.controlsGrid}>
+              <div className={`${styles.controlsGrid} ${styles.mappingGrid}`}>
                 <Select label="Timestamp" value={timestampCol} onChange={setTimestampCol} options={table?.columns ?? []} />
                 <Select label="Target" value={targetCol} onChange={setTargetCol} options={table?.columns ?? []} />
                 <Select label="Series" value={seriesCol} onChange={setSeriesCol} options={table?.columns ?? []} allowBlank blankLabel="Single series" />
               </div>
             </ControlSection>
 
-            <ControlSection title="Neural and graph settings">
-              <div className={styles.neuralSummary}>
-                <strong>{neuralPipelineLabels[neuralPipeline]}</strong>
-                <span>{graphNeuralPipelines.has(neuralPipeline) ? 'Source and target node columns are required.' : 'Choose an ID column for embedding features.'}</span>
-              </div>
-              <div className={styles.controlsGrid}>
-                <GroupedSelect
-                  label="Neural pipeline"
-                  value={neuralPipeline}
-                  onChange={setNeuralPipeline}
-                  groups={[
-                    {label: 'Embeddings', options: [{value: 'embedding', label: neuralPipelineLabels.embedding}]},
-                    {
-                      label: 'Graph pipelines',
-                      options: [
-                        {value: 'node2vec', label: neuralPipelineLabels.node2vec},
-                        {value: 'graphsage', label: neuralPipelineLabels.graphsage},
-                        {value: 'hetero_graphsage', label: neuralPipelineLabels.hetero_graphsage},
-                        {value: 'hinsage', label: neuralPipelineLabels.hinsage},
-                      ],
-                    },
-                  ]}
-                />
-                <Select label="ID" value={neuralIdCol} onChange={setNeuralIdCol} options={table?.columns ?? []} allowBlank blankLabel="No ID column" />
-                <Select label="Graph Source" value={graphSourceCol} onChange={setGraphSourceCol} options={table?.columns ?? []} allowBlank blankLabel="No source column" />
-                <Select label="Graph Target" value={graphTargetCol} onChange={setGraphTargetCol} options={table?.columns ?? []} allowBlank blankLabel="No target column" />
-                <Select label="Graph Weight" value={graphWeightCol} onChange={setGraphWeightCol} options={table?.columns ?? []} allowBlank blankLabel="Unweighted graph" />
-              </div>
-            </ControlSection>
+            <div className={styles.surfaceTabs} aria-label="Modeling surface">
+              <button
+                className={activeModelingSurface === 'forecast' ? styles.surfaceTabActive : undefined}
+                type="button"
+                onClick={() => setActiveModelingSurface('forecast')}
+              >
+                Forecast
+              </button>
+              <button
+                className={activeModelingSurface === 'model' ? styles.surfaceTabActive : undefined}
+                type="button"
+                onClick={() => setActiveModelingSurface('model')}
+              >
+                Model
+              </button>
+              <button
+                className={activeModelingSurface === 'neural' ? styles.surfaceTabActive : undefined}
+                type="button"
+                onClick={() => setActiveModelingSurface('neural')}
+              >
+                Neural
+              </button>
+            </div>
 
-            <ControlSection title="Forecast">
-              <div className={styles.controlsGrid}>
-                <Select label="Frequency" value={frequency} onChange={setFrequency} options={['hourly', 'daily', 'weekly']} />
-                <NumberInput label="Horizon" value={horizon} min={1} max={365} onChange={setHorizon} />
-                <SeasonalityControl frequency={frequency} value={seasonLength} onChange={setSeasonLength} />
-              </div>
-              <ModelPicker
-                modelOptions={modelOptions}
-                selectedModel={selectedForecastModel}
-                value={model}
-                onChange={setModel}
-              />
-            </ControlSection>
+            {activeModelingSurface === 'forecast' && (
+              <ControlSection title="Forecast">
+                <div className={styles.controlsGrid}>
+                  <Select label="Frequency" value={frequency} onChange={setFrequency} options={['hourly', 'daily', 'weekly']} />
+                  <NumberInput label="Horizon" value={horizon} min={1} max={365} onChange={setHorizon} />
+                  <SeasonalityControl frequency={frequency} value={seasonLength} onChange={setSeasonLength} />
+                </div>
+                <ModelPicker
+                  modelOptions={modelOptions}
+                  selectedModel={selectedForecastModel}
+                  value={model}
+                  onChange={setModel}
+                />
+              </ControlSection>
+            )}
 
-            <ControlSection title="Regression modeling">
-              <div className={styles.controlsGrid}>
-                <Select
-                  label="Splitter menu"
-                  value={modelingMode}
-                  onChange={setModelingMode}
-                  options={['full', 'auto', 'axis', 'spatial', 'periodic']}
-                  labels={{
-                    full: 'Spatial + periodic toolkit',
-                    auto: 'Auto dense',
-                    axis: 'Axis only',
-                    spatial: 'Spatial splitters',
-                    periodic: 'Periodic splitters',
-                  }}
-                />
-                <Select
-                  label="Loss"
-                  value={modelingLoss}
-                  onChange={setModelingLoss}
-                  options={['l2', 'l1', 'huber', 'log_l2', 'quantile']}
-                  labels={{
-                    l2: 'L2 mean',
-                    l1: 'L1 median',
-                    huber: 'Huber robust',
-                    log_l2: 'Log-L2 positive',
-                    quantile: 'Quantile median',
-                  }}
-                />
-              </div>
-            </ControlSection>
+            {activeModelingSurface === 'model' && (
+              <ControlSection title="Regression modeling">
+                <div className={styles.controlsGrid}>
+                  <Select
+                    label="Splitter menu"
+                    value={modelingMode}
+                    onChange={setModelingMode}
+                    options={['full', 'auto', 'axis', 'spatial', 'periodic']}
+                    labels={{
+                      full: 'Spatial + periodic toolkit',
+                      auto: 'Auto dense',
+                      axis: 'Axis only',
+                      spatial: 'Spatial splitters',
+                      periodic: 'Periodic splitters',
+                    }}
+                  />
+                  <Select
+                    label="Loss"
+                    value={modelingLoss}
+                    onChange={setModelingLoss}
+                    options={['l2', 'l1', 'huber', 'log_l2', 'quantile']}
+                    labels={{
+                      l2: 'L2 mean',
+                      l1: 'L1 median',
+                      huber: 'Huber robust',
+                      log_l2: 'Log-L2 positive',
+                      quantile: 'Quantile median',
+                    }}
+                  />
+                </div>
+              </ControlSection>
+            )}
+
+            {activeModelingSurface === 'neural' && (
+              <ControlSection title="Neural and graph settings">
+                <div className={styles.neuralSummary}>
+                  <strong>{neuralPipelineLabels[neuralPipeline]}</strong>
+                  <span>{graphNeuralPipelines.has(neuralPipeline) ? 'Source and target node columns are required.' : 'Choose an ID column for embedding features.'}</span>
+                </div>
+                <div className={styles.controlsGrid}>
+                  <GroupedSelect
+                    label="Neural pipeline"
+                    value={neuralPipeline}
+                    onChange={setNeuralPipeline}
+                    groups={[
+                      {label: 'Embeddings', options: [{value: 'embedding', label: neuralPipelineLabels.embedding}]},
+                      {
+                        label: 'Graph pipelines',
+                        options: [
+                          {value: 'node2vec', label: neuralPipelineLabels.node2vec},
+                          {value: 'graphsage', label: neuralPipelineLabels.graphsage},
+                          {value: 'hetero_graphsage', label: neuralPipelineLabels.hetero_graphsage},
+                          {value: 'hinsage', label: neuralPipelineLabels.hinsage},
+                        ],
+                      },
+                    ]}
+                  />
+                  <Select label="ID" value={neuralIdCol} onChange={setNeuralIdCol} options={table?.columns ?? []} allowBlank blankLabel="No ID column" />
+                  <Select label="Graph Source" value={graphSourceCol} onChange={setGraphSourceCol} options={table?.columns ?? []} allowBlank blankLabel="No source column" />
+                  <Select label="Graph Target" value={graphTargetCol} onChange={setGraphTargetCol} options={table?.columns ?? []} allowBlank blankLabel="No target column" />
+                  <Select label="Graph Weight" value={graphWeightCol} onChange={setGraphWeightCol} options={table?.columns ?? []} allowBlank blankLabel="Unweighted graph" />
+                </div>
+              </ControlSection>
+            )}
 
           </div>
-          {table && (
+          {table && activeModelingSurface !== 'forecast' && (
             <FeatureSelector
               columns={numericFeatureColumns(table, targetCol, timestampCol, seriesCol)}
               selected={featureCols}
               onChange={setFeatureCols}
             />
           )}
-          {table && (
+          {table && activeModelingSurface !== 'forecast' && (
             <FeatureSelector
               title="Sparse set features"
               columns={sparseFeatureColumns(table, targetCol, timestampCol, seriesCol)}
@@ -797,21 +859,29 @@ export default function ModelingLabClient(): React.ReactElement {
           )}
 
           <div className={styles.actionGrid}>
-            <button className={styles.primaryButton} type="button" disabled={!selectedColumnsReady || isRunning} onClick={() => void runForecast()}>
-              {isRunning ? 'Running forecast' : 'Run forecast'}
-            </button>
-            <button className={styles.secondaryActionButton} type="button" disabled={!selectedColumnsReady || isRunning} onClick={() => void runComparison()}>
-              Compare roster
-            </button>
-            <button className={styles.secondaryActionButton} type="button" disabled={!selectedColumnsReady || isRunning} onClick={() => void runBacktest()}>
-              Backtest
-            </button>
-            <button className={styles.secondaryActionButton} type="button" disabled={!selectedColumnsReady || featureCols.length === 0 || isRunning} onClick={() => void runRegression()}>
-              Model
-            </button>
-            <button className={styles.secondaryActionButton} type="button" disabled={!selectedColumnsReady || featureCols.length === 0 || isRunning} onClick={() => void runNeural()}>
-              Neural
-            </button>
+            {activeModelingSurface === 'forecast' && (
+              <>
+                <button className={styles.primaryButton} type="button" disabled={!selectedColumnsReady || isRunning} onClick={() => void runForecast()}>
+                  {isRunning ? 'Running forecast' : 'Run forecast'}
+                </button>
+                <button className={styles.secondaryActionButton} type="button" disabled={!selectedColumnsReady || isRunning} onClick={() => void runComparison()}>
+                  Compare roster
+                </button>
+                <button className={styles.secondaryActionButton} type="button" disabled={!selectedColumnsReady || isRunning} onClick={() => void runBacktest()}>
+                  Backtest
+                </button>
+              </>
+            )}
+            {activeModelingSurface === 'model' && (
+              <button className={styles.primaryButton} type="button" disabled={!selectedColumnsReady || featureCols.length === 0 || isRunning} onClick={() => void runRegression()}>
+                {isRunning ? 'Running model' : 'Run model'}
+              </button>
+            )}
+            {activeModelingSurface === 'neural' && (
+              <button className={styles.primaryButton} type="button" disabled={!selectedColumnsReady || featureCols.length === 0 || isRunning} onClick={() => void runNeural()}>
+                {isRunning ? 'Running neural' : 'Run neural'}
+              </button>
+            )}
             <button className={styles.secondaryActionButton} type="button" disabled={!table || isRunning} onClick={exportSuggestedConfig}>
               Export config
             </button>
@@ -1623,8 +1693,9 @@ function DatasetProfile({
     .map((row) => row[timestampCol])
     .filter(Boolean)
     .sort((a, b) => a.localeCompare(b));
-  const minTarget = targetValues.length ? Math.min(...targetValues) : null;
-  const maxTarget = targetValues.length ? Math.max(...targetValues) : null;
+  const targetExtent = numericExtent(targetValues);
+  const minTarget = targetExtent ? targetExtent.min : null;
+  const maxTarget = targetExtent ? targetExtent.max : null;
   return (
     <div className={styles.datasetProfile}>
       <dl>
@@ -1907,7 +1978,7 @@ function TargetOpportunityPanel({
 
 function Histogram({values}: {values: number[]}) {
   const bins = histogramBins(values, 12);
-  const maxCount = Math.max(...bins.map((bin) => bin.count), 1);
+  const maxCount = Math.max(numericMax(bins.map((bin) => bin.count)) ?? 0, 1);
   return (
     <div className={styles.histogram} aria-label="Target histogram">
       {bins.map((bin) => (
@@ -1921,8 +1992,9 @@ function Histogram({values}: {values: number[]}) {
 
 function TimeBucketStrip({buckets}: {buckets: {label: string; mean: number; count: number}[]}) {
   const means = buckets.map((bucket) => bucket.mean);
-  const min = Math.min(...means);
-  const max = Math.max(...means);
+  const extent = numericExtent(means);
+  const min = extent?.min ?? 0;
+  const max = extent?.max ?? 1;
   return (
     <div className={styles.timeBuckets}>
       {buckets.map((bucket) => (
@@ -2617,9 +2689,33 @@ function percentile(sortedValues: number[], percentileRank: number) {
   return sortedValues[index];
 }
 
+function numericExtent(values: number[]) {
+  let min = Infinity;
+  let max = -Infinity;
+  for (const value of values) {
+    if (!Number.isFinite(value)) {
+      continue;
+    }
+    min = Math.min(min, value);
+    max = Math.max(max, value);
+  }
+  return min === Infinity ? null : {min, max};
+}
+
+function numericMax(values: number[]) {
+  let max = -Infinity;
+  for (const value of values) {
+    if (Number.isFinite(value)) {
+      max = Math.max(max, value);
+    }
+  }
+  return max === -Infinity ? null : max;
+}
+
 function histogramBins(values: number[], count: number) {
-  const min = Math.min(...values);
-  const max = Math.max(...values);
+  const extent = numericExtent(values);
+  const min = extent?.min ?? 0;
+  const max = extent?.max ?? 1;
   const span = max - min || 1;
   const bins = Array.from({length: count}, (_, index) => ({
     start: min + (span * index) / count,
@@ -4078,36 +4174,6 @@ function normalizeTimestamp(value: string) {
   return value.length === 10 ? `${value}T00:00:00` : value.replace(' ', 'T').replace(/\.\d{3}Z$/, '');
 }
 
-function buildSampleCsv() {
-  const rows = [
-    'timestamp,series_id,target,trip_distance,pickup_hour,route_pressure,pickup_zone_id,dropoff_zone_id,pickup_lon,pickup_lat,dropoff_lon,dropoff_lat,h3_cell,zone_memberships,edge_weight',
-  ];
-  const h3Cells = ['882a100d2dfffff', '882a100d69fffff', '882a1072c7fffff', '882a1008b3fffff'];
-  for (let index = 0; index < 56; index += 1) {
-    const timestamp = new Date(Date.UTC(2026, 0, 1 + index));
-    const date = timestamp.toISOString().slice(0, 10);
-    const tripDistance = 1.5 + (index % 9) * 0.4 + index * 0.03;
-    const pickupHour = (index * 3) % 24;
-    const routePressure = (index * 7) % 13;
-    const pickupZoneId = 101 + (index % 4);
-    const dropoffZoneId = 205 + ((index * 3) % 4);
-    const pickupLon = -73.98 + Math.sin(index / 6) * 0.04;
-    const pickupLat = 40.74 + Math.cos(index / 7) * 0.03;
-    const dropoffLon = -73.94 + Math.cos(index / 5) * 0.05;
-    const dropoffLat = 40.71 + Math.sin(index / 8) * 0.04;
-    const trend = 124 + index * 2.5;
-    const weekdayLift = [0, 5, 18, 23, 11, 16, 34][index % 7];
-    const spatialLift = (pickupLon + 74.0) * 110 + (pickupLat - 40.7) * 140 + (dropoffLon + 74.0) * 60;
-    const h3Cell = h3Cells[index % h3Cells.length];
-    const zoneMemberships = `${pickupZoneId}|${dropoffZoneId}|${h3Cell}`;
-    const edgeWeight = 1 + (index % 5) * 0.25;
-    const sparseLift = index % 3 === 0 ? 14 : 0;
-    const target = Math.round(trend + tripDistance * 9 + pickupHour * 1.7 + routePressure * 4.5 + spatialLift + weekdayLift + sparseLift + (dropoffZoneId - 204) * 3);
-    rows.push(`${date},pickup_zone_1,${target},${tripDistance.toFixed(2)},${pickupHour},${routePressure},${pickupZoneId},${dropoffZoneId},${pickupLon.toFixed(5)},${pickupLat.toFixed(5)},${dropoffLon.toFixed(5)},${dropoffLat.toFixed(5)},${h3Cell},${zoneMemberships},${edgeWeight.toFixed(2)}`);
-  }
-  return rows.join('\n');
-}
-
 function parseDelimited(text: string, fileName: string): ParsedTable {
   const delimiter = text.includes('\t') ? '\t' : ',';
   const rows = parseRows(text.trim(), delimiter);
@@ -4123,12 +4189,16 @@ function parseDelimited(text: string, fileName: string): ParsedTable {
 }
 
 async function parseParquet(file: File): Promise<ParsedTable> {
+  return parseParquetBuffer(await file.arrayBuffer(), file.name);
+}
+
+async function parseParquetBuffer(buffer: ArrayBuffer, fileName: string): Promise<ParsedTable> {
   const [{tableFromIPC}, parquet] = await Promise.all([
     import('apache-arrow'),
     import('parquet-wasm') as Promise<ParquetWasmModule>,
   ]);
   await parquet.default();
-  const wasmTable = parquet.readParquet(new Uint8Array(await file.arrayBuffer()));
+  const wasmTable = parquet.readParquet(new Uint8Array(buffer));
   try {
     const arrowTable = tableFromIPC(wasmTable.intoIPCStream()) as unknown as {
       numRows: number;
@@ -4142,25 +4212,34 @@ async function parseParquet(file: File): Promise<ParsedTable> {
       Object.fromEntries(
         columns.map((column, columnIndex) => [
           column,
-          formatCellValue(vectors[columnIndex]?.get(rowIndex)),
+          formatCellValue(vectors[columnIndex]?.get(rowIndex), column),
         ]),
       ),
     );
     if (columns.length === 0 || rows.length === 0) {
       throw new Error('The uploaded Parquet file must include at least one column and one row.');
     }
-    return {columns, rows, fileName: file.name};
+    return {columns, rows, fileName};
   } finally {
-    wasmTable.free?.();
+    try {
+      wasmTable.free?.();
+    } catch (error) {
+      if (!(error instanceof Error) || !error.message.includes('null pointer')) {
+        throw error;
+      }
+    }
   }
 }
 
-function formatCellValue(value: unknown) {
+function formatCellValue(value: unknown, columnName = '') {
   if (value == null) {
     return '';
   }
   if (value instanceof Date) {
     return value.toISOString().replace(/\.\d{3}Z$/, '');
+  }
+  if (typeof value === 'number' && Number.isFinite(value) && isTimestampColumn(columnName) && value > 1000000000000) {
+    return new Date(value).toISOString().replace(/\.\d{3}Z$/, '');
   }
   if (typeof value === 'bigint') {
     return value.toString();
@@ -4169,6 +4248,11 @@ function formatCellValue(value: unknown) {
     return Array.from(value as Uint8Array).join(',');
   }
   return String(value);
+}
+
+function isTimestampColumn(columnName: string) {
+  const normalized = columnName.toLowerCase();
+  return normalized.includes('datetime') || normalized.includes('timestamp') || normalized === 'date' || normalized === 'ds';
 }
 
 function parseRows(text: string, delimiter: string): string[][] {

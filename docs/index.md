@@ -104,8 +104,9 @@ be transformed trip duration, fare amount, or future pickup-zone demand.
   kriging, neural embedding models, graph models, and utilities.
 - [Spatial Modeling](spatial_modeling.md): coordinate features, taxi-zone
   sparse sets, fuzzy routing, and blocked evaluation.
-- [Forecasting Wrapper](forecasting.md): `ForecastFrame`, rolling-origin
-  backtests, leakage checks, CLI runs, and portable forecast artifacts.
+- [Forecasting](forecasting.md): `ForecastFrame`, rolling-origin backtests,
+  leakage checks, CLI runs, portable forecast artifacts, and links to the
+  individual forecasting model guides.
 - [Benchmarks](benchmarks/index.md): reproducible comparison reports,
   acceptance checks, and claim limits.
 
@@ -124,9 +125,10 @@ be transformed trip duration, fare amount, or future pickup-zone demand.
 - [Neural Embedding Models And Features](neural-features.md): standalone ID
   embedding regression, neural artifacts, fallback behavior, and optional
   feature-generation workflows.
-- [Model Guides](user-guide/forecasting-models/index.md): per-model examples
-  for naive, seasonal naive, theta, ETS, ARIMA, AutoARIMA, Kalman, kriging,
-  CartoBoost lag, AutoForecaster, and weighted ensembles.
+- [Forecasting Model Guides](user-guide/forecasting-models/index.md): per-model examples
+  for naive, seasonal naive, theta, ETS, ARIMA, AutoARIMA, Kalman, piecewise
+  linear seasonal, kriging, CartoBoost lag, AutoForecaster, and weighted
+  ensembles.
 
 ## What CartoBoost Supports
 

@@ -1,10 +1,9 @@
-# Model Guides
+# Forecasting Model Guides
 
-These guides explain the native forecasting model classes. They are separate
-from the forecasting wrapper docs: use this section when you need to pick,
-configure, or compare a model; use the [Forecasting](../../forecasting.md)
-section when you need `ForecastFrame`, rolling-origin backtesting, artifacts,
-or CLI workflows.
+These guides explain the native forecasting model classes. Use this section
+when you need to pick, configure, or compare a model. Use
+[Forecasting](../../forecasting.md) when you need `ForecastFrame`,
+rolling-origin backtesting, artifacts, CLI workflows, or shared evidence rules.
 
 Every class is a thin Python wrapper over Rust behavior exposed through
 `cartoboost._native`. Python does not compute fallback forecasts for unsupported
@@ -20,7 +19,7 @@ model modes.
 | [ARIMA And AutoARIMA](arima.md) | Use differencing and autocorrelation in a bounded non-seasonal search. | Seasonal AutoARIMA is not exposed. |
 | [ARIMA Examples](arima-examples.md) | Run a visual ARIMA smoke check and benchmark-oriented example. | Uses deterministic taxi-lane fixtures. |
 | [Kalman](kalman.md) | Track noisy local level and local trend over time. | Includes state diagnostics and visualization examples. |
-| `PiecewiseLinearSeasonalForecaster` | Fit interpretable trend, changepoint, seasonality, event, and regressor components without Stan. | Rust-native API exposed through Python and WASM as `piecewise_linear_seasonal`. |
+| [Piecewise Linear Seasonal](/docs/user-guide/forecasting-models/piecewise-linear-seasonal) | Fit interpretable trend, changepoint, seasonality, event, and regressor components without Stan. | Rust-native API exposed through Python and WASM as `piecewise_linear_seasonal`. |
 | [Kriging](kriging.md) | Borrow signal across pickup-zone or route coordinates. | Useful for coordinate-aware panel forecasting. |
 | [CartoBoost Lag](cartoboost-lag.md) | Learn one supervised lag model across many related series. | Use for pickup-zone, dropoff-zone, and lane-level panels. |
 | [AutoForecaster](auto-forecaster.md) | Use the guarded Rust-native default selector over lag, direct, residual-corrected, intermittent, and classical candidates. | Includes diagrams for validation, gating, prediction, and metadata inspection. |
@@ -37,7 +36,7 @@ Choose the model whose assumptions match the signal you can defend:
 | Level and trend are smooth, with optional simple seasonality. | Theta or ETS | Estimates a low-dimensional local structure that is easy to inspect. |
 | Recent autocorrelation and differencing explain the series. | ARIMA or AutoARIMA | Models local serial dependence after bounded non-seasonal differencing. |
 | The measured series is noisy and the latent level/trend should update gradually. | Kalman | Separates observation noise from latent state movement. |
-| You need interpretable changepoints, Fourier seasonalities, event windows, known future regressors, quantiles, and component decomposition in one local model. | Piecewise linear seasonal | Estimates the additive or multiplicative component path in Rust, keeps fitting deterministic and fast, and avoids Stan/CmdStan runtime costs. |
+| You need interpretable changepoints, Fourier seasonalities, event windows, known future regressors, quantiles, and component decomposition in one local model. | [Piecewise linear seasonal](/docs/user-guide/forecasting-models/piecewise-linear-seasonal) | Estimates the additive or multiplicative component path in Rust, keeps fitting deterministic and fast, and avoids Stan/CmdStan runtime costs. |
 | Nearby zones, route midpoints, or residual surfaces should be spatially related. | Kriging | Uses coordinate distance and a variogram to borrow cross-series signal. |
 | Many related zones or lanes share lag, rolling, calendar, or trend structure. | CartoBoost lag | Learns one supervised model from many aligned panel examples. |
 | A production taxi-demand panel needs a deterministic guarded default with auditable candidate weights. | AutoForecaster | Validates a fixed Rust-native roster, protects the lag baseline, and stores global, horizon, and series weights. |
@@ -77,55 +76,21 @@ frame = ForecastFrame.from_pandas(
 `ForecastFrame` validates timestamps, duplicate rows within each series, finite
 targets, regular frequency, panel ids, and covariate role metadata.
 
-## Piecewise Linear Seasonal
+## Advanced Native Candidates
 
-Use `PiecewiseLinearSeasonalForecaster` when the forecast claim depends on
-inspectable local structure: growth, changepoints, Fourier seasonalities,
-event windows, known future regressors, uncertainty intervals, quantiles, and
-component contributions. The implementation is Rust-native and is also exposed
-to the browser through the `piecewise_linear_seasonal` WASM model. There is no
-`prophet` alias in reusable CartoBoost APIs.
+`AutoForecaster` can validate internal direct, rectified-recursive,
+intermittent-demand, classical-expert, and decomposition-style candidates when
+those candidates are exposed by the compiled Rust core. Treat those as roster
+members of the guarded default selector unless a separate Python class is part
+of the public API. Keep benchmark-specific names and competition scoring labels
+in benchmark harnesses and reports.
 
-```python
-from cartoboost.forecasting import ForecastFrame, PiecewiseLinearSeasonalForecaster
-
-frame = ForecastFrame.from_pandas(
-    taxi_daily,
-    timestamp_col="pickup_date",
-    target_col="pickup_count",
-    series_id_col="PULocationID",
-    freq="D",
-    known_future_covariates=["airport_queue"],
-)
-
-model = PiecewiseLinearSeasonalForecaster(
-    changepoints=8,
-    weekly_fourier_order=3,
-    events=[
-        {
-            "name": "airport_surge",
-            "timestamp": "2026-02-01T00:00:00",
-            "lower_window": 0,
-            "upper_window": 1,
-        }
-    ],
-    extra_regressors=["airport_queue"],
-    future_regressors={"airport_queue": [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0]},
-    prediction_interval_levels=[0.8, 0.95],
-    quantile_levels=[0.1, 0.5, 0.9],
-    uncertainty_samples=128,
-)
-
-model.fit(frame)
-forecast = model.predict(7)
-components = model.components(7)
-quantiles = model.quantiles(7)
-```
-
-For bounded demand, set `growth="logistic"` and either static `cap` / `floor`
-values or dynamic `cap_regressor` / `floor_regressor` covariates. Known future
-regressors can be global or per-series. Extra regressor monotone constraints
-are supported through `extra_regressor_monotonic_constraints`.
+Use [Piecewise Linear Seasonal](/docs/user-guide/forecasting-models/piecewise-linear-seasonal) when the forecast
+claim depends on inspectable local structure: growth, changepoints, Fourier
+seasonalities, event windows, known future regressors, uncertainty intervals,
+quantiles, and component contributions. The implementation is Rust-native and
+is also exposed to the browser through the `piecewise_linear_seasonal` WASM
+model. There is no `prophet` alias in reusable CartoBoost APIs.
 
 ## Shared Result Shape
 

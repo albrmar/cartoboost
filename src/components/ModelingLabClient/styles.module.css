@@ -1,80 +1,93 @@
 .shell {
   min-height: calc(100vh - 4rem);
-  background: #f7fafc;
+  background: #eef3f8;
   color: #122033;
+  padding: 1rem clamp(1rem, 2.4vw, 2rem) 2rem;
+}
+
+.shell :global(*) {
+  box-sizing: border-box;
+}
+
+body:has(.shell) :global(.footer) {
+  display: none;
 }
 
 .header {
-  align-items: end;
+  align-items: center;
+  background: #ffffff;
+  border: 1px solid #d8e0ea;
+  border-radius: 8px;
+  box-shadow: 0 12px 34px rgba(11, 18, 32, 0.06);
   display: flex;
   gap: 1rem;
   justify-content: space-between;
-  padding: clamp(1.3rem, 3vw, 2.4rem) clamp(1rem, 3vw, 2.4rem) 1rem;
+  margin: 0 auto 0.9rem;
+  max-width: 1680px;
+  padding: 0.9rem 1rem;
 }
 
 .header h1 {
   color: #0b1220;
-  font-size: clamp(1.9rem, 4vw, 3.25rem);
+  font-size: clamp(1.35rem, 2vw, 2rem);
   letter-spacing: 0;
-  line-height: 1.02;
-  margin: 0 0 0.55rem;
-  max-width: 860px;
+  line-height: 1.08;
+  margin: 0 0 0.25rem;
+  max-width: 760px;
 }
 
 .header p {
   color: #526274;
-  font-size: 0.98rem;
-  line-height: 1.45;
+  font-size: 0.9rem;
+  line-height: 1.35;
   margin: 0;
-  max-width: 680px;
+  max-width: 760px;
 }
 
 .eyebrow {
   color: #168f86;
   display: block;
-  font-size: 0.78rem;
+  font-size: 0.7rem;
   font-weight: 800;
   letter-spacing: 0.08em;
-  margin-bottom: 0.45rem;
+  margin-bottom: 0.25rem;
   text-transform: uppercase;
 }
 
 .workspace {
+  align-items: start;
   display: grid;
-  gap: 1rem;
-  grid-template-columns: minmax(340px, 0.36fr) minmax(0, 1fr);
-  padding: 0 clamp(1rem, 3vw, 2.4rem) clamp(2rem, 4vw, 3.5rem);
+  gap: 1.05rem;
+  grid-template-columns: minmax(420px, 0.32fr) minmax(0, 1fr);
+  margin: 0 auto;
+  max-width: 1680px;
 }
 
 .controlPanel {
   background: #ffffff;
   border: 1px solid #d8e0ea;
   border-radius: 8px;
-  box-shadow: 0 10px 34px rgba(11, 18, 32, 0.06);
-  padding: 0.8rem;
+  box-shadow: 0 12px 34px rgba(11, 18, 32, 0.06);
+  padding: 0.75rem;
 }
 
 .controlPanel {
   align-self: start;
-  max-height: calc(100vh - 1.5rem);
-  overflow: auto;
-  position: sticky;
-  top: 0.75rem;
+  overflow: visible;
+  position: static;
 }
 
 .dropZone {
   align-items: center;
-  background: #eef8f7;
-  border: 1px dashed #168f86;
+  background: #f5fbfb;
+  border: 1px solid #c2ece8;
   border-radius: 8px;
   cursor: pointer;
-  display: flex;
-  flex-direction: column;
+  display: grid;
   gap: 0.35rem;
   justify-content: center;
-  min-height: 74px;
-  padding: 0.6rem;
-  text-align: center;
+  min-height: 58px;
+  padding: 0.55rem 0.65rem;
 }
 
 .dropZone input {
@@ -86,7 +99,7 @@
 
 .dropZone strong {
   color: #0b1220;
-  font-size: 0.98rem;
+  font-size: 0.9rem;
 }
 
 .dropZone span,
@@ -97,27 +110,27 @@
 
 .controlStack {
   display: grid;
-  gap: 0.7rem;
-  margin: 0.65rem 0;
+  gap: 0.65rem;
+  margin: 0.55rem 0;
 }
 
 .controlSection {
   border: 1px solid #d8e0ea;
   border-radius: 8px;
-  padding: 0.7rem;
+  padding: 0.6rem;
 }
 
 .controlSection h2 {
   color: #0b1220;
-  font-size: 0.84rem;
+  font-size: 0.78rem;
   letter-spacing: 0;
-  margin: 0 0 0.45rem;
+  margin: 0 0 0.4rem;
 }
 
 .controlsGrid {
   display: grid;
-  gap: 0.5rem;
-  grid-template-columns: repeat(auto-fit, minmax(7.4rem, 1fr));
+  gap: 0.45rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   margin: 0;
 }
 
@@ -125,39 +138,74 @@
   grid-column: 1 / -1;
 }
 
+.mappingGrid {
+  grid-template-columns: 1fr;
+}
+
+.surfaceTabs {
+  background: #e7edf5;
+  border: 1px solid #d0d9e6;
+  border-radius: 8px;
+  display: grid;
+  gap: 0.25rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding: 0.25rem;
+}
+
+.surfaceTabs button {
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  color: #4f5f72;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.8rem;
+  font-weight: 800;
+  min-height: 2.1rem;
+  padding: 0.35rem 0.45rem;
+}
+
+.surfaceTabs .surfaceTabActive {
+  background: #ffffff;
+  box-shadow: 0 6px 16px rgba(11, 18, 32, 0.12);
+  color: #0b1220;
+}
+
 .neuralSummary,
 .modelPickerHeader {
   align-items: start;
-  background: #f4f7fb;
+  background: #f7fafc;
   border: 1px solid #d8e0ea;
   border-radius: 8px;
-  display: grid;
+  display: flex;
   gap: 0.6rem;
-  margin-bottom: 0.6rem;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
   min-width: 0;
-  padding: 0.55rem 0.65rem;
+  padding: 0.45rem 0.55rem;
 }
 
 .neuralSummary strong,
 .modelPickerHeader strong {
   color: #122033;
-  font-size: 0.86rem;
+  font-size: 0.8rem;
   line-height: 1.25;
   min-width: 0;
   overflow-wrap: anywhere;
+  text-align: right;
 }
 
 .neuralSummary span,
 .modelPickerHeader span {
   color: #526274;
-  font-size: 0.72rem;
+  font-size: 0.66rem;
   font-weight: 800;
   line-height: 1.25;
   text-transform: uppercase;
 }
 
 .modelPicker {
-  margin-top: 0.65rem;
+  margin-top: 0.5rem;
 }
 
 .modelFamilySelect {
@@ -186,8 +234,8 @@
 
 .modelPickerGrid {
   display: grid;
-  gap: 0.55rem;
-  max-height: 8.5rem;
+  gap: 0.45rem;
+  max-height: 7.25rem;
   overflow: auto;
   padding-right: 0.1rem;
 }
@@ -207,7 +255,7 @@
 .modelGroup > div {
   display: grid;
   gap: 0.35rem;
-  grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .modelGroup button {
@@ -217,8 +265,8 @@
   color: #122033;
   cursor: pointer;
   font: inherit;
-  min-height: 2.75rem;
-  padding: 0.38rem 0.5rem;
+  min-height: 2.55rem;
+  padding: 0.34rem 0.45rem;
   text-align: left;
 }
 
@@ -231,12 +279,12 @@
 }
 
 .modelGroup button strong {
-  font-size: 0.8rem;
+  font-size: 0.76rem;
 }
 
 .modelGroup button em {
   color: #526274;
-  font-size: 0.68rem;
+  font-size: 0.64rem;
   font-style: normal;
   margin-top: 0.18rem;
 }
@@ -254,7 +302,7 @@
 
 .field span {
   color: #526274;
-  font-size: 0.78rem;
+  font-size: 0.68rem;
   font-weight: 800;
   text-transform: uppercase;
 }
@@ -266,15 +314,15 @@
   border-radius: 8px;
   color: #122033;
   font: inherit;
-  min-height: 2.25rem;
-  padding: 0.35rem 0.55rem;
+  min-height: 2.1rem;
+  padding: 0.3rem 0.48rem;
   width: 100%;
 }
 
 .seasonalityControl {
   border: 1px solid #d8e0ea;
   border-radius: 8px;
-  padding: 0.55rem;
+  padding: 0.45rem;
 }
 
 .seasonalityHeader {
@@ -299,7 +347,7 @@
 
 .seasonalityButtons {
   display: grid;
-  gap: 0.35rem;
+  gap: 0.3rem;
   grid-template-columns: repeat(auto-fit, minmax(4.5rem, 1fr));
   margin-bottom: 0.5rem;
 }
@@ -311,8 +359,8 @@
   color: #122033;
   cursor: pointer;
   font: inherit;
-  min-height: 2.2rem;
-  padding: 0.35rem 0.4rem;
+  min-height: 2rem;
+  padding: 0.28rem 0.35rem;
 }
 
 .seasonalityButtons strong,
@@ -347,9 +395,9 @@
 
 .actionGrid {
   display: grid;
-  gap: 0.45rem;
+  gap: 0.4rem;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  margin-top: 0.65rem;
+  margin-top: 0.55rem;
 }
 
 .primaryButton {
@@ -380,16 +428,17 @@
   cursor: pointer;
   font: inherit;
   font-weight: 800;
-  min-height: 2.65rem;
+  min-height: 2.4rem;
   padding: 0.45rem 0.55rem;
   width: 100%;
 }
 
 .status {
-  margin: 0.8rem 0 0;
+  margin: 0.65rem 0 0;
 }
 
 .outputPanel {
+  align-self: start;
   min-width: 0;
 }
 
@@ -402,14 +451,14 @@
   display: flex;
   gap: 1rem;
   justify-content: space-between;
-  margin-bottom: 0.85rem;
-  padding: 0.75rem 0.85rem;
+  margin-bottom: 0.65rem;
+  padding: 0.65rem 0.75rem;
 }
 
 .emptyState h2,
 .resultHeader h2 {
   color: #0b1220;
-  font-size: 1.65rem;
+  font-size: clamp(1.15rem, 1.6vw, 1.45rem);
   letter-spacing: 0;
   margin: 0;
 }
@@ -433,7 +482,7 @@
 
 .resultHeader dd {
   color: #0b1220;
-  font-size: 1.25rem;
+  font-size: 1.1rem;
   font-weight: 800;
   margin: 0;
 }
@@ -442,8 +491,8 @@
   background: #ffffff;
   border: 1px solid #d8e0ea;
   border-radius: 8px;
-  margin: 0 0 0.85rem;
-  padding: 0.75rem;
+  margin: 0 0 0.65rem;
+  padding: 0.65rem;
 }
 
 .chart svg {
@@ -581,7 +630,7 @@
 
 .chart figcaption {
   color: #526274;
-  font-size: 0.86rem;
+  font-size: 0.8rem;
   margin-top: 0.3rem;
 }
 
@@ -609,21 +658,21 @@
 
 .signalCards {
   display: grid;
-  gap: 0.65rem;
+  gap: 0.55rem;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.65rem;
 }
 
 .signalCards p {
-  background: #f4f7fb;
+  background: #f7fafc;
   border-radius: 8px;
   color: #122033;
-  font-size: 1.05rem;
+  font-size: 1rem;
   font-weight: 800;
   margin: 0;
   min-width: 0;
   overflow-wrap: anywhere;
-  padding: 0.65rem;
+  padding: 0.6rem;
 }
 
 .signalCards span,
@@ -649,8 +698,8 @@
   background: #ffffff;
   border: 1px solid #d8e0ea;
   border-radius: 8px;
-  margin: 0 0 1rem;
-  padding: 0.75rem;
+  margin: 0 0 0.75rem;
+  padding: 0.65rem;
 }
 
 .metricChart figcaption {
@@ -661,19 +710,19 @@
 
 .metricCards {
   display: grid;
-  gap: 0.65rem;
+  gap: 0.55rem;
   grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
-  margin-bottom: 1rem;
+  margin-bottom: 0.75rem;
 }
 
 .metricCards p {
-  background: #f4f7fb;
+  background: #f7fafc;
   border-radius: 8px;
   color: #122033;
-  font-size: 1.25rem;
+  font-size: 1.1rem;
   font-weight: 800;
   margin: 0;
-  padding: 0.75rem;
+  padding: 0.65rem;
 }
 
 .metricCards span {
@@ -723,7 +772,7 @@
 .tableScroller table {
   border-collapse: collapse;
   display: table;
-  font-size: 0.88rem;
+  font-size: 0.82rem;
   min-width: 680px;
   width: 100%;
 }
@@ -731,7 +780,7 @@
 .tableScroller th,
 .tableScroller td {
   border-bottom: 1px solid #e3e9f1;
-  padding: 0.48rem 0.55rem;
+  padding: 0.42rem 0.5rem;
   text-align: left;
   white-space: nowrap;
 }
@@ -745,8 +794,8 @@
 .previewGrid {
   align-items: start;
   display: grid;
-  gap: 0.85rem;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 }
 
 .datasetProfile {
@@ -768,7 +817,9 @@
 }
 
 .previewGrid .featureRolePanel,
-.previewGrid .geoPanel {
+.previewGrid .geoPanel,
+.previewGrid .datasetProfile,
+.previewGrid .runPlanPanel {
   grid-column: 1 / -1;
 }
 
@@ -803,6 +854,10 @@
   gap: 0.65rem;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   margin-bottom: 0.8rem;
+}
+
+.planGrid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .geoStats {
@@ -856,7 +911,7 @@
 .readinessList {
   display: grid;
   gap: 0.45rem;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   margin-bottom: 0.75rem;
 }
 

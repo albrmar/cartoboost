@@ -22,6 +22,7 @@ temporal, spatial, geotemporal, graph, and neural-embedding modeling.
   `piecewise_linear_seasonal` forecast model, including fitted artifact
   prediction and component decomposition payloads.
 - AutoForecaster guide: ./docs/user-guide/forecasting-models/auto-forecaster.md
+- Piecewise linear seasonal guide: ./docs/user-guide/forecasting-models/piecewise-linear-seasonal.md
 - ARIMA and AutoARIMA guide: ./docs/user-guide/forecasting-models/arima.md
 - ARIMA examples: ./docs/user-guide/forecasting-models/arima-examples.md
 - Python API reference: ./docs/reference/python-api.md
@@ -34,8 +35,8 @@ temporal, spatial, geotemporal, graph, and neural-embedding modeling.
 - Forecasting benchmarks, synthetic Prophet comparison, and M4/M5/M6 evidence: ./docs/benchmarks/forecasting.md
 - NYC regression benchmark evidence: ./docs/benchmarks/nyc-taxi.md
 - Tabular and graph model-suite evidence: ./docs/benchmarks/model-suite.md
-- Forecasting overhaul: ./docs/forecasting_overhaul.md
-- Forecasting hybridization assessment: ./docs/forecasting_hybridization_assessment.md
+- Forecasting workflow: ./docs/forecasting.md
+- Forecasting model guides: ./docs/user-guide/forecasting-models/index.md
 
 ## Public Python Entry Points
 
