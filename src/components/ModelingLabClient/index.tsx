@@ -772,7 +772,7 @@ export default function ModelingLabClient(): React.ReactElement {
           </label>
 
           <div className={styles.controlStack}>
-            <ControlSection title="Dataset mapping">
+            <ControlSection title="Dataset mapping" step="1">
               <div className={`${styles.controlsGrid} ${styles.mappingGrid}`}>
                 <Select label="Timestamp" value={timestampCol} onChange={setTimestampCol} options={table?.columns ?? []} />
                 <Select label="Target" value={targetCol} onChange={setTargetCol} options={table?.columns ?? []} />
@@ -780,48 +780,62 @@ export default function ModelingLabClient(): React.ReactElement {
               </div>
             </ControlSection>
 
-            <div className={styles.surfaceTabs} aria-label="Modeling surface">
-              <button
-                className={activeModelingSurface === 'forecast' ? styles.surfaceTabActive : undefined}
-                type="button"
-                onClick={() => setActiveModelingSurface('forecast')}
-              >
-                Forecast
-              </button>
-              <button
-                className={activeModelingSurface === 'model' ? styles.surfaceTabActive : undefined}
-                type="button"
-                onClick={() => setActiveModelingSurface('model')}
-              >
-                Model
-              </button>
-              <button
-                className={activeModelingSurface === 'neural' ? styles.surfaceTabActive : undefined}
-                type="button"
-                onClick={() => setActiveModelingSurface('neural')}
-              >
-                Neural
-              </button>
+            <div className={styles.surfaceBlock}>
+              <div className={styles.stepHeader}>
+                <span>2</span>
+                <strong>Modeling surface</strong>
+              </div>
+              <div className={styles.surfaceTabs} aria-label="Modeling surface">
+                <button
+                  className={activeModelingSurface === 'forecast' ? styles.surfaceTabActive : undefined}
+                  type="button"
+                  onClick={() => setActiveModelingSurface('forecast')}
+                >
+                  Forecast
+                </button>
+                <button
+                  className={activeModelingSurface === 'model' ? styles.surfaceTabActive : undefined}
+                  type="button"
+                  onClick={() => setActiveModelingSurface('model')}
+                >
+                  Model
+                </button>
+                <button
+                  className={activeModelingSurface === 'neural' ? styles.surfaceTabActive : undefined}
+                  type="button"
+                  onClick={() => setActiveModelingSurface('neural')}
+                >
+                  Neural
+                </button>
+              </div>
             </div>
 
             {activeModelingSurface === 'forecast' && (
-              <ControlSection title="Forecast">
-                <div className={styles.controlsGrid}>
-                  <Select label="Frequency" value={frequency} onChange={setFrequency} options={['hourly', 'daily', 'weekly']} />
-                  <NumberInput label="Horizon" value={horizon} min={1} max={365} onChange={setHorizon} />
-                  <SeasonalityControl frequency={frequency} value={seasonLength} onChange={setSeasonLength} />
-                </div>
-                <ModelPicker
-                  modelOptions={modelOptions}
-                  selectedModel={selectedForecastModel}
-                  value={model}
-                  onChange={setModel}
-                />
-              </ControlSection>
+              <>
+                <ControlSection title="Forecast model" step="3">
+                  <ModelPicker
+                    modelOptions={modelOptions}
+                    value={model}
+                    onChange={setModel}
+                  />
+                </ControlSection>
+                <ControlSection title="Forecast settings" step="4">
+                  <ForecastModelSettings
+                    selectedModel={selectedForecastModel}
+                    columns={table?.columns ?? []}
+                    frequency={frequency}
+                    horizon={horizon}
+                    seasonLength={seasonLength}
+                    onFrequencyChange={setFrequency}
+                    onHorizonChange={setHorizon}
+                    onSeasonLengthChange={setSeasonLength}
+                  />
+                </ControlSection>
+              </>
             )}
 
             {activeModelingSurface === 'model' && (
-              <ControlSection title="Regression modeling">
+              <ControlSection title="Regression modeling" step="3">
                 <div className={styles.controlsGrid}>
                   <Select
                     label="Splitter menu"
@@ -850,11 +864,26 @@ export default function ModelingLabClient(): React.ReactElement {
                     }}
                   />
                 </div>
+                {table && (
+                  <FeatureSelector
+                    columns={numericFeatureColumns(table, targetCol, timestampCol, seriesCol)}
+                    selected={featureCols}
+                    onChange={setFeatureCols}
+                  />
+                )}
+                {table && shouldShowSparseFeatures(modelingMode) && (
+                  <FeatureSelector
+                    title="Sparse set features"
+                    columns={sparseFeatureColumns(table, targetCol, timestampCol, seriesCol)}
+                    selected={sparseFeatureCols}
+                    onChange={setSparseFeatureCols}
+                  />
+                )}
               </ControlSection>
             )}
 
             {activeModelingSurface === 'neural' && (
-              <ControlSection title="Neural and graph settings">
+              <ControlSection title="Neural and graph settings" step="3">
                 <div className={styles.neuralSummary}>
                   <strong>{neuralPipelineLabels[neuralPipeline]}</strong>
                   <span>{graphNeuralPipelines.has(neuralPipeline) ? 'Source and target node columns are required.' : 'Choose an ID column for embedding features.'}</span>
@@ -877,32 +906,43 @@ export default function ModelingLabClient(): React.ReactElement {
                       },
                     ]}
                   />
-                  <Select label="ID" value={neuralIdCol} onChange={setNeuralIdCol} options={table?.columns ?? []} allowBlank blankLabel="No ID column" />
-                  <Select label="Graph Source" value={graphSourceCol} onChange={setGraphSourceCol} options={table?.columns ?? []} allowBlank blankLabel="No source column" />
-                  <Select label="Graph Target" value={graphTargetCol} onChange={setGraphTargetCol} options={table?.columns ?? []} allowBlank blankLabel="No target column" />
-                  <Select label="Graph Weight" value={graphWeightCol} onChange={setGraphWeightCol} options={table?.columns ?? []} allowBlank blankLabel="Unweighted graph" />
+                  {neuralPipeline === 'embedding' && (
+                    <Select label="ID" value={neuralIdCol} onChange={setNeuralIdCol} options={table?.columns ?? []} allowBlank blankLabel="No ID column" />
+                  )}
+                  {graphNeuralPipelines.has(neuralPipeline) && (
+                    <>
+                      <Select label="Graph Source" value={graphSourceCol} onChange={setGraphSourceCol} options={table?.columns ?? []} allowBlank blankLabel="No source column" />
+                      <Select label="Graph Target" value={graphTargetCol} onChange={setGraphTargetCol} options={table?.columns ?? []} allowBlank blankLabel="No target column" />
+                      <Select label="Graph Weight" value={graphWeightCol} onChange={setGraphWeightCol} options={table?.columns ?? []} allowBlank blankLabel="Unweighted graph" />
+                    </>
+                  )}
                 </div>
+                {table && (
+                  <FeatureSelector
+                    columns={numericFeatureColumns(table, targetCol, timestampCol, seriesCol)}
+                    selected={featureCols}
+                    onChange={setFeatureCols}
+                  />
+                )}
+                {table && graphNeuralPipelines.has(neuralPipeline) && (
+                  <FeatureSelector
+                    title="Sparse set features"
+                    columns={sparseFeatureColumns(table, targetCol, timestampCol, seriesCol)}
+                    selected={sparseFeatureCols}
+                    onChange={setSparseFeatureCols}
+                  />
+                )}
               </ControlSection>
             )}
 
           </div>
-          {table && activeModelingSurface !== 'forecast' && (
-            <FeatureSelector
-              columns={numericFeatureColumns(table, targetCol, timestampCol, seriesCol)}
-              selected={featureCols}
-              onChange={setFeatureCols}
-            />
-          )}
-          {table && activeModelingSurface !== 'forecast' && (
-            <FeatureSelector
-              title="Sparse set features"
-              columns={sparseFeatureColumns(table, targetCol, timestampCol, seriesCol)}
-              selected={sparseFeatureCols}
-              onChange={setSparseFeatureCols}
-            />
-          )}
 
-          <div className={styles.actionGrid}>
+          <div className={styles.actionBlock}>
+            <div className={styles.actionHeader}>
+              <span>5</span>
+              <strong>Run and export</strong>
+            </div>
+            <div className={styles.actionGrid}>
             {activeModelingSurface === 'forecast' && (
               <>
                 <button className={styles.primaryButton} type="button" disabled={!selectedColumnsReady || isRunning || isLoadingTaxiWeek} onClick={() => void runForecast()}>
@@ -929,6 +969,7 @@ export default function ModelingLabClient(): React.ReactElement {
             <button className={styles.secondaryActionButton} type="button" disabled={!table || isRunning || isLoadingTaxiWeek} onClick={exportSuggestedConfig}>
               Export config
             </button>
+            </div>
           </div>
           {(runProgress || isLoadingTaxiWeek) && (
             <ProgressBar progress={runProgress} label={isLoadingTaxiWeek ? 'Loading taxi week' : undefined} />
@@ -1051,8 +1092,10 @@ export default function ModelingLabClient(): React.ReactElement {
           ) : (
             <>
               <div className={styles.emptyState}>
-                <span className={styles.eyebrow}>Preview</span>
-                <h2>{table ? 'Dataset loaded' : 'Waiting for data'}</h2>
+                <div>
+                  <span className={styles.eyebrow}>Preview</span>
+                  <h2>{table ? 'Dataset loaded' : 'Waiting for data'}</h2>
+                </div>
               </div>
               {table && (
                 <>
@@ -1096,10 +1139,13 @@ type SelectGroup = {
   options: {value: string; label: string}[];
 };
 
-function ControlSection({title, children}: {title: string; children: React.ReactNode}) {
+function ControlSection({title, step, children}: {title: string; step?: string; children: React.ReactNode}) {
   return (
     <section className={styles.controlSection}>
-      <h2>{title}</h2>
+      <div className={styles.stepHeader}>
+        {step && <span>{step}</span>}
+        <h2>{title}</h2>
+      </div>
       {children}
     </section>
   );
@@ -1229,6 +1275,96 @@ function SeasonalityControl({
   );
 }
 
+function ForecastModelSettings({
+  selectedModel,
+  columns,
+  frequency,
+  horizon,
+  seasonLength,
+  onFrequencyChange,
+  onHorizonChange,
+  onSeasonLengthChange,
+}: {
+  selectedModel?: ModelOption;
+  columns: string[];
+  frequency: string;
+  horizon: number;
+  seasonLength: number;
+  onFrequencyChange: (value: string) => void;
+  onHorizonChange: (value: number) => void;
+  onSeasonLengthChange: (value: number) => void;
+}) {
+  const profile = forecastSettingsProfile(selectedModel);
+  return (
+    <>
+      <div className={styles.controlsGrid}>
+        <Select label="Frequency" value={frequency} onChange={onFrequencyChange} options={['hourly', 'daily', 'weekly']} />
+        <NumberInput label="Horizon" value={horizon} min={1} max={365} onChange={onHorizonChange} />
+        {profile.showSeasonality && (
+          <SeasonalityControl frequency={frequency} value={seasonLength} onChange={onSeasonLengthChange} />
+        )}
+      </div>
+      {profile.notice && <p className={styles.settingHint}>{profile.notice}</p>}
+      {profile.needsCoordinates && !hasCoordinateColumns(columns) && (
+        <p className={styles.settingHint}>Kriging requires pickup/dropoff or longitude/latitude columns before it can run.</p>
+      )}
+    </>
+  );
+}
+
+function forecastSettingsProfile(selectedModel?: ModelOption) {
+  const value = selectedModel?.value ?? '';
+  const group = selectedModel?.group ?? '';
+  const seasonalModels = new Set([
+    'auto_forecast',
+    'cartoboost_lag',
+    'cartoboost_direct',
+    'rectified_recursive',
+    'lag_plus',
+    'scaled_cartoboost_lag',
+    'log1p_cartoboost_lag',
+    'classical_expert_bank',
+    'autostats_bank',
+    'intermittent_demand',
+    'stl_cartoboost',
+    'mstl_cartoboost',
+    'seasonal_naive',
+    'seasonal_window_average',
+    'theta',
+    'optimized_theta',
+    'auto_ets',
+    'ets',
+    'seasonal_ets',
+    'auto_arima',
+    'arima',
+    'piecewise_linear_seasonal',
+  ]);
+  const needsCoordinates = value === 'kriging' || group === 'spatial';
+  if (needsCoordinates) {
+    return {
+      needsCoordinates,
+      showSeasonality: false,
+      notice: 'Spatial kriging uses coordinates and horizon; seasonality is not part of this model setup.',
+    };
+  }
+  if (!seasonalModels.has(value)) {
+    return {
+      needsCoordinates,
+      showSeasonality: false,
+      notice: 'This local baseline only needs frequency and horizon.',
+    };
+  }
+  return {
+    needsCoordinates,
+    showSeasonality: true,
+    notice: '',
+  };
+}
+
+function shouldShowSparseFeatures(modelingMode: string) {
+  return modelingMode === 'full' || modelingMode === 'auto' || modelingMode === 'spatial';
+}
+
 function forecastModelGroups(modelOptions: ModelOption[]): SelectGroup[] {
   const grouped = new Map<string, {value: string; label: string}[]>();
   for (const option of modelOptions) {
@@ -1242,63 +1378,17 @@ function forecastModelGroups(modelOptions: ModelOption[]): SelectGroup[] {
 
 function ModelPicker({
   modelOptions,
-  selectedModel,
   value,
   onChange,
 }: {
   modelOptions: ModelOption[];
-  selectedModel?: ModelOption;
   value: string;
   onChange: (value: string) => void;
 }) {
   const groups = useMemo(() => forecastModelGroups(modelOptions), [modelOptions]);
-  const activeGroup = groups.find((group) => group.options.some((option) => option.value === value)) ?? groups[0];
-  const [selectedGroupLabel, setSelectedGroupLabel] = useState(activeGroup?.label ?? '');
-  const visibleGroup = groups.find((group) => group.label === selectedGroupLabel) ?? activeGroup;
-  useEffect(() => {
-    if (!groups.some((group) => group.label === selectedGroupLabel)) {
-      setSelectedGroupLabel(activeGroup?.label ?? '');
-    }
-  }, [activeGroup?.label, groups, selectedGroupLabel]);
   return (
     <div className={styles.modelPicker}>
-      <div className={styles.modelPickerHeader}>
-        <span>Forecast model</span>
-        <strong>{selectedModel ? selectedModel.label : value}</strong>
-      </div>
-      <div className={styles.modelFamilyTabs} aria-label="Model family">
-        {groups.map((group) => (
-          <button
-            className={group.label === visibleGroup?.label ? styles.modelFamilyTabActive : undefined}
-            type="button"
-            onClick={() => setSelectedGroupLabel(group.label)}
-            key={group.label}
-          >
-            {group.label}
-          </button>
-        ))}
-      </div>
-      <div className={styles.modelPickerGrid}>
-        {visibleGroup && (
-          <div className={styles.modelGroup}>
-            <span>{visibleGroup.label}</span>
-            <div>
-              {visibleGroup.options.map((option) => (
-                  <button
-                    className={option.value === value ? styles.modelOptionActive : undefined}
-                    type="button"
-                    onClick={() => onChange(option.value)}
-                    key={option.value}
-                    title={option.value}
-                  >
-                    <strong>{option.label}</strong>
-                    <em>{option.value}</em>
-                  </button>
-                ))}
-            </div>
-          </div>
-        )}
-      </div>
+      <GroupedSelect label="Native model" value={value} onChange={onChange} groups={groups} />
     </div>
   );
 }

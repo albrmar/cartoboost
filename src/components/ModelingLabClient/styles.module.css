@@ -1,8 +1,14 @@
 .shell {
-  min-height: calc(100vh - 4rem);
-  background: #eef3f8;
+  --lab-accent: #168f86;
+  --lab-bg: #e8eef5;
+  --lab-border: #d5deea;
+  --lab-panel: #ffffff;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(232, 238, 245, 0) 18rem),
+    var(--lab-bg);
   color: #122033;
-  padding: 1rem clamp(1rem, 2.4vw, 2rem) 2rem;
+  min-height: calc(100vh - var(--ifm-navbar-height, 3.75rem));
+  padding: calc(var(--ifm-navbar-height, 3.75rem) + 0.85rem) clamp(1rem, 2.4vw, 2rem) 5.25rem;
 }
 
 .shell :global(*) {
@@ -15,21 +21,21 @@ body:has(.shell) :global(.footer) {
 
 .header {
   align-items: center;
-  background: #ffffff;
-  border: 1px solid #d8e0ea;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid var(--lab-border);
   border-radius: 8px;
-  box-shadow: 0 12px 34px rgba(11, 18, 32, 0.06);
+  box-shadow: 0 16px 42px rgba(11, 18, 32, 0.07);
   display: flex;
   gap: 1rem;
   justify-content: space-between;
-  margin: 0 auto 0.9rem;
+  margin: 0 auto 0.85rem;
   max-width: 1680px;
-  padding: 0.9rem 1rem;
+  padding: 0.85rem 1rem;
 }
 
 .header h1 {
   color: #0b1220;
-  font-size: clamp(1.35rem, 2vw, 2rem);
+  font-size: clamp(1.28rem, 1.85vw, 1.86rem);
   letter-spacing: 0;
   line-height: 1.08;
   margin: 0 0 0.25rem;
@@ -65,24 +71,19 @@ body:has(.shell) :global(.footer) {
 .workspace {
   align-items: start;
   display: grid;
-  gap: 1.05rem;
-  grid-template-columns: minmax(420px, 0.32fr) minmax(0, 1fr);
+  gap: 0.9rem;
+  grid-template-columns: minmax(360px, 400px) minmax(0, 1fr);
   margin: 0 auto;
   max-width: 1680px;
 }
 
 .controlPanel {
-  background: #ffffff;
-  border: 1px solid #d8e0ea;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid var(--lab-border);
   border-radius: 8px;
-  box-shadow: 0 12px 34px rgba(11, 18, 32, 0.06);
-  padding: 0.75rem;
-}
-
-.controlPanel {
   align-self: start;
-  overflow: visible;
-  position: static;
+  box-shadow: 0 18px 48px rgba(11, 18, 32, 0.08);
+  padding: 0.7rem;
 }
 
 .dropZone {
@@ -94,7 +95,7 @@ body:has(.shell) :global(.footer) {
   display: grid;
   gap: 0.35rem;
   justify-content: center;
-  min-height: 58px;
+  min-height: 54px;
   padding: 0.55rem 0.65rem;
 }
 
@@ -118,27 +119,59 @@ body:has(.shell) :global(.footer) {
 
 .controlStack {
   display: grid;
-  gap: 0.65rem;
-  margin: 0.55rem 0;
+  gap: 0.55rem;
+  margin: 0.55rem 0 0;
 }
 
 .controlSection {
-  border: 1px solid #d8e0ea;
+  background: #ffffff;
+  border: 1px solid var(--lab-border);
   border-radius: 8px;
   padding: 0.6rem;
 }
 
-.controlSection h2 {
+.stepHeader {
+  align-items: center;
+  display: flex;
+  gap: 0.45rem;
+  margin-bottom: 0.45rem;
+}
+
+.stepHeader span,
+.actionHeader span {
+  align-items: center;
+  background: #e0f5f3;
+  border: 1px solid #168f86;
+  border-radius: 999px;
+  color: #0b6f68;
+  display: inline-flex;
+  flex: 0 0 auto;
+  font-size: 0.68rem;
+  font-weight: 900;
+  height: 1.35rem;
+  justify-content: center;
+  line-height: 1;
+  width: 1.35rem;
+}
+
+.stepHeader h2,
+.stepHeader strong,
+.actionHeader strong {
   color: #0b1220;
   font-size: 0.78rem;
   letter-spacing: 0;
-  margin: 0 0 0.4rem;
+  margin: 0;
+}
+
+.stepHeader strong,
+.actionHeader strong {
+  text-transform: uppercase;
 }
 
 .controlsGrid {
   display: grid;
-  gap: 0.45rem;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.42rem;
+  grid-template-columns: 1fr;
   margin: 0;
 }
 
@@ -150,14 +183,28 @@ body:has(.shell) :global(.footer) {
   grid-template-columns: 1fr;
 }
 
+.mappingGrid > label:last-child {
+  grid-column: 1 / -1;
+}
+
+.surfaceBlock {
+  background: #ffffff;
+  border: 1px solid var(--lab-border);
+  border-radius: 8px;
+  padding: 0.55rem;
+}
+
 .surfaceTabs {
-  background: #e7edf5;
+  background: #e3eaf3;
   border: 1px solid #d0d9e6;
   border-radius: 8px;
   display: grid;
   gap: 0.25rem;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   padding: 0.25rem;
+  position: sticky;
+  top: 0;
+  z-index: 3;
 }
 
 .surfaceTabs button {
@@ -179,8 +226,7 @@ body:has(.shell) :global(.footer) {
   color: #0b1220;
 }
 
-.neuralSummary,
-.modelPickerHeader {
+.neuralSummary {
   align-items: start;
   background: #f7fafc;
   border: 1px solid #d8e0ea;
@@ -193,8 +239,7 @@ body:has(.shell) :global(.footer) {
   padding: 0.45rem 0.55rem;
 }
 
-.neuralSummary strong,
-.modelPickerHeader strong {
+.neuralSummary strong {
   color: #122033;
   font-size: 0.8rem;
   line-height: 1.25;
@@ -203,8 +248,7 @@ body:has(.shell) :global(.footer) {
   text-align: right;
 }
 
-.neuralSummary span,
-.modelPickerHeader span {
+.neuralSummary span {
   color: #526274;
   font-size: 0.66rem;
   font-weight: 800;
@@ -214,119 +258,6 @@ body:has(.shell) :global(.footer) {
 
 .modelPicker {
   margin-top: 0.5rem;
-}
-
-.modelFamilyTabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-  margin-bottom: 0.55rem;
-}
-
-.modelFamilyTabs button {
-  background: #f4f7fb;
-  border: 1px solid #d8e0ea;
-  border-radius: 999px;
-  color: #526274;
-  cursor: pointer;
-  font: inherit;
-  font-size: 0.72rem;
-  font-weight: 800;
-  min-height: 1.95rem;
-  padding: 0.28rem 0.58rem;
-}
-
-.modelFamilyTabs .modelFamilyTabActive {
-  background: #e0f5f3;
-  border-color: #168f86;
-  color: #0b6f68;
-}
-
-.modelFamilySelect {
-  display: grid;
-  gap: 0.35rem;
-  margin-bottom: 0.55rem;
-}
-
-.modelFamilySelect span {
-  color: #526274;
-  font-size: 0.72rem;
-  font-weight: 800;
-  text-transform: uppercase;
-}
-
-.modelFamilySelect select {
-  background: #ffffff;
-  border: 1px solid #cfd8e3;
-  border-radius: 8px;
-  color: #122033;
-  font: inherit;
-  min-height: 2.25rem;
-  padding: 0.35rem 0.55rem;
-  width: 100%;
-}
-
-.modelPickerGrid {
-  display: grid;
-  gap: 0.45rem;
-  max-height: 7.25rem;
-  overflow: auto;
-  padding-right: 0.1rem;
-}
-
-.modelGroup {
-  display: grid;
-  gap: 0.35rem;
-}
-
-.modelGroup > span {
-  color: #526274;
-  font-size: 0.72rem;
-  font-weight: 800;
-  text-transform: uppercase;
-}
-
-.modelGroup > div {
-  display: grid;
-  gap: 0.35rem;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.modelGroup button {
-  background: #ffffff;
-  border: 1px solid #d8e0ea;
-  border-radius: 8px;
-  color: #122033;
-  cursor: pointer;
-  font: inherit;
-  min-height: 2.55rem;
-  padding: 0.34rem 0.45rem;
-  text-align: left;
-}
-
-.modelGroup button strong,
-.modelGroup button em {
-  display: block;
-  line-height: 1.2;
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.modelGroup button strong {
-  font-size: 0.76rem;
-}
-
-.modelGroup button em {
-  color: #526274;
-  font-size: 0.64rem;
-  font-style: normal;
-  margin-top: 0.18rem;
-}
-
-.modelGroup .modelOptionActive {
-  background: #e0f5f3;
-  border-color: #168f86;
-  box-shadow: inset 0 0 0 1px #168f86;
 }
 
 .field {
@@ -354,8 +285,9 @@ body:has(.shell) :global(.footer) {
 }
 
 .seasonalityControl {
-  border: 1px solid #d8e0ea;
+  border: 1px solid var(--lab-border);
   border-radius: 8px;
+  grid-column: 1 / -1;
   padding: 0.45rem;
 }
 
@@ -382,7 +314,7 @@ body:has(.shell) :global(.footer) {
 .seasonalityButtons {
   display: grid;
   gap: 0.3rem;
-  grid-template-columns: repeat(auto-fit, minmax(4.5rem, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   margin-bottom: 0.5rem;
 }
 
@@ -417,6 +349,17 @@ body:has(.shell) :global(.footer) {
   border-color: #168f86;
 }
 
+.settingHint {
+  background: #f8fafc;
+  border: 1px solid var(--lab-border);
+  border-radius: 8px;
+  color: #526274;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  margin: 0.5rem 0 0;
+  padding: 0.5rem 0.6rem;
+}
+
 .primaryButton,
 .secondaryButton {
   border-radius: 8px;
@@ -427,11 +370,24 @@ body:has(.shell) :global(.footer) {
   padding: 0.55rem 0.9rem;
 }
 
+.actionBlock {
+  background: #ffffff;
+  border-top: 1px solid rgba(216, 224, 234, 0.84);
+  margin: 0.6rem -0.7rem 0;
+  padding: 0.65rem 0.7rem 0;
+}
+
+.actionHeader {
+  align-items: center;
+  display: flex;
+  gap: 0.45rem;
+  margin-bottom: 0.5rem;
+}
+
 .actionGrid {
   display: grid;
   gap: 0.4rem;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  margin-top: 0.55rem;
+  grid-template-columns: 1fr;
 }
 
 .primaryButton {
@@ -550,20 +506,32 @@ body:has(.shell) :global(.footer) {
 
 .outputPanel {
   align-self: start;
+  display: grid;
+  gap: 0.65rem;
   min-width: 0;
 }
 
-.emptyState,
 .resultHeader {
-  background: #ffffff;
-  border: 1px solid #d8e0ea;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid var(--lab-border);
   border-radius: 8px;
   align-items: start;
   display: flex;
   gap: 1rem;
   justify-content: space-between;
-  margin-bottom: 0.65rem;
-  padding: 0.65rem 0.75rem;
+  margin-bottom: 0;
+  padding: 0.7rem 0.8rem;
+}
+
+.emptyState {
+  align-content: start;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid var(--lab-border);
+  border-radius: 8px;
+  display: grid;
+  margin-bottom: 0;
+  min-height: 8.5rem;
+  padding: 0.85rem 0.9rem;
 }
 
 .emptyState h2,
@@ -600,10 +568,11 @@ body:has(.shell) :global(.footer) {
 
 .chart {
   background: #ffffff;
-  border: 1px solid #d8e0ea;
+  border: 1px solid var(--lab-border);
   border-radius: 8px;
-  margin: 0 0 0.65rem;
-  padding: 0.65rem;
+  box-shadow: 0 12px 30px rgba(11, 18, 32, 0.05);
+  margin: 0;
+  padding: 0.7rem;
 }
 
 .chart svg {
@@ -684,9 +653,9 @@ body:has(.shell) :global(.footer) {
 
 .componentPanel {
   background: #ffffff;
-  border: 1px solid #d8e0ea;
+  border: 1px solid var(--lab-border);
   border-radius: 8px;
-  margin: 0 0 1rem;
+  margin: 0;
   padding: 0.75rem;
 }
 
@@ -771,12 +740,14 @@ body:has(.shell) :global(.footer) {
   display: grid;
   gap: 0.55rem;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  margin-bottom: 0.65rem;
+  margin-bottom: 0;
 }
 
 .signalCards p {
-  background: #f7fafc;
+  background: #ffffff;
+  border: 1px solid var(--lab-border);
   border-radius: 8px;
+  box-shadow: 0 10px 28px rgba(11, 18, 32, 0.04);
   color: #122033;
   font-size: 1rem;
   font-weight: 800;
@@ -807,9 +778,9 @@ body:has(.shell) :global(.footer) {
 
 .metricChart {
   background: #ffffff;
-  border: 1px solid #d8e0ea;
+  border: 1px solid var(--lab-border);
   border-radius: 8px;
-  margin: 0 0 0.75rem;
+  margin: 0;
   padding: 0.65rem;
 }
 
@@ -823,7 +794,7 @@ body:has(.shell) :global(.footer) {
   display: grid;
   gap: 0.55rem;
   grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
-  margin-bottom: 0.75rem;
+  margin-bottom: 0;
 }
 
 .metricCards p {
@@ -874,10 +845,11 @@ body:has(.shell) :global(.footer) {
 
 .tableScroller {
   background: #ffffff;
-  border: 1px solid #d8e0ea;
+  border: 1px solid var(--lab-border);
   border-radius: 8px;
+  max-height: min(44vh, 34rem);
   max-width: 100%;
-  overflow-x: auto;
+  overflow: auto;
 }
 
 .tableScroller table {
@@ -897,16 +869,20 @@ body:has(.shell) :global(.footer) {
 }
 
 .tableScroller th {
+  background: #f8fafc;
   color: #526274;
   font-size: 0.74rem;
+  position: sticky;
+  top: 0;
+  z-index: 1;
   text-transform: uppercase;
 }
 
 .previewGrid {
   align-items: start;
   display: grid;
-  gap: 1rem;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0.65rem;
+  grid-template-columns: 1fr;
 }
 
 .datasetProfile {
@@ -1416,10 +1392,11 @@ body:has(.shell) :global(.footer) {
 }
 
 .featureSelector {
-  border: 1px solid #d8e0ea;
+  background: #ffffff;
+  border: 1px solid var(--lab-border);
   border-radius: 8px;
-  margin-bottom: 0.75rem;
-  padding: 0.75rem;
+  margin: 0.55rem 0 0;
+  padding: 0.65rem;
 }
 
 .featureSelector > span {
@@ -1473,7 +1450,10 @@ body:has(.shell) :global(.footer) {
 :global([data-theme='dark']) .seasonalityButtons button,
 :global([data-theme='dark']) .featureRoleRow span,
 :global([data-theme='dark']) .metricRow span,
-:global([data-theme='dark']) .metricRow strong {
+:global([data-theme='dark']) .metricRow strong,
+:global([data-theme='dark']) .stepHeader h2,
+:global([data-theme='dark']) .stepHeader strong,
+:global([data-theme='dark']) .actionHeader strong {
   color: #e8eef8;
 }
 
@@ -1533,8 +1513,10 @@ body:has(.shell) :global(.footer) {
 
 :global([data-theme='dark']) .field select,
 :global([data-theme='dark']) .field input,
-:global([data-theme='dark']) .modelFamilySelect select,
 :global([data-theme='dark']) .surfaceTabs,
+:global([data-theme='dark']) .surfaceBlock,
+:global([data-theme='dark']) .actionBlock,
+:global([data-theme='dark']) .settingHint,
 :global([data-theme='dark']) .progressWrap,
 :global([data-theme='dark']) .secondaryButton,
 :global([data-theme='dark']) .secondaryActionButton,
@@ -1547,8 +1529,7 @@ body:has(.shell) :global(.footer) {
 }
 
 :global([data-theme='dark']) .field select option,
-:global([data-theme='dark']) .modelFamilySelect select option,
-:global([data-theme='dark']) .modelFamilySelect select optgroup {
+:global([data-theme='dark']) .field select optgroup {
   background: #0b1220;
   color: #e8eef8;
 }
@@ -1559,6 +1540,7 @@ body:has(.shell) :global(.footer) {
 :global([data-theme='dark']) .opportunityPanel,
 :global([data-theme='dark']) .runPlanPanel,
 :global([data-theme='dark']) .controlSection,
+:global([data-theme='dark']) .surfaceBlock,
 :global([data-theme='dark']) .geoPanel,
 :global([data-theme='dark']) .componentPanel,
 :global([data-theme='dark']) .chart,
@@ -1614,7 +1596,6 @@ body:has(.shell) :global(.footer) {
 :global([data-theme='dark']) .featureRoleRow div,
 :global([data-theme='dark']) .histogram,
 :global([data-theme='dark']) .neuralSummary,
-:global([data-theme='dark']) .modelPickerHeader,
 :global([data-theme='dark']) .surfaceTabs {
   background: #0b1220;
   color: #dce6f4;
@@ -1630,6 +1611,13 @@ body:has(.shell) :global(.footer) {
   color: #e8eef8;
 }
 
+:global([data-theme='dark']) .stepHeader span,
+:global([data-theme='dark']) .actionHeader span {
+  background: rgba(39, 194, 181, 0.16);
+  border-color: #27c2b5;
+  color: #b9fff8;
+}
+
 :global([data-theme='dark']) .loadingBar,
 :global([data-theme='dark']) .progressBar {
   background: rgba(157, 176, 201, 0.2);
@@ -1641,8 +1629,6 @@ body:has(.shell) :global(.footer) {
 }
 
 :global([data-theme='dark']) .neuralSummary strong,
-:global([data-theme='dark']) .modelPickerHeader strong,
-:global([data-theme='dark']) .modelGroup button strong,
 :global([data-theme='dark']) .resultHeader dd,
 :global([data-theme='dark']) .metricCards p,
 :global([data-theme='dark']) .signalCards p,
@@ -1657,30 +1643,9 @@ body:has(.shell) :global(.footer) {
 }
 
 :global([data-theme='dark']) .neuralSummary span,
-:global([data-theme='dark']) .modelPickerHeader span,
-:global([data-theme='dark']) .modelGroup > span,
-:global([data-theme='dark']) .modelFamilySelect span,
-:global([data-theme='dark']) .modelGroup button em,
+:global([data-theme='dark']) .settingHint,
 :global([data-theme='dark']) .progressMeta strong {
   color: #9db0c9;
-}
-
-:global([data-theme='dark']) .modelFamilyTabs button,
-:global([data-theme='dark']) .modelGroup button {
-  background: rgba(157, 176, 201, 0.1);
-  border-color: rgba(157, 176, 201, 0.28);
-  color: #dce6f4;
-}
-
-:global([data-theme='dark']) .modelFamilyTabs .modelFamilyTabActive,
-:global([data-theme='dark']) .modelGroup .modelOptionActive {
-  background: rgba(39, 194, 181, 0.16);
-  border-color: #27c2b5;
-  color: #b9fff8;
-}
-
-:global([data-theme='dark']) .modelGroup .modelOptionActive {
-  box-shadow: inset 0 0 0 1px #27c2b5;
 }
 
 :global([data-theme='dark']) .featureSelector label {
@@ -1773,6 +1738,10 @@ body:has(.shell) :global(.footer) {
   border-bottom-color: rgba(157, 176, 201, 0.18);
 }
 
+:global([data-theme='dark']) .tableScroller th {
+  background: #0b1220;
+}
+
 @media (max-width: 996px) {
   .header,
   .emptyState,
@@ -1784,6 +1753,11 @@ body:has(.shell) :global(.footer) {
 
   .workspace {
     grid-template-columns: 1fr;
+  }
+
+  .headerActions {
+    flex: none;
+    width: 100%;
   }
 
   .profileGrid,
@@ -1806,9 +1780,11 @@ body:has(.shell) :global(.footer) {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .controlPanel {
+  .actionGrid {
+    bottom: auto;
     position: static;
   }
+
 }
 
 @media (max-width: 600px) {
