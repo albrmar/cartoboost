@@ -36,7 +36,7 @@ except ImportError:  # pragma: no cover - exercised on Windows CI.
 
 from cartoboost import __version__, _native
 from cartoboost.forecasting.global_models import CartoBoostLagForecaster
-from cartoboost.forecasting.local import AutoStatsBank
+from cartoboost.forecasting.local import AutoStatsBank, PiecewiseLinearSeasonalForecaster
 from cartoboost.forecasting.schema import ForecastFrame
 from cartoboost.metrics import m_competition_metrics
 from cartoboost.metrics.rank_portfolio import (
@@ -112,6 +112,11 @@ STATSFORECAST_MODELS = [
 ]
 PROPHET_MODELS = ["prophet_additive"]
 EXTERNAL_TREE_MODELS = ["xgboost_lag", "lightgbm_lag"]
+CARTOBOOST_BENCHMARK_MODELS = [
+    "cartoboost_lag",
+    "cartoboost_auto_forecast",
+]
+PIECEWISE_LINEAR_BENCHMARK_MODEL = "cartoboost_piecewise_linear_seasonal"
 FORECASTING_LIBRARY_MODELS = {
     "functime": FUNCTIME_MODELS,
     "statsforecast": STATSFORECAST_MODELS,
@@ -119,8 +124,8 @@ FORECASTING_LIBRARY_MODELS = {
     "external_trees": EXTERNAL_TREE_MODELS,
 }
 MODEL_LIBRARIES = {
-    "cartoboost_lag": "cartoboost",
-    "cartoboost_auto_forecast": "cartoboost",
+    **{model: "cartoboost" for model in CARTOBOOST_BENCHMARK_MODELS},
+    PIECEWISE_LINEAR_BENCHMARK_MODEL: "cartoboost",
     **{model: "functime" for model in FUNCTIME_MODELS},
     **{model: "statsforecast" for model in STATSFORECAST_MODELS},
     **{model: "prophet" for model in PROPHET_MODELS},
@@ -326,11 +331,12 @@ def main() -> int:
     )
     parser.add_argument(
         "--model-roster",
-        choices=["full", "scalable", "cartoboost"],
+        choices=["full", "scalable", "cartoboost", "prophet-comparison"],
         default="full",
         help=(
             "Forecast model roster. Use scalable for full M5-style panels where "
-            "per-series Prophet/StatsForecast models are impractical."
+            "per-series Prophet/StatsForecast models are impractical. Use "
+            "prophet-comparison for the native piecewise-linear model and Prophet only."
         ),
     )
     parser.add_argument(
@@ -666,19 +672,23 @@ def windows_peak_rss_mb() -> float:
 
 def benchmark_model_names(roster: str) -> list[str]:
     if roster == "cartoboost":
-        return ["cartoboost_lag", "cartoboost_auto_forecast"]
+        return list(CARTOBOOST_BENCHMARK_MODELS)
+    if roster == "prophet-comparison":
+        return [PIECEWISE_LINEAR_BENCHMARK_MODEL, "prophet_additive"]
     if roster == "scalable":
         return [
             "cartoboost_lag",
             "cartoboost_auto_forecast",
             *SCALABLE_FORECASTING_LIBRARY_BASELINES,
         ]
-    return ["cartoboost_lag", "cartoboost_auto_forecast", *FORECASTING_LIBRARY_BASELINES]
+    return [*CARTOBOOST_BENCHMARK_MODELS, *FORECASTING_LIBRARY_BASELINES]
 
 
 def forecasting_library_models_for_roster(roster: str) -> dict[str, list[str]]:
     if roster == "cartoboost":
         return {}
+    if roster == "prophet-comparison":
+        return {"prophet": PROPHET_MODELS}
     if roster == "scalable":
         return {
             "functime": FUNCTIME_MODELS,
@@ -3274,6 +3284,14 @@ def forecast_model_roster(
             auto_timing["autostats_candidate"] = autostats_timing
         forecast_frames.append(auto_predictions)
         model_timing["cartoboost_auto_forecast"] = auto_timing
+    if "cartoboost_piecewise_linear_seasonal" in model_names:
+        piecewise_predictions, piecewise_timing = cartoboost_piecewise_linear_forecast(
+            train,
+            horizon,
+            season_length=season_length,
+        )
+        forecast_frames.append(piecewise_predictions)
+        model_timing["cartoboost_piecewise_linear_seasonal"] = piecewise_timing
     if any(model in model_names for model in FUNCTIME_MODELS):
         functime_predictions, functime_timing = functime_forecasts(
             train,
@@ -5128,6 +5146,90 @@ def cartoboost_raw_forecast(
     return predictions, timing
 
 
+def cartoboost_piecewise_linear_forecast(
+    train: Any,
+    horizon: int,
+    *,
+    season_length: int,
+) -> tuple[Any, dict[str, float]]:
+    pl = require_polars()
+    pd = require_pandas_for_benchmark()
+    feature_start = perf_counter()
+    training_frame = train.select("lane_id", "date", "loads").to_pandas()
+    if not isinstance(training_frame, pd.DataFrame):
+        raise TypeError("CartoBoost piecewise benchmark training conversion did not return pandas")
+    frame = ForecastFrame.from_pandas(
+        training_frame,
+        timestamp_col="date",
+        target_col="loads",
+        series_id_col="lane_id",
+        freq="D",
+        allow_irregular=True,
+    )
+    model = PiecewiseLinearSeasonalForecaster(
+        **cartoboost_piecewise_linear_params(season_length=season_length)
+    )
+    feature_seconds = perf_counter() - feature_start
+
+    fit_start = perf_counter()
+    model.fit(frame)
+    fit_seconds = perf_counter() - fit_start
+
+    predict_start = perf_counter()
+    result = model.predict(horizon)
+    predictions = pl.DataFrame(
+        [
+            (series_id, timestamp, step, value)
+            for series_id, timestamp, step, _model, value in result.predictions()
+        ],
+        schema=[
+            "series_id",
+            "timestamp",
+            "horizon",
+            "cartoboost_piecewise_linear_seasonal",
+        ],
+        orient="row",
+    ).select(
+        "series_id",
+        pl.col("timestamp").str.to_datetime().cast(pl.Datetime("us")).alias("timestamp"),
+        "horizon",
+        "cartoboost_piecewise_linear_seasonal",
+    )
+    predict_seconds = perf_counter() - predict_start
+    timing = {
+        "feature_seconds": feature_seconds,
+        "fit_seconds": fit_seconds,
+        "predict_seconds": predict_seconds,
+        "fit_predict_seconds": fit_seconds + predict_seconds,
+        "total_seconds": feature_seconds + fit_seconds + predict_seconds,
+    }
+    return predictions, timing
+
+
+def cartoboost_piecewise_linear_params(*, season_length: int) -> dict[str, Any]:
+    params: dict[str, Any] = {
+        "growth": "linear",
+        "component_mode": "additive",
+        "changepoints": 12,
+        "changepoint_range": 0.8,
+        "changepoint_l2_regularization": 0.05,
+        "changepoint_l1_regularization": 0.0,
+        "seasonality_l2_regularization": 0.01,
+        "weekly_fourier_order": 3 if season_length == 7 else 0,
+        "yearly_fourier_order": 0,
+        "daily_fourier_order": 0,
+    }
+    if season_length > 1 and season_length != 7:
+        params["custom_seasonalities"] = [
+            {
+                "name": "benchmark_cycle",
+                "period_days": float(season_length),
+                "fourier_order": min(5, max(1, int(season_length) // 2)),
+            }
+        ]
+    return params
+
+
 def cartoboost_autostats_forecast(
     train: Any,
     horizon: int,
@@ -5519,6 +5621,14 @@ def cartoboost_model_settings(config: dict[str, Any]) -> dict[str, Any]:
                 "explicit --cartoboost-auto-n-estimators override"
                 if config.get("auto_n_estimators") is not None
                 else "quality floor: max(--cartoboost-n-estimators, 360)"
+            ),
+        },
+        "cartoboost_piecewise_linear_seasonal": {
+            **cartoboost_piecewise_linear_params(season_length=7),
+            "benchmark_profile": (
+                "Rust-native piecewise-linear additive trend with weekly Fourier "
+                "seasonality on daily benchmark panels; non-weekly season lengths use one "
+                "generic Fourier cycle named benchmark_cycle"
             ),
         },
     }

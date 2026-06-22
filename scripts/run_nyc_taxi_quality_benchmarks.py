@@ -7,6 +7,7 @@ import argparse
 import csv
 import hashlib
 import importlib
+import importlib.metadata
 import json
 import math
 import os
@@ -84,6 +85,16 @@ CARTOBOOST_MODEL_NAMES = {
     "cartoboost_graph",
     *GRAPH_MODEL_FAMILIES,
 }
+EXTERNAL_REGRESSION_BASELINES = {
+    "lightgbm",
+    "xgboost",
+    "catboost",
+    "hist_gradient_boosting",
+    "random_forest",
+    "extra_trees",
+    "ridge",
+    "mean",
+}
 
 
 @dataclass(frozen=True)
@@ -127,13 +138,15 @@ def parse_args() -> argparse.Namespace:
             "cartoboost,cartoboost_reference,cartoboost_neural,"
             "cartoboost_graph_node2vec,cartoboost_graph_graphsage,"
             "cartoboost_graph_hetero_graphsage,cartoboost_graph_hinsage,"
-            "lightgbm,xgboost,mean"
+            "lightgbm,xgboost,catboost,hist_gradient_boosting,random_forest,"
+            "extra_trees,ridge,mean"
         ),
         help=(
             "Comma-separated models from: cartoboost, cartoboost_reference, "
             "cartoboost_neural, cartoboost_graph, cartoboost_graph_node2vec, "
             "cartoboost_graph_graphsage, cartoboost_graph_hetero_graphsage, "
-            "cartoboost_graph_hinsage, lightgbm, xgboost, mean"
+            "cartoboost_graph_hinsage, lightgbm, xgboost, catboost, "
+            "hist_gradient_boosting, random_forest, extra_trees, ridge, mean"
         ),
     )
     parser.add_argument("--n-estimators", type=int, default=100)
@@ -255,6 +268,11 @@ def parse_args() -> argparse.Namespace:
         help="Number of model rows to train concurrently within each task/split.",
     )
     parser.add_argument("--n-threads", type=int, default=0)
+    parser.add_argument(
+        "--no-plots",
+        action="store_true",
+        help="Write JSON/JSONL/Markdown only and skip generated PNG plot artifacts.",
+    )
     parser.add_argument(
         "--synthetic-smoke",
         action="store_true",
@@ -812,9 +830,87 @@ def metric_summary(actual: np.ndarray, predicted: np.ndarray) -> dict[str, float
     residuals = actual - predicted
     rmse = float(np.sqrt(np.mean(residuals**2)))
     mae = float(np.mean(np.abs(residuals)))
+    absolute_actual_sum = float(np.sum(np.abs(actual)))
+    wape = (
+        float(np.sum(np.abs(residuals)) / absolute_actual_sum)
+        if absolute_actual_sum > 0.0
+        else float("nan")
+    )
     variance = float(np.sum((actual - np.mean(actual)) ** 2))
     r2 = 1.0 - float(np.sum(residuals**2)) / variance if variance > 0.0 else 0.0
-    return {"rmse": rmse, "mae": mae, "r2": r2}
+    return {"rmse": rmse, "mae": mae, "r2": r2, "wape": wape}
+
+
+def pickup_zone_diagnostics(
+    actual: np.ndarray,
+    predicted: np.ndarray,
+    pickup_zones: np.ndarray,
+    *,
+    top_n: int = 5,
+) -> dict[str, Any]:
+    residuals = actual - predicted
+    rows = []
+    for zone in sorted(np.unique(pickup_zones)):
+        mask = pickup_zones == zone
+        zone_actual = actual[mask]
+        zone_residuals = residuals[mask]
+        absolute_actual_sum = float(np.sum(np.abs(zone_actual)))
+        zone_wape = (
+            float(np.sum(np.abs(zone_residuals)) / absolute_actual_sum)
+            if absolute_actual_sum > 0.0
+            else float("nan")
+        )
+        rows.append(
+            {
+                "pickup_zone": int(zone),
+                "rows": int(np.sum(mask)),
+                "rmse": float(np.sqrt(np.mean(zone_residuals**2))),
+                "mae": float(np.mean(np.abs(zone_residuals))),
+                "bias": float(np.mean(predicted[mask] - zone_actual)),
+                "wape": zone_wape,
+            }
+        )
+
+    if not rows:
+        return {
+            "segment_key": "pickup_zone",
+            "segment_count": 0,
+            "row_count_min": 0,
+            "row_count_max": 0,
+            "rmse_quantiles": {},
+            "mae_quantiles": {},
+            "wape_quantiles": {},
+            "worst_rmse_segments": [],
+            "largest_abs_bias_segments": [],
+        }
+
+    def quantiles(metric: str) -> dict[str, float]:
+        values = np.asarray([row[metric] for row in rows], dtype=float)
+        values = values[np.isfinite(values)]
+        if values.size == 0:
+            return {"p50": float("nan"), "p90": float("nan"), "max": float("nan")}
+        return {
+            "p50": float(np.quantile(values, 0.5)),
+            "p90": float(np.quantile(values, 0.9)),
+            "max": float(np.max(values)),
+        }
+
+    row_counts = [row["rows"] for row in rows]
+    return {
+        "segment_key": "pickup_zone",
+        "segment_count": len(rows),
+        "row_count_min": int(min(row_counts)),
+        "row_count_max": int(max(row_counts)),
+        "rmse_quantiles": quantiles("rmse"),
+        "mae_quantiles": quantiles("mae"),
+        "wape_quantiles": quantiles("wape"),
+        "worst_rmse_segments": sorted(rows, key=lambda row: row["rmse"], reverse=True)[:top_n],
+        "largest_abs_bias_segments": sorted(
+            rows,
+            key=lambda row: abs(float(row["bias"])),
+            reverse=True,
+        )[:top_n],
+    }
 
 
 def cartoboost_schema(
@@ -2077,7 +2173,7 @@ def fit_predict_model(
 
     if model_name == "lightgbm":
         lightgbm = optional_import("lightgbm")
-        if lightgbm is None:
+        if lightgbm is None or not hasattr(lightgbm, "LGBMRegressor"):
             return skipped("lightgbm is not installed")
         model = lightgbm.LGBMRegressor(
             objective="regression",
@@ -2117,7 +2213,7 @@ def fit_predict_model(
 
     if model_name == "xgboost":
         xgboost = optional_import("xgboost")
-        if xgboost is None:
+        if xgboost is None or not hasattr(xgboost, "XGBRegressor"):
             return skipped("xgboost is not installed")
         xgboost_params = {
             "objective": "reg:squarederror",
@@ -2158,6 +2254,184 @@ def fit_predict_model(
                 "max_bin": int(args.xgboost_max_bin),
                 "subsample": float(args.xgboost_subsample),
                 "colsample_bytree": float(args.xgboost_colsample_bytree),
+                "zone_treatment": args.zone_treatment,
+                "feature_count": int(train_x.shape[1]),
+            },
+            "predictions": np.asarray(prediction, dtype=float),
+        }
+
+    if model_name == "catboost":
+        catboost = optional_import("catboost")
+        if catboost is None or not hasattr(catboost, "CatBoostRegressor"):
+            return skipped("catboost is not installed")
+        model = catboost.CatBoostRegressor(
+            loss_function="RMSE",
+            iterations=args.n_estimators,
+            learning_rate=args.learning_rate,
+            depth=args.max_depth,
+            random_seed=args.seed,
+            thread_count=args.n_threads or -1,
+            verbose=False,
+            allow_writing_files=False,
+        )
+        train_started = time.perf_counter()
+        model.fit(train_x, train_y)
+        train_seconds = time.perf_counter() - train_started
+        _ = model.predict(test_x[: min(len(test_indices), 16)])
+        predict_started = time.perf_counter()
+        prediction = model.predict(test_x)
+        predict_seconds = time.perf_counter() - predict_started
+        return {
+            "status": "ok",
+            "metrics": metric_summary(test_y, prediction),
+            "timing": timing_summary(
+                train_seconds=train_seconds,
+                predict_seconds=predict_seconds,
+                prediction_rows=len(test_indices),
+            ),
+            "config": {
+                "iterations": int(args.n_estimators),
+                "learning_rate": float(args.learning_rate),
+                "depth": int(args.max_depth),
+                "zone_treatment": args.zone_treatment,
+                "feature_count": int(train_x.shape[1]),
+            },
+            "predictions": np.asarray(prediction, dtype=float),
+        }
+
+    if model_name == "hist_gradient_boosting":
+        try:
+            from sklearn.ensemble import HistGradientBoostingRegressor
+        except ImportError as exc:
+            return skipped(f"sklearn hist gradient boosting import failed: {exc}")
+        model = HistGradientBoostingRegressor(
+            max_iter=args.n_estimators,
+            learning_rate=args.learning_rate,
+            max_leaf_nodes=2**args.max_depth,
+            random_state=args.seed,
+        )
+        train_started = time.perf_counter()
+        model.fit(train_x, train_y)
+        train_seconds = time.perf_counter() - train_started
+        _ = model.predict(test_x[: min(len(test_indices), 16)])
+        predict_started = time.perf_counter()
+        prediction = model.predict(test_x)
+        predict_seconds = time.perf_counter() - predict_started
+        return {
+            "status": "ok",
+            "metrics": metric_summary(test_y, prediction),
+            "timing": timing_summary(
+                train_seconds=train_seconds,
+                predict_seconds=predict_seconds,
+                prediction_rows=len(test_indices),
+            ),
+            "config": {
+                "n_estimators": int(args.n_estimators),
+                "learning_rate": float(args.learning_rate),
+                "max_leaf_nodes": int(2**args.max_depth),
+                "zone_treatment": args.zone_treatment,
+                "feature_count": int(train_x.shape[1]),
+            },
+            "predictions": np.asarray(prediction, dtype=float),
+        }
+
+    if model_name == "random_forest":
+        try:
+            from sklearn.ensemble import RandomForestRegressor
+        except ImportError as exc:
+            return skipped(f"sklearn random forest import failed: {exc}")
+        model = RandomForestRegressor(
+            n_estimators=args.n_estimators,
+            max_depth=args.max_depth,
+            min_samples_leaf=2,
+            random_state=args.seed,
+            n_jobs=args.n_threads or -1,
+        )
+        train_started = time.perf_counter()
+        model.fit(train_x, train_y)
+        train_seconds = time.perf_counter() - train_started
+        _ = model.predict(test_x[: min(len(test_indices), 16)])
+        predict_started = time.perf_counter()
+        prediction = model.predict(test_x)
+        predict_seconds = time.perf_counter() - predict_started
+        return {
+            "status": "ok",
+            "metrics": metric_summary(test_y, prediction),
+            "timing": timing_summary(
+                train_seconds=train_seconds,
+                predict_seconds=predict_seconds,
+                prediction_rows=len(test_indices),
+            ),
+            "config": {
+                "n_estimators": int(args.n_estimators),
+                "max_depth": int(args.max_depth),
+                "min_samples_leaf": 2,
+                "zone_treatment": args.zone_treatment,
+                "feature_count": int(train_x.shape[1]),
+            },
+            "predictions": np.asarray(prediction, dtype=float),
+        }
+
+    if model_name == "extra_trees":
+        try:
+            from sklearn.ensemble import ExtraTreesRegressor
+        except ImportError as exc:
+            return skipped(f"sklearn extra trees import failed: {exc}")
+        model = ExtraTreesRegressor(
+            n_estimators=args.n_estimators,
+            max_depth=args.max_depth,
+            min_samples_leaf=2,
+            random_state=args.seed,
+            n_jobs=args.n_threads or -1,
+        )
+        train_started = time.perf_counter()
+        model.fit(train_x, train_y)
+        train_seconds = time.perf_counter() - train_started
+        _ = model.predict(test_x[: min(len(test_indices), 16)])
+        predict_started = time.perf_counter()
+        prediction = model.predict(test_x)
+        predict_seconds = time.perf_counter() - predict_started
+        return {
+            "status": "ok",
+            "metrics": metric_summary(test_y, prediction),
+            "timing": timing_summary(
+                train_seconds=train_seconds,
+                predict_seconds=predict_seconds,
+                prediction_rows=len(test_indices),
+            ),
+            "config": {
+                "n_estimators": int(args.n_estimators),
+                "max_depth": int(args.max_depth),
+                "min_samples_leaf": 2,
+                "zone_treatment": args.zone_treatment,
+                "feature_count": int(train_x.shape[1]),
+            },
+            "predictions": np.asarray(prediction, dtype=float),
+        }
+
+    if model_name == "ridge":
+        try:
+            from sklearn.linear_model import Ridge
+        except ImportError as exc:
+            return skipped(f"sklearn ridge import failed: {exc}")
+        model = Ridge(alpha=1.0)
+        train_started = time.perf_counter()
+        model.fit(train_x, train_y)
+        train_seconds = time.perf_counter() - train_started
+        _ = model.predict(test_x[: min(len(test_indices), 16)])
+        predict_started = time.perf_counter()
+        prediction = model.predict(test_x)
+        predict_seconds = time.perf_counter() - predict_started
+        return {
+            "status": "ok",
+            "metrics": metric_summary(test_y, prediction),
+            "timing": timing_summary(
+                train_seconds=train_seconds,
+                predict_seconds=predict_seconds,
+                prediction_rows=len(test_indices),
+            ),
+            "config": {
+                "alpha": 1.0,
                 "zone_treatment": args.zone_treatment,
                 "feature_count": int(train_x.shape[1]),
             },
@@ -2225,6 +2499,11 @@ def run_benchmarks(tasks: list[BenchmarkTask], args: argparse.Namespace) -> dict
         *GRAPH_MODEL_FAMILIES,
         "lightgbm",
         "xgboost",
+        "catboost",
+        "hist_gradient_boosting",
+        "random_forest",
+        "extra_trees",
+        "ridge",
         "mean",
     }
     unknown = sorted(set(models) - valid_models)
@@ -2239,6 +2518,7 @@ def run_benchmarks(tasks: list[BenchmarkTask], args: argparse.Namespace) -> dict
         "source_file_hashes": source_file_hashes(args),
         "benchmark_integrity": benchmark_integrity(args),
         "resource_usage": resource_usage_snapshot(),
+        "baseline_environment": baseline_environment_snapshot(),
         "models_requested": models,
         "model_roster": models,
         "split_definitions": split_definitions(),
@@ -2325,7 +2605,17 @@ def run_benchmarks(tasks: list[BenchmarkTask], args: argparse.Namespace) -> dict
 
             for model_name in models:
                 result, prediction = model_outputs[model_name]
-                if prediction is not None:
+                if prediction is not None and result.get("status") == "ok":
+                    result["segment_diagnostics"] = {
+                        "pickup_zone": pickup_zone_diagnostics(
+                            task.target[test_indices],
+                            np.asarray(prediction, dtype=float),
+                            task.pickup_zones[test_indices],
+                        )
+                    }
+                if args.no_plots:
+                    pass
+                elif prediction is not None:
                     write_prediction_plots(
                         args.output_dir,
                         task,
@@ -2340,7 +2630,7 @@ def run_benchmarks(tasks: list[BenchmarkTask], args: argparse.Namespace) -> dict
                 split_results["models"][model_name] = result
             task_results["splits"][split_mode] = split_results
         results["tasks"][task.name] = task_results
-    results["lightgbm_comparison"] = lightgbm_comparison(results)
+    results["external_baseline_comparison"] = external_baseline_comparison(results)
     return results
 
 
@@ -2432,9 +2722,11 @@ def read_git_commit() -> str | None:
 
 def benchmark_integrity(args: argparse.Namespace) -> dict[str, Any]:
     return {
+        "command_argv": list(sys.argv),
         "seed": int(args.seed),
         "synthetic_smoke": bool(args.synthetic_smoke),
         "no_download": bool(args.no_download),
+        "no_plots": bool(args.no_plots),
         "model_roster": [part.strip() for part in args.models.split(",") if part.strip()],
         "split_modes": ["random", "spatial_holdout"],
         "hpo": "fixed_settings_no_hpo",
@@ -2443,7 +2735,31 @@ def benchmark_integrity(args: argparse.Namespace) -> dict[str, Any]:
             "fare": "log_total_amount",
             "pickup_demand": "log_pickup_trip_count",
         },
+        "selection_policy": selection_policy(),
         "feature_access_policy": feature_access_policy(args),
+    }
+
+
+def selection_policy() -> dict[str, str]:
+    return {
+        "global_hyperparameters": (
+            "fixed_before_holdout_scoring; no model family uses test labels for tuning"
+        ),
+        "primary_cartoboost_row": (
+            "single configured cartoboost run; no internal candidate is selected on test metrics"
+        ),
+        "zone_target_encoding": (
+            "fit on training rows for each outer split before transforming holdout rows"
+        ),
+        "graph_feature_gate": (
+            "uses deterministic inner train/validation rows inside the training split only"
+        ),
+        "neural_feature_gate": (
+            "uses deterministic inner train/validation rows inside the training split only"
+        ),
+        "segment_diagnostics": (
+            "computed after prediction and excluded from fitting, tuning, and model selection"
+        ),
     }
 
 
@@ -2484,6 +2800,44 @@ def resource_usage_snapshot() -> dict[str, Any]:
         "python": sys.version.split()[0],
         "numpy": np.__version__,
         "rustc": rustc_version(),
+    }
+
+
+def package_version(name: str) -> str | None:
+    try:
+        return importlib.metadata.version(name)
+    except importlib.metadata.PackageNotFoundError:
+        return None
+
+
+def dependency_status(
+    import_name: str,
+    class_name: str | None = None,
+    *,
+    distribution_name: str | None = None,
+) -> dict[str, Any]:
+    module = optional_import(import_name)
+    package_name = distribution_name or import_name
+    status = {
+        "package": package_name,
+        "import_name": import_name,
+        "version": package_version(package_name),
+        "module_importable": module is not None,
+    }
+    if class_name is not None:
+        status["required_class"] = class_name
+        status["required_class_available"] = bool(
+            module is not None and hasattr(module, class_name)
+        )
+    return status
+
+
+def baseline_environment_snapshot() -> dict[str, Any]:
+    return {
+        "sklearn": dependency_status("sklearn", distribution_name="scikit-learn"),
+        "xgboost": dependency_status("xgboost", "XGBRegressor"),
+        "lightgbm": dependency_status("lightgbm", "LGBMRegressor"),
+        "catboost": dependency_status("catboost", "CatBoostRegressor"),
     }
 
 
@@ -2677,11 +3031,17 @@ def write_markdown(results: dict[str, Any], output_dir: Path) -> None:
         "",
         "## Comparison Method",
         "",
-        "CartoBoost-family models are compared with LightGBM, XGBoost, and a mean",
-        "baseline under the same task, split, target transformation, and global",
-        "benchmark settings.",
+        "The primary `cartoboost` row is compared with the requested external",
+        "baselines that finish in the validated environment: XGBoost, optional",
+        "LightGBM and CatBoost estimators when available, scikit-learn tree",
+        "ensembles, Ridge, and a mean baseline under the same task, split, target",
+        "transformation, and global benchmark settings.",
         "",
         f"- dataset source: {results['dataset']['source']}",
+        f"- source URL: {results['dataset'].get('source_url', '')}",
+        f"- dataset hash: {results['dataset'].get('dataset_hash', 'not_recorded')}",
+        f"- sample size: {results['dataset'].get('sample_size', 'not_recorded')}",
+        f"- task rows: {results['dataset'].get('task_rows', {})}",
         f"- models requested: {', '.join(results['models_requested'])}",
         f"- baseline estimators: {results['model_config']['baseline_n_estimators']}",
         f"- CartoBoost candidate estimators: {results['model_config']['cartoboost_n_estimators']}",
@@ -2689,33 +3049,92 @@ def write_markdown(results: dict[str, Any], output_dir: Path) -> None:
         f"- CartoBoost candidate max depth: {results['model_config']['cartoboost_max_depth']}",
         f"- model workers: {results['model_config'].get('model_workers', 1)}",
         f"- zone treatment: {results['model_config'].get('zone_treatment', 'raw')}",
+        "- command arguments: "
+        f"`{' '.join(results.get('benchmark_integrity', {}).get('command_argv', []))}`",
         "",
     ]
-    comparisons = lightgbm_comparison(results)
+    resources = results.get("resource_usage", {})
+    if resources:
+        lines.extend(
+            [
+                "## Resource Usage",
+                "",
+                "| Field | Value |",
+                "| --- | --- |",
+            ]
+        )
+        for key, value in resources.items():
+            lines.append(f"| {key} | `{value}` |")
+        lines.append("")
+    baseline_environment = results.get("baseline_environment", {})
+    if baseline_environment:
+        lines.extend(
+            [
+                "## Baseline Dependency Status",
+                "",
+                (
+                    "| Key | Package | Import | Version | Module importable | "
+                    "Required class | Required class available |"
+                ),
+                "| --- | --- | --- | --- | ---: | --- | ---: |",
+            ]
+        )
+        for name, status in sorted(baseline_environment.items()):
+            lines.append(
+                f"| {name} | {status.get('package', '')} | {status.get('import_name', '')} | "
+                f"`{status.get('version')}` | {status.get('module_importable')} | "
+                f"{status.get('required_class', '')} | "
+                f"{status.get('required_class_available', '')} |"
+            )
+        lines.append("")
+    artifacts = results.get("output_artifacts", {})
+    if artifacts:
+        lines.extend(
+            [
+                "## Output Artifacts",
+                "",
+                "| Artifact | Size bytes |",
+                "| --- | ---: |",
+            ]
+        )
+        for name, metadata in sorted(artifacts.items()):
+            lines.append(f"| `{name}` | {metadata['size_bytes']} |")
+        lines.append("")
+    lines.extend(["## Selection and Leakage Policy", ""])
+    selection = results.get("benchmark_integrity", {}).get("selection_policy", {})
+    if selection:
+        for key, value in selection.items():
+            label = key.replace("_", " ")
+            lines.append(f"- {label}: {value}")
+        lines.append("")
+    comparisons = results.get("external_baseline_comparison", external_baseline_comparison(results))
     if comparisons:
         lines.extend(
             [
-                "## CartoBoost vs LightGBM",
+                "## CartoBoost vs External Baselines",
                 "",
                 (
-                    "For each runnable learned-model split, this table compares LightGBM with "
-                    "the best CartoBoost-family row under the same task, split, data sample, "
-                    "target transformation, and global benchmark settings."
+                    "For each runnable learned-model split, this table compares the single "
+                    "primary `cartoboost` row with the lowest-RMSE external baseline that "
+                    "finished under the same task, split, data sample, target transformation, "
+                    "and global benchmark settings."
                 ),
                 "",
                 (
-                    "| task | split | best CartoBoost-family model | CartoBoost RMSE | "
-                    "LightGBM RMSE | RMSE delta | R2 delta | winner |"
+                    "| task | split | CartoBoost RMSE | CartoBoost WAPE | "
+                    "best external baseline | external RMSE | external WAPE | "
+                    "RMSE delta | R2 delta | result |"
                 ),
-                "| --- | --- | --- | ---: | ---: | ---: | ---: | --- |",
+                "| --- | --- | ---: | ---: | --- | ---: | ---: | ---: | ---: | --- |",
             ]
         )
         for row in comparisons:
             lines.append(
-                f"| {row['task']} | {row['split']} | {row['best_cartoboost_model']} | "
-                f"{row['best_cartoboost_rmse']:.6f} | {row['lightgbm_rmse']:.6f} | "
-                f"{row['rmse_delta_vs_lightgbm']:.6f} | "
-                f"{row['r2_delta_vs_lightgbm']:.6f} | {row['winner']} |"
+                f"| {row['task']} | {row['split']} | {row['cartoboost_rmse']:.6f} | "
+                f"{row['cartoboost_wape']:.6f} | {row['best_external_baseline']} | "
+                f"{row['best_external_rmse']:.6f} | {row['best_external_wape']:.6f} | "
+                f"{row['rmse_delta_vs_external']:.6f} | "
+                f"{row['r2_delta_vs_external']:.6f} | {row['status']} |"
             )
         lines.extend(
             [
@@ -2724,7 +3143,7 @@ def write_markdown(results: dict[str, Any], output_dir: Path) -> None:
                 "",
                 (
                     "| task/split | prediction unit | target being modeled | validation question | "
-                    "why the winning row is plausible |"
+                    "modeling signal |"
                 ),
                 "| --- | --- | --- | --- | --- |",
             ]
@@ -2732,26 +3151,25 @@ def write_markdown(results: dict[str, Any], output_dir: Path) -> None:
         for row in modeled_comparison_rows():
             lines.append(
                 f"| {row['task_split']} | {row['unit']} | {row['target']} | "
-                f"{row['validation_question']} | {row['winning_signal']} |"
+                f"{row['validation_question']} | {row['modeling_signal']} |"
             )
         lines.extend(
             [
                 "",
-                "### Why CartoBoost Wins Here",
+                "### Interpretation Notes",
                 "",
                 (
                     "- Fare and duration are primarily geotemporal row tasks. The base "
-                    "CartoBoost candidate wins through native periodic hour/day splitters, "
+                    "CartoBoost candidate uses native periodic hour/day splitters, "
                     "diagonal and radial spatial splitters, and sparse-set taxi-zone "
                     "membership. Those primitives let the model express pickup/dropoff "
                     "geometry directly instead of asking an axis-only tabular baseline to "
                     "approximate it through many rectangular cuts."
                 ),
                 (
-                    "- Pickup demand is a zone-time graph problem. The best row in the "
-                    "random split is graph-augmented CartoBoost, because node2vec adds "
-                    "topology learned from observed pickup-zone relationships before the "
-                    "booster models hour, weekday, and zone effects."
+                    "- Pickup demand is a zone-time graph problem. Graph rows are kept as "
+                    "diagnostics for topology-sensitive behavior, but the public comparison "
+                    "summary keeps `cartoboost` as the single product row."
                 ),
                 (
                     "- Graph and neural rows are not expected to improve every target. When "
@@ -2769,6 +3187,43 @@ def write_markdown(results: dict[str, Any], output_dir: Path) -> None:
                 "",
             ]
         )
+        lines.extend(
+            [
+                "### Pickup-Zone Segment Diagnostics",
+                "",
+                (
+                    "These diagnostics are computed after prediction on each holdout split. "
+                    "They summarize pickup-zone error distribution and are not used for "
+                    "training, model selection, or tuning."
+                ),
+                "",
+                (
+                    "| task | split | model | pickup zones | zone rows min-max | "
+                    "zone RMSE p50 | zone RMSE p90 | worst zone RMSE |"
+                ),
+                "| --- | --- | --- | ---: | --- | ---: | ---: | ---: |",
+            ]
+        )
+        for row in comparisons:
+            split = results["tasks"][row["task"]]["splits"][row["split"]]
+            for model_name in ["cartoboost", row["best_external_baseline"]]:
+                diagnostics = (
+                    split["models"]
+                    .get(model_name, {})
+                    .get("segment_diagnostics", {})
+                    .get("pickup_zone")
+                )
+                if not diagnostics:
+                    continue
+                rmse_quantiles = diagnostics["rmse_quantiles"]
+                lines.append(
+                    f"| {row['task']} | {row['split']} | {model_name} | "
+                    f"{diagnostics['segment_count']} | "
+                    f"{diagnostics['row_count_min']}-{diagnostics['row_count_max']} | "
+                    f"{rmse_quantiles['p50']:.6f} | {rmse_quantiles['p90']:.6f} | "
+                    f"{rmse_quantiles['max']:.6f} |"
+                )
+        lines.append("")
     for task in results["tasks"].values():
         lines.extend([f"## {task['display_name']}", "", task["description"], ""])
         for split_name, split in task["splits"].items():
@@ -2777,12 +3232,12 @@ def write_markdown(results: dict[str, Any], output_dir: Path) -> None:
                     f"### {split_name}",
                     "",
                     (
-                        "| model | status | RMSE | MAE | R2 | train sec | predict sec | "
+                        "| model | status | RMSE | MAE | R2 | WAPE | train sec | predict sec | "
                         "predict rows/sec | note |"
                     ),
                 ]
             )
-            lines.append("| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |")
+            lines.append("| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |")
             model_names = [
                 name for name in results["models_requested"] if name in split["models"]
             ] + [name for name in split["models"] if name not in results["models_requested"]]
@@ -2798,53 +3253,63 @@ def write_markdown(results: dict[str, Any], output_dir: Path) -> None:
                     lines.append(
                         f"| {model_name} | ok | {metrics['rmse']:.6f} | "
                         f"{metrics['mae']:.6f} | {metrics['r2']:.6f} | "
-                        f"{timing['train_seconds']:.6f} | {timing['predict_seconds']:.6f} | "
+                        f"{metrics['wape']:.6f} | {timing['train_seconds']:.6f} | "
+                        f"{timing['predict_seconds']:.6f} | "
                         f"{timing['predict_rows_per_second']:.2f} | {note} |"
                     )
                 else:
                     lines.append(
-                        f"| {model_name} | skipped |  |  |  |  |  |  | {model['reason']} |"
+                        f"| {model_name} | skipped |  |  |  |  |  |  |  | {model['reason']} |"
                     )
             lines.append("")
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "results.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def lightgbm_comparison(results: dict[str, Any]) -> list[dict[str, Any]]:
+def external_baseline_comparison(results: dict[str, Any]) -> list[dict[str, Any]]:
     comparisons: list[dict[str, Any]] = []
     for task_name, task in results["tasks"].items():
         for split_name, split in task["splits"].items():
-            lightgbm = split["models"].get("lightgbm")
-            if lightgbm is None or lightgbm["status"] != "ok":
+            cartoboost = split["models"].get("cartoboost")
+            if cartoboost is None or cartoboost["status"] != "ok":
                 continue
-            candidates = []
+            cartoboost_metrics = cartoboost.get("metrics", {})
+            if "rmse" not in cartoboost_metrics:
+                continue
+            baselines = []
             for model_name, model in split["models"].items():
-                if not model_name.startswith("cartoboost"):
+                if model_name not in EXTERNAL_REGRESSION_BASELINES:
                     continue
                 if model["status"] != "ok":
                     continue
                 metrics = model.get("metrics", {})
                 if "rmse" not in metrics:
                     continue
-                candidates.append((float(metrics["rmse"]), model_name, metrics))
-            if not candidates:
+                baselines.append((float(metrics["rmse"]), model_name, metrics))
+            if not baselines:
                 continue
-            best_rmse, best_name, best_metrics = min(candidates, key=lambda item: item[0])
-            lightgbm_metrics = lightgbm["metrics"]
-            lightgbm_rmse = float(lightgbm_metrics["rmse"])
+            baseline_rmse, baseline_name, baseline_metrics = min(
+                baselines, key=lambda item: item[0]
+            )
+            cartoboost_rmse = float(cartoboost_metrics["rmse"])
             comparisons.append(
                 {
                     "task": task_name,
                     "split": split_name,
-                    "best_cartoboost_model": best_name,
-                    "best_cartoboost_rmse": best_rmse,
-                    "lightgbm_rmse": lightgbm_rmse,
-                    "rmse_delta_vs_lightgbm": best_rmse - lightgbm_rmse,
-                    "best_cartoboost_r2": float(best_metrics["r2"]),
-                    "lightgbm_r2": float(lightgbm_metrics["r2"]),
-                    "r2_delta_vs_lightgbm": float(best_metrics["r2"])
-                    - float(lightgbm_metrics["r2"]),
-                    "winner": "cartoboost" if best_rmse < lightgbm_rmse else "lightgbm",
+                    "cartoboost_model": "cartoboost",
+                    "cartoboost_rmse": cartoboost_rmse,
+                    "cartoboost_wape": float(cartoboost_metrics.get("wape", float("nan"))),
+                    "cartoboost_r2": float(cartoboost_metrics["r2"]),
+                    "best_external_baseline": baseline_name,
+                    "best_external_rmse": baseline_rmse,
+                    "best_external_wape": float(baseline_metrics.get("wape", float("nan"))),
+                    "best_external_r2": float(baseline_metrics["r2"]),
+                    "rmse_delta_vs_external": cartoboost_rmse - baseline_rmse,
+                    "r2_delta_vs_external": float(cartoboost_metrics["r2"])
+                    - float(baseline_metrics["r2"]),
+                    "status": "cartoboost_lower_rmse"
+                    if cartoboost_rmse < baseline_rmse
+                    else "external_lower_or_tied_rmse",
                 }
             )
     return comparisons
@@ -2860,7 +3325,7 @@ def modeled_comparison_rows() -> list[dict[str, str]]:
                 "Can the model explain ordinary held-out trips drawn from the same month-wide "
                 "trip distribution?"
             ),
-            "winning_signal": (
+            "modeling_signal": (
                 "Base CartoBoost uses trip distance, passenger count, hour/weekday periodicity, "
                 "pickup/dropoff zones, and route geometry."
             ),
@@ -2872,7 +3337,7 @@ def modeled_comparison_rows() -> list[dict[str, str]]:
             "validation_question": (
                 "Does the trip-duration structure transfer when pickup zones are held out?"
             ),
-            "winning_signal": (
+            "modeling_signal": (
                 "The gain comes from spatial splitters and route geometry rather than memorizing "
                 "the exact validation rows."
             ),
@@ -2884,7 +3349,7 @@ def modeled_comparison_rows() -> list[dict[str, str]]:
             "validation_question": (
                 "Can the model recover fare structure for ordinary held-out trips?"
             ),
-            "winning_signal": (
+            "modeling_signal": (
                 "Distance, pickup/dropoff zones, hour/weekday effects, and cartometric route "
                 "features align with how fares vary."
             ),
@@ -2896,7 +3361,7 @@ def modeled_comparison_rows() -> list[dict[str, str]]:
             "validation_question": (
                 "Does fare modeling generalize to zones not present in the training pickup set?"
             ),
-            "winning_signal": (
+            "modeling_signal": (
                 "Route and zone geometry carry transferable fare signal beyond target-mean "
                 "zone encodings."
             ),
@@ -2908,7 +3373,7 @@ def modeled_comparison_rows() -> list[dict[str, str]]:
             "validation_question": (
                 "Can the model explain recurring zone-time demand for observed zones?"
             ),
-            "winning_signal": (
+            "modeling_signal": (
                 "The node2vec row adds topology from observed pickup-zone relationships before "
                 "modeling hour, weekday, and zone effects."
             ),
@@ -2916,13 +3381,43 @@ def modeled_comparison_rows() -> list[dict[str, str]]:
     ]
 
 
-def write_outputs(results: dict[str, Any], output_dir: Path) -> None:
+def write_outputs(results: dict[str, Any], output_dir: Path, *, write_plots: bool = True) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "results.json").write_text(json.dumps(results, indent=2) + "\n", encoding="utf-8")
     write_jsonl_results(results, output_dir / "results.jsonl")
     write_markdown(results, output_dir)
-    write_metric_plot(results, output_dir)
-    write_speed_plots(results, output_dir)
+    if write_plots:
+        write_metric_plot(results, output_dir)
+        write_speed_plots(results, output_dir)
+    for _ in range(5):
+        manifest = output_artifact_manifest(output_dir)
+        if manifest == results.get("output_artifacts"):
+            break
+        results["output_artifacts"] = manifest
+        (output_dir / "results.json").write_text(
+            json.dumps(results, indent=2) + "\n", encoding="utf-8"
+        )
+        write_markdown(results, output_dir)
+
+
+def output_artifact_manifest(output_dir: Path) -> dict[str, dict[str, int]]:
+    artifacts: dict[str, dict[str, int]] = {}
+    for name in [
+        "results.json",
+        "results.jsonl",
+        "results.md",
+        "quality_summary.png",
+        "speed_summary.png",
+        "prediction_throughput.png",
+    ]:
+        path = output_dir / name
+        if path.exists():
+            artifacts[name] = {"size_bytes": int(path.stat().st_size)}
+    plot_dir = output_dir / "plots"
+    if plot_dir.exists():
+        for path in sorted(plot_dir.glob("*.png")):
+            artifacts[str(path.relative_to(output_dir))] = {"size_bytes": int(path.stat().st_size)}
+    return artifacts
 
 
 def write_jsonl_results(results: dict[str, Any], output: Path) -> None:
@@ -3010,7 +3505,7 @@ def main() -> None:
     tasks = filter_tasks(tasks, args.tasks)
 
     results = run_benchmarks(tasks, args)
-    write_outputs(results, args.output_dir)
+    write_outputs(results, args.output_dir, write_plots=not args.no_plots)
 
 
 if __name__ == "__main__":

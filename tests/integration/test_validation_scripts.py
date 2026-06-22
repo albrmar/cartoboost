@@ -133,7 +133,7 @@ def test_model_benchmark_suite_public_workloads_smoke(tmp_path):
     }
 
 
-def test_model_benchmark_suite_reports_best_cartoboost_vs_lightgbm():
+def test_model_benchmark_suite_reports_cartoboost_vs_external_baseline():
     repo_root = Path(__file__).resolve().parents[2]
     module_path = repo_root / "scripts" / "run_model_benchmark_suite.py"
     spec = importlib.util.spec_from_file_location("run_model_benchmark_suite", module_path)
@@ -168,22 +168,27 @@ def test_model_benchmark_suite_reports_best_cartoboost_vs_lightgbm():
         },
     }
 
-    rows = benchmark_suite.lightgbm_comparison(payload)
+    rows = benchmark_suite.external_baseline_comparison(payload)
 
-    assert rows == [
-        {
-            "workload": "normal",
-            "split": "random",
-            "best_cartoboost_model": "cartoboost",
-            "best_cartoboost_rmse": 0.42,
-            "lightgbm_rmse": 0.50,
-            "rmse_delta_vs_lightgbm": -0.08000000000000002,
-            "best_cartoboost_r2": 0.91,
-            "lightgbm_r2": 0.88,
-            "r2_delta_vs_lightgbm": 0.030000000000000027,
-            "winner": "cartoboost",
-        }
-    ]
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["cartoboost_wape"] != row["cartoboost_wape"]
+    assert row["best_external_wape"] != row["best_external_wape"]
+    assert row | {"cartoboost_wape": None, "best_external_wape": None} == {
+        "workload": "normal",
+        "split": "random",
+        "cartoboost_model": "cartoboost",
+        "cartoboost_rmse": 0.42,
+        "cartoboost_wape": None,
+        "cartoboost_r2": 0.91,
+        "best_external_baseline": "lightgbm",
+        "best_external_rmse": 0.50,
+        "best_external_wape": None,
+        "best_external_r2": 0.88,
+        "rmse_delta_vs_external": -0.08000000000000002,
+        "r2_delta_vs_external": 0.030000000000000027,
+        "status": "cartoboost_lower_rmse",
+    }
 
 
 def test_model_benchmark_suite_link_negatives_avoid_positive_edges():
@@ -3580,9 +3585,17 @@ def test_forecasting_benchmark_model_settings_include_auto_policy():
         }
     )
 
-    assert set(settings) == {"cartoboost_lag", "cartoboost_auto_forecast"}
+    assert set(settings) == {
+        "cartoboost_lag",
+        "cartoboost_auto_forecast",
+        "cartoboost_piecewise_linear_seasonal",
+    }
     assert settings["cartoboost_lag"]["n_estimators"] == 60
     assert settings["cartoboost_auto_forecast"]["auto_n_estimators"] == 72
+    assert settings["cartoboost_piecewise_linear_seasonal"]["weekly_fourier_order"] == 3
+    assert (
+        "piecewise-linear" in settings["cartoboost_piecewise_linear_seasonal"]["benchmark_profile"]
+    )
     assert (
         settings["cartoboost_auto_forecast"]["auto_n_estimators_policy"]
         == "explicit --cartoboost-auto-n-estimators override"
@@ -3594,6 +3607,17 @@ def test_forecasting_benchmark_model_settings_include_auto_policy():
         "non-M inner validation skips raw auto"
         in settings["cartoboost_auto_forecast"]["auto_selector_policy"]
     )
+    assert benchmark.benchmark_model_names("cartoboost") == [
+        "cartoboost_lag",
+        "cartoboost_auto_forecast",
+    ]
+    assert benchmark.benchmark_model_names("prophet-comparison") == [
+        "cartoboost_piecewise_linear_seasonal",
+        "prophet_additive",
+    ]
+    assert benchmark.forecasting_library_models_for_roster("prophet-comparison") == {
+        "prophet": ["prophet_additive"]
+    }
     assert (
         "cache identical inner validation cutoffs"
         in settings["cartoboost_auto_forecast"]["auto_selector_policy"]

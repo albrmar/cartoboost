@@ -9,6 +9,7 @@ from .kalman import (
 )
 from .kriging import KrigingForecaster
 from .naive import ForecastResult, NaiveForecaster
+from .piecewise_linear import PiecewiseLinearSeasonalForecaster
 from .seasonal_naive import SeasonalNaiveForecaster
 from .theta import OptimizedThetaForecaster, ThetaForecaster
 
@@ -25,6 +26,7 @@ __all__ = [
     "KrigingForecaster",
     "NaiveForecaster",
     "OptimizedThetaForecaster",
+    "PiecewiseLinearSeasonalForecaster",
     "SeasonalNaiveForecaster",
     "ThetaForecaster",
 ]

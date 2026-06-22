@@ -1,5 +1,7 @@
-import {useCallback, useEffect, useMemo, useState} from 'react';
+import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import useBaseUrl from '@docusaurus/useBaseUrl';
+import {contourDensity, geoGraticule, geoMercator, geoPath, interpolateTurbo, scaleSequential} from 'd3';
+import 'maplibre-gl/dist/maplibre-gl.css';
 
 import styles from './styles.module.css';
 
@@ -15,6 +17,26 @@ type ForecastRecord = {
   horizon: number;
   model: string;
   prediction: number;
+};
+
+type ForecastComponentRecord = {
+  series_id: string;
+  timestamp: string;
+  horizon: number;
+  prediction: number;
+  trend: number;
+  linear_predictor: number;
+  component_scale?: string;
+  components: Record<string, number | Record<string, number>>;
+};
+
+type ForecastQuantileRecord = {
+  series_id: string;
+  timestamp: string;
+  horizon: number;
+  quantile: number;
+  prediction: number;
+  mean: number;
 };
 
 type WasmModule = {
@@ -45,6 +67,15 @@ type ForecastResponse = {
   };
   forecast: {
     records: ForecastRecord[];
+  };
+  components?: {
+    records: ForecastComponentRecord[];
+  };
+  samples?: {
+    records: unknown[];
+  };
+  quantiles?: {
+    records: ForecastQuantileRecord[];
   };
 };
 
@@ -77,6 +108,7 @@ type RegressionResponse = {
     pipeline?: string;
     splitterMode?: string;
     loss?: string;
+    monotonicConstraints?: number[];
     treeCount: number;
   };
   metrics: {
@@ -104,6 +136,14 @@ type ModelOption = {
   value: string;
   label: string;
   group: string;
+};
+
+type GeoDemandPoint = {
+  lon: number;
+  lat: number;
+  target: number;
+  dropLon: number;
+  dropLat: number;
 };
 
 type WasmModelMetadata = {
@@ -576,6 +616,33 @@ export default function ForecastLabClient(): React.ReactElement {
     setStatus(`Exported suggested config for ${table.fileName}.`);
   }, [featureCols, frequency, graphSourceCol, graphTargetCol, graphWeightCol, horizon, model, modelOptions, modelingLoss, modelingMode, neuralIdCol, neuralPipeline, seasonLength, seriesCol, sparseFeatureCols, table, targetCol, timestampCol]);
 
+  const applyRecommendedSettings = useCallback(() => {
+    if (!table) {
+      setStatus('Load a dataset before applying recommended settings.');
+      return;
+    }
+    const profile = buildTargetingProfile(table, targetCol, timestampCol, seriesCol, featureCols, sparseFeatureCols, modelOptions);
+    setModel(profile.forecastModelValue);
+    setModelingMode(profile.splitterModeValue);
+    setModelingLoss(profile.lossValue);
+    setFeatureCols(profile.featureCols);
+    setSparseFeatureCols(profile.sparseFeatureCols);
+    if (profile.graphSourceCol) {
+      setGraphSourceCol(profile.graphSourceCol);
+    }
+    if (profile.graphTargetCol) {
+      setGraphTargetCol(profile.graphTargetCol);
+    }
+    if (profile.graphWeightCol) {
+      setGraphWeightCol(profile.graphWeightCol);
+    }
+    if (profile.neuralIdCol) {
+      setNeuralIdCol(profile.neuralIdCol);
+    }
+    setNeuralPipeline(profile.neuralPipeline);
+    setStatus(`Applied recommended ${profile.forecastModel} forecast and ${profile.splitterMode} modeling settings.`);
+  }, [featureCols, modelOptions, seriesCol, sparseFeatureCols, table, targetCol, timestampCol]);
+
   const chartRows = useMemo(() => {
     if (!result) {
       return [];
@@ -644,7 +711,7 @@ export default function ForecastLabClient(): React.ReactElement {
                   groups={forecastModelGroups(modelOptions)}
                 />
                 <NumberInput label="Horizon" value={horizon} min={1} max={365} onChange={setHorizon} />
-                <NumberInput label="Season Length" value={seasonLength} min={1} max={366} onChange={setSeasonLength} />
+                <SeasonalityControl frequency={frequency} value={seasonLength} onChange={setSeasonLength} />
               </div>
             </ControlSection>
 
@@ -721,24 +788,26 @@ export default function ForecastLabClient(): React.ReactElement {
             />
           )}
 
-          <button className={styles.primaryButton} type="button" disabled={!selectedColumnsReady || isRunning} onClick={() => void runForecast()}>
-            {isRunning ? 'Running forecast' : 'Run forecast'}
-          </button>
-          <button className={styles.secondaryActionButton} type="button" disabled={!selectedColumnsReady || isRunning} onClick={() => void runComparison()}>
-            Compare native roster
-          </button>
-          <button className={styles.secondaryActionButton} type="button" disabled={!selectedColumnsReady || isRunning} onClick={() => void runBacktest()}>
-            Backtest native roster
-          </button>
-          <button className={styles.secondaryActionButton} type="button" disabled={!selectedColumnsReady || featureCols.length === 0 || isRunning} onClick={() => void runRegression()}>
-            Run modeling pipeline
-          </button>
-          <button className={styles.secondaryActionButton} type="button" disabled={!selectedColumnsReady || featureCols.length === 0 || isRunning} onClick={() => void runNeural()}>
-            Run neural pipeline
-          </button>
-          <button className={styles.secondaryActionButton} type="button" disabled={!table || isRunning} onClick={exportSuggestedConfig}>
-            Export suggested config
-          </button>
+          <div className={styles.actionGrid}>
+            <button className={styles.primaryButton} type="button" disabled={!selectedColumnsReady || isRunning} onClick={() => void runForecast()}>
+              {isRunning ? 'Running forecast' : 'Run forecast'}
+            </button>
+            <button className={styles.secondaryActionButton} type="button" disabled={!selectedColumnsReady || isRunning} onClick={() => void runComparison()}>
+              Compare roster
+            </button>
+            <button className={styles.secondaryActionButton} type="button" disabled={!selectedColumnsReady || isRunning} onClick={() => void runBacktest()}>
+              Backtest
+            </button>
+            <button className={styles.secondaryActionButton} type="button" disabled={!selectedColumnsReady || featureCols.length === 0 || isRunning} onClick={() => void runRegression()}>
+              Model
+            </button>
+            <button className={styles.secondaryActionButton} type="button" disabled={!selectedColumnsReady || featureCols.length === 0 || isRunning} onClick={() => void runNeural()}>
+              Neural
+            </button>
+            <button className={styles.secondaryActionButton} type="button" disabled={!table || isRunning} onClick={exportSuggestedConfig}>
+              Export config
+            </button>
+          </div>
           <p className={styles.status}>{status}</p>
         </div>
 
@@ -849,7 +918,9 @@ export default function ForecastLabClient(): React.ReactElement {
                   </div>
                 </dl>
               </div>
-              <ForecastChart actualRows={actualRows} rows={chartRows} />
+              <ForecastSignalSummary actualRows={actualRows} forecastRows={chartRows} frequency={frequency} seasonLength={seasonLength} />
+              <ForecastChart actualRows={actualRows} rows={chartRows} quantiles={firstSeriesQuantileRows(result)} />
+              <ForecastComponentSummary components={result.components} />
               <ForecastTable records={result.forecast.records.slice(0, 12)} />
             </>
           ) : (
@@ -860,8 +931,30 @@ export default function ForecastLabClient(): React.ReactElement {
               </div>
               {table && (
                 <>
-                  <DatasetProfile table={table} timestampCol={timestampCol} targetCol={targetCol} seriesCol={seriesCol} />
-                  <GeoDatasetVisualization table={table} targetCol={targetCol} />
+                  <div className={styles.previewGrid}>
+                    <DatasetProfile table={table} timestampCol={timestampCol} targetCol={targetCol} seriesCol={seriesCol} />
+                    <TargetRunPlan
+                      table={table}
+                      targetCol={targetCol}
+                      timestampCol={timestampCol}
+                      seriesCol={seriesCol}
+                      featureCols={featureCols}
+                      sparseFeatureCols={sparseFeatureCols}
+                      modelOptions={modelOptions}
+                      onApply={applyRecommendedSettings}
+                    />
+                    <TargetDiagnostics table={table} targetCol={targetCol} timestampCol={timestampCol} seriesCol={seriesCol} />
+                    <TargetOpportunityPanel table={table} targetCol={targetCol} timestampCol={timestampCol} seriesCol={seriesCol} />
+                    <FeatureRoleMatrix
+                      table={table}
+                      targetCol={targetCol}
+                      timestampCol={timestampCol}
+                      seriesCol={seriesCol}
+                      featureCols={featureCols}
+                      sparseFeatureCols={sparseFeatureCols}
+                    />
+                    <GeoDatasetVisualization table={table} targetCol={targetCol} seriesCol={seriesCol} />
+                  </div>
                   <PreviewTable columns={table.columns} rows={previewRows} />
                 </>
               )}
@@ -975,6 +1068,42 @@ function NumberInput({
   );
 }
 
+function SeasonalityControl({
+  frequency,
+  value,
+  onChange,
+}: {
+  frequency: string;
+  value: number;
+  onChange: (value: number) => void;
+}) {
+  const presets = seasonalityPresets(frequency);
+  const matched = presets.find((preset) => preset.length === value);
+  return (
+    <div className={styles.seasonalityControl}>
+      <div className={styles.seasonalityHeader}>
+        <span>Seasonality</span>
+        <strong>{matched?.label ?? `${value.toLocaleString()} steps`}</strong>
+      </div>
+      <div className={styles.seasonalityButtons}>
+        {presets.map((preset) => (
+          <button
+            className={preset.length === value ? styles.seasonalityButtonActive : undefined}
+            type="button"
+            onClick={() => onChange(preset.length)}
+            key={preset.key}
+            title={`${preset.description}: ${preset.length.toLocaleString()} steps`}
+          >
+            <strong>{preset.label}</strong>
+            <span>{preset.length.toLocaleString()}</span>
+          </button>
+        ))}
+      </div>
+      <NumberInput label="Custom Period" value={value} min={1} max={8784} onChange={onChange} />
+    </div>
+  );
+}
+
 function forecastModelGroups(modelOptions: ModelOption[]): SelectGroup[] {
   const grouped = new Map<string, {value: string; label: string}[]>();
   for (const option of modelOptions) {
@@ -1025,12 +1154,112 @@ function FeatureSelector({
   );
 }
 
-function ForecastChart({actualRows, rows}: {actualRows: ActualRecord[]; rows: ForecastRecord[]}) {
+function ForecastChart({
+  actualRows,
+  rows,
+  quantiles = [],
+}: {
+  actualRows: ActualRecord[];
+  rows: ForecastRecord[];
+  quantiles?: ForecastQuantileRecord[];
+}) {
   if (rows.length === 0 && actualRows.length === 0) {
     return null;
   }
-  const series = buildLineSeries(actualRows, [{label: rows[0]?.model ?? 'forecast', records: rows}]);
+  const quantileSeries = quantileForecastSeries(quantiles);
+  const series = buildLineSeries(actualRows, [
+    {label: rows[0]?.model ?? 'forecast', records: rows},
+    ...quantileSeries,
+  ]);
   return <LineChart caption={rows[0]?.series_id ? `First series: ${rows[0].series_id}` : 'Forecast'} series={series} />;
+}
+
+function ForecastComponentSummary({components}: {components?: ForecastResponse['components']}) {
+  const first = components?.records[0];
+  if (!first) {
+    return null;
+  }
+  const rows = summarizeComponentRecord(first);
+  return (
+    <section className={styles.componentPanel}>
+      <div className={styles.componentHeader}>
+        <div>
+          <span className={styles.eyebrow}>Components</span>
+          <h3>{first.series_id}</h3>
+        </div>
+        <p>{first.timestamp}</p>
+      </div>
+      <div className={styles.componentGrid}>
+        <p>
+          <span>Prediction</span>
+          {formatCompact(first.prediction)}
+        </p>
+        <p>
+          <span>Trend</span>
+          {formatCompact(first.trend)}
+        </p>
+        <p>
+          <span>Non-trend</span>
+          {formatCompact(numberComponent(first.components.non_trend_total))}
+        </p>
+      </div>
+      <div className={styles.tableScroller}>
+        <table>
+          <thead>
+            <tr>
+              <th>Component</th>
+              <th>Contribution</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.label}>
+                <td>{row.label}</td>
+                <td>{formatCompact(row.value)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+function ForecastSignalSummary({
+  actualRows,
+  forecastRows,
+  frequency,
+  seasonLength,
+}: {
+  actualRows: ActualRecord[];
+  forecastRows: ForecastRecord[];
+  frequency: string;
+  seasonLength: number;
+}) {
+  const lastActual = actualRows.at(-1)?.value;
+  const firstForecast = forecastRows[0]?.prediction;
+  const lastForecast = forecastRows.at(-1)?.prediction;
+  const lift = lastActual === undefined || firstForecast === undefined || lastActual === 0 ? null : (firstForecast - lastActual) / Math.abs(lastActual);
+  const drift = firstForecast === undefined || lastForecast === undefined || firstForecast === 0 ? null : (lastForecast - firstForecast) / Math.abs(firstForecast);
+  return (
+    <div className={styles.signalCards}>
+      <p>
+        <span>Seasonality</span>
+        {seasonalityLabel(frequency, seasonLength)}
+        <em>{seasonLength.toLocaleString()} steps</em>
+      </p>
+      <p>
+        <span>First forecast</span>
+        {firstForecast === undefined ? '-' : formatCompact(firstForecast)}
+        <em>{lift === null ? 'no lift' : `${lift >= 0 ? '+' : ''}${(lift * 100).toFixed(1)}% vs last actual`}</em>
+      </p>
+      <p>
+        <span>Horizon drift</span>
+        {drift === null ? '-' : `${drift >= 0 ? '+' : ''}${(drift * 100).toFixed(1)}%`}
+        <em>{forecastRows.length.toLocaleString()} forecast rows</em>
+      </p>
+    </div>
+  );
 }
 
 function RegressionMetricSummary({result}: {result: RegressionResponse}) {
@@ -1184,10 +1413,22 @@ function LineChart({caption, series}: {caption: string; series: ChartSeries[]}) 
   const max = Math.max(...values);
   const span = max - min || 1;
   const maxIndex = Math.max(...drawable.flatMap((item) => item.points.map((point) => point.index)), 1);
+  const ticks = [0, 0.25, 0.5, 0.75, 1].map((ratio) => ({
+    value: min + span * ratio,
+    y: height - padding - ratio * (height - padding * 2),
+  }));
 
   return (
     <figure className={styles.chart}>
       <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={caption}>
+        {ticks.map((tick) => (
+          <g className={styles.chartGridline} key={tick.y}>
+            <line x1={padding} y1={tick.y} x2={width - padding} y2={tick.y} />
+            <text x={padding - 8} y={tick.y + 4}>
+              {formatCompact(tick.value)}
+            </text>
+          </g>
+        ))}
         <line x1={padding} y1={height - padding} x2={width - padding} y2={height - padding} />
         <line x1={padding} y1={padding} x2={padding} y2={height - padding} />
         {drawable.map((item, seriesIndex) => {
@@ -1317,7 +1558,399 @@ function DatasetProfile({
   );
 }
 
-function GeoDatasetVisualization({table, targetCol}: {table: ParsedTable; targetCol: string}) {
+function TargetRunPlan({
+  table,
+  targetCol,
+  timestampCol,
+  seriesCol,
+  featureCols,
+  sparseFeatureCols,
+  modelOptions,
+  onApply,
+}: {
+  table: ParsedTable;
+  targetCol: string;
+  timestampCol: string;
+  seriesCol: string;
+  featureCols: string[];
+  sparseFeatureCols: string[];
+  modelOptions: ModelOption[];
+  onApply: () => void;
+}) {
+  const profile = buildTargetingProfile(table, targetCol, timestampCol, seriesCol, featureCols, sparseFeatureCols, modelOptions);
+  return (
+    <section className={styles.runPlanPanel}>
+      <div className={styles.diagnosticsHeader}>
+        <div>
+          <span className={styles.eyebrow}>Targeting</span>
+          <h3>Recommended run plan</h3>
+        </div>
+        <span>{profile.score.toLocaleString()} readiness</span>
+      </div>
+      <div className={styles.planGrid}>
+        <p>
+          <span>Forecast model</span>
+          {profile.forecastModel}
+        </p>
+        <p>
+          <span>Splitter</span>
+          {profile.splitterMode}
+        </p>
+        <p>
+          <span>Loss</span>
+          {profile.loss}
+        </p>
+        <p>
+          <span>Graph path</span>
+          {profile.graphPath}
+        </p>
+      </div>
+      <div className={styles.planReasons}>
+        {profile.reasons.map((reason) => (
+          <span key={reason}>{reason}</span>
+        ))}
+      </div>
+      <div className={styles.readinessList}>
+        {profile.readinessChecks.map((check) => (
+          <span className={check.status === 'ready' ? styles.readinessReady : styles.readinessReview} key={check.label}>
+            <strong>{check.label}</strong>
+            {check.detail}
+          </span>
+        ))}
+      </div>
+      <button className={styles.inlineActionButton} type="button" onClick={onApply}>
+        Apply run plan
+      </button>
+    </section>
+  );
+}
+
+function FeatureRoleMatrix({
+  table,
+  targetCol,
+  timestampCol,
+  seriesCol,
+  featureCols,
+  sparseFeatureCols,
+}: {
+  table: ParsedTable;
+  targetCol: string;
+  timestampCol: string;
+  seriesCol: string;
+  featureCols: string[];
+  sparseFeatureCols: string[];
+}) {
+  const rows = rankFeatureRoles(table, targetCol, timestampCol, seriesCol, featureCols, sparseFeatureCols).slice(0, 14);
+  if (rows.length === 0) {
+    return null;
+  }
+  const maxScore = Math.max(...rows.map((row) => row.score), 1);
+  return (
+    <section className={styles.featureRolePanel}>
+      <div className={styles.diagnosticsHeader}>
+        <div>
+          <span className={styles.eyebrow}>Features</span>
+          <h3>Target feature map</h3>
+        </div>
+        <span>{rows.length.toLocaleString()} ranked columns</span>
+      </div>
+      {rows.map((row) => (
+        <div className={styles.featureRoleRow} key={row.column}>
+          <span>{row.column}</span>
+          <strong>{row.role}</strong>
+          <div>
+            <i style={{width: `${Math.max((row.score / maxScore) * 100, 3)}%`}} />
+          </div>
+          <em>{row.status}</em>
+        </div>
+      ))}
+    </section>
+  );
+}
+
+function TargetDiagnostics({
+  table,
+  targetCol,
+  timestampCol,
+  seriesCol,
+}: {
+  table: ParsedTable;
+  targetCol: string;
+  timestampCol: string;
+  seriesCol: string;
+}) {
+  if (!table.columns.includes(targetCol)) {
+    return null;
+  }
+  const targetValues = table.rows
+    .map((row) => Number(row[targetCol]))
+    .filter((value) => Number.isFinite(value));
+  if (targetValues.length === 0) {
+    return null;
+  }
+  const summary = summarizeValues(targetValues);
+  const topSeries = seriesCol ? topTargetGroups(table, seriesCol, targetCol, 5) : [];
+  const timeBuckets = summarizeTimeBuckets(table, timestampCol, targetCol);
+  return (
+    <section className={styles.diagnosticsPanel}>
+      <div className={styles.diagnosticsHeader}>
+        <div>
+          <span className={styles.eyebrow}>Targeting</span>
+          <h3>Target signal profile</h3>
+        </div>
+        <span>{targetValues.length.toLocaleString()} finite values</span>
+      </div>
+      <div className={styles.diagnosticGrid}>
+        <p>
+          <span>Mean</span>
+          {formatCompact(summary.mean)}
+        </p>
+        <p>
+          <span>P90 / P50</span>
+          {summary.median === 0 ? '-' : `${(summary.p90 / summary.median).toFixed(2)}x`}
+        </p>
+        <p>
+          <span>Zero share</span>
+          {`${(summary.zeroShare * 100).toFixed(1)}%`}
+        </p>
+        <p>
+          <span>Outlier band</span>
+          {`${formatCompact(summary.p10)} to ${formatCompact(summary.p90)}`}
+        </p>
+      </div>
+      <Histogram values={targetValues} />
+      {timeBuckets.length > 0 && <TimeBucketStrip buckets={timeBuckets} />}
+      {topSeries.length > 0 && (
+        <div className={styles.targetList}>
+          {topSeries.map((row, index) => (
+            <span key={row.key}>
+              <strong>{index + 1}. {row.key}</strong>
+              <i>{formatCompact(row.mean)}</i>
+              <em>{row.count.toLocaleString()} rows</em>
+            </span>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function TargetOpportunityPanel({
+  table,
+  targetCol,
+  timestampCol,
+  seriesCol,
+}: {
+  table: ParsedTable;
+  targetCol: string;
+  timestampCol: string;
+  seriesCol: string;
+}) {
+  const opportunities = rankTargetOpportunities(table, targetCol, timestampCol, seriesCol, 8);
+  if (opportunities.length === 0) {
+    return null;
+  }
+  const maxScore = Math.max(...opportunities.map((row) => row.score), 1);
+  return (
+    <section className={styles.opportunityPanel}>
+      <div className={styles.diagnosticsHeader}>
+        <div>
+          <span className={styles.eyebrow}>Targeting</span>
+          <h3>Opportunity targets</h3>
+        </div>
+        <span>{opportunities.length.toLocaleString()} ranked segments</span>
+      </div>
+      <div className={styles.opportunityTable}>
+        <div className={styles.opportunityHeader}>
+          <span>Segment</span>
+          <span>Lift</span>
+          <span>Trend</span>
+          <span>Rows</span>
+          <span>Action</span>
+        </div>
+        {opportunities.map((row) => (
+          <div className={styles.opportunityRow} key={`${row.segmentType}-${row.key}`}>
+            <strong>
+              <span>{row.segmentType}</span>
+              {row.key}
+            </strong>
+            <em>{`${row.lift >= 0 ? '+' : ''}${(row.lift * 100).toFixed(1)}%`}</em>
+            <em>{`${row.trend >= 0 ? '+' : ''}${(row.trend * 100).toFixed(1)}%`}</em>
+            <i>{row.count.toLocaleString()}</i>
+            <p>
+              {row.action}
+              <span className={styles.opportunityScoreBar}>
+                <span style={{width: `${Math.max((row.score / maxScore) * 100, 4)}%`}} />
+              </span>
+            </p>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function Histogram({values}: {values: number[]}) {
+  const bins = histogramBins(values, 12);
+  const maxCount = Math.max(...bins.map((bin) => bin.count), 1);
+  return (
+    <div className={styles.histogram} aria-label="Target histogram">
+      {bins.map((bin) => (
+        <span title={`${formatCompact(bin.start)} to ${formatCompact(bin.end)}: ${bin.count.toLocaleString()}`} key={`${bin.start}-${bin.end}`}>
+          <i style={{height: `${Math.max((bin.count / maxCount) * 100, 4)}%`}} />
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function TimeBucketStrip({buckets}: {buckets: {label: string; mean: number; count: number}[]}) {
+  const means = buckets.map((bucket) => bucket.mean);
+  const min = Math.min(...means);
+  const max = Math.max(...means);
+  return (
+    <div className={styles.timeBuckets}>
+      {buckets.map((bucket) => (
+        <span
+          title={`${bucket.label}: ${formatCompact(bucket.mean)} mean across ${bucket.count.toLocaleString()} rows`}
+          style={{background: targetColor(bucket.mean, min, max)}}
+          key={bucket.label}
+        >
+          {bucket.label}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function WebGlGeoMap({
+  points,
+  minTarget,
+  maxTarget,
+  hasDropoff,
+}: {
+  points: GeoDemandPoint[];
+  minTarget: number;
+  maxTarget: number;
+  hasDropoff: boolean;
+}) {
+  const mapContainerRef = useRef<HTMLDivElement | null>(null);
+  const [status, setStatus] = useState('Loading MapLibre and deck.gl');
+
+  useEffect(() => {
+    if (!mapContainerRef.current || points.length === 0) {
+      return undefined;
+    }
+    let cleanup: (() => void) | undefined;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const [{default: maplibregl}, {MapboxOverlay}, {ScatterplotLayer, ArcLayer}, {HeatmapLayer}] = await Promise.all([
+          import('maplibre-gl'),
+          import('@deck.gl/mapbox'),
+          import('@deck.gl/layers'),
+          import('@deck.gl/aggregation-layers'),
+        ]);
+        if (cancelled || !mapContainerRef.current) {
+          return;
+        }
+        const routePoints = points.filter((point) => Number.isFinite(point.dropLon) && Number.isFinite(point.dropLat)).slice(0, 180);
+        const allCoordinates = points.flatMap((point) =>
+          Number.isFinite(point.dropLon) && Number.isFinite(point.dropLat)
+            ? [
+                [point.lon, point.lat],
+                [point.dropLon, point.dropLat],
+              ]
+            : [[point.lon, point.lat]],
+        ) as [number, number][];
+        const center = allCoordinates.reduce(
+          (sum, coordinate) => [sum[0] + coordinate[0] / allCoordinates.length, sum[1] + coordinate[1] / allCoordinates.length] as [number, number],
+          [0, 0] as [number, number],
+        );
+        const map = new maplibregl.Map({
+          attributionControl: false,
+          center,
+          container: mapContainerRef.current,
+          cooperativeGestures: true,
+          style: 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json',
+          zoom: 10,
+        });
+        map.addControl(new maplibregl.NavigationControl({showCompass: false}), 'top-right');
+        map.addControl(new maplibregl.ScaleControl({unit: 'imperial'}), 'bottom-left');
+        const overlay = new MapboxOverlay({
+          interleaved: false,
+          layers: [
+            new HeatmapLayer<GeoDemandPoint>({
+              id: 'target-heatmap',
+              data: points,
+              getPosition: (point) => [point.lon, point.lat],
+              getWeight: (point) => point.target,
+              intensity: 1.1,
+              radiusPixels: 42,
+              threshold: 0.025,
+            }),
+            new ArcLayer<GeoDemandPoint>({
+              id: 'route-arcs',
+              data: routePoints,
+              getHeight: 0.18,
+              getSourceColor: (point) => targetRgb(point.target, minTarget, maxTarget, 180),
+              getSourcePosition: (point) => [point.lon, point.lat],
+              getTargetColor: (point) => targetRgb(point.target, minTarget, maxTarget, 110),
+              getTargetPosition: (point) => [point.dropLon, point.dropLat],
+              getWidth: (point) => 1 + Math.max(0, (point.target - minTarget) / (maxTarget - minTarget || 1)) * 4,
+              pickable: true,
+            }),
+            new ScatterplotLayer<GeoDemandPoint>({
+              id: 'pickup-points',
+              data: points,
+              getFillColor: (point) => targetRgb(point.target, minTarget, maxTarget, 220),
+              getLineColor: [255, 255, 255, 220],
+              getLineWidth: 1,
+              getPosition: (point) => [point.lon, point.lat],
+              getRadius: (point) => 5 + Math.max(0, (point.target - minTarget) / (maxTarget - minTarget || 1)) * 8,
+              lineWidthUnits: 'pixels',
+              pickable: true,
+              radiusUnits: 'pixels',
+              stroked: true,
+            }),
+          ],
+        });
+        map.addControl(overlay);
+        map.once('load', () => {
+          if (allCoordinates.length > 1) {
+            const bounds = allCoordinates.reduce((nextBounds, coordinate) => nextBounds.extend(coordinate), new maplibregl.LngLatBounds(allCoordinates[0], allCoordinates[0]));
+            map.fitBounds(bounds, {duration: 0, padding: 42});
+          }
+          setStatus('MapLibre + deck.gl WebGL layers');
+        });
+        cleanup = () => {
+          overlay.finalize();
+          map.remove();
+        };
+      } catch (error) {
+        if (!cancelled) {
+          setStatus(error instanceof Error ? error.message : 'WebGL map unavailable');
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+      cleanup?.();
+    };
+  }, [hasDropoff, maxTarget, minTarget, points]);
+
+  return (
+    <div className={styles.webglMapShell}>
+      <div className={styles.webglMap} ref={mapContainerRef} />
+      <div className={styles.webglMapOverlay}>
+        <span>{status}</span>
+        <strong>{hasDropoff ? 'Heatmap, pickup points, and route arcs' : 'Heatmap and pickup points'}</strong>
+      </div>
+    </div>
+  );
+}
+
+function GeoDatasetVisualization({table, targetCol, seriesCol}: {table: ParsedTable; targetCol: string; seriesCol: string}) {
   const pickup = coordinatePair(table.columns, ['pickup', 'pu', 'origin', '']);
   const dropoff = coordinatePair(table.columns, ['dropoff', 'do', 'destination']);
   const h3Columns = table.columns.filter((column) => {
@@ -1327,7 +1960,7 @@ function GeoDatasetVisualization({table, targetCol}: {table: ParsedTable; target
   if (!pickup && h3Columns.length === 0) {
     return null;
   }
-  const points = pickup
+  const points: GeoDemandPoint[] = pickup
     ? table.rows
         .map((row) => ({
           lon: Number(row[pickup.lon]),
@@ -1340,6 +1973,9 @@ function GeoDatasetVisualization({table, targetCol}: {table: ParsedTable; target
         .slice(0, 600)
     : [];
   const routePoints = points.filter((point) => Number.isFinite(point.dropLon) && Number.isFinite(point.dropLat)).slice(0, 140);
+  const hotCells = spatialBins(points, 5);
+  const topRoutes = dropoff ? topRoutePairs(table, pickup, dropoff, targetCol, 6) : [];
+  const zoneLeaders = seriesCol ? topTargetGroups(table, seriesCol, targetCol, 6) : [];
   const allLon = points.flatMap((point) => (Number.isFinite(point.dropLon) ? [point.lon, point.dropLon] : [point.lon]));
   const allLat = points.flatMap((point) => (Number.isFinite(point.dropLat) ? [point.lat, point.dropLat] : [point.lat]));
   const minLon = allLon.length ? Math.min(...allLon) : 0;
@@ -1352,8 +1988,65 @@ function GeoDatasetVisualization({table, targetCol}: {table: ParsedTable; target
   const width = 820;
   const height = 330;
   const padding = 28;
-  const xFor = (lon: number) => padding + ((lon - minLon) / (maxLon - minLon || 1)) * (width - padding * 2);
-  const yFor = (lat: number) => height - padding - ((lat - minLat) / (maxLat - minLat || 1)) * (height - padding * 2);
+  const projection = geoMercator().fitExtent(
+    [
+      [padding, padding],
+      [width - padding, height - padding],
+    ],
+    {
+      type: 'MultiPoint',
+      coordinates: points.flatMap((point) =>
+        Number.isFinite(point.dropLon) && Number.isFinite(point.dropLat)
+          ? [
+              [point.lon, point.lat],
+              [point.dropLon, point.dropLat],
+            ]
+          : [[point.lon, point.lat]],
+      ),
+    },
+  );
+  const geoPathForProjection = geoPath(projection);
+  const graticulePath = geoPathForProjection(
+    geoGraticule()
+      .extent([
+        [minLon, minLat],
+        [maxLon, maxLat],
+      ])
+      .step([0.02, 0.02])(),
+  );
+  const projectedPoints = points
+    .map((point): ProjectedGeoPoint | null => {
+      const projectedPickup = projection([point.lon, point.lat]);
+      const projectedDropoff =
+        Number.isFinite(point.dropLon) && Number.isFinite(point.dropLat)
+          ? projection([point.dropLon, point.dropLat])
+          : null;
+      if (!projectedPickup) {
+        return null;
+      }
+      return {
+        ...point,
+        x: projectedPickup[0],
+        y: projectedPickup[1],
+        dropX: projectedDropoff?.[0],
+        dropY: projectedDropoff?.[1],
+      };
+    })
+    .filter((point): point is ProjectedGeoPoint => point !== null);
+  const projectedRoutes = projectedPoints.filter(
+    (point) => Number.isFinite(point.dropX) && Number.isFinite(point.dropY),
+  ).slice(0, 140);
+  const densityColor = scaleSequential(interpolateTurbo).domain([minTarget, maxTarget]);
+  const contourRows =
+    projectedPoints.length > 4
+      ? contourDensity<ProjectedGeoPoint>()
+          .x((point) => point.x)
+          .y((point) => point.y)
+          .weight((point) => 0.25 + Math.max(0, (point.target - minTarget) / (maxTarget - minTarget || 1)))
+          .size([width, height])
+          .bandwidth(24)
+          .thresholds(7)(projectedPoints)
+      : [];
   const h3Rows = h3Columns
     .flatMap((column) => h3Summary(table, column).map((row) => ({...row, column})))
     .filter((row) => h3CellLabel(row) !== '' && h3CellCount(row) > 0)
@@ -1375,30 +2068,92 @@ function GeoDatasetVisualization({table, targetCol}: {table: ParsedTable; target
           <span className={styles.eyebrow}>Geography</span>
           <h3>{pickup ? 'Spatial demand view' : 'H3 coverage view'}</h3>
         </div>
-        <span>{points.length > 0 ? `${points.length.toLocaleString()} plotted rows` : `${h3DisplayRows.length.toLocaleString()} H3 cells`}</span>
+        <span>
+          {points.length > 0
+            ? `${points.length.toLocaleString()} rows, ${routePoints.length.toLocaleString()} route links`
+            : `${h3DisplayRows.length.toLocaleString()} H3 cells`}
+        </span>
       </div>
+      {points.length > 0 && (
+        <div className={styles.geoStats}>
+          <p>
+            <span>Bounds</span>
+            {`${minLat.toFixed(3)}, ${minLon.toFixed(3)} to ${maxLat.toFixed(3)}, ${maxLon.toFixed(3)}`}
+          </p>
+          <p>
+            <span>Target intensity</span>
+            {`${formatCompact(minTarget)} to ${formatCompact(maxTarget)}`}
+          </p>
+          <p>
+            <span>Map layers</span>
+            {dropoff ? 'MapLibre basemap, deck.gl heatmap, route arcs, D3 contours' : 'MapLibre basemap, deck.gl heatmap, D3 contours'}
+          </p>
+        </div>
+      )}
+      {points.length > 0 && (
+        <WebGlGeoMap points={points} minTarget={minTarget} maxTarget={maxTarget} hasDropoff={Boolean(dropoff)} />
+      )}
       {points.length > 0 && (
         <svg className={styles.geoSvg} viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Geographic dataset preview">
           <rect x="0" y="0" width={width} height={height} />
-          {routePoints.map((point, index) => (
+          {graticulePath && <path className={styles.graticuleLine} d={graticulePath} />}
+          {contourRows.map((contour, index) => (
+            <path
+              className={styles.densityContour}
+              d={geoPath()(contour) ?? undefined}
+              style={{fill: densityColor(minTarget + ((maxTarget - minTarget || 1) * (index + 1)) / contourRows.length)}}
+              key={`contour-${index}`}
+            />
+          ))}
+          {hotCells.map((cell) => (
+            <path
+              className={styles.hotCell}
+              d={projectedCellPath(cell, projection) ?? undefined}
+              style={{fill: targetColor(cell.mean, minTarget, maxTarget)}}
+              key={`${cell.x}-${cell.y}`}
+            />
+          ))}
+          {projectedRoutes.map((point, index) => (
             <line
-              x1={xFor(point.lon)}
-              y1={yFor(point.lat)}
-              x2={xFor(point.dropLon)}
-              y2={yFor(point.dropLat)}
+              x1={point.x}
+              y1={point.y}
+              x2={point.dropX}
+              y2={point.dropY}
               key={`route-${index}`}
             />
           ))}
-          {points.map((point, index) => (
+          {projectedPoints.map((point, index) => (
             <circle
-              cx={xFor(point.lon)}
-              cy={yFor(point.lat)}
+              cx={point.x}
+              cy={point.y}
               r="4"
               style={{fill: targetColor(point.target, minTarget, maxTarget)}}
               key={`point-${index}`}
             />
           ))}
         </svg>
+      )}
+      {topRoutes.length > 0 && (
+        <div className={styles.routeList}>
+          {topRoutes.map((row, index) => (
+            <span key={row.key}>
+              <strong>{index + 1}. {row.key}</strong>
+              <i>{formatCompact(row.mean)}</i>
+              <em>{row.count.toLocaleString()} rows</em>
+            </span>
+          ))}
+        </div>
+      )}
+      {zoneLeaders.length > 0 && (
+        <div className={styles.routeList}>
+          {zoneLeaders.map((row, index) => (
+            <span key={row.key}>
+              <strong>{index + 1}. {row.key}</strong>
+              <i>{formatCompact(row.mean)}</i>
+              <em>{row.count.toLocaleString()} rows</em>
+            </span>
+          ))}
+        </div>
       )}
       {h3DisplayRows.length > 0 && (
         <div className={styles.h3List}>
@@ -1549,6 +2304,574 @@ function formatMetric(value: number | undefined) {
   return value === undefined ? '-' : value.toFixed(3);
 }
 
+function buildTargetingProfile(
+  table: ParsedTable,
+  targetCol: string,
+  timestampCol: string,
+  seriesCol: string,
+  featureCols: string[],
+  sparseFeatureCols: string[],
+  modelOptions: ModelOption[],
+) {
+  const targetValues = table.rows
+    .map((row) => Number(row[targetCol]))
+    .filter((value) => Number.isFinite(value));
+  const summary = targetValues.length > 0 ? summarizeValues(targetValues) : null;
+  const roles = rankFeatureRoles(table, targetCol, timestampCol, seriesCol, featureCols, sparseFeatureCols);
+  const hasSpatial = roles.some((role) => role.role === 'spatial' && role.status !== 'excluded');
+  const hasPeriodic = roles.some((role) => role.role === 'periodic' && role.status !== 'excluded');
+  const hasSparse = sparseFeatureCols.length > 0;
+  const hasGraph = graphColumnReadiness(table.columns);
+  const intermittent = summary ? summary.zeroShare > 0.18 : false;
+  const skewed = summary ? summary.p90 > summary.median * 1.65 : false;
+  const forecastModelValue =
+    intermittent && modelOptions.some((option) => option.value === 'intermittent_demand')
+      ? 'intermittent_demand'
+      : modelOptions.some((option) => option.value === 'auto_forecast')
+        ? 'auto_forecast'
+        : modelOptions[0]?.value ?? 'auto_forecast';
+  const forecastModel = modelOptions.find((option) => option.value === forecastModelValue)?.label ?? forecastModelValue;
+  const splitterModeValue = hasSpatial && hasPeriodic ? 'full' : hasSpatial ? 'spatial' : hasPeriodic ? 'periodic' : 'auto';
+  const splitterMode = {
+    full: 'Spatial + periodic toolkit',
+    spatial: 'Spatial splitters',
+    periodic: 'Periodic splitters',
+    auto: 'Auto dense',
+  }[splitterModeValue];
+  const lossValue = skewed ? 'huber' : summary && summary.zeroShare > 0.05 ? 'l1' : 'l2';
+  const loss = {
+    huber: 'Huber robust',
+    l1: 'L1 median',
+    l2: 'L2 mean',
+  }[lossValue];
+  const graphPath = hasGraph ? 'Graph neural ready' : hasSparse ? 'Sparse set ready' : seriesCol ? 'ID embedding ready' : 'Dense features only';
+  const recommendedFeatureCols = roles
+    .filter((role) => role.role !== 'sparse set' && role.status !== 'review')
+    .slice(0, 12)
+    .map((role) => role.column);
+  const recommendedSparseFeatureCols = roles
+    .filter((role) => role.role === 'sparse set')
+    .slice(0, 4)
+    .map((role) => role.column);
+  const graphSourceCol = guessColumn(table.columns, ['pickup_zone_id', 'PULocationID', 'source', 'source_id']) ?? '';
+  const graphTargetCol = guessColumn(table.columns, ['dropoff_zone_id', 'DOLocationID', 'target_node', 'target_id', 'destination']) ?? '';
+  const graphWeightCol = guessColumn(table.columns, ['edge_weight', 'weight', 'trip_count']) ?? '';
+  const neuralIdCol = guessColumn(table.columns, ['pickup_zone_id', 'PULocationID', 'zone_id', 'id']) ?? '';
+  const neuralPipeline = hasGraph ? 'hinsage' : 'embedding';
+  const reasons = [
+    `${featureCols.length.toLocaleString()} dense features selected`,
+    `${sparseFeatureCols.length.toLocaleString()} sparse sets selected`,
+    hasSpatial ? 'spatial coordinates detected' : 'no coordinate pair selected',
+    hasPeriodic ? 'calendar phase detected' : 'no periodic feature selected',
+    hasSpatial ? 'spatial targeting applied to features and splitters' : 'dense forecast path preferred',
+    skewed ? 'skew-resistant loss preferred' : 'mean target loss is suitable',
+  ];
+  const readinessChecks = [
+    {
+      label: 'Target',
+      detail: summary ? `${targetValues.length.toLocaleString()} finite rows, ${(summary.zeroShare * 100).toFixed(1)}% zero share` : 'no numeric target values',
+      status: summary ? 'ready' : 'review',
+    },
+    {
+      label: 'Time',
+      detail: timestampCol && table.columns.includes(timestampCol) ? `${timestampCol} selected` : 'choose a timestamp column',
+      status: timestampCol && table.columns.includes(timestampCol) ? 'ready' : 'review',
+    },
+    {
+      label: 'Features',
+      detail: `${recommendedFeatureCols.length.toLocaleString()} dense, ${recommendedSparseFeatureCols.length.toLocaleString()} sparse recommended`,
+      status: recommendedFeatureCols.length > 0 || recommendedSparseFeatureCols.length > 0 ? 'ready' : 'review',
+    },
+    {
+      label: 'Spatial',
+      detail: hasSpatial ? 'coordinate features available for maps and spatial splitters' : 'no coordinate pair found in selected features',
+      status: hasSpatial ? 'ready' : 'review',
+    },
+    {
+      label: 'Graph',
+      detail: hasGraph ? `${graphSourceCol} to ${graphTargetCol}` : 'source and target node columns not both detected',
+      status: hasGraph ? 'ready' : 'review',
+    },
+  ];
+  const score = Math.min(100, 35 + featureCols.length * 4 + sparseFeatureCols.length * 8 + (hasSpatial ? 18 : 0) + (hasPeriodic ? 10 : 0) + (hasGraph ? 12 : 0));
+  return {
+    forecastModel,
+    forecastModelValue,
+    splitterMode,
+    splitterModeValue,
+    loss,
+    lossValue,
+    graphPath,
+    reasons,
+    readinessChecks,
+    score,
+    featureCols: recommendedFeatureCols,
+    sparseFeatureCols: recommendedSparseFeatureCols,
+    graphSourceCol,
+    graphTargetCol,
+    graphWeightCol,
+    neuralIdCol,
+    neuralPipeline,
+  };
+}
+
+function rankFeatureRoles(
+  table: ParsedTable,
+  targetCol: string,
+  timestampCol: string,
+  seriesCol: string,
+  featureCols: string[],
+  sparseFeatureCols: string[],
+) {
+  const targetValues = table.rows.map((row) => Number(row[targetCol]));
+  return table.columns
+    .filter((column) => column !== targetCol && column !== timestampCol && column !== seriesCol)
+    .map((column) => {
+      const role = sparseFeatureCols.includes(column) ? 'sparse set' : inferFeatureKind(column);
+      const selected = featureCols.includes(column) || sparseFeatureCols.includes(column);
+      const numericValues = table.rows.map((row) => Number(row[column]));
+      const finitePairs = numericValues
+        .map((value, index) => ({value, target: targetValues[index]}))
+        .filter((row) => Number.isFinite(row.value) && Number.isFinite(row.target));
+      const signal = finitePairs.length >= 3 ? Math.abs(pearsonCorrelation(finitePairs.map((row) => row.value), finitePairs.map((row) => row.target))) : 0;
+      const coverage = table.rows.length === 0 ? 0 : table.rows.filter((row) => (row[column]?.trim() ?? '') !== '').length / table.rows.length;
+      const roleBoost = role === 'spatial' ? 0.24 : role === 'periodic' ? 0.18 : role === 'sparse set' ? 0.2 : 0.08;
+      const leakagePenalty = looksLikeLeakageColumn(column, targetCol) ? 0.35 : 0;
+      const score = Math.max(0, signal * 0.55 + coverage * 0.25 + roleBoost + (selected ? 0.18 : 0) - leakagePenalty);
+      return {
+        column,
+        role,
+        score,
+        status: looksLikeLeakageColumn(column, targetCol) ? 'review' : selected ? 'selected' : coverage > 0.8 ? 'available' : 'sparse',
+      };
+    })
+    .sort((left, right) => right.score - left.score || left.column.localeCompare(right.column));
+}
+
+function pearsonCorrelation(left: number[], right: number[]) {
+  const count = Math.min(left.length, right.length);
+  if (count === 0) {
+    return 0;
+  }
+  const leftMean = left.slice(0, count).reduce((sum, value) => sum + value, 0) / count;
+  const rightMean = right.slice(0, count).reduce((sum, value) => sum + value, 0) / count;
+  let numerator = 0;
+  let leftDenominator = 0;
+  let rightDenominator = 0;
+  for (let index = 0; index < count; index += 1) {
+    const leftDelta = left[index] - leftMean;
+    const rightDelta = right[index] - rightMean;
+    numerator += leftDelta * rightDelta;
+    leftDenominator += leftDelta ** 2;
+    rightDenominator += rightDelta ** 2;
+  }
+  const denominator = Math.sqrt(leftDenominator * rightDenominator);
+  return denominator === 0 ? 0 : numerator / denominator;
+}
+
+function graphColumnReadiness(columns: string[]) {
+  return Boolean(
+    guessColumn(columns, ['pickup_zone_id', 'PULocationID', 'source', 'source_id']) &&
+      guessColumn(columns, ['dropoff_zone_id', 'DOLocationID', 'target_node', 'target_id', 'destination']),
+  );
+}
+
+function looksLikeLeakageColumn(column: string, targetCol: string) {
+  const normalized = column.toLowerCase();
+  const target = targetCol.toLowerCase();
+  return normalized !== target && (normalized.includes(`${target}_future`) || normalized.includes('future_target') || normalized.includes('label'));
+}
+
+function summarizeValues(values: number[]) {
+  const sorted = [...values].sort((a, b) => a - b);
+  const sum = sorted.reduce((total, value) => total + value, 0);
+  return {
+    mean: sum / sorted.length,
+    median: percentile(sorted, 0.5),
+    p10: percentile(sorted, 0.1),
+    p90: percentile(sorted, 0.9),
+    zeroShare: sorted.filter((value) => value === 0).length / sorted.length,
+  };
+}
+
+function percentile(sortedValues: number[], percentileRank: number) {
+  if (sortedValues.length === 0) {
+    return 0;
+  }
+  const index = Math.max(0, Math.min(sortedValues.length - 1, Math.round((sortedValues.length - 1) * percentileRank)));
+  return sortedValues[index];
+}
+
+function histogramBins(values: number[], count: number) {
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const span = max - min || 1;
+  const bins = Array.from({length: count}, (_, index) => ({
+    start: min + (span * index) / count,
+    end: min + (span * (index + 1)) / count,
+    count: 0,
+  }));
+  for (const value of values) {
+    const index = Math.min(count - 1, Math.max(0, Math.floor(((value - min) / span) * count)));
+    bins[index].count += 1;
+  }
+  return bins;
+}
+
+function summarizeTimeBuckets(table: ParsedTable, timestampCol: string, targetCol: string) {
+  if (!table.columns.includes(timestampCol)) {
+    return [];
+  }
+  const buckets = new Map<string, {sum: number; count: number}>();
+  for (const row of table.rows) {
+    const timestamp = row[timestampCol] ?? '';
+    const target = Number(row[targetCol]);
+    if (!Number.isFinite(target)) {
+      continue;
+    }
+    const parsed = new Date(timestamp);
+    if (Number.isNaN(parsed.getTime())) {
+      continue;
+    }
+    const label = timestamp.includes('T') || timestamp.includes(':') ? `${parsed.getUTCHours().toString().padStart(2, '0')}:00` : parsed.toUTCString().slice(0, 3);
+    const bucket = buckets.get(label) ?? {sum: 0, count: 0};
+    bucket.sum += target;
+    bucket.count += 1;
+    buckets.set(label, bucket);
+  }
+  return Array.from(buckets.entries())
+    .map((entry) => {
+      const label = entry[0];
+      const bucket = entry[1];
+      return {label, mean: bucket.sum / bucket.count, count: bucket.count};
+    })
+    .sort((a, b) => a.label.localeCompare(b.label))
+    .slice(0, 24);
+}
+
+function topTargetGroups(table: ParsedTable, groupCol: string, targetCol: string, limit: number) {
+  const groups = new Map<string, {sum: number; count: number}>();
+  for (const row of table.rows) {
+    const key = row[groupCol]?.trim();
+    const target = Number(row[targetCol]);
+    if (!key || !Number.isFinite(target)) {
+      continue;
+    }
+    const group = groups.get(key) ?? {sum: 0, count: 0};
+    group.sum += target;
+    group.count += 1;
+    groups.set(key, group);
+  }
+  return Array.from(groups.entries())
+    .map((entry) => {
+      const key = entry[0];
+      const group = entry[1];
+      return {key, mean: group.sum / group.count, count: group.count};
+    })
+    .sort((left, right) => right.mean - left.mean || right.count - left.count || left.key.localeCompare(right.key))
+    .slice(0, limit);
+}
+
+function topRoutePairs(
+  table: ParsedTable,
+  pickup: {lat: string; lon: string},
+  dropoff: {lat: string; lon: string},
+  targetCol: string,
+  limit: number,
+) {
+  const groups = new Map<string, {sum: number; count: number}>();
+  for (const row of table.rows) {
+    const target = Number(row[targetCol]);
+    const pickupLabel = `${Number(row[pickup.lat]).toFixed(3)},${Number(row[pickup.lon]).toFixed(3)}`;
+    const dropoffLabel = `${Number(row[dropoff.lat]).toFixed(3)},${Number(row[dropoff.lon]).toFixed(3)}`;
+    if (!Number.isFinite(target) || pickupLabel.includes('NaN') || dropoffLabel.includes('NaN')) {
+      continue;
+    }
+    const key = `${pickupLabel} -> ${dropoffLabel}`;
+    const group = groups.get(key) ?? {sum: 0, count: 0};
+    group.sum += target;
+    group.count += 1;
+    groups.set(key, group);
+  }
+  return Array.from(groups.entries())
+    .map((entry) => {
+      const key = entry[0];
+      const group = entry[1];
+      return {key, mean: group.sum / group.count, count: group.count};
+    })
+    .sort((left, right) => right.mean - left.mean || right.count - left.count || left.key.localeCompare(right.key))
+    .slice(0, limit);
+}
+
+function rankTargetOpportunities(
+  table: ParsedTable,
+  targetCol: string,
+  timestampCol: string,
+  seriesCol: string,
+  limit: number,
+) {
+  const globalTargets = table.rows.map((row) => Number(row[targetCol])).filter((value) => Number.isFinite(value));
+  if (globalTargets.length === 0) {
+    return [];
+  }
+  const globalMean = globalTargets.reduce((sum, value) => sum + value, 0) / globalTargets.length;
+  const segmentSpecs = opportunitySegmentSpecs(table, seriesCol);
+  const seen = new Set<string>();
+  return segmentSpecs
+    .flatMap((spec) => scoreOpportunitySegments(table, targetCol, timestampCol, spec, globalMean, globalTargets.length))
+    .filter((row) => {
+      const key = `${row.segmentType}:${row.key}`;
+      if (seen.has(key)) {
+        return false;
+      }
+      seen.add(key);
+      return true;
+    })
+    .sort((left, right) => right.score - left.score || right.mean - left.mean || left.key.localeCompare(right.key))
+    .slice(0, limit);
+}
+
+function opportunitySegmentSpecs(table: ParsedTable, seriesCol: string) {
+  const sourceCol = guessColumn(table.columns, ['pickup_zone_id', 'PULocationID', 'source', 'source_id']);
+  const targetCol = guessColumn(table.columns, ['dropoff_zone_id', 'DOLocationID', 'target_node', 'target_id', 'destination']);
+  const h3Col = table.columns.find((column) => {
+    const normalized = column.toLowerCase();
+    return normalized.includes('h3') || table.rows.some((row) => isH3Like(row[column] ?? ''));
+  });
+  const specs: {segmentType: string; columns: string[]}[] = [];
+  if (sourceCol && targetCol) {
+    specs.push({segmentType: 'Route', columns: [sourceCol, targetCol]});
+  }
+  if (h3Col) {
+    specs.push({segmentType: 'H3 cell', columns: [h3Col]});
+  }
+  if (seriesCol && table.columns.includes(seriesCol)) {
+    specs.push({segmentType: 'Series', columns: [seriesCol]});
+  }
+  return specs;
+}
+
+function scoreOpportunitySegments(
+  table: ParsedTable,
+  targetCol: string,
+  timestampCol: string,
+  spec: {segmentType: string; columns: string[]},
+  globalMean: number,
+  totalRows: number,
+) {
+  const groups = new Map<string, {values: {target: number; timestamp: string; rowIndex: number}[]; label: string}>();
+  table.rows.forEach((row, rowIndex) => {
+    const target = Number(row[targetCol]);
+    if (!Number.isFinite(target)) {
+      return;
+    }
+    const keys = segmentKeysForRow(row, spec.columns);
+    for (const key of keys) {
+      const group = groups.get(key) ?? {values: [], label: key};
+      group.values.push({target, timestamp: row[timestampCol] ?? '', rowIndex});
+      groups.set(key, group);
+    }
+  });
+  return Array.from(groups.entries())
+    .map(([key, group]) => {
+      const targets = group.values.map((value) => value.target);
+      const mean = targets.reduce((sum, value) => sum + value, 0) / targets.length;
+      const lift = globalMean === 0 ? 0 : (mean - globalMean) / Math.abs(globalMean);
+      const share = targets.length / Math.max(totalRows, 1);
+      const trend = segmentTrend(group.values);
+      const volatility = coefficientOfVariation(targets);
+      const score = Math.max(0, lift * 0.52 + share * 0.24 + Math.max(trend, 0) * 0.18 + Math.min(volatility, 1.5) * 0.06);
+      return {
+        key,
+        segmentType: spec.segmentType,
+        count: targets.length,
+        mean,
+        lift,
+        share,
+        trend,
+        volatility,
+        score,
+        action: opportunityAction(lift, trend, volatility, targets.length),
+      };
+    })
+    .filter((row) => row.count >= Math.max(2, Math.floor(totalRows * 0.025)) && row.lift > -0.05)
+    .sort((left, right) => right.score - left.score || right.mean - left.mean)
+    .slice(0, 8);
+}
+
+function segmentKeysForRow(row: Record<string, string>, columns: string[]) {
+  if (columns.length === 1) {
+    const value = row[columns[0]]?.trim() ?? '';
+    if (!value) {
+      return [];
+    }
+    if (looksDelimitedSegment(value)) {
+      return value.split(/[|;,\s]+/).map((item) => item.trim()).filter(Boolean).slice(0, 8);
+    }
+    return [value];
+  }
+  const values = columns.map((column) => row[column]?.trim() ?? '');
+  return values.every(Boolean) ? [values.join(' -> ')] : [];
+}
+
+function looksDelimitedSegment(value: string) {
+  return /[|;,\s]/.test(value) && value.split(/[|;,\s]+/).filter(Boolean).length > 1;
+}
+
+function segmentTrend(values: {target: number; timestamp: string; rowIndex: number}[]) {
+  if (values.length < 4) {
+    return 0;
+  }
+  const ordered = [...values].sort((left, right) => {
+    const leftTime = Date.parse(left.timestamp);
+    const rightTime = Date.parse(right.timestamp);
+    if (Number.isFinite(leftTime) && Number.isFinite(rightTime) && leftTime !== rightTime) {
+      return leftTime - rightTime;
+    }
+    return left.rowIndex - right.rowIndex;
+  });
+  const midpoint = Math.floor(ordered.length / 2);
+  const earlier = ordered.slice(0, midpoint).map((row) => row.target);
+  const later = ordered.slice(midpoint).map((row) => row.target);
+  const earlierMean = earlier.reduce((sum, value) => sum + value, 0) / Math.max(earlier.length, 1);
+  const laterMean = later.reduce((sum, value) => sum + value, 0) / Math.max(later.length, 1);
+  return earlierMean === 0 ? 0 : (laterMean - earlierMean) / Math.abs(earlierMean);
+}
+
+function coefficientOfVariation(values: number[]) {
+  if (values.length < 2) {
+    return 0;
+  }
+  const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
+  const variance = values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / values.length;
+  return mean === 0 ? 0 : Math.sqrt(variance) / Math.abs(mean);
+}
+
+function opportunityAction(lift: number, trend: number, volatility: number, count: number) {
+  if (lift > 0.2 && trend > 0.08) {
+    return 'Prioritize capacity';
+  }
+  if (lift > 0.12 && volatility > 0.22) {
+    return 'Stabilize service';
+  }
+  if (lift > 0.12) {
+    return 'Target offer';
+  }
+  if (trend > 0.12 && count >= 4) {
+    return 'Watch rising demand';
+  }
+  return 'Monitor segment';
+}
+
+type ProjectedGeoPoint = {
+  lon: number;
+  lat: number;
+  target: number;
+  dropLon: number;
+  dropLat: number;
+  x: number;
+  y: number;
+  dropX?: number;
+  dropY?: number;
+};
+
+function spatialBins(points: {lon: number; lat: number; target: number}[], limit: number) {
+  if (points.length === 0) {
+    return [];
+  }
+  const minLon = Math.min(...points.map((point) => point.lon));
+  const maxLon = Math.max(...points.map((point) => point.lon));
+  const minLat = Math.min(...points.map((point) => point.lat));
+  const maxLat = Math.max(...points.map((point) => point.lat));
+  const gridSize = 6;
+  const cells = new Map<string, {x: number; y: number; sum: number; count: number}>();
+  for (const point of points) {
+    const x = Math.min(gridSize - 1, Math.max(0, Math.floor(((point.lon - minLon) / (maxLon - minLon || 1)) * gridSize)));
+    const y = Math.min(gridSize - 1, Math.max(0, Math.floor(((point.lat - minLat) / (maxLat - minLat || 1)) * gridSize)));
+    const key = `${x}:${y}`;
+    const cell = cells.get(key) ?? {x, y, sum: 0, count: 0};
+    cell.sum += point.target;
+    cell.count += 1;
+    cells.set(key, cell);
+  }
+  return Array.from(cells.values())
+    .map((cell) => {
+      const lonSpan = (maxLon - minLon || 1) / gridSize;
+      const latSpan = (maxLat - minLat || 1) / gridSize;
+      return {
+        x: cell.x,
+        y: cell.y,
+        count: cell.count,
+        mean: cell.sum / cell.count,
+        minLon: minLon + lonSpan * cell.x,
+        maxLon: minLon + lonSpan * (cell.x + 1),
+        minLat: minLat + latSpan * cell.y,
+        maxLat: minLat + latSpan * (cell.y + 1),
+      };
+    })
+    .sort((left, right) => right.mean - left.mean || right.count - left.count)
+    .slice(0, limit);
+}
+
+function projectedCellPath(
+  cell: {minLon: number; maxLon: number; minLat: number; maxLat: number},
+  projection: ReturnType<typeof geoMercator>,
+) {
+  const corners = [
+    projection([cell.minLon, cell.minLat]),
+    projection([cell.maxLon, cell.minLat]),
+    projection([cell.maxLon, cell.maxLat]),
+    projection([cell.minLon, cell.maxLat]),
+  ];
+  if (corners.some((corner) => corner === null)) {
+    return null;
+  }
+  const projected = corners as [number, number][];
+  return `M${projected.map((corner) => `${corner[0]},${corner[1]}`).join('L')}Z`;
+}
+
+function formatCompact(value: number) {
+  return new Intl.NumberFormat('en-US', {
+    maximumFractionDigits: Math.abs(value) >= 100 ? 0 : 2,
+    notation: Math.abs(value) >= 10000 ? 'compact' : 'standard',
+  }).format(value);
+}
+
+function summarizeComponentRecord(record: ForecastComponentRecord) {
+  const ignored = new Set(['trend_linear', 'changepoint_delta', 'seasonal_total', 'event_total', 'regressor_total', 'non_trend_total']);
+  const rows: {label: string; value: number}[] = [];
+  Object.entries(record.components).forEach(([name, value]) => {
+    if (ignored.has(name)) {
+      return;
+    }
+    if (typeof value === 'number') {
+      rows.push({label: componentLabel(name), value});
+      return;
+    }
+    Object.entries(value).forEach(([childName, childValue]) => {
+      if (Number.isFinite(childValue)) {
+        rows.push({label: `${componentLabel(name)}: ${childName}`, value: childValue});
+      }
+    });
+  });
+  return rows
+    .filter((row) => Math.abs(row.value) > 1.0e-9)
+    .sort((a, b) => Math.abs(b.value) - Math.abs(a.value))
+    .slice(0, 8);
+}
+
+function numberComponent(value: number | Record<string, number> | undefined) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
+function componentLabel(name: string) {
+  return name
+    .split('_')
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
 function guessColumn(columns: string[], candidates: string[]) {
   const normalized = new Map(columns.map((column) => [column.toLowerCase(), column]));
   for (const candidate of candidates) {
@@ -1567,16 +2890,27 @@ function coordinatePair(columns: string[], prefixes: string[]) {
       `${prefixPart}latitude`,
       `${prefixPart}lat`,
       `${prefixPart}y`,
+      `${prefixPart}centroid_lat`,
+      `${prefixPart}centroid_y`,
       prefix ? `${prefix}Latitude` : 'latitude',
       prefix ? `${prefix}Lat` : 'lat',
+      prefix ? `${prefix}CentroidLat` : 'centroid_lat',
+      prefix ? `${prefix}CentroidY` : 'centroid_y',
     ]);
     const lon = guessColumn(columns, [
       `${prefixPart}longitude`,
       `${prefixPart}lon`,
       `${prefixPart}lng`,
       `${prefixPart}x`,
+      `${prefixPart}centroid_lon`,
+      `${prefixPart}centroid_lng`,
+      `${prefixPart}centroid_x`,
       prefix ? `${prefix}Longitude` : 'longitude',
       prefix ? `${prefix}Lon` : 'lon',
+      prefix ? `${prefix}Lng` : 'lng',
+      prefix ? `${prefix}CentroidLon` : 'centroid_lon',
+      prefix ? `${prefix}CentroidLng` : 'centroid_lng',
+      prefix ? `${prefix}CentroidX` : 'centroid_x',
     ]);
     if (lat && lon) {
       return {lat, lon};
@@ -1597,7 +2931,7 @@ function h3Summary(table: ParsedTable, column: string) {
       counts.set(cell, (counts.get(cell) ?? 0) + 1);
     }
   }
-  return [...counts.entries()]
+  return Array.from(counts.entries())
     .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
     .slice(0, 8)
     .map(([cell, count]) => ({cell, count}));
@@ -1615,6 +2949,14 @@ function targetColor(value: number, min: number, max: number) {
   const ratio = Math.max(0, Math.min(1, (value - min) / (max - min || 1)));
   const hue = 190 - ratio * 150;
   return `hsl(${hue.toFixed(1)} 78% 48%)`;
+}
+
+function targetRgb(value: number, min: number, max: number, alpha: number): [number, number, number, number] {
+  const ratio = Math.max(0, Math.min(1, (value - min) / (max - min || 1)));
+  const red = Math.round(18 + ratio * 218);
+  const green = Math.round(143 - ratio * 70);
+  const blue = Math.round(134 - ratio * 82);
+  return [red, green, blue, alpha];
 }
 
 function defaultFeatureColumns(table: ParsedTable, targetCol: string, timestampCol: string, seriesCol: string) {
@@ -1713,8 +3055,57 @@ function inferFeatureKind(column: string) {
   return 'numeric';
 }
 
+function inferMonotonicConstraint(column: string) {
+  const normalized = column.toLowerCase();
+  if (
+    normalized.includes('trip_distance') ||
+    normalized === 'distance' ||
+    normalized.endsWith('_distance') ||
+    normalized.includes('duration') ||
+    normalized.includes('elapsed') ||
+    normalized.includes('fare') ||
+    normalized.includes('tip') ||
+    normalized.includes('toll') ||
+    normalized.includes('surcharge') ||
+    normalized.includes('passenger_count')
+  ) {
+    return 1;
+  }
+  if (normalized.includes('discount') || normalized.includes('promo')) {
+    return -1;
+  }
+  return 0;
+}
+
 function inferPeriodicPeriod(column: string) {
   return column.toLowerCase().includes('hour') ? 24 : 7;
+}
+
+function seasonalityPresets(frequency: string) {
+  if (frequency === 'hourly') {
+    return [
+      {key: 'day', label: 'Day', description: 'Daily hourly cycle', length: 24},
+      {key: 'week', label: 'Week', description: 'Weekly hourly cycle', length: 168},
+      {key: 'quarter', label: 'Quarter', description: 'Quarter-year hourly cycle', length: 2184},
+      {key: 'year', label: 'Year', description: 'Yearly hourly cycle', length: 8760},
+    ];
+  }
+  if (frequency === 'weekly') {
+    return [
+      {key: 'quarter', label: 'Quarter', description: 'Quarter-year weekly cycle', length: 13},
+      {key: 'year', label: 'Year', description: 'Yearly weekly cycle', length: 52},
+      {key: 'two_year', label: '2 years', description: 'Two-year weekly cycle', length: 104},
+    ];
+  }
+  return [
+    {key: 'week', label: 'Week', description: 'Weekly daily cycle', length: 7},
+    {key: 'quarter', label: 'Quarter', description: 'Quarter-year daily cycle', length: 91},
+    {key: 'year', label: 'Year', description: 'Yearly daily cycle', length: 365},
+  ];
+}
+
+function seasonalityLabel(frequency: string, seasonLength: number) {
+  return seasonalityPresets(frequency).find((preset) => preset.length === seasonLength)?.label ?? 'Custom';
 }
 
 function buildSuggestedConfig({
@@ -1764,6 +3155,9 @@ function buildSuggestedConfig({
       .map((column) => [column, inferPeriodicPeriod(column)]),
   );
   const selectedModel = modelOptions.find((option) => option.value === model);
+  const targetingProfile = buildTargetingProfile(table, targetCol, timestampCol, seriesCol, featureCols, sparseFeatureCols, modelOptions);
+  const rankedFeatures = rankFeatureRoles(table, targetCol, timestampCol, seriesCol, featureCols, sparseFeatureCols).slice(0, 20);
+  const opportunityTargets = rankTargetOpportunities(table, targetCol, timestampCol, seriesCol, 20);
   return {
     cartoboostConfigVersion: 1,
     source: {
@@ -1784,7 +3178,34 @@ function buildSuggestedConfig({
         pickup: coordinatePair(table.columns, ['pickup', 'pu', 'origin', '']),
         dropoff: coordinatePair(table.columns, ['dropoff', 'do', 'destination']),
       },
-      visualizations: ['spatial_target_scatter', 'route_endpoint_lines', 'h3_cell_frequency'],
+      visualizations: ['spatial_target_scatter', 'route_endpoint_lines', 'spatial_hot_cells', 'h3_cell_frequency', 'target_ranked_routes'],
+    },
+    targeting: {
+      enabled: true,
+      diagnostics: ['target_histogram', 'zero_share', 'p10_p90_band', 'time_bucket_mean', 'series_mean_rank'],
+      targetCol,
+      seriesIdCol: seriesCol || null,
+      recommendedPlan: {
+        forecastModel: targetingProfile.forecastModelValue,
+        forecastModelLabel: targetingProfile.forecastModel,
+        splitterMode: targetingProfile.splitterModeValue,
+        splitterLabel: targetingProfile.splitterMode,
+        loss: targetingProfile.lossValue,
+        lossLabel: targetingProfile.loss,
+        graphPath: targetingProfile.graphPath,
+        readinessScore: targetingProfile.score,
+        readinessChecks: targetingProfile.readinessChecks,
+        reasons: targetingProfile.reasons,
+        denseFeatureCols: targetingProfile.featureCols,
+        sparseFeatureCols: targetingProfile.sparseFeatureCols,
+        neuralPipeline: targetingProfile.neuralPipeline,
+        neuralIdCol: targetingProfile.neuralIdCol || null,
+        graphSourceCol: targetingProfile.graphSourceCol || null,
+        graphTargetCol: targetingProfile.graphTargetCol || null,
+        graphWeightCol: targetingProfile.graphWeightCol || null,
+      },
+      rankedFeatures,
+      opportunityTargets,
     },
     forecast: {
       enabled: true,
@@ -1798,6 +3219,7 @@ function buildSuggestedConfig({
       pipeline: selectedModel?.group ?? 'custom',
       options: {
         seasonLength,
+        seasonality: seasonalityLabel(frequency, seasonLength),
       },
       roster: modelOptions.map((option) => ({
         model: option.value,
@@ -1887,9 +3309,142 @@ function numericCovariates(row: Record<string, string>, excludedColumns: string[
   );
 }
 
+function isPiecewiseForecastModel(model: string) {
+  return model.trim().toLowerCase().replace(/-/g, '_') === 'piecewise_linear_seasonal';
+}
+
+function numericCovariateColumns(table: ParsedTable, excludedColumns: string[]) {
+  const excluded = new Set(excludedColumns.filter(Boolean));
+  return table.columns.filter((column) => {
+    if (excluded.has(column)) {
+      return false;
+    }
+    return table.rows.some((row) => Number.isFinite(Number(row[column])));
+  });
+}
+
+function carriedFutureRegressors(table: ParsedTable, columns: string[], horizon: number) {
+  const lastFinite: Record<string, number> = {};
+  for (const column of columns) {
+    for (let index = table.rows.length - 1; index >= 0; index -= 1) {
+      const value = Number(table.rows[index][column]);
+      if (Number.isFinite(value)) {
+        lastFinite[column] = value;
+        break;
+      }
+    }
+  }
+  return Object.fromEntries(
+    columns
+      .filter((column) => Number.isFinite(lastFinite[column]))
+      .map((column) => [column, Array.from({length: horizon}, () => lastFinite[column])]),
+  );
+}
+
+function carriedFutureRegressorsBySeries(
+  table: ParsedTable,
+  columns: string[],
+  horizon: number,
+  seriesCol: string,
+) {
+  if (!seriesCol) {
+    return {};
+  }
+  const lastFiniteBySeries: Record<string, Record<string, number>> = {};
+  for (const row of table.rows) {
+    const seriesId = String(row[seriesCol] ?? '');
+    if (!seriesId) {
+      continue;
+    }
+    const values = (lastFiniteBySeries[seriesId] ??= {});
+    for (const column of columns) {
+      const value = Number(row[column]);
+      if (Number.isFinite(value)) {
+        values[column] = value;
+      }
+    }
+  }
+  return Object.fromEntries(
+    Object.entries(lastFiniteBySeries).map(([seriesId, values]) => [
+      seriesId,
+      Object.fromEntries(
+        columns
+          .filter((column) => Number.isFinite(values[column]))
+          .map((column) => [column, Array.from({length: horizon}, () => values[column])]),
+      ),
+    ]),
+  );
+}
+
+function inferLogisticBoundRegressors(table: ParsedTable, targetCol: string, columns: string[]) {
+  const capRegressor = columns.find((column) => {
+    const normalized = column.toLowerCase();
+    return (
+      (normalized.includes('capacity') ||
+        normalized.includes('cap') ||
+        normalized.includes('ceiling') ||
+        normalized.includes('upper') ||
+        normalized === 'max' ||
+        normalized.endsWith('_max')) &&
+      observedBoundsTarget(table, targetCol, column, 'upper')
+    );
+  });
+  const floorRegressor = columns.find((column) => {
+    const normalized = column.toLowerCase();
+    return (
+      (normalized.includes('floor') ||
+        normalized.includes('minimum') ||
+        normalized.includes('lower') ||
+        normalized === 'min' ||
+        normalized.endsWith('_min')) &&
+      observedBoundsTarget(table, targetCol, column, 'lower')
+    );
+  });
+  if (!capRegressor) {
+    return {};
+  }
+  return {
+    growth: 'logistic',
+    capRegressor,
+    ...(floorRegressor ? {floorRegressor} : {}),
+  };
+}
+
+function observedBoundsTarget(
+  table: ParsedTable,
+  targetCol: string,
+  column: string,
+  direction: 'upper' | 'lower',
+) {
+  let compared = 0;
+  for (const row of table.rows) {
+    const target = Number(row[targetCol]);
+    const bound = Number(row[column]);
+    if (!Number.isFinite(target) || !Number.isFinite(bound)) {
+      continue;
+    }
+    compared += 1;
+    if (direction === 'upper' && bound <= target) {
+      return false;
+    }
+    if (direction === 'lower' && bound >= target) {
+      return false;
+    }
+  }
+  return compared >= Math.max(3, Math.floor(table.rows.length * 0.5));
+}
+
 async function importExternalModule(url: string) {
   const dynamicImport = new Function('url', 'return import(url);') as (url: string) => Promise<unknown>;
   return dynamicImport(url);
+}
+
+async function ensureJavaScriptModule(url: string) {
+  const response = await fetch(url, {method: 'HEAD', cache: 'no-store'});
+  const contentType = response.headers.get('content-type') ?? '';
+  if (!response.ok || contentType.includes('text/html')) {
+    throw new Error('CartoBoost WebAssembly bundle is not available from this dev server.');
+  }
 }
 
 let initializedWasmModule:
@@ -1905,6 +3460,7 @@ async function getInitializedWasmModule(wasmJsUrl: string, wasmBinaryUrl: string
     initializedWasmModule = {
       key,
       promise: (async () => {
+        await ensureJavaScriptModule(wasmJsUrl);
         const wasmModule = (await importExternalModule(wasmJsUrl)) as WasmModule;
         await wasmModule.default({module_or_path: wasmBinaryUrl});
         return wasmModule;
@@ -1956,6 +3512,27 @@ async function runBrowserForecast({
   seasonLength: number;
 }) {
   const wasmModule = await getInitializedWasmModule(wasmJsUrl, wasmBinaryUrl);
+  const covariateColumns = numericCovariateColumns(table, [timestampCol, targetCol, seriesCol]);
+  const logisticBounds = isPiecewiseForecastModel(model)
+    ? inferLogisticBoundRegressors(table, targetCol, covariateColumns)
+    : {};
+  const piecewiseOptions = isPiecewiseForecastModel(model)
+    ? {
+        extraRegressors: covariateColumns,
+        extraRegressorMonotonicConstraints: Object.fromEntries(
+          covariateColumns
+            .map((column) => [column, inferMonotonicConstraint(column)] as const)
+            .filter(([, direction]) => direction !== 0),
+        ),
+        futureRegressors: carriedFutureRegressors(table, covariateColumns, horizon),
+        futureRegressorsBySeries: carriedFutureRegressorsBySeries(table, covariateColumns, horizon, seriesCol),
+        quantileLevels: [0.1, 0.5, 0.9],
+        uncertaintySamples: 128,
+        ...logisticBounds,
+        includeSamples: false,
+        includeQuantiles: true,
+      }
+    : {};
   return wasmModule.runForecast({
     rows: table.rows.map((row) => ({
       timestamp: row[timestampCol],
@@ -1968,6 +3545,8 @@ async function runBrowserForecast({
     model,
     options: {
       seasonLength,
+      includeComponents: true,
+      ...piecewiseOptions,
     },
     metadata: {
       timestampCol,
@@ -2030,6 +3609,7 @@ async function runBrowserRegression({
       learningRate: 0.06,
       maxDepth: 3,
       minSamplesLeaf: Math.max(2, Math.min(20, Math.floor(rows.length / 20))),
+      monotonicConstraints: featureCols.map(inferMonotonicConstraint),
     },
   });
 }
@@ -2242,6 +3822,27 @@ function firstSeriesForecastRows(response: ForecastResponse) {
   return response.forecast.records.filter((row) => row.series_id === firstSeries);
 }
 
+function firstSeriesQuantileRows(response: ForecastResponse) {
+  const firstSeries = response.forecast.records[0]?.series_id;
+  return (response.quantiles?.records ?? []).filter((row) => row.series_id === firstSeries);
+}
+
+function quantileForecastSeries(rows: ForecastQuantileRecord[]) {
+  const levels = [...new Set(rows.map((row) => row.quantile))].sort((a, b) => a - b);
+  return levels.map((level) => ({
+    label: `q${level.toFixed(2)}`,
+    records: rows
+      .filter((row) => row.quantile === level)
+      .map((row) => ({
+        series_id: row.series_id,
+        timestamp: row.timestamp,
+        horizon: row.horizon,
+        model: `q${level.toFixed(2)}`,
+        prediction: row.prediction,
+      })),
+  }));
+}
+
 function buildLineSeries(
   actualRows: ActualRecord[],
   forecastSeries: {label: string; records: ForecastRecord[]}[],
@@ -2267,11 +3868,7 @@ function chartColor(index: number) {
 }
 
 function hasCoordinateColumns(columns: string[]) {
-  const normalized = new Set(columns.map((column) => column.toLowerCase()));
-  return (
-    (normalized.has('longitude') || normalized.has('lon') || normalized.has('lng') || normalized.has('x')) &&
-    (normalized.has('latitude') || normalized.has('lat') || normalized.has('y'))
-  );
+  return coordinatePair(columns, ['pickup', 'pu', 'origin', '']) !== null;
 }
 
 type HoldoutActual = {

@@ -1,96 +1,672 @@
-{"metric": "mae", "model_family": "mean", "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 66.01951172931852}
-{"metric": "rmse", "model_family": "mean", "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 80.15889141259207}
-{"metric": "r2", "model_family": "mean", "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": -0.008666110450081588}
-{"metric": "train_seconds", "model_family": "mean", "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 2.0832987502217293e-05}
-{"metric": "predict_seconds", "model_family": "mean", "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 5.458015948534012e-06}
-{"metric": "predict_rows_per_second", "model_family": "mean", "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 16306291.670676563}
-{"metric": "mae", "model_family": "cartoboost", "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 44.81842747095987}
-{"metric": "rmse", "model_family": "cartoboost", "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 52.977078972753915}
-{"metric": "r2", "model_family": "cartoboost", "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.5594248049263566}
-{"metric": "train_seconds", "model_family": "cartoboost", "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.20248745899880305}
-{"metric": "predict_seconds", "model_family": "cartoboost", "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.0009386670426465571}
-{"metric": "predict_rows_per_second", "model_family": "cartoboost", "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 94815.30293112868}
-{"metric": "mae", "model_family": "lightgbm", "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 43.77800116300569}
-{"metric": "rmse", "model_family": "lightgbm", "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 53.01442265173208}
-{"metric": "r2", "model_family": "lightgbm", "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.5588034608377631}
-{"metric": "train_seconds", "model_family": "lightgbm", "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.06554262503050268}
-{"metric": "predict_seconds", "model_family": "lightgbm", "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.0019443330238573253}
-{"metric": "predict_rows_per_second", "model_family": "lightgbm", "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 45774.05151687163}
-{"metric": "mae", "model_family": "xgboost", "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 47.4113922976376}
-{"metric": "rmse", "model_family": "xgboost", "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 56.50517913935758}
-{"metric": "r2", "model_family": "xgboost", "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.4987890655138062}
-{"metric": "train_seconds", "model_family": "xgboost", "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.06581441697198898}
-{"metric": "predict_seconds", "model_family": "xgboost", "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.0007407079683616757}
-{"metric": "predict_rows_per_second", "model_family": "xgboost", "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 120155.31599700941}
-{"metric": "mae", "model_family": "mean", "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.2036290322580645}
-{"metric": "rmse", "model_family": "mean", "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.26144459802334397}
-{"metric": "r2", "model_family": "mean", "split_id": "random", "task_id": "karate", "track": "graph", "value": -0.16656260839403392}
-{"metric": "train_seconds", "model_family": "mean", "split_id": "random", "task_id": "karate", "track": "graph", "value": 9.000010322779417e-06}
-{"metric": "predict_seconds", "model_family": "mean", "split_id": "random", "task_id": "karate", "track": "graph", "value": 4.62500611320138e-06}
-{"metric": "predict_rows_per_second", "model_family": "mean", "split_id": "random", "task_id": "karate", "track": "graph", "value": 3459454.8868444567}
-{"metric": "mae", "model_family": "cartoboost", "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.20719375024623699}
-{"metric": "rmse", "model_family": "cartoboost", "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.2664834153294709}
-{"metric": "r2", "model_family": "cartoboost", "split_id": "random", "task_id": "karate", "track": "graph", "value": -0.21196220835258495}
-{"metric": "train_seconds", "model_family": "cartoboost", "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.01989970897557214}
-{"metric": "predict_seconds", "model_family": "cartoboost", "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.00032341701444238424}
-{"metric": "predict_rows_per_second", "model_family": "cartoboost", "split_id": "random", "task_id": "karate", "track": "graph", "value": 49471.73242442491}
-{"metric": "mae", "model_family": "lightgbm", "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.1992541509932204}
-{"metric": "rmse", "model_family": "lightgbm", "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.25569289825502106}
-{"metric": "r2", "model_family": "lightgbm", "split_id": "random", "task_id": "karate", "track": "graph", "value": -0.11579918025476377}
-{"metric": "train_seconds", "model_family": "lightgbm", "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.016374833008740097}
-{"metric": "predict_seconds", "model_family": "lightgbm", "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.0007204169523902237}
-{"metric": "predict_rows_per_second", "model_family": "lightgbm", "split_id": "random", "task_id": "karate", "track": "graph", "value": 22209.360769363713}
-{"metric": "mae", "model_family": "xgboost", "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.034892430528998375}
-{"metric": "rmse", "model_family": "xgboost", "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.04444117718437359}
-{"metric": "r2", "model_family": "xgboost", "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.966293022215972}
-{"metric": "train_seconds", "model_family": "xgboost", "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.056207875022664666}
-{"metric": "predict_seconds", "model_family": "xgboost", "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.0007270830101333559}
-{"metric": "predict_rows_per_second", "model_family": "xgboost", "split_id": "random", "task_id": "karate", "track": "graph", "value": 22005.740440923528}
-{"metric": "mae", "model_family": "node2vec_regressor", "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.19021980474198916}
-{"metric": "rmse", "model_family": "node2vec_regressor", "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.25879773093903746}
-{"metric": "r2", "model_family": "node2vec_regressor", "split_id": "random", "task_id": "karate", "track": "graph", "value": -0.14306159853558476}
-{"metric": "train_seconds", "model_family": "node2vec_regressor", "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.02359891595551744}
-{"metric": "predict_seconds", "model_family": "node2vec_regressor", "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.0007275419775396585}
-{"metric": "predict_rows_per_second", "model_family": "node2vec_regressor", "split_id": "random", "task_id": "karate", "track": "graph", "value": 21991.858193677675}
-{"metric": "mae", "model_family": "graphsage_regressor", "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.20232449511574116}
-{"metric": "rmse", "model_family": "graphsage_regressor", "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.25466745119747997}
-{"metric": "r2", "model_family": "graphsage_regressor", "split_id": "random", "task_id": "karate", "track": "graph", "value": -0.10686738260344897}
-{"metric": "train_seconds", "model_family": "graphsage_regressor", "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.01755175000289455}
-{"metric": "predict_seconds", "model_family": "graphsage_regressor", "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.0006401250138878822}
-{"metric": "predict_rows_per_second", "model_family": "graphsage_regressor", "split_id": "random", "task_id": "karate", "track": "graph", "value": 24995.11759870455}
-{"metric": "mae", "model_family": "mean", "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.2337278106508876}
-{"metric": "rmse", "model_family": "mean", "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.3217923178977214}
-{"metric": "r2", "model_family": "mean", "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": -0.014492753623188248}
-{"metric": "train_seconds", "model_family": "mean", "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 6.166053935885429e-06}
-{"metric": "predict_seconds", "model_family": "mean", "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 3.875000402331352e-06}
-{"metric": "predict_rows_per_second", "model_family": "mean", "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 6709676.722706242}
-{"metric": "mae", "model_family": "cartoboost", "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.23365557012868116}
-{"metric": "rmse", "model_family": "cartoboost", "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.3018934511936095}
-{"metric": "r2", "model_family": "cartoboost", "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.10709554535441046}
-{"metric": "train_seconds", "model_family": "cartoboost", "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.015407417027745396}
-{"metric": "predict_seconds", "model_family": "cartoboost", "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.0005579590215347707}
-{"metric": "predict_rows_per_second", "model_family": "cartoboost", "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 46598.40417757228}
-{"metric": "mae", "model_family": "lightgbm", "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.23144484261073664}
-{"metric": "rmse", "model_family": "lightgbm", "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.3148530154841632}
-{"metric": "r2", "model_family": "lightgbm", "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.0287896110289535}
-{"metric": "train_seconds", "model_family": "lightgbm", "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.013284083979669958}
-{"metric": "predict_seconds", "model_family": "lightgbm", "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.0006710420129820704}
-{"metric": "predict_rows_per_second", "model_family": "lightgbm", "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 38745.71114326741}
-{"metric": "mae", "model_family": "xgboost", "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.10235228274877255}
-{"metric": "rmse", "model_family": "xgboost", "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.2584116965199584}
-{"metric": "r2", "model_family": "xgboost", "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.34578282737295096}
-{"metric": "train_seconds", "model_family": "xgboost", "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.05328083300264552}
-{"metric": "predict_seconds", "model_family": "xgboost", "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.0006897500134073198}
-{"metric": "predict_rows_per_second", "model_family": "xgboost", "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 37694.81622995802}
-{"metric": "mae", "model_family": "node2vec_regressor", "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.2355321990166906}
-{"metric": "rmse", "model_family": "node2vec_regressor", "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.31838390626526725}
-{"metric": "r2", "model_family": "node2vec_regressor", "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.006884365859973984}
-{"metric": "train_seconds", "model_family": "node2vec_regressor", "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.01951070799259469}
-{"metric": "predict_seconds", "model_family": "node2vec_regressor", "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.00075645896140486}
-{"metric": "predict_rows_per_second", "model_family": "node2vec_regressor", "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 34370.668240500476}
-{"metric": "mae", "model_family": "graphsage_regressor", "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.23144484297598764}
-{"metric": "rmse", "model_family": "graphsage_regressor", "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.3148530155231039}
-{"metric": "r2", "model_family": "graphsage_regressor", "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.028789610788717113}
-{"metric": "train_seconds", "model_family": "graphsage_regressor", "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.012339542037807405}
-{"metric": "predict_seconds", "model_family": "graphsage_regressor", "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.0007004999788478017}
-{"metric": "predict_rows_per_second", "model_family": "graphsage_regressor", "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 37116.346588283115}
+{"metric": "mae", "model_family": "mean", "seed": 42, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 66.01951172931852}
+{"metric": "rmse", "model_family": "mean", "seed": 42, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 80.15889141259207}
+{"metric": "r2", "model_family": "mean", "seed": 42, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": -0.008666110450081588}
+{"metric": "wape", "model_family": "mean", "seed": 42, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.41766680010728946}
+{"metric": "train_seconds", "model_family": "mean", "seed": 42, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 4.0834012906998396e-05}
+{"metric": "predict_seconds", "model_family": "mean", "seed": 42, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 6.750051397830248e-06}
+{"metric": "predict_rows_per_second", "model_family": "mean", "seed": 42, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 13185084.787444487}
+{"metric": "mae", "model_family": "cartoboost", "seed": 42, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 44.79504382839531}
+{"metric": "rmse", "model_family": "cartoboost", "seed": 42, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 52.96081966414554}
+{"metric": "r2", "model_family": "cartoboost", "seed": 42, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.5596951991770853}
+{"metric": "wape", "model_family": "cartoboost", "seed": 42, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.28339201739601805}
+{"metric": "train_seconds", "model_family": "cartoboost", "seed": 42, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.12547420803457499}
+{"metric": "predict_seconds", "model_family": "cartoboost", "seed": 42, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.0003664999967440963}
+{"metric": "predict_rows_per_second", "model_family": "cartoboost", "seed": 42, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 242837.65563616925}
+{"metric": "mae", "model_family": "xgboost", "seed": 42, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 45.82711414808637}
+{"metric": "rmse", "model_family": "xgboost", "seed": 42, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 54.49051404261916}
+{"metric": "r2", "model_family": "xgboost", "seed": 42, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.533892775272468}
+{"metric": "wape", "model_family": "xgboost", "seed": 42, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.28992132209124877}
+{"metric": "train_seconds", "model_family": "xgboost", "seed": 42, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.032897000026423484}
+{"metric": "predict_seconds", "model_family": "xgboost", "seed": 42, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.0005791670409962535}
+{"metric": "predict_rows_per_second", "model_family": "xgboost", "seed": 42, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 153668.96542818935}
+{"metric": "mae", "model_family": "hist_gradient_boosting", "seed": 42, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 44.231471531843354}
+{"metric": "rmse", "model_family": "hist_gradient_boosting", "seed": 42, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 53.06901642546439}
+{"metric": "r2", "model_family": "hist_gradient_boosting", "seed": 42, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.55789431253817}
+{"metric": "wape", "model_family": "hist_gradient_boosting", "seed": 42, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.27982662541470416}
+{"metric": "train_seconds", "model_family": "hist_gradient_boosting", "seed": 42, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.194634041050449}
+{"metric": "predict_seconds", "model_family": "hist_gradient_boosting", "seed": 42, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.006183207966387272}
+{"metric": "predict_rows_per_second", "model_family": "hist_gradient_boosting", "seed": 42, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 14393.82283174295}
+{"metric": "mae", "model_family": "random_forest", "seed": 42, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 44.65365661925466}
+{"metric": "rmse", "model_family": "random_forest", "seed": 42, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 54.100590024122546}
+{"metric": "r2", "model_family": "random_forest", "seed": 42, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.5405396617449021}
+{"metric": "wape", "model_family": "random_forest", "seed": 42, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.28249754329781523}
+{"metric": "train_seconds", "model_family": "random_forest", "seed": 42, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.03767566697206348}
+{"metric": "predict_seconds", "model_family": "random_forest", "seed": 42, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.0170829999842681}
+{"metric": "predict_rows_per_second", "model_family": "random_forest", "seed": 42, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 5209.857758119825}
+{"metric": "mae", "model_family": "extra_trees", "seed": 42, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 45.78894426889281}
+{"metric": "rmse", "model_family": "extra_trees", "seed": 42, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 55.226132013732645}
+{"metric": "r2", "model_family": "extra_trees", "seed": 42, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.5212230009714254}
+{"metric": "wape", "model_family": "extra_trees", "seed": 42, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.2896798436118468}
+{"metric": "train_seconds", "model_family": "extra_trees", "seed": 42, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.019681959005538374}
+{"metric": "predict_seconds", "model_family": "extra_trees", "seed": 42, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.01660358300432563}
+{"metric": "predict_rows_per_second", "model_family": "extra_trees", "seed": 42, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 5360.288798918486}
+{"metric": "mae", "model_family": "ridge", "seed": 42, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 42.006146060673956}
+{"metric": "rmse", "model_family": "ridge", "seed": 42, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 51.51796314034175}
+{"metric": "r2", "model_family": "ridge", "seed": 42, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.583359587135698}
+{"metric": "wape", "model_family": "ridge", "seed": 42, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.26574829395791744}
+{"metric": "train_seconds", "model_family": "ridge", "seed": 42, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.0003573329886421561}
+{"metric": "predict_seconds", "model_family": "ridge", "seed": 42, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 5.445897113531828e-05}
+{"metric": "predict_rows_per_second", "model_family": "ridge", "seed": 42, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 1634257.8301535489}
+{"metric": "mae", "model_family": "mean", "seed": 42, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.926793235075}
+{"metric": "rmse", "model_family": "mean", "seed": 42, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 1.1702379184857152}
+{"metric": "r2", "model_family": "mean", "seed": 42, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": -0.00020746681561090163}
+{"metric": "wape", "model_family": "mean", "seed": 42, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.4457164971320521}
+{"metric": "train_seconds", "model_family": "mean", "seed": 42, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 1.0417017620056868e-05}
+{"metric": "predict_seconds", "model_family": "mean", "seed": 42, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 7.4169947765767574e-06}
+{"metric": "predict_rows_per_second", "model_family": "mean", "seed": 42, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 134825496.05644193}
+{"metric": "mae", "model_family": "cartoboost", "seed": 42, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.47067013086754284}
+{"metric": "rmse", "model_family": "cartoboost", "seed": 42, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.6300779076742103}
+{"metric": "r2", "model_family": "cartoboost", "seed": 42, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.7100452253881726}
+{"metric": "wape", "model_family": "cartoboost", "seed": 42, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.2263562508826351}
+{"metric": "train_seconds", "model_family": "cartoboost", "seed": 42, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 1.8347760000033304}
+{"metric": "predict_seconds", "model_family": "cartoboost", "seed": 42, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.00514474994270131}
+{"metric": "predict_rows_per_second", "model_family": "cartoboost", "seed": 42, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 194372.90658191612}
+{"metric": "mae", "model_family": "xgboost", "seed": 42, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.4726686032638359}
+{"metric": "rmse", "model_family": "xgboost", "seed": 42, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.6303801419691849}
+{"metric": "r2", "model_family": "xgboost", "seed": 42, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.7097669890179904}
+{"metric": "wape", "model_family": "xgboost", "seed": 42, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.22731736290026738}
+{"metric": "train_seconds", "model_family": "xgboost", "seed": 42, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.04332920798333362}
+{"metric": "predict_seconds", "model_family": "xgboost", "seed": 42, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.0004895000020042062}
+{"metric": "predict_rows_per_second", "model_family": "xgboost", "seed": 42, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 2042900.9109409712}
+{"metric": "mae", "model_family": "hist_gradient_boosting", "seed": 42, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.44464897173140766}
+{"metric": "rmse", "model_family": "hist_gradient_boosting", "seed": 42, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.5958283498815593}
+{"metric": "r2", "model_family": "hist_gradient_boosting", "seed": 42, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.740711003605369}
+{"metric": "wape", "model_family": "hist_gradient_boosting", "seed": 42, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.21384206814743711}
+{"metric": "train_seconds", "model_family": "hist_gradient_boosting", "seed": 42, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.34161025000503287}
+{"metric": "predict_seconds", "model_family": "hist_gradient_boosting", "seed": 42, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.005392541992478073}
+{"metric": "predict_rows_per_second", "model_family": "hist_gradient_boosting", "seed": 42, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 185441.30048405298}
+{"metric": "mae", "model_family": "random_forest", "seed": 42, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.5102664295477585}
+{"metric": "rmse", "model_family": "random_forest", "seed": 42, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.6891370371243196}
+{"metric": "r2", "model_family": "random_forest", "seed": 42, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.6531410199460341}
+{"metric": "wape", "model_family": "random_forest", "seed": 42, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.2453990350541359}
+{"metric": "train_seconds", "model_family": "random_forest", "seed": 42, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.053777209017425776}
+{"metric": "predict_seconds", "model_family": "random_forest", "seed": 42, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.01705979200778529}
+{"metric": "predict_rows_per_second", "model_family": "random_forest", "seed": 42, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 58617.36177930228}
+{"metric": "mae", "model_family": "extra_trees", "seed": 42, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.5896059716617345}
+{"metric": "rmse", "model_family": "extra_trees", "seed": 42, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.7890873380578071}
+{"metric": "r2", "model_family": "extra_trees", "seed": 42, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.5452298936652381}
+{"metric": "wape", "model_family": "extra_trees", "seed": 42, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.2835552725586539}
+{"metric": "train_seconds", "model_family": "extra_trees", "seed": 42, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.019755624991375953}
+{"metric": "predict_seconds", "model_family": "extra_trees", "seed": 42, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.016510707966517657}
+{"metric": "predict_rows_per_second", "model_family": "extra_trees", "seed": 42, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 60566.75474049428}
+{"metric": "mae", "model_family": "ridge", "seed": 42, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.5249817687063726}
+{"metric": "rmse", "model_family": "ridge", "seed": 42, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.7150696340453044}
+{"metric": "r2", "model_family": "ridge", "seed": 42, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.6265448682307095}
+{"metric": "wape", "model_family": "ridge", "seed": 42, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.25247598509613406}
+{"metric": "train_seconds", "model_family": "ridge", "seed": 42, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.00045125000178813934}
+{"metric": "predict_seconds", "model_family": "ridge", "seed": 42, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 6.812496576458216e-05}
+{"metric": "predict_rows_per_second", "model_family": "ridge", "seed": 42, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 14678906.459280677}
+{"metric": "mae", "model_family": "mean", "seed": 42, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.2036290322580645}
+{"metric": "rmse", "model_family": "mean", "seed": 42, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.26144459802334397}
+{"metric": "r2", "model_family": "mean", "seed": 42, "split_id": "random", "task_id": "karate", "track": "graph", "value": -0.16656260839403392}
+{"metric": "wape", "model_family": "mean", "seed": 42, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.2172043010752688}
+{"metric": "train_seconds", "model_family": "mean", "seed": 42, "split_id": "random", "task_id": "karate", "track": "graph", "value": 7.958966307342052e-06}
+{"metric": "predict_seconds", "model_family": "mean", "seed": 42, "split_id": "random", "task_id": "karate", "track": "graph", "value": 3.4589902497828007e-06}
+{"metric": "predict_rows_per_second", "model_family": "mean", "seed": 42, "split_id": "random", "task_id": "karate", "track": "graph", "value": 4625627.378106858}
+{"metric": "mae", "model_family": "cartoboost", "seed": 42, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.20931248239093886}
+{"metric": "rmse", "model_family": "cartoboost", "seed": 42, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.2707921918016925}
+{"metric": "r2", "model_family": "cartoboost", "seed": 42, "split_id": "random", "task_id": "karate", "track": "graph", "value": -0.2514715501357161}
+{"metric": "wape", "model_family": "cartoboost", "seed": 42, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.22326664788366812}
+{"metric": "train_seconds", "model_family": "cartoboost", "seed": 42, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.011129708960652351}
+{"metric": "predict_seconds", "model_family": "cartoboost", "seed": 42, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.00017254200065508485}
+{"metric": "predict_rows_per_second", "model_family": "cartoboost", "seed": 42, "split_id": "random", "task_id": "karate", "track": "graph", "value": 92731.04484272408}
+{"metric": "mae", "model_family": "xgboost", "seed": 42, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.038322159089148045}
+{"metric": "rmse", "model_family": "xgboost", "seed": 42, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.048826584126656386}
+{"metric": "r2", "model_family": "xgboost", "seed": 42, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.9593124639150514}
+{"metric": "wape", "model_family": "xgboost", "seed": 42, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.04087696969509125}
+{"metric": "train_seconds", "model_family": "xgboost", "seed": 42, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.02925162500469014}
+{"metric": "predict_seconds", "model_family": "xgboost", "seed": 42, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.00043758301762863994}
+{"metric": "predict_rows_per_second", "model_family": "xgboost", "seed": 42, "split_id": "random", "task_id": "karate", "track": "graph", "value": 36564.49029193951}
+{"metric": "mae", "model_family": "hist_gradient_boosting", "seed": 42, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.2023244950327615}
+{"metric": "rmse", "model_family": "hist_gradient_boosting", "seed": 42, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.25466745117549094}
+{"metric": "r2", "model_family": "hist_gradient_boosting", "seed": 42, "split_id": "random", "task_id": "karate", "track": "graph", "value": -0.10686738241230609}
+{"metric": "wape", "model_family": "hist_gradient_boosting", "seed": 42, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.21581279470161227}
+{"metric": "train_seconds", "model_family": "hist_gradient_boosting", "seed": 42, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.041326167003717273}
+{"metric": "predict_seconds", "model_family": "hist_gradient_boosting", "seed": 42, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.002755458001047373}
+{"metric": "predict_rows_per_second", "model_family": "hist_gradient_boosting", "seed": 42, "split_id": "random", "task_id": "karate", "track": "graph", "value": 5806.657185091649}
+{"metric": "mae", "model_family": "random_forest", "seed": 42, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.07989107969576713}
+{"metric": "rmse", "model_family": "random_forest", "seed": 42, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.10791613381261356}
+{"metric": "r2", "model_family": "random_forest", "seed": 42, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.8012434442741433}
+{"metric": "wape", "model_family": "random_forest", "seed": 42, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.08521715167548494}
+{"metric": "train_seconds", "model_family": "random_forest", "seed": 42, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.020707666990347207}
+{"metric": "predict_seconds", "model_family": "random_forest", "seed": 42, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.016997958009596914}
+{"metric": "predict_rows_per_second", "model_family": "random_forest", "seed": 42, "split_id": "random", "task_id": "karate", "track": "graph", "value": 941.2895355410648}
+{"metric": "mae", "model_family": "extra_trees", "seed": 42, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.1500484091928374}
+{"metric": "rmse", "model_family": "extra_trees", "seed": 42, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.18466034462098033}
+{"metric": "r2", "model_family": "extra_trees", "seed": 42, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.4180361749241307}
+{"metric": "wape", "model_family": "extra_trees", "seed": 42, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.1600516364723599}
+{"metric": "train_seconds", "model_family": "extra_trees", "seed": 42, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.015237290994264185}
+{"metric": "predict_seconds", "model_family": "extra_trees", "seed": 42, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.014749958005268127}
+{"metric": "predict_rows_per_second", "model_family": "extra_trees", "seed": 42, "split_id": "random", "task_id": "karate", "track": "graph", "value": 1084.748851100824}
+{"metric": "mae", "model_family": "ridge", "seed": 42, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.17279504281696956}
+{"metric": "rmse", "model_family": "ridge", "seed": 42, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.2280918918786267}
+{"metric": "r2", "model_family": "ridge", "seed": 42, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.11209111653083947}
+{"metric": "wape", "model_family": "ridge", "seed": 42, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.18431471233810087}
+{"metric": "train_seconds", "model_family": "ridge", "seed": 42, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.0003531249822117388}
+{"metric": "predict_seconds", "model_family": "ridge", "seed": 42, "split_id": "random", "task_id": "karate", "track": "graph", "value": 5.733297439292073e-05}
+{"metric": "predict_rows_per_second", "model_family": "ridge", "seed": 42, "split_id": "random", "task_id": "karate", "track": "graph", "value": 279071.51459380105}
+{"metric": "mae", "model_family": "node2vec_regressor", "seed": 42, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.19021980474198916}
+{"metric": "rmse", "model_family": "node2vec_regressor", "seed": 42, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.25879773093903746}
+{"metric": "r2", "model_family": "node2vec_regressor", "seed": 42, "split_id": "random", "task_id": "karate", "track": "graph", "value": -0.14306159853558476}
+{"metric": "wape", "model_family": "node2vec_regressor", "seed": 42, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.20290112505812177}
+{"metric": "train_seconds", "model_family": "node2vec_regressor", "seed": 42, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.013631416950374842}
+{"metric": "predict_seconds", "model_family": "node2vec_regressor", "seed": 42, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.00034508301177993417}
+{"metric": "predict_rows_per_second", "model_family": "node2vec_regressor", "seed": 42, "split_id": "random", "task_id": "karate", "track": "graph", "value": 46365.655375128976}
+{"metric": "mae", "model_family": "graphsage_regressor", "seed": 42, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.20232449511574116}
+{"metric": "rmse", "model_family": "graphsage_regressor", "seed": 42, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.25466745119747997}
+{"metric": "r2", "model_family": "graphsage_regressor", "seed": 42, "split_id": "random", "task_id": "karate", "track": "graph", "value": -0.10686738260344897}
+{"metric": "wape", "model_family": "graphsage_regressor", "seed": 42, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.2158127947901239}
+{"metric": "train_seconds", "model_family": "graphsage_regressor", "seed": 42, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.01099279202753678}
+{"metric": "predict_seconds", "model_family": "graphsage_regressor", "seed": 42, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.0005463329725898802}
+{"metric": "predict_rows_per_second", "model_family": "graphsage_regressor", "seed": 42, "split_id": "random", "task_id": "karate", "track": "graph", "value": 29286.16942915294}
+{"metric": "mae", "model_family": "mean", "seed": 42, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.2337278106508876}
+{"metric": "rmse", "model_family": "mean", "seed": 42, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.3217923178977214}
+{"metric": "r2", "model_family": "mean", "seed": 42, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": -0.014492753623188248}
+{"metric": "wape", "model_family": "mean", "seed": 42, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.2642140468227425}
+{"metric": "train_seconds", "model_family": "mean", "seed": 42, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 6.709014996886253e-06}
+{"metric": "predict_seconds", "model_family": "mean", "seed": 42, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 3.708992153406143e-06}
+{"metric": "predict_rows_per_second", "model_family": "mean", "seed": 42, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 7009990.564720653}
+{"metric": "mae", "model_family": "cartoboost", "seed": 42, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.23365557012868116}
+{"metric": "rmse", "model_family": "cartoboost", "seed": 42, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.3018934511936095}
+{"metric": "r2", "model_family": "cartoboost", "seed": 42, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.10709554535441046}
+{"metric": "wape", "model_family": "cartoboost", "seed": 42, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.26413238362372654}
+{"metric": "train_seconds", "model_family": "cartoboost", "seed": 42, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.00983816699590534}
+{"metric": "predict_seconds", "model_family": "cartoboost", "seed": 42, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.00016958400374278426}
+{"metric": "predict_rows_per_second", "model_family": "cartoboost", "seed": 42, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 153316.34721536224}
+{"metric": "mae", "model_family": "xgboost", "seed": 42, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.10235228274877255}
+{"metric": "rmse", "model_family": "xgboost", "seed": 42, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.2584116965199584}
+{"metric": "r2", "model_family": "xgboost", "seed": 42, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.34578282737295096}
+{"metric": "wape", "model_family": "xgboost", "seed": 42, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.11570258049861244}
+{"metric": "train_seconds", "model_family": "xgboost", "seed": 42, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.03908829198917374}
+{"metric": "predict_seconds", "model_family": "xgboost", "seed": 42, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.0005522090359590948}
+{"metric": "predict_rows_per_second", "model_family": "xgboost", "seed": 42, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 47083.61925813537}
+{"metric": "mae", "model_family": "hist_gradient_boosting", "seed": 42, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.23144484261073664}
+{"metric": "rmse", "model_family": "hist_gradient_boosting", "seed": 42, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.3148530154841632}
+{"metric": "r2", "model_family": "hist_gradient_boosting", "seed": 42, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.0287896110289535}
+{"metric": "wape", "model_family": "hist_gradient_boosting", "seed": 42, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.2616333003425719}
+{"metric": "train_seconds", "model_family": "hist_gradient_boosting", "seed": 42, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.06280833302298561}
+{"metric": "predict_seconds", "model_family": "hist_gradient_boosting", "seed": 42, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.006695958029013127}
+{"metric": "predict_rows_per_second", "model_family": "hist_gradient_boosting", "seed": 42, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 3882.939511768709}
+{"metric": "mae", "model_family": "random_forest", "seed": 42, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.1351495726495726}
+{"metric": "rmse", "model_family": "random_forest", "seed": 42, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.30747020563044375}
+{"metric": "r2", "model_family": "random_forest", "seed": 42, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.07380233494363941}
+{"metric": "wape", "model_family": "random_forest", "seed": 42, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.15277777777777773}
+{"metric": "train_seconds", "model_family": "random_forest", "seed": 42, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.03329304204089567}
+{"metric": "predict_seconds", "model_family": "random_forest", "seed": 42, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.017309874994680285}
+{"metric": "predict_rows_per_second", "model_family": "random_forest", "seed": 42, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 1502.0327996585986}
+{"metric": "mae", "model_family": "extra_trees", "seed": 42, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.13506978687267152}
+{"metric": "rmse", "model_family": "extra_trees", "seed": 42, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.2719906517598267}
+{"metric": "r2", "model_family": "extra_trees", "seed": 42, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.27522106811824554}
+{"metric": "wape", "model_family": "extra_trees", "seed": 42, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.15268758516041125}
+{"metric": "train_seconds", "model_family": "extra_trees", "seed": 42, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.01759854203555733}
+{"metric": "predict_seconds", "model_family": "extra_trees", "seed": 42, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.01647699996829033}
+{"metric": "predict_rows_per_second", "model_family": "extra_trees", "seed": 42, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 1577.9571554309948}
+{"metric": "mae", "model_family": "ridge", "seed": 42, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.20148451059735634}
+{"metric": "rmse", "model_family": "ridge", "seed": 42, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.2988136455187561}
+{"metric": "r2", "model_family": "ridge", "seed": 42, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.12522078188711372}
+{"metric": "wape", "model_family": "ridge", "seed": 42, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.22776509893614194}
+{"metric": "train_seconds", "model_family": "ridge", "seed": 42, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.00031870900420472026}
+{"metric": "predict_seconds", "model_family": "ridge", "seed": 42, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 5.379202775657177e-05}
+{"metric": "predict_rows_per_second", "model_family": "ridge", "seed": 42, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 483342.9986625403}
+{"metric": "mae", "model_family": "node2vec_regressor", "seed": 42, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.2355321990166906}
+{"metric": "rmse", "model_family": "node2vec_regressor", "seed": 42, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.31838390626526725}
+{"metric": "r2", "model_family": "node2vec_regressor", "seed": 42, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.006884365859973984}
+{"metric": "wape", "model_family": "node2vec_regressor", "seed": 42, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.26625379019278067}
+{"metric": "train_seconds", "model_family": "node2vec_regressor", "seed": 42, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.010773540998343378}
+{"metric": "predict_seconds", "model_family": "node2vec_regressor", "seed": 42, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.0004015419981442392}
+{"metric": "predict_rows_per_second", "model_family": "node2vec_regressor", "seed": 42, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 64750.38755637326}
+{"metric": "mae", "model_family": "graphsage_regressor", "seed": 42, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.23144484297598764}
+{"metric": "rmse", "model_family": "graphsage_regressor", "seed": 42, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.3148530155231039}
+{"metric": "r2", "model_family": "graphsage_regressor", "seed": 42, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.028789610788717113}
+{"metric": "wape", "model_family": "graphsage_regressor", "seed": 42, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.2616333007554643}
+{"metric": "train_seconds", "model_family": "graphsage_regressor", "seed": 42, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.007674499996937811}
+{"metric": "predict_seconds", "model_family": "graphsage_regressor", "seed": 42, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.0006460419972427189}
+{"metric": "predict_rows_per_second", "model_family": "graphsage_regressor", "seed": 42, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 40245.061638356245}
+{"metric": "mae", "model_family": "mean", "seed": 43, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 62.39211255052997}
+{"metric": "rmse", "model_family": "mean", "seed": 43, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 73.76841961005405}
+{"metric": "r2", "model_family": "mean", "seed": 43, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": -0.0002683339742903801}
+{"metric": "wape", "model_family": "mean", "seed": 43, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.4127321255386627}
+{"metric": "train_seconds", "model_family": "mean", "seed": 43, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 3.7582998629659414e-05}
+{"metric": "predict_seconds", "model_family": "mean", "seed": 43, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 1.1750031262636185e-05}
+{"metric": "predict_rows_per_second", "model_family": "mean", "seed": 43, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 7574447.93215234}
+{"metric": "mae", "model_family": "cartoboost", "seed": 43, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 44.07996152974175}
+{"metric": "rmse", "model_family": "cartoboost", "seed": 43, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 53.82183012455723}
+{"metric": "r2", "model_family": "cartoboost", "seed": 43, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.46753326158081654}
+{"metric": "wape", "model_family": "cartoboost", "seed": 43, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.29159481017890704}
+{"metric": "train_seconds", "model_family": "cartoboost", "seed": 43, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.16956612502690405}
+{"metric": "predict_seconds", "model_family": "cartoboost", "seed": 43, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.0003922500181943178}
+{"metric": "predict_rows_per_second", "model_family": "cartoboost", "seed": 43, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 226896.10164889792}
+{"metric": "mae", "model_family": "xgboost", "seed": 43, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 45.01838426911429}
+{"metric": "rmse", "model_family": "xgboost", "seed": 43, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 55.04108638201228}
+{"metric": "r2", "model_family": "xgboost", "seed": 43, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.44313546983820906}
+{"metric": "wape", "model_family": "xgboost", "seed": 43, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.29780260145318654}
+{"metric": "train_seconds", "model_family": "xgboost", "seed": 43, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.028647541999816895}
+{"metric": "predict_seconds", "model_family": "xgboost", "seed": 43, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.0004397499724291265}
+{"metric": "predict_rows_per_second", "model_family": "xgboost", "seed": 43, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 202387.73298466534}
+{"metric": "mae", "model_family": "hist_gradient_boosting", "seed": 43, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 43.69778079839576}
+{"metric": "rmse", "model_family": "hist_gradient_boosting", "seed": 43, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 53.19061154074059}
+{"metric": "r2", "model_family": "hist_gradient_boosting", "seed": 43, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.4799494876497491}
+{"metric": "wape", "model_family": "hist_gradient_boosting", "seed": 43, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.28906663379346087}
+{"metric": "train_seconds", "model_family": "hist_gradient_boosting", "seed": 43, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.07263158401474357}
+{"metric": "predict_seconds", "model_family": "hist_gradient_boosting", "seed": 43, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.0018132920376956463}
+{"metric": "predict_rows_per_second", "model_family": "hist_gradient_boosting", "seed": 43, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 49082.00011350752}
+{"metric": "mae", "model_family": "random_forest", "seed": 43, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 43.863290259024446}
+{"metric": "rmse", "model_family": "random_forest", "seed": 43, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 54.60001882258261}
+{"metric": "r2", "model_family": "random_forest", "seed": 43, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.45202449392020283}
+{"metric": "wape", "model_family": "random_forest", "seed": 43, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.29016150089588044}
+{"metric": "train_seconds", "model_family": "random_forest", "seed": 43, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.0367350839660503}
+{"metric": "predict_seconds", "model_family": "random_forest", "seed": 43, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.017584374989382923}
+{"metric": "predict_rows_per_second", "model_family": "random_forest", "seed": 43, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 5061.311536732829}
+{"metric": "mae", "model_family": "extra_trees", "seed": 43, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 44.56548002353118}
+{"metric": "rmse", "model_family": "extra_trees", "seed": 43, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 54.280722044092876}
+{"metric": "r2", "model_family": "extra_trees", "seed": 43, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.45841479272232644}
+{"metric": "wape", "model_family": "extra_trees", "seed": 43, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.2948065796115858}
+{"metric": "train_seconds", "model_family": "extra_trees", "seed": 43, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.016428542032372206}
+{"metric": "predict_seconds", "model_family": "extra_trees", "seed": 43, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.01641304197255522}
+{"metric": "predict_rows_per_second", "model_family": "extra_trees", "seed": 43, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 5422.517053744198}
+{"metric": "mae", "model_family": "ridge", "seed": 43, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 43.51501074537414}
+{"metric": "rmse", "model_family": "ridge", "seed": 43, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 53.53107222782403}
+{"metric": "r2", "model_family": "ridge", "seed": 43, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.47327073743108006}
+{"metric": "wape", "model_family": "ridge", "seed": 43, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.2878575855759104}
+{"metric": "train_seconds", "model_family": "ridge", "seed": 43, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.0003474170225672424}
+{"metric": "predict_seconds", "model_family": "ridge", "seed": 43, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 5.679100286215544e-05}
+{"metric": "predict_rows_per_second", "model_family": "ridge", "seed": 43, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 1567149.6454468863}
+{"metric": "mae", "model_family": "mean", "seed": 43, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.8827063093600002}
+{"metric": "rmse", "model_family": "mean", "seed": 43, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 1.1155645886307521}
+{"metric": "r2", "model_family": "mean", "seed": 43, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": -0.0009669066787703073}
+{"metric": "wape", "model_family": "mean", "seed": 43, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.43018000341529405}
+{"metric": "train_seconds", "model_family": "mean", "seed": 43, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 9.917013812810183e-06}
+{"metric": "predict_seconds", "model_family": "mean", "seed": 43, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 4.291010554879904e-06}
+{"metric": "predict_rows_per_second", "model_family": "mean", "seed": 43, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 233045336.80597946}
+{"metric": "mae", "model_family": "cartoboost", "seed": 43, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.4851710363315716}
+{"metric": "rmse", "model_family": "cartoboost", "seed": 43, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.6462691914509461}
+{"metric": "r2", "model_family": "cartoboost", "seed": 43, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.6640635060382192}
+{"metric": "wape", "model_family": "cartoboost", "seed": 43, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.23644430299523012}
+{"metric": "train_seconds", "model_family": "cartoboost", "seed": 43, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 1.439167250005994}
+{"metric": "predict_seconds", "model_family": "cartoboost", "seed": 43, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.0017361660138703883}
+{"metric": "predict_rows_per_second", "model_family": "cartoboost", "seed": 43, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 575981.785158164}
+{"metric": "mae", "model_family": "xgboost", "seed": 43, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.48137324970426554}
+{"metric": "rmse", "model_family": "xgboost", "seed": 43, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.6433562837658655}
+{"metric": "r2", "model_family": "xgboost", "seed": 43, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.6670849921632123}
+{"metric": "wape", "model_family": "xgboost", "seed": 43, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.2345934814399955}
+{"metric": "train_seconds", "model_family": "xgboost", "seed": 43, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.03144395904382691}
+{"metric": "predict_seconds", "model_family": "xgboost", "seed": 43, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.0004154170164838433}
+{"metric": "predict_rows_per_second", "model_family": "xgboost", "seed": 43, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 2407219.6379054505}
+{"metric": "mae", "model_family": "hist_gradient_boosting", "seed": 43, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.4581694074527405}
+{"metric": "rmse", "model_family": "hist_gradient_boosting", "seed": 43, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.6174897836295611}
+{"metric": "r2", "model_family": "hist_gradient_boosting", "seed": 43, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.6933169084724763}
+{"metric": "wape", "model_family": "hist_gradient_boosting", "seed": 43, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.22328527073257884}
+{"metric": "train_seconds", "model_family": "hist_gradient_boosting", "seed": 43, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.5583602919941768}
+{"metric": "predict_seconds", "model_family": "hist_gradient_boosting", "seed": 43, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.004014334001112729}
+{"metric": "predict_rows_per_second", "model_family": "hist_gradient_boosting", "seed": 43, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 249107.3238357374}
+{"metric": "mae", "model_family": "random_forest", "seed": 43, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.5135045167268498}
+{"metric": "rmse", "model_family": "random_forest", "seed": 43, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.6965102627716427}
+{"metric": "r2", "model_family": "random_forest", "seed": 43, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.6098017482543909}
+{"metric": "wape", "model_family": "random_forest", "seed": 43, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.25025240265869025}
+{"metric": "train_seconds", "model_family": "random_forest", "seed": 43, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.0468359169899486}
+{"metric": "predict_seconds", "model_family": "random_forest", "seed": 43, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.017403832986019552}
+{"metric": "predict_rows_per_second", "model_family": "random_forest", "seed": 43, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 57458.60700934657}
+{"metric": "mae", "model_family": "extra_trees", "seed": 43, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.6034587395810497}
+{"metric": "rmse", "model_family": "extra_trees", "seed": 43, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.7909766022159918}
+{"metric": "r2", "model_family": "extra_trees", "seed": 43, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.4967803943110657}
+{"metric": "wape", "model_family": "extra_trees", "seed": 43, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.2940908883297584}
+{"metric": "train_seconds", "model_family": "extra_trees", "seed": 43, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.020626416022423655}
+{"metric": "predict_seconds", "model_family": "extra_trees", "seed": 43, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.01676966599188745}
+{"metric": "predict_rows_per_second", "model_family": "extra_trees", "seed": 43, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 59631.47986869645}
+{"metric": "mae", "model_family": "ridge", "seed": 43, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.4935767826007876}
+{"metric": "rmse", "model_family": "ridge", "seed": 43, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.6670317078914987}
+{"metric": "r2", "model_family": "ridge", "seed": 43, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.6421316942442197}
+{"metric": "wape", "model_family": "ridge", "seed": 43, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.24054077757625034}
+{"metric": "train_seconds", "model_family": "ridge", "seed": 43, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.0005646250210702419}
+{"metric": "predict_seconds", "model_family": "ridge", "seed": 43, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 8.166697807610035e-05}
+{"metric": "predict_rows_per_second", "model_family": "ridge", "seed": 43, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 12244851.267401649}
+{"metric": "mae", "model_family": "mean", "seed": 43, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.26814516129032256}
+{"metric": "rmse", "model_family": "mean", "seed": 43, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.3946672355884566}
+{"metric": "r2", "model_family": "mean", "seed": 43, "split_id": "random", "task_id": "karate", "track": "graph", "value": -0.022439232636943363}
+{"metric": "wape", "model_family": "mean", "seed": 43, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.33002481389578164}
+{"metric": "train_seconds", "model_family": "mean", "seed": 43, "split_id": "random", "task_id": "karate", "track": "graph", "value": 9.540992323309183e-06}
+{"metric": "predict_seconds", "model_family": "mean", "seed": 43, "split_id": "random", "task_id": "karate", "track": "graph", "value": 4.125002305954695e-06}
+{"metric": "predict_rows_per_second", "model_family": "mean", "seed": 43, "split_id": "random", "task_id": "karate", "track": "graph", "value": 3878785.710471729}
+{"metric": "mae", "model_family": "cartoboost", "seed": 43, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.2444870119591108}
+{"metric": "rmse", "model_family": "cartoboost", "seed": 43, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.3543769041823309}
+{"metric": "r2", "model_family": "cartoboost", "seed": 43, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.17566037190332418}
+{"metric": "wape", "model_family": "cartoboost", "seed": 43, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.30090709164198254}
+{"metric": "train_seconds", "model_family": "cartoboost", "seed": 43, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.011238041974138469}
+{"metric": "predict_seconds", "model_family": "cartoboost", "seed": 43, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.00022829195950180292}
+{"metric": "predict_rows_per_second", "model_family": "cartoboost", "seed": 43, "split_id": "random", "task_id": "karate", "track": "graph", "value": 70085.69217644146}
+{"metric": "mae", "model_family": "xgboost", "seed": 43, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.15014441683888435}
+{"metric": "rmse", "model_family": "xgboost", "seed": 43, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.3492132310876737}
+{"metric": "r2", "model_family": "xgboost", "seed": 43, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.19950847496734858}
+{"metric": "wape", "model_family": "xgboost", "seed": 43, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.18479312841708845}
+{"metric": "train_seconds", "model_family": "xgboost", "seed": 43, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.03165308298775926}
+{"metric": "predict_seconds", "model_family": "xgboost", "seed": 43, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.0004522910458035767}
+{"metric": "predict_rows_per_second", "model_family": "xgboost", "seed": 43, "split_id": "random", "task_id": "karate", "track": "graph", "value": 35375.4516001375}
+{"metric": "mae", "model_family": "hist_gradient_boosting", "seed": 43, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.2460518994797558}
+{"metric": "rmse", "model_family": "hist_gradient_boosting", "seed": 43, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.3743972563552134}
+{"metric": "r2", "model_family": "hist_gradient_boosting", "seed": 43, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.07988804551344308}
+{"metric": "wape", "model_family": "hist_gradient_boosting", "seed": 43, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.30283310705200717}
+{"metric": "train_seconds", "model_family": "hist_gradient_boosting", "seed": 43, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.03599504200974479}
+{"metric": "predict_seconds", "model_family": "hist_gradient_boosting", "seed": 43, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.002869541000109166}
+{"metric": "predict_rows_per_second", "model_family": "hist_gradient_boosting", "seed": 43, "split_id": "random", "task_id": "karate", "track": "graph", "value": 5575.804631957276}
+{"metric": "mae", "model_family": "random_forest", "seed": 43, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.1724884635040885}
+{"metric": "rmse", "model_family": "random_forest", "seed": 43, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.33061731731665056}
+{"metric": "r2", "model_family": "random_forest", "seed": 43, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.2824923207571114}
+{"metric": "wape", "model_family": "random_forest", "seed": 43, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.21229349354349353}
+{"metric": "train_seconds", "model_family": "random_forest", "seed": 43, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.020753332995809615}
+{"metric": "predict_seconds", "model_family": "random_forest", "seed": 43, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.01721495803212747}
+{"metric": "predict_rows_per_second", "model_family": "random_forest", "seed": 43, "split_id": "random", "task_id": "karate", "track": "graph", "value": 929.4242814963562}
+{"metric": "mae", "model_family": "extra_trees", "seed": 43, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.14307545667839783}
+{"metric": "rmse", "model_family": "extra_trees", "seed": 43, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.3035569411736921}
+{"metric": "r2", "model_family": "extra_trees", "seed": 43, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.39513884531050103}
+{"metric": "wape", "model_family": "extra_trees", "seed": 43, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.1760928697580281}
+{"metric": "train_seconds", "model_family": "extra_trees", "seed": 43, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.019570750009734184}
+{"metric": "predict_seconds", "model_family": "extra_trees", "seed": 43, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.016352250007912517}
+{"metric": "predict_rows_per_second", "model_family": "extra_trees", "seed": 43, "split_id": "random", "task_id": "karate", "track": "graph", "value": 978.4586214287287}
+{"metric": "mae", "model_family": "ridge", "seed": 43, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.21733499825396912}
+{"metric": "rmse", "model_family": "ridge", "seed": 43, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.3228437260183813}
+{"metric": "r2", "model_family": "ridge", "seed": 43, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.3158362490786024}
+{"metric": "wape", "model_family": "ridge", "seed": 43, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.2674892286202697}
+{"metric": "train_seconds", "model_family": "ridge", "seed": 43, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.00032120803371071815}
+{"metric": "predict_seconds", "model_family": "ridge", "seed": 43, "split_id": "random", "task_id": "karate", "track": "graph", "value": 5.1416049245744944e-05}
+{"metric": "predict_rows_per_second", "model_family": "ridge", "seed": 43, "split_id": "random", "task_id": "karate", "track": "graph", "value": 311186.8810364522}
+{"metric": "mae", "model_family": "node2vec_regressor", "seed": 43, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.23698274245928996}
+{"metric": "rmse", "model_family": "node2vec_regressor", "seed": 43, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.37868310289559054}
+{"metric": "r2", "model_family": "node2vec_regressor", "seed": 43, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.05870183438025911}
+{"metric": "wape", "model_family": "node2vec_regressor", "seed": 43, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.291671067642203}
+{"metric": "train_seconds", "model_family": "node2vec_regressor", "seed": 43, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.01191574998665601}
+{"metric": "predict_seconds", "model_family": "node2vec_regressor", "seed": 43, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.0002597499988041818}
+{"metric": "predict_rows_per_second", "model_family": "node2vec_regressor", "seed": 43, "split_id": "random", "task_id": "karate", "track": "graph", "value": 61597.690370200726}
+{"metric": "mae", "model_family": "graphsage_regressor", "seed": 43, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.24605189929879448}
+{"metric": "rmse", "model_family": "graphsage_regressor", "seed": 43, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.374397256416903}
+{"metric": "r2", "model_family": "graphsage_regressor", "seed": 43, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.07988804521022863}
+{"metric": "wape", "model_family": "graphsage_regressor", "seed": 43, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.3028331068292855}
+{"metric": "train_seconds", "model_family": "graphsage_regressor", "seed": 43, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.008298416971229017}
+{"metric": "predict_seconds", "model_family": "graphsage_regressor", "seed": 43, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.0004812920233234763}
+{"metric": "predict_rows_per_second", "model_family": "graphsage_regressor", "seed": 43, "split_id": "random", "task_id": "karate", "track": "graph", "value": 33243.85035412565}
+{"metric": "mae", "model_family": "mean", "seed": 43, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.1594202898550725}
+{"metric": "rmse", "model_family": "mean", "seed": 43, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.1594202898550725}
+{"metric": "r2", "model_family": "mean", "seed": 43, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.0}
+{"metric": "wape", "model_family": "mean", "seed": 43, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.1594202898550725}
+{"metric": "train_seconds", "model_family": "mean", "seed": 43, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 6.832997314631939e-06}
+{"metric": "predict_seconds", "model_family": "mean", "seed": 43, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 3.4589902497828007e-06}
+{"metric": "predict_rows_per_second", "model_family": "mean", "seed": 43, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 2601915.4001851073}
+{"metric": "mae", "model_family": "cartoboost", "seed": 43, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.2370875283816618}
+{"metric": "rmse", "model_family": "cartoboost", "seed": 43, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.27589949830967847}
+{"metric": "r2", "model_family": "cartoboost", "seed": 43, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.0}
+{"metric": "wape", "model_family": "cartoboost", "seed": 43, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.2370875283816618}
+{"metric": "train_seconds", "model_family": "cartoboost", "seed": 43, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.016218625009059906}
+{"metric": "predict_seconds", "model_family": "cartoboost", "seed": 43, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.0001507920096628368}
+{"metric": "predict_rows_per_second", "model_family": "cartoboost", "seed": 43, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 59684.860093870615}
+{"metric": "mae", "model_family": "xgboost", "seed": 43, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.0743607415093316}
+{"metric": "rmse", "model_family": "xgboost", "seed": 43, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.09023153604396456}
+{"metric": "r2", "model_family": "xgboost", "seed": 43, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.0}
+{"metric": "wape", "model_family": "xgboost", "seed": 43, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.0743607415093316}
+{"metric": "train_seconds", "model_family": "xgboost", "seed": 43, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.033021042007021606}
+{"metric": "predict_seconds", "model_family": "xgboost", "seed": 43, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.0005445409915409982}
+{"metric": "predict_rows_per_second", "model_family": "xgboost", "seed": 43, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 16527.681367991918}
+{"metric": "mae", "model_family": "hist_gradient_boosting", "seed": 43, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.1519353965647116}
+{"metric": "rmse", "model_family": "hist_gradient_boosting", "seed": 43, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.15290601666827097}
+{"metric": "r2", "model_family": "hist_gradient_boosting", "seed": 43, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.0}
+{"metric": "wape", "model_family": "hist_gradient_boosting", "seed": 43, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.1519353965647116}
+{"metric": "train_seconds", "model_family": "hist_gradient_boosting", "seed": 43, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.04096487496281043}
+{"metric": "predict_seconds", "model_family": "hist_gradient_boosting", "seed": 43, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.002313541015610099}
+{"metric": "predict_rows_per_second", "model_family": "hist_gradient_boosting", "seed": 43, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 3890.1406714964287}
+{"metric": "mae", "model_family": "random_forest", "seed": 43, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.05941358024691358}
+{"metric": "rmse", "model_family": "random_forest", "seed": 43, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.08793249959825268}
+{"metric": "r2", "model_family": "random_forest", "seed": 43, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.0}
+{"metric": "wape", "model_family": "random_forest", "seed": 43, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.05941358024691358}
+{"metric": "train_seconds", "model_family": "random_forest", "seed": 43, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.019804999988991767}
+{"metric": "predict_seconds", "model_family": "random_forest", "seed": 43, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.01688449998619035}
+{"metric": "predict_rows_per_second", "model_family": "random_forest", "seed": 43, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 533.0332557885044}
+{"metric": "mae", "model_family": "extra_trees", "seed": 43, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.19513671770616212}
+{"metric": "rmse", "model_family": "extra_trees", "seed": 43, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.2468051199955926}
+{"metric": "r2", "model_family": "extra_trees", "seed": 43, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.0}
+{"metric": "wape", "model_family": "extra_trees", "seed": 43, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.19513671770616212}
+{"metric": "train_seconds", "model_family": "extra_trees", "seed": 43, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.016254040994681418}
+{"metric": "predict_seconds", "model_family": "extra_trees", "seed": 43, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.016434249992016703}
+{"metric": "predict_rows_per_second", "model_family": "extra_trees", "seed": 43, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 547.6367953738045}
+{"metric": "mae", "model_family": "ridge", "seed": 43, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.2398488103294157}
+{"metric": "rmse", "model_family": "ridge", "seed": 43, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.3021628705058816}
+{"metric": "r2", "model_family": "ridge", "seed": 43, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.0}
+{"metric": "wape", "model_family": "ridge", "seed": 43, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.2398488103294157}
+{"metric": "train_seconds", "model_family": "ridge", "seed": 43, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.0003108750097453594}
+{"metric": "predict_seconds", "model_family": "ridge", "seed": 43, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 4.841695772483945e-05}
+{"metric": "predict_rows_per_second", "model_family": "ridge", "seed": 43, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 185885.28529917757}
+{"metric": "mae", "model_family": "node2vec_regressor", "seed": 43, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.15626847721699835}
+{"metric": "rmse", "model_family": "node2vec_regressor", "seed": 43, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.15730371873032215}
+{"metric": "r2", "model_family": "node2vec_regressor", "seed": 43, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.0}
+{"metric": "wape", "model_family": "node2vec_regressor", "seed": 43, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.15626847721699835}
+{"metric": "train_seconds", "model_family": "node2vec_regressor", "seed": 43, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.012591834005434066}
+{"metric": "predict_seconds", "model_family": "node2vec_regressor", "seed": 43, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.0002328340196982026}
+{"metric": "predict_rows_per_second", "model_family": "node2vec_regressor", "seed": 43, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 38654.145178894905}
+{"metric": "mae", "model_family": "graphsage_regressor", "seed": 43, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.1519353961303641}
+{"metric": "rmse", "model_family": "graphsage_regressor", "seed": 43, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.15290601626551556}
+{"metric": "r2", "model_family": "graphsage_regressor", "seed": 43, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.0}
+{"metric": "wape", "model_family": "graphsage_regressor", "seed": 43, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.1519353961303641}
+{"metric": "train_seconds", "model_family": "graphsage_regressor", "seed": 43, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.009967916994355619}
+{"metric": "predict_seconds", "model_family": "graphsage_regressor", "seed": 43, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.0004853340215049684}
+{"metric": "predict_rows_per_second", "model_family": "graphsage_regressor", "seed": 43, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 18543.929749849332}
+{"metric": "mae", "model_family": "mean", "seed": 44, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 66.6017442785753}
+{"metric": "rmse", "model_family": "mean", "seed": 44, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 80.17755154043729}
+{"metric": "r2", "model_family": "mean", "seed": 44, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": -0.0031256949476907714}
+{"metric": "wape", "model_family": "mean", "seed": 44, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.42773526055658834}
+{"metric": "train_seconds", "model_family": "mean", "seed": 44, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 3.379205008968711e-05}
+{"metric": "predict_seconds", "model_family": "mean", "seed": 44, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 1.0333023965358734e-05}
+{"metric": "predict_rows_per_second", "model_family": "mean", "seed": 44, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 8613161.093826048}
+{"metric": "mae", "model_family": "cartoboost", "seed": 44, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 48.09628361868834}
+{"metric": "rmse", "model_family": "cartoboost", "seed": 44, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 57.98784709326038}
+{"metric": "r2", "model_family": "cartoboost", "seed": 44, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.4752846783172553}
+{"metric": "wape", "model_family": "cartoboost", "seed": 44, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.308887952234324}
+{"metric": "train_seconds", "model_family": "cartoboost", "seed": 44, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.1745032500475645}
+{"metric": "predict_seconds", "model_family": "cartoboost", "seed": 44, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.00039529200876131654}
+{"metric": "predict_rows_per_second", "model_family": "cartoboost", "seed": 44, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 225150.0106943462}
+{"metric": "mae", "model_family": "xgboost", "seed": 44, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 51.1552729231588}
+{"metric": "rmse", "model_family": "xgboost", "seed": 44, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 60.43369698012053}
+{"metric": "r2", "model_family": "xgboost", "seed": 44, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.430087607031836}
+{"metric": "wape", "model_family": "xgboost", "seed": 44, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.32853364772414007}
+{"metric": "train_seconds", "model_family": "xgboost", "seed": 44, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.03404233400942758}
+{"metric": "predict_seconds", "model_family": "xgboost", "seed": 44, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.0005373330204747617}
+{"metric": "predict_rows_per_second", "model_family": "xgboost", "seed": 44, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 165632.85078099958}
+{"metric": "mae", "model_family": "hist_gradient_boosting", "seed": 44, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 48.32479592394471}
+{"metric": "rmse", "model_family": "hist_gradient_boosting", "seed": 44, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 58.05571451081152}
+{"metric": "r2", "model_family": "hist_gradient_boosting", "seed": 44, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.47405573415946933}
+{"metric": "wape", "model_family": "hist_gradient_boosting", "seed": 44, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.310355522963709}
+{"metric": "train_seconds", "model_family": "hist_gradient_boosting", "seed": 44, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.11314820795087144}
+{"metric": "predict_seconds", "model_family": "hist_gradient_boosting", "seed": 44, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.0022829999797977507}
+{"metric": "predict_rows_per_second", "model_family": "hist_gradient_boosting", "seed": 44, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 38983.79359945699}
+{"metric": "mae", "model_family": "random_forest", "seed": 44, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 48.62248195651355}
+{"metric": "rmse", "model_family": "random_forest", "seed": 44, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 57.67927716697285}
+{"metric": "r2", "model_family": "random_forest", "seed": 44, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.48085414115712677}
+{"metric": "wape", "model_family": "random_forest", "seed": 44, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.31226734695697117}
+{"metric": "train_seconds", "model_family": "random_forest", "seed": 44, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.030387583014089614}
+{"metric": "predict_seconds", "model_family": "random_forest", "seed": 44, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.017255250015296042}
+{"metric": "predict_rows_per_second", "model_family": "random_forest", "seed": 44, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 5157.850504693082}
+{"metric": "mae", "model_family": "extra_trees", "seed": 44, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 48.84765694156303}
+{"metric": "rmse", "model_family": "extra_trees", "seed": 44, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 59.287956019052814}
+{"metric": "r2", "model_family": "extra_trees", "seed": 44, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.4514922959222426}
+{"metric": "wape", "model_family": "extra_trees", "seed": 44, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.3137134844709994}
+{"metric": "train_seconds", "model_family": "extra_trees", "seed": 44, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.019499875023029745}
+{"metric": "predict_seconds", "model_family": "extra_trees", "seed": 44, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.01639883400639519}
+{"metric": "predict_rows_per_second", "model_family": "extra_trees", "seed": 44, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 5427.215127934823}
+{"metric": "mae", "model_family": "ridge", "seed": 44, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 44.43660894685048}
+{"metric": "rmse", "model_family": "ridge", "seed": 44, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 54.73074662106751}
+{"metric": "r2", "model_family": "ridge", "seed": 44, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.532574371057295}
+{"metric": "wape", "model_family": "ridge", "seed": 44, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.28538448522656173}
+{"metric": "train_seconds", "model_family": "ridge", "seed": 44, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 0.00030216696904972196}
+{"metric": "predict_seconds", "model_family": "ridge", "seed": 44, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 4.700000863522291e-05}
+{"metric": "predict_rows_per_second", "model_family": "ridge", "seed": 44, "split_id": "random", "task_id": "diabetes", "track": "tabular", "value": 1893616.673365913}
+{"metric": "mae", "model_family": "mean", "seed": 44, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.87787779485}
+{"metric": "rmse", "model_family": "mean", "seed": 44, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 1.122993557638755}
+{"metric": "r2", "model_family": "mean", "seed": 44, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": -0.0010927206454041105}
+{"metric": "wape", "model_family": "mean", "seed": 44, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.43332357636289676}
+{"metric": "train_seconds", "model_family": "mean", "seed": 44, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 7.792026735842228e-06}
+{"metric": "predict_seconds", "model_family": "mean", "seed": 44, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 3.7919962778687477e-06}
+{"metric": "predict_rows_per_second", "model_family": "mean", "seed": 44, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 263713339.0231173}
+{"metric": "mae", "model_family": "cartoboost", "seed": 44, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.4752614825970943}
+{"metric": "rmse", "model_family": "cartoboost", "seed": 44, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.6606231617775241}
+{"metric": "r2", "model_family": "cartoboost", "seed": 44, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.653560529443011}
+{"metric": "wape", "model_family": "cartoboost", "seed": 44, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.23459074435490662}
+{"metric": "train_seconds", "model_family": "cartoboost", "seed": 44, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 1.5240687500336207}
+{"metric": "predict_seconds", "model_family": "cartoboost", "seed": 44, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.0021061250008642673}
+{"metric": "predict_rows_per_second", "model_family": "cartoboost", "seed": 44, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 474805.62625183264}
+{"metric": "mae", "model_family": "xgboost", "seed": 44, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.4822605915934563}
+{"metric": "rmse", "model_family": "xgboost", "seed": 44, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.6659822380157681}
+{"metric": "r2", "model_family": "xgboost", "seed": 44, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.647916991232032}
+{"metric": "wape", "model_family": "xgboost", "seed": 44, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.23804552924575298}
+{"metric": "train_seconds", "model_family": "xgboost", "seed": 44, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.03132716700201854}
+{"metric": "predict_seconds", "model_family": "xgboost", "seed": 44, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.0003933340194635093}
+{"metric": "predict_rows_per_second", "model_family": "xgboost", "seed": 44, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 2542368.4464515857}
+{"metric": "mae", "model_family": "hist_gradient_boosting", "seed": 44, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.45303836354480437}
+{"metric": "rmse", "model_family": "hist_gradient_boosting", "seed": 44, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.6319313239434879}
+{"metric": "r2", "model_family": "hist_gradient_boosting", "seed": 44, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.6829997969938649}
+{"metric": "wape", "model_family": "hist_gradient_boosting", "seed": 44, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.22362133439583357}
+{"metric": "train_seconds", "model_family": "hist_gradient_boosting", "seed": 44, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.3111067499849014}
+{"metric": "predict_seconds", "model_family": "hist_gradient_boosting", "seed": 44, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.0038212499930523336}
+{"metric": "predict_rows_per_second", "model_family": "hist_gradient_boosting", "seed": 44, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 261694.47218008921}
+{"metric": "mae", "model_family": "random_forest", "seed": 44, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.5014734318743393}
+{"metric": "rmse", "model_family": "random_forest", "seed": 44, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.6993827842623279}
+{"metric": "r2", "model_family": "random_forest", "seed": 44, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.611715862127528}
+{"metric": "wape", "model_family": "random_forest", "seed": 44, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.2475290549841206}
+{"metric": "train_seconds", "model_family": "random_forest", "seed": 44, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.048813958012033254}
+{"metric": "predict_seconds", "model_family": "random_forest", "seed": 44, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.016723915992770344}
+{"metric": "predict_rows_per_second", "model_family": "random_forest", "seed": 44, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 59794.607939449976}
+{"metric": "mae", "model_family": "extra_trees", "seed": 44, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.592088259122838}
+{"metric": "rmse", "model_family": "extra_trees", "seed": 44, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.7848380521489009}
+{"metric": "r2", "model_family": "extra_trees", "seed": 44, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.5110326325138987}
+{"metric": "wape", "model_family": "extra_trees", "seed": 44, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.29225685336924173}
+{"metric": "train_seconds", "model_family": "extra_trees", "seed": 44, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.01908616698347032}
+{"metric": "predict_seconds", "model_family": "extra_trees", "seed": 44, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.01674183300929144}
+{"metric": "predict_rows_per_second", "model_family": "extra_trees", "seed": 44, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 59730.616082779976}
+{"metric": "mae", "model_family": "ridge", "seed": 44, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.6127473207124884}
+{"metric": "rmse", "model_family": "ridge", "seed": 44, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 2.16823882265962}
+{"metric": "r2", "model_family": "ridge", "seed": 44, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": -2.731934445038071}
+{"metric": "wape", "model_family": "ridge", "seed": 44, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.3024542390473454}
+{"metric": "train_seconds", "model_family": "ridge", "seed": 44, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 0.00044704199535772204}
+{"metric": "predict_seconds", "model_family": "ridge", "seed": 44, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 6.833398947492242e-05}
+{"metric": "predict_rows_per_second", "model_family": "ridge", "seed": 44, "split_id": "random", "task_id": "california_housing", "track": "tabular", "value": 14634005.82468532}
+{"metric": "mae", "model_family": "mean", "seed": 44, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.23387096774193547}
+{"metric": "rmse", "model_family": "mean", "seed": 44, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.33133288038990544}
+{"metric": "r2", "model_family": "mean", "seed": 44, "split_id": "random", "task_id": "karate", "track": "graph", "value": -0.0037163668797381977}
+{"metric": "wape", "model_family": "mean", "seed": 44, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.2672811059907834}
+{"metric": "train_seconds", "model_family": "mean", "seed": 44, "split_id": "random", "task_id": "karate", "track": "graph", "value": 7.6249707490205765e-06}
+{"metric": "predict_seconds", "model_family": "mean", "seed": 44, "split_id": "random", "task_id": "karate", "track": "graph", "value": 3.500026650726795e-06}
+{"metric": "predict_rows_per_second", "model_family": "mean", "seed": 44, "split_id": "random", "task_id": "karate", "track": "graph", "value": 4571393.762581075}
+{"metric": "mae", "model_family": "cartoboost", "seed": 44, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.17676417492041105}
+{"metric": "rmse", "model_family": "cartoboost", "seed": 44, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.3062710321872856}
+{"metric": "r2", "model_family": "cartoboost", "seed": 44, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.1423822157068314}
+{"metric": "wape", "model_family": "cartoboost", "seed": 44, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.2020161999090412}
+{"metric": "train_seconds", "model_family": "cartoboost", "seed": 44, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.015522833971772343}
+{"metric": "predict_seconds", "model_family": "cartoboost", "seed": 44, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.00020170898642390966}
+{"metric": "predict_rows_per_second", "model_family": "cartoboost", "seed": 44, "split_id": "random", "task_id": "karate", "track": "graph", "value": 79322.19720927333}
+{"metric": "mae", "model_family": "xgboost", "seed": 44, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.08991173468530178}
+{"metric": "rmse", "model_family": "xgboost", "seed": 44, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.24776362234818092}
+{"metric": "r2", "model_family": "xgboost", "seed": 44, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.4387491423168731}
+{"metric": "wape", "model_family": "xgboost", "seed": 44, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.10275626821177346}
+{"metric": "train_seconds", "model_family": "xgboost", "seed": 44, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.034002833999693394}
+{"metric": "predict_seconds", "model_family": "xgboost", "seed": 44, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.0005269160028547049}
+{"metric": "predict_rows_per_second", "model_family": "xgboost", "seed": 44, "split_id": "random", "task_id": "karate", "track": "graph", "value": 30365.37116602234}
+{"metric": "mae", "model_family": "hist_gradient_boosting", "seed": 44, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.20147694856236004}
+{"metric": "rmse", "model_family": "hist_gradient_boosting", "seed": 44, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.3041379596963938}
+{"metric": "r2", "model_family": "hist_gradient_boosting", "seed": 44, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.1542866420271063}
+{"metric": "wape", "model_family": "hist_gradient_boosting", "seed": 44, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.23025936978555434}
+{"metric": "train_seconds", "model_family": "hist_gradient_boosting", "seed": 44, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.03499387501506135}
+{"metric": "predict_seconds", "model_family": "hist_gradient_boosting", "seed": 44, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.0034976249444298446}
+{"metric": "predict_rows_per_second", "model_family": "hist_gradient_boosting", "seed": 44, "split_id": "random", "task_id": "karate", "track": "graph", "value": 4574.532791310531}
+{"metric": "mae", "model_family": "random_forest", "seed": 44, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.09181979767917267}
+{"metric": "rmse", "model_family": "random_forest", "seed": 44, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.25754817738675145}
+{"metric": "r2", "model_family": "random_forest", "seed": 44, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.39354456068354193}
+{"metric": "wape", "model_family": "random_forest", "seed": 44, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.1049369116333402}
+{"metric": "train_seconds", "model_family": "random_forest", "seed": 44, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.019405582977924496}
+{"metric": "predict_seconds", "model_family": "random_forest", "seed": 44, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.01707758300472051}
+{"metric": "predict_rows_per_second", "model_family": "random_forest", "seed": 44, "split_id": "random", "task_id": "karate", "track": "graph", "value": 936.9007309510574}
+{"metric": "mae", "model_family": "extra_trees", "seed": 44, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.11503252587750945}
+{"metric": "rmse", "model_family": "extra_trees", "seed": 44, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.25947815326643325}
+{"metric": "r2", "model_family": "extra_trees", "seed": 44, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.3844213757937497}
+{"metric": "wape", "model_family": "extra_trees", "seed": 44, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.1314657438600108}
+{"metric": "train_seconds", "model_family": "extra_trees", "seed": 44, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.01627487497171387}
+{"metric": "predict_seconds", "model_family": "extra_trees", "seed": 44, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.016370124998502433}
+{"metric": "predict_rows_per_second", "model_family": "extra_trees", "seed": 44, "split_id": "random", "task_id": "karate", "track": "graph", "value": 977.3902154970538}
+{"metric": "mae", "model_family": "ridge", "seed": 44, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.20160323666716237}
+{"metric": "rmse", "model_family": "ridge", "seed": 44, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.3309647000935635}
+{"metric": "r2", "model_family": "ridge", "seed": 44, "split_id": "random", "task_id": "karate", "track": "graph", "value": -0.0014869276162050582}
+{"metric": "wape", "model_family": "ridge", "seed": 44, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.23040369904818556}
+{"metric": "train_seconds", "model_family": "ridge", "seed": 44, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.0003143330104649067}
+{"metric": "predict_seconds", "model_family": "ridge", "seed": 44, "split_id": "random", "task_id": "karate", "track": "graph", "value": 5.062500713393092e-05}
+{"metric": "predict_rows_per_second", "model_family": "ridge", "seed": 44, "split_id": "random", "task_id": "karate", "track": "graph", "value": 316049.3381792761}
+{"metric": "mae", "model_family": "node2vec_regressor", "seed": 44, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.20131073073138533}
+{"metric": "rmse", "model_family": "node2vec_regressor", "seed": 44, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.30365495288494826}
+{"metric": "r2", "model_family": "node2vec_regressor", "seed": 44, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.15697069338002134}
+{"metric": "wape", "model_family": "node2vec_regressor", "seed": 44, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.23006940655015468}
+{"metric": "train_seconds", "model_family": "node2vec_regressor", "seed": 44, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.012562457995954901}
+{"metric": "predict_seconds", "model_family": "node2vec_regressor", "seed": 44, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.0002595830010250211}
+{"metric": "predict_rows_per_second", "model_family": "node2vec_regressor", "seed": 44, "split_id": "random", "task_id": "karate", "track": "graph", "value": 61637.31807098481}
+{"metric": "mae", "model_family": "graphsage_regressor", "seed": 44, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.2014769482531547}
+{"metric": "rmse", "model_family": "graphsage_regressor", "seed": 44, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.30413795960579554}
+{"metric": "r2", "model_family": "graphsage_regressor", "seed": 44, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.15428664253095747}
+{"metric": "wape", "model_family": "graphsage_regressor", "seed": 44, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.2302593694321768}
+{"metric": "train_seconds", "model_family": "graphsage_regressor", "seed": 44, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.00880129198776558}
+{"metric": "predict_seconds", "model_family": "graphsage_regressor", "seed": 44, "split_id": "random", "task_id": "karate", "track": "graph", "value": 0.0005202909815125167}
+{"metric": "predict_rows_per_second", "model_family": "graphsage_regressor", "seed": 44, "split_id": "random", "task_id": "karate", "track": "graph", "value": 30752.022557621603}
+{"metric": "mae", "model_family": "mean", "seed": 44, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.2731481481481482}
+{"metric": "rmse", "model_family": "mean", "seed": 44, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.41759156606591413}
+{"metric": "r2", "model_family": "mean", "seed": 44, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": -0.057309941520467866}
+{"metric": "wape", "model_family": "mean", "seed": 44, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.3450292397660819}
+{"metric": "train_seconds", "model_family": "mean", "seed": 44, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 6.375019438564777e-06}
+{"metric": "predict_seconds", "model_family": "mean", "seed": 44, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 3.500026650726795e-06}
+{"metric": "predict_rows_per_second", "model_family": "mean", "seed": 44, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 6857090.643871612}
+{"metric": "mae", "model_family": "cartoboost", "seed": 44, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.26610193729138515}
+{"metric": "rmse", "model_family": "cartoboost", "seed": 44, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.3916019371827346}
+{"metric": "r2", "model_family": "cartoboost", "seed": 44, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.07020214241857092}
+{"metric": "wape", "model_family": "cartoboost", "seed": 44, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.3361287628943812}
+{"metric": "train_seconds", "model_family": "cartoboost", "seed": 44, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.01124712498858571}
+{"metric": "predict_seconds", "model_family": "cartoboost", "seed": 44, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.0002358750207349658}
+{"metric": "predict_rows_per_second", "model_family": "cartoboost", "seed": 44, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 101748.79868677113}
+{"metric": "mae", "model_family": "xgboost", "seed": 44, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.20763401811321577}
+{"metric": "rmse", "model_family": "xgboost", "seed": 44, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.38076080928069367}
+{"metric": "r2", "model_family": "xgboost", "seed": 44, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.12097068129226185}
+{"metric": "wape", "model_family": "xgboost", "seed": 44, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.26227454919564097}
+{"metric": "train_seconds", "model_family": "xgboost", "seed": 44, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.042419958976097405}
+{"metric": "predict_seconds", "model_family": "xgboost", "seed": 44, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.00046070897951722145}
+{"metric": "predict_rows_per_second", "model_family": "xgboost", "seed": 44, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 52093.62323510535}
+{"metric": "mae", "model_family": "hist_gradient_boosting", "seed": 44, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.2848628699657802}
+{"metric": "rmse", "model_family": "hist_gradient_boosting", "seed": 44, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.41198099910312447}
+{"metric": "r2", "model_family": "hist_gradient_boosting", "seed": 44, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": -0.029089746592389165}
+{"metric": "wape", "model_family": "hist_gradient_boosting", "seed": 44, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.35982678311466976}
+{"metric": "train_seconds", "model_family": "hist_gradient_boosting", "seed": 44, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.039817084034439176}
+{"metric": "predict_seconds", "model_family": "hist_gradient_boosting", "seed": 44, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.0030149160302244127}
+{"metric": "predict_rows_per_second", "model_family": "hist_gradient_boosting", "seed": 44, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 7960.420708039946}
+{"metric": "mae", "model_family": "random_forest", "seed": 44, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.20616319444444445}
+{"metric": "rmse", "model_family": "random_forest", "seed": 44, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.3604908368073562}
+{"metric": "r2", "model_family": "random_forest", "seed": 44, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.21207054093567257}
+{"metric": "wape", "model_family": "random_forest", "seed": 44, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.2604166666666667}
+{"metric": "train_seconds", "model_family": "random_forest", "seed": 44, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.032149207952897996}
+{"metric": "predict_seconds", "model_family": "random_forest", "seed": 44, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.01723699999274686}
+{"metric": "predict_rows_per_second", "model_family": "random_forest", "seed": 44, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 1392.3536584149756}
+{"metric": "mae", "model_family": "extra_trees", "seed": 44, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.2228295363039987}
+{"metric": "rmse", "model_family": "extra_trees", "seed": 44, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.3482743019915458}
+{"metric": "r2", "model_family": "extra_trees", "seed": 44, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.2645693272594284}
+{"metric": "wape", "model_family": "extra_trees", "seed": 44, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.2814688879629457}
+{"metric": "train_seconds", "model_family": "extra_trees", "seed": 44, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.016296499990858138}
+{"metric": "predict_seconds", "model_family": "extra_trees", "seed": 44, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.016423000022768974}
+{"metric": "predict_rows_per_second", "model_family": "extra_trees", "seed": 44, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 1461.365156592962}
+{"metric": "mae", "model_family": "ridge", "seed": 44, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.23920005212773035}
+{"metric": "rmse", "model_family": "ridge", "seed": 44, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.32494769103956794}
+{"metric": "r2", "model_family": "ridge", "seed": 44, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.3597850831444086}
+{"metric": "wape", "model_family": "ridge", "seed": 44, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.3021474342666068}
+{"metric": "train_seconds", "model_family": "ridge", "seed": 44, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.00031829194631427526}
+{"metric": "predict_seconds", "model_family": "ridge", "seed": 44, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 4.924996756017208e-05}
+{"metric": "predict_rows_per_second", "model_family": "ridge", "seed": 44, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 487309.96564977523}
+{"metric": "mae", "model_family": "node2vec_regressor", "seed": 44, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.26333908174992177}
+{"metric": "rmse", "model_family": "node2vec_regressor", "seed": 44, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.3991146719139674}
+{"metric": "r2", "model_family": "node2vec_regressor", "seed": 44, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.034184291683069135}
+{"metric": "wape", "model_family": "node2vec_regressor", "seed": 44, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.33263884010516437}
+{"metric": "train_seconds", "model_family": "node2vec_regressor", "seed": 44, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.01090320898219943}
+{"metric": "predict_seconds", "model_family": "node2vec_regressor", "seed": 44, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.0003054169937968254}
+{"metric": "predict_rows_per_second", "model_family": "node2vec_regressor", "seed": 44, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 78581.08909278859}
+{"metric": "mae", "model_family": "graphsage_regressor", "seed": 44, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.28486286954899687}
+{"metric": "rmse", "model_family": "graphsage_regressor", "seed": 44, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.41198099923044645}
+{"metric": "r2", "model_family": "graphsage_regressor", "seed": 44, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": -0.029089747228465912}
+{"metric": "wape", "model_family": "graphsage_regressor", "seed": 44, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.35982678258820655}
+{"metric": "train_seconds", "model_family": "graphsage_regressor", "seed": 44, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.009863874991424382}
+{"metric": "predict_seconds", "model_family": "graphsage_regressor", "seed": 44, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 0.0006361250416375697}
+{"metric": "predict_rows_per_second", "model_family": "graphsage_regressor", "seed": 44, "split_id": "group_holdout", "task_id": "karate", "track": "graph", "value": 37728.43140747464}

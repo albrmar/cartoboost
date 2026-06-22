@@ -102,6 +102,7 @@ Forecasters:
 | `KalmanForecaster` | Rust-native local-linear-trend Kalman model for noisy level and trend series. |
 | `AutoLocalLevelKalmanForecaster` | Rust-native deterministic grid search over local-level process/observation variances; metadata includes `selected_params` and `validation_scores`. |
 | `AutoKalmanForecaster` | Rust-native deterministic grid search over local-linear level/trend/observation variances; metadata includes `selected_params` and `validation_scores`. |
+| `PiecewiseLinearSeasonalForecaster` | Rust-native piecewise linear seasonal local model with linear, flat, or logistic growth, changepoints, Fourier seasonalities, conditional custom seasonalities, events, automatic extra-regressor standardization, per-component regularization, residual intervals, deterministic sampled trend uncertainty, fitted JSON round-trips, and `components()` / `components_json()` trend-seasonality-event-regressor decomposition; browser/WASM exposes matching fitted artifact prediction and component helpers. |
 | `CartoBoostLagForecaster` | Global recursive forecaster using leakage-safe lag, rolling, calendar, static, and known-future features with `CartoBoostRegressor`. |
 | `WeightedEnsembleForecaster` | Combines aligned component forecasts with fixed weights. |
 | `BacktestWeightedEnsembleForecaster` | Reserved; raises clearly until Rust backtest-weight learning is implemented. |
@@ -116,6 +117,32 @@ Evaluation and persistence:
 | `ForecastRegistry` / `ForecastModelSpec` | Named model construction and optional dependency validation. |
 | `ForecastArtifact` / `ForecastArtifactManifest` | JSON manifest plus CSV or Parquet forecast persistence. |
 | `ForecastingConfig` | Strict TOML config parsing for forecast runs. |
+
+Plotting:
+
+| Entry point | Notes |
+| --- | --- |
+| `cartoboost.plotting.plot_backtest_metrics` | Rolling-origin or blocked-fold metric trajectories by model. |
+| `cartoboost.plotting.plot_changepoint_effects` | Signed changepoint effect magnitudes. |
+| `cartoboost.plotting.plot_cutoff_predictions` | Cross-validation predictions grouped by cutoff. |
+| `cartoboost.plotting.plot_predicted_actual` | Predicted-vs-actual scatter plot with a parity reference line. |
+| `cartoboost.plotting.plot_residual_diagnostics` | Residual-vs-prediction and residual distribution diagnostics. |
+| `cartoboost.plotting.plot_route_segments` | Static pickup/dropoff route segment map with optional metric coloring. |
+| `cartoboost.plotting.plot_metric_comparison` | Sorted bar chart for RMSE, MAE, WAPE, timing, or other metric rows. |
+| `cartoboost.plotting.plot_forecast` | History, forecast, optional holdout actuals, and optional interval bands. |
+| `cartoboost.plotting.plot_forecast_components` | Trend, seasonal, event, or other component panels with optional changepoints. |
+| `cartoboost.plotting.plot_horizon_metrics` | Forecast metric trajectories by horizon and model. |
+| `cartoboost.plotting.plot_interval_calibration` | Nominal-vs-observed interval coverage with optional mean interval width. |
+| `cartoboost.plotting.plot_seasonality_curve` | Periodic component curve with optional uncertainty bands. |
+| `cartoboost.plotting.plot_spatial_points` | Static latitude/longitude point map with optional metric coloring. |
+| `cartoboost.plotting.save_figure` | Creates parent directories and writes a Matplotlib figure. |
+| `cartoboost.plotting.write_pydeck_point_map` | Interactive PyDeck point map written to HTML. |
+| `cartoboost.plotting.write_pydeck_route_map` | Interactive PyDeck route arc map written to HTML. |
+| `cartoboost.plotting.write_plot_report` | Writes a named bundle of provided diagnostics and returns output paths. |
+
+See [Plotting](../plotting.md) for full examples. Install
+`cartoboost[visualization]` when visualization dependencies are not already
+available.
 
 Sequence primitives:
 

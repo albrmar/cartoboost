@@ -11,28 +11,31 @@ reader questions:
 - Which plots should I inspect?
 - What claim is allowed, and what claim is not allowed?
 
-CartoBoost is strongest when the task has taxi-shaped structure: pickup and
-dropoff zones, route distance, periodic hour/day effects, repeated IDs,
-pickup/dropoff topology, or lane-demand history. The benchmark docs therefore
-separate real NYC TLC evidence from synthetic mechanism checks.
+CartoBoost is evaluated on taxi-shaped structure: pickup and dropoff zones,
+route distance, periodic hour/day effects, repeated IDs, pickup/dropoff
+topology, and lane-demand history. The benchmark docs separate real NYC TLC
+evidence from synthetic mechanism checks and report mixed results when external
+baselines are lower on a task.
 
 ## Report Map
 
 | Report | Evidence type | What to inspect first |
 | --- | --- | --- |
-| [NYC Taxi Benchmarks](nyc-taxi.md) | Real TLC fare, duration, and pickup-demand regression. | Metric summary, predicted-vs-actual plots, throughput plots. |
+| [NYC Taxi Benchmarks](nyc-taxi.md) | Real TLC fare, duration, and pickup-demand regression. | Current-code CartoBoost versus external baselines, RMSE/MAE/R2/WAPE tables, repeated-run confidence intervals, timing breakdown. |
 | [Forecasting Tool Benchmark](forecasting.md) | Real taxi lane demand, synthetic taxi-shaped forecasting, M4 sample, M5 full-roster sample, and M5/M6 full-run protocols. | RMSE/WAPE tables, M5/M6 model rosters, run commands, horizon plot, forecast-line plot. |
-| [Model Benchmark Suite](model-suite.md) | Synthetic dense, repeated-ID, and graph diagnostics. | MAE-by-model plot and workload table. |
+| [Model Benchmark Suite](model-suite.md) | Public tabular regression and graph diagnostics. | CartoBoost versus external baselines, validation-search selections, full RMSE/MAE/R2/WAPE tables. |
 | [Taxi Zone Acceptance](taxi-zone.md) | Deterministic taxi-lane feature acceptance. | Lane heatmap, hour profile, route midpoint geometry. |
-| [Neural Embedding Benchmark](neural-embedding-benchmark-latest.md) | Synthetic repeated-ID/cold-ID diagnostic. | Scenario table showing random/tail wins and cold-origin failure. |
+| [Neural Embedding Benchmark](neural-embedding-benchmark-latest.md) | Synthetic repeated-ID/cold-ID diagnostic. | Scenario table showing random/tail gains and cold-origin failure. |
 
 ## Current Maintained Artifacts
 
 | Artifact | Path |
 | --- | --- |
 | NYC regression JSON | `docs/assets/nyc_taxi_benchmarks/results.json` |
+| NYC regression JSONL metrics | `docs/assets/nyc_taxi_benchmarks/results.jsonl` |
 | NYC regression report | `docs/assets/nyc_taxi_benchmarks/results.md` |
-| NYC repeated speed report | `docs/assets/nyc_taxi_benchmarks/repeated_results.md` |
+| NYC repeated regression JSON | `docs/assets/nyc_taxi_benchmarks/repeated_results.json` |
+| NYC repeated regression report | `docs/assets/nyc_taxi_benchmarks/repeated_results.md` |
 | NYC forecasting JSON | `docs/assets/nyc_taxi_benchmarks/forecasting_library_benchmark_real.json` |
 | Forecasting overhaul committed suite JSON | `docs/assets/nyc_taxi_benchmarks/forecasting_overhaul_committed_suite.json` |
 | Forecasting overhaul full-roster committed suite JSON | `docs/assets/nyc_taxi_benchmarks/forecasting_overhaul_committed_suite_full_roster.json` |
@@ -44,7 +47,10 @@ separate real NYC TLC evidence from synthetic mechanism checks.
 | M5 full-roster sample JSON | `docs/assets/nyc_taxi_benchmarks/forecasting_m5_full_roster_sample.json` |
 | M5 full forecasting JSON | `docs/assets/nyc_taxi_benchmarks/forecasting_m5_full.json` |
 | M6 full forecasting JSON | `docs/assets/nyc_taxi_benchmarks/forecasting_m6_full.json` |
-| Model diagnostic suite JSON | `docs/assets/model_benchmarks/results.json` |
+| Model diagnostic suite JSON | `docs/assets/model_benchmarks_public/results.json` |
+| Model diagnostic suite JSONL metrics | `docs/assets/model_benchmarks_public/results.jsonl` |
+| Model diagnostic suite aggregate JSON | `docs/assets/model_benchmarks_public/results_aggregate.json` |
+| Model diagnostic suite report | `docs/assets/model_benchmarks_public/results.md` |
 | Lane acceptance JSON | `docs/assets/lane_level_tests/acceptance_metrics.json` |
 
 ## Claim Rules

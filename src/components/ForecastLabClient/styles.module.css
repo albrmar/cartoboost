@@ -7,26 +7,26 @@
 .header {
   align-items: end;
   display: flex;
-  gap: 1.5rem;
+  gap: 1rem;
   justify-content: space-between;
-  padding: clamp(2.5rem, 6vw, 4.5rem) clamp(1.25rem, 5vw, 4rem) 2rem;
+  padding: clamp(1.3rem, 3vw, 2.4rem) clamp(1rem, 3vw, 2.4rem) 1rem;
 }
 
 .header h1 {
   color: #0b1220;
-  font-size: clamp(2.3rem, 6vw, 4.5rem);
+  font-size: clamp(1.9rem, 4vw, 3.25rem);
   letter-spacing: 0;
-  line-height: 1;
-  margin: 0 0 1rem;
-  max-width: 980px;
+  line-height: 1.02;
+  margin: 0 0 0.55rem;
+  max-width: 860px;
 }
 
 .header p {
   color: #526274;
-  font-size: 1.08rem;
-  line-height: 1.6;
+  font-size: 0.98rem;
+  line-height: 1.45;
   margin: 0;
-  max-width: 760px;
+  max-width: 680px;
 }
 
 .eyebrow {
@@ -35,24 +35,31 @@
   font-size: 0.78rem;
   font-weight: 800;
   letter-spacing: 0.08em;
-  margin-bottom: 0.7rem;
+  margin-bottom: 0.45rem;
   text-transform: uppercase;
 }
 
 .workspace {
   display: grid;
   gap: 1rem;
-  grid-template-columns: minmax(320px, 0.42fr) minmax(0, 1fr);
-  padding: 0 clamp(1.25rem, 5vw, 4rem) clamp(3rem, 6vw, 5rem);
+  grid-template-columns: minmax(280px, 0.31fr) minmax(0, 1fr);
+  padding: 0 clamp(1rem, 3vw, 2.4rem) clamp(2rem, 4vw, 3.5rem);
 }
 
-.controlPanel,
-.outputPanel {
+.controlPanel {
   background: #ffffff;
   border: 1px solid #d8e0ea;
   border-radius: 8px;
-  box-shadow: 0 16px 50px rgba(11, 18, 32, 0.08);
-  padding: 1rem;
+  box-shadow: 0 10px 34px rgba(11, 18, 32, 0.06);
+  padding: 0.8rem;
+}
+
+.controlPanel {
+  align-self: start;
+  max-height: calc(100vh - 1.5rem);
+  overflow: auto;
+  position: sticky;
+  top: 0.75rem;
 }
 
 .dropZone {
@@ -65,8 +72,8 @@
   flex-direction: column;
   gap: 0.35rem;
   justify-content: center;
-  min-height: 150px;
-  padding: 1rem;
+  min-height: 74px;
+  padding: 0.6rem;
   text-align: center;
 }
 
@@ -79,39 +86,43 @@
 
 .dropZone strong {
   color: #0b1220;
-  font-size: 1.05rem;
+  font-size: 0.98rem;
 }
 
 .dropZone span,
 .status {
   color: #526274;
-  font-size: 0.9rem;
+  font-size: 0.82rem;
 }
 
 .controlStack {
   display: grid;
-  gap: 0.75rem;
-  margin: 1rem 0;
+  gap: 0.55rem;
+  margin: 0.65rem 0;
 }
 
 .controlSection {
   border: 1px solid #d8e0ea;
   border-radius: 8px;
-  padding: 0.75rem;
+  padding: 0.55rem;
 }
 
 .controlSection h2 {
   color: #0b1220;
   font-size: 0.84rem;
   letter-spacing: 0;
-  margin: 0 0 0.65rem;
+  margin: 0 0 0.45rem;
 }
 
 .controlsGrid {
   display: grid;
-  gap: 0.75rem;
-  grid-template-columns: 1fr;
+  gap: 0.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
   margin: 0;
+}
+
+.controlsGrid > label:has(select optgroup) {
+  grid-column: 1 / -1;
 }
 
 .field {
@@ -133,9 +144,73 @@
   border-radius: 8px;
   color: #122033;
   font: inherit;
-  min-height: 2.55rem;
-  padding: 0.45rem 0.65rem;
+  min-height: 2.25rem;
+  padding: 0.35rem 0.55rem;
   width: 100%;
+}
+
+.seasonalityControl {
+  border: 1px solid #d8e0ea;
+  border-radius: 8px;
+  padding: 0.55rem;
+}
+
+.seasonalityHeader {
+  align-items: center;
+  display: flex;
+  gap: 0.5rem;
+  justify-content: space-between;
+  margin-bottom: 0.45rem;
+}
+
+.seasonalityHeader span {
+  color: #526274;
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.seasonalityHeader strong {
+  color: #168f86;
+  font-size: 0.82rem;
+}
+
+.seasonalityButtons {
+  display: grid;
+  gap: 0.35rem;
+  grid-template-columns: repeat(auto-fit, minmax(4.5rem, 1fr));
+  margin-bottom: 0.5rem;
+}
+
+.seasonalityButtons button {
+  background: #f4f7fb;
+  border: 1px solid #d8e0ea;
+  border-radius: 8px;
+  color: #122033;
+  cursor: pointer;
+  font: inherit;
+  min-height: 2.2rem;
+  padding: 0.35rem 0.4rem;
+}
+
+.seasonalityButtons strong,
+.seasonalityButtons span {
+  display: block;
+  line-height: 1.15;
+}
+
+.seasonalityButtons strong {
+  font-size: 0.78rem;
+}
+
+.seasonalityButtons span {
+  color: #526274;
+  font-size: 0.72rem;
+}
+
+.seasonalityButtons .seasonalityButtonActive {
+  background: #e0f5f3;
+  border-color: #168f86;
 }
 
 .primaryButton,
@@ -146,6 +221,13 @@
   font-weight: 800;
   min-height: 2.65rem;
   padding: 0.55rem 0.9rem;
+}
+
+.actionGrid {
+  display: grid;
+  gap: 0.45rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 0.65rem;
 }
 
 .primaryButton {
@@ -176,9 +258,8 @@
   cursor: pointer;
   font: inherit;
   font-weight: 800;
-  margin-top: 0.55rem;
   min-height: 2.65rem;
-  padding: 0.55rem 0.9rem;
+  padding: 0.45rem 0.55rem;
   width: 100%;
 }
 
@@ -192,11 +273,15 @@
 
 .emptyState,
 .resultHeader {
+  background: #ffffff;
+  border: 1px solid #d8e0ea;
+  border-radius: 8px;
   align-items: start;
   display: flex;
   gap: 1rem;
   justify-content: space-between;
-  margin-bottom: 1rem;
+  margin-bottom: 0.85rem;
+  padding: 0.75rem 0.85rem;
 }
 
 .emptyState h2,
@@ -232,9 +317,10 @@
 }
 
 .chart {
+  background: #ffffff;
   border: 1px solid #d8e0ea;
   border-radius: 8px;
-  margin: 0 0 1rem;
+  margin: 0 0 0.85rem;
   padding: 0.75rem;
 }
 
@@ -247,6 +333,17 @@
 .chart line {
   stroke: #9fb0c4;
   stroke-width: 1;
+}
+
+.chartGridline line {
+  opacity: 0.28;
+  stroke: #c7d2e1;
+}
+
+.chartGridline text {
+  fill: #526274;
+  font-size: 0.72rem;
+  text-anchor: end;
 }
 
 .chart polyline {
@@ -280,6 +377,63 @@
   stroke-width: 3;
 }
 
+.componentPanel {
+  background: #ffffff;
+  border: 1px solid #d8e0ea;
+  border-radius: 8px;
+  margin: 0 0 1rem;
+  padding: 0.75rem;
+}
+
+.componentHeader {
+  align-items: start;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+
+.componentHeader h3 {
+  color: #122033;
+  font-size: 1rem;
+  margin: 0.1rem 0 0;
+  overflow-wrap: anywhere;
+}
+
+.componentHeader p {
+  color: #526274;
+  font-size: 0.82rem;
+  margin: 0;
+  text-align: right;
+}
+
+.componentGrid {
+  display: grid;
+  gap: 0.65rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-bottom: 0.75rem;
+}
+
+.componentGrid p {
+  background: #f4f7fb;
+  border-radius: 8px;
+  color: #122033;
+  font-size: 1.05rem;
+  font-weight: 800;
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  padding: 0.65rem;
+}
+
+.componentGrid span {
+  color: #526274;
+  display: block;
+  font-size: 0.72rem;
+  margin-bottom: 0.2rem;
+  text-transform: uppercase;
+}
+
 .chart figcaption {
   color: #526274;
   font-size: 0.86rem;
@@ -308,7 +462,46 @@
   width: 0.65rem;
 }
 
+.signalCards {
+  display: grid;
+  gap: 0.65rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-bottom: 0.75rem;
+}
+
+.signalCards p {
+  background: #f4f7fb;
+  border-radius: 8px;
+  color: #122033;
+  font-size: 1.05rem;
+  font-weight: 800;
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  padding: 0.65rem;
+}
+
+.signalCards span,
+.signalCards em {
+  display: block;
+  font-size: 0.72rem;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.signalCards span {
+  color: #526274;
+  margin-bottom: 0.2rem;
+  text-transform: uppercase;
+}
+
+.signalCards em {
+  color: #168f86;
+  margin-top: 0.2rem;
+}
+
 .metricChart {
+  background: #ffffff;
   border: 1px solid #d8e0ea;
   border-radius: 8px;
   margin: 0 0 1rem;
@@ -375,6 +568,9 @@
 }
 
 .tableScroller {
+  background: #ffffff;
+  border: 1px solid #d8e0ea;
+  border-radius: 8px;
   max-width: 100%;
   overflow-x: auto;
 }
@@ -390,7 +586,7 @@
 .tableScroller th,
 .tableScroller td {
   border-bottom: 1px solid #e3e9f1;
-  padding: 0.55rem 0.6rem;
+  padding: 0.48rem 0.55rem;
   text-align: left;
   white-space: nowrap;
 }
@@ -401,20 +597,37 @@
   text-transform: uppercase;
 }
 
+.previewGrid {
+  align-items: start;
+  display: grid;
+  gap: 0.85rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .datasetProfile {
+  background: #ffffff;
   border: 1px solid #d8e0ea;
   border-radius: 8px;
-  margin-bottom: 1rem;
   padding: 0.85rem;
 }
 
+.diagnosticsPanel,
+.featureRolePanel,
+.opportunityPanel,
+.runPlanPanel,
 .geoPanel {
+  background: #ffffff;
   border: 1px solid #d8e0ea;
   border-radius: 8px;
-  margin-bottom: 1rem;
   padding: 0.85rem;
 }
 
+.previewGrid .featureRolePanel,
+.previewGrid .geoPanel {
+  grid-column: 1 / -1;
+}
+
+.diagnosticsHeader,
 .geoHeader {
   align-items: start;
   display: flex;
@@ -423,6 +636,7 @@
   margin-bottom: 0.7rem;
 }
 
+.diagnosticsHeader h3,
 .geoHeader h3 {
   color: #0b1220;
   font-size: 1.15rem;
@@ -430,10 +644,308 @@
   margin: 0;
 }
 
+.diagnosticsHeader > span,
 .geoHeader > span {
   color: #526274;
   font-size: 0.82rem;
   font-weight: 800;
+}
+
+.diagnosticGrid,
+.planGrid,
+.geoStats {
+  display: grid;
+  gap: 0.65rem;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-bottom: 0.8rem;
+}
+
+.geoStats {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.diagnosticGrid p,
+.planGrid p,
+.geoStats p {
+  background: #f4f7fb;
+  border-radius: 8px;
+  color: #122033;
+  font-size: 0.9rem;
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  padding: 0.65rem;
+}
+
+.diagnosticGrid span,
+.planGrid span,
+.geoStats span {
+  color: #526274;
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 800;
+  margin-bottom: 0.2rem;
+  text-transform: uppercase;
+}
+
+.planGrid {
+  margin-bottom: 0.75rem;
+}
+
+.planReasons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-bottom: 0.75rem;
+}
+
+.planReasons span {
+  background: #eef2f7;
+  border: 1px solid #d8e0ea;
+  border-radius: 999px;
+  color: #526274;
+  font-size: 0.78rem;
+  padding: 0.3rem 0.55rem;
+}
+
+.readinessList {
+  display: grid;
+  gap: 0.45rem;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  margin-bottom: 0.75rem;
+}
+
+.readinessList span {
+  border: 1px solid #d8e0ea;
+  border-radius: 8px;
+  color: #526274;
+  font-size: 0.76rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  padding: 0.5rem;
+}
+
+.readinessList strong {
+  color: #122033;
+  display: block;
+  font-size: 0.72rem;
+  margin-bottom: 0.2rem;
+  text-transform: uppercase;
+}
+
+.readinessReady {
+  background: #e0f5f3;
+}
+
+.readinessReview {
+  background: #fff7ed;
+}
+
+.inlineActionButton {
+  background: #122033;
+  border: 1px solid #122033;
+  border-radius: 8px;
+  color: #ffffff;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.86rem;
+  font-weight: 800;
+  min-height: 2.35rem;
+  padding: 0.45rem 0.75rem;
+}
+
+.featureRoleRow {
+  align-items: center;
+  display: grid;
+  gap: 0.6rem;
+  grid-template-columns: minmax(120px, 0.28fr) minmax(5rem, 0.18fr) minmax(110px, 1fr) minmax(4.5rem, auto);
+  margin: 0.45rem 0;
+}
+
+.featureRoleRow span,
+.featureRoleRow strong,
+.featureRoleRow em {
+  color: #122033;
+  font-size: 0.82rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.featureRoleRow strong {
+  color: #526274;
+  font-weight: 800;
+}
+
+.featureRoleRow em {
+  color: #168f86;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.featureRoleRow div {
+  background: #eef2f7;
+  border-radius: 999px;
+  height: 0.65rem;
+  overflow: hidden;
+}
+
+.featureRoleRow i {
+  background: #168f86;
+  border-radius: inherit;
+  display: block;
+  height: 100%;
+}
+
+.histogram {
+  align-items: end;
+  background: #f4f7fb;
+  border-radius: 8px;
+  display: grid;
+  gap: 0.25rem;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  height: 96px;
+  margin-bottom: 0.75rem;
+  padding: 0.55rem;
+}
+
+.histogram span {
+  align-items: end;
+  display: flex;
+  height: 100%;
+}
+
+.histogram i {
+  background: #168f86;
+  border-radius: 4px 4px 0 0;
+  display: block;
+  min-height: 4px;
+  width: 100%;
+}
+
+.timeBuckets {
+  display: grid;
+  gap: 0.25rem;
+  grid-template-columns: repeat(auto-fit, minmax(3.4rem, 1fr));
+  margin-bottom: 0.75rem;
+}
+
+.timeBuckets span {
+  border-radius: 6px;
+  color: #ffffff;
+  font-size: 0.72rem;
+  font-weight: 800;
+  min-height: 1.9rem;
+  padding: 0.45rem 0.35rem;
+  text-align: center;
+  text-shadow: 0 1px 1px rgba(11, 18, 32, 0.28);
+}
+
+.opportunityTable {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.opportunityHeader,
+.opportunityRow {
+  align-items: center;
+  display: grid;
+  gap: 0.55rem;
+  grid-template-columns: minmax(12rem, 1.4fr) minmax(4rem, 0.42fr) minmax(4rem, 0.42fr) minmax(3.6rem, 0.36fr) minmax(8rem, 0.8fr);
+}
+
+.opportunityHeader {
+  color: #526274;
+  font-size: 0.72rem;
+  font-weight: 800;
+  padding: 0 0.45rem;
+  text-transform: uppercase;
+}
+
+.opportunityRow {
+  background: #f4f7fb;
+  border-radius: 8px;
+  color: #122033;
+  font-size: 0.82rem;
+  padding: 0.55rem;
+}
+
+.opportunityRow strong,
+.opportunityRow p {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.opportunityRow strong span {
+  color: #526274;
+  display: block;
+  font-size: 0.72rem;
+  margin-bottom: 0.12rem;
+  text-transform: uppercase;
+}
+
+.opportunityRow em,
+.opportunityRow i {
+  color: #168f86;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.opportunityScoreBar {
+  background: #d8e0ea;
+  border-radius: 999px;
+  display: block;
+  height: 0.42rem;
+  margin-top: 0.3rem;
+  overflow: hidden;
+}
+
+.opportunityScoreBar span {
+  background: #168f86;
+  border-radius: inherit;
+  display: block;
+  height: 100%;
+}
+
+.webglMapShell {
+  background: #eef2f7;
+  border-radius: 8px;
+  height: 360px;
+  margin-bottom: 0.75rem;
+  overflow: hidden;
+  position: relative;
+}
+
+.webglMap {
+  height: 100%;
+  width: 100%;
+}
+
+.webglMapOverlay {
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid rgba(216, 224, 234, 0.9);
+  border-radius: 8px;
+  bottom: 0.65rem;
+  color: #122033;
+  left: 0.65rem;
+  max-width: min(24rem, calc(100% - 1.3rem));
+  padding: 0.45rem 0.55rem;
+  position: absolute;
+}
+
+.webglMapOverlay span {
+  color: #526274;
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 800;
+  margin-bottom: 0.15rem;
+  text-transform: uppercase;
+}
+
+.webglMapOverlay strong {
+  display: block;
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
 }
 
 .geoSvg {
@@ -455,12 +967,34 @@
   stroke-width: 1.2;
 }
 
+.geoSvg .graticuleLine {
+  fill: none;
+  opacity: 0.36;
+  stroke: #c7d2e1;
+  stroke-width: 0.8;
+}
+
+.geoSvg .densityContour {
+  mix-blend-mode: multiply;
+  opacity: 0.15;
+  stroke: #ffffff;
+  stroke-width: 0.7;
+}
+
+.geoSvg .hotCell {
+  opacity: 0.22;
+  stroke: #ffffff;
+  stroke-width: 1;
+}
+
 .geoSvg circle {
   opacity: 0.86;
   stroke: #ffffff;
   stroke-width: 1;
 }
 
+.routeList,
+.targetList,
 .h3List {
   display: flex;
   flex-wrap: wrap;
@@ -468,6 +1002,8 @@
   margin-top: 0.7rem;
 }
 
+.routeList span,
+.targetList span,
 .h3List span {
   align-items: center;
   background: #eef2f7;
@@ -480,14 +1016,24 @@
   padding: 0.35rem 0.5rem;
 }
 
+.routeList strong,
+.targetList strong,
 .h3List strong {
   color: #122033;
 }
 
+.routeList i,
+.targetList i,
 .h3List i {
   color: #168f86;
   font-style: normal;
   font-weight: 800;
+}
+
+.routeList em,
+.targetList em {
+  color: #526274;
+  font-style: normal;
 }
 
 .datasetProfile dl {
@@ -600,11 +1146,21 @@
 :global([data-theme='dark']) .header h1,
 :global([data-theme='dark']) .emptyState h2,
 :global([data-theme='dark']) .resultHeader h2,
+:global([data-theme='dark']) .componentHeader h3,
 :global([data-theme='dark']) .controlSection h2,
+:global([data-theme='dark']) .diagnosticsHeader h3,
 :global([data-theme='dark']) .geoHeader h3,
+:global([data-theme='dark']) .routeList strong,
+:global([data-theme='dark']) .targetList strong,
 :global([data-theme='dark']) .h3List strong,
+:global([data-theme='dark']) .readinessList strong,
 :global([data-theme='dark']) .dropZone strong,
 :global([data-theme='dark']) .datasetProfile dd,
+:global([data-theme='dark']) .opportunityRow strong,
+:global([data-theme='dark']) .opportunityRow p,
+:global([data-theme='dark']) .seasonalityHeader strong,
+:global([data-theme='dark']) .seasonalityButtons button,
+:global([data-theme='dark']) .featureRoleRow span,
 :global([data-theme='dark']) .metricRow span,
 :global([data-theme='dark']) .metricRow strong {
   color: #e8eef8;
@@ -614,20 +1170,45 @@
 :global([data-theme='dark']) .dropZone span,
 :global([data-theme='dark']) .status,
 :global([data-theme='dark']) .resultHeader dt,
+:global([data-theme='dark']) .componentHeader p,
 :global([data-theme='dark']) .chart figcaption,
 :global([data-theme='dark']) .legend span,
 :global([data-theme='dark']) .metricChart figcaption,
 :global([data-theme='dark']) .datasetProfile dt,
+:global([data-theme='dark']) .diagnosticsHeader > span,
 :global([data-theme='dark']) .geoHeader > span,
 :global([data-theme='dark']) .profileGrid span,
+:global([data-theme='dark']) .diagnosticGrid span,
+:global([data-theme='dark']) .planGrid span,
+:global([data-theme='dark']) .featureRoleRow strong,
+:global([data-theme='dark']) .geoStats span,
+:global([data-theme='dark']) .opportunityHeader,
+:global([data-theme='dark']) .opportunityRow strong span,
+:global([data-theme='dark']) .seasonalityHeader span,
+:global([data-theme='dark']) .seasonalityButtons span,
+:global([data-theme='dark']) .routeList em,
+:global([data-theme='dark']) .targetList em,
 :global([data-theme='dark']) .metricCards span,
+:global([data-theme='dark']) .signalCards span,
+:global([data-theme='dark']) .componentGrid span,
 :global([data-theme='dark']) .featureSelector > span,
 :global([data-theme='dark']) .tableScroller th {
   color: #9db0c9;
 }
 
 :global([data-theme='dark']) .controlPanel,
-:global([data-theme='dark']) .outputPanel {
+:global([data-theme='dark']) .emptyState,
+:global([data-theme='dark']) .resultHeader,
+:global([data-theme='dark']) .datasetProfile,
+:global([data-theme='dark']) .diagnosticsPanel,
+:global([data-theme='dark']) .featureRolePanel,
+:global([data-theme='dark']) .opportunityPanel,
+:global([data-theme='dark']) .runPlanPanel,
+:global([data-theme='dark']) .geoPanel,
+:global([data-theme='dark']) .componentPanel,
+:global([data-theme='dark']) .chart,
+:global([data-theme='dark']) .metricChart,
+:global([data-theme='dark']) .tableScroller {
   background: #111a2b;
   border-color: rgba(157, 176, 201, 0.24);
   box-shadow: 0 16px 50px rgba(0, 0, 0, 0.24);
@@ -642,6 +1223,8 @@
 :global([data-theme='dark']) .field input,
 :global([data-theme='dark']) .secondaryButton,
 :global([data-theme='dark']) .secondaryActionButton,
+:global([data-theme='dark']) .inlineActionButton,
+:global([data-theme='dark']) .seasonalityControl,
 :global([data-theme='dark']) .featureSelector {
   background: #0b1220;
   border-color: rgba(157, 176, 201, 0.3);
@@ -649,10 +1232,16 @@
 }
 
 :global([data-theme='dark']) .datasetProfile,
+:global([data-theme='dark']) .diagnosticsPanel,
+:global([data-theme='dark']) .featureRolePanel,
+:global([data-theme='dark']) .opportunityPanel,
+:global([data-theme='dark']) .runPlanPanel,
 :global([data-theme='dark']) .controlSection,
 :global([data-theme='dark']) .geoPanel,
+:global([data-theme='dark']) .componentPanel,
 :global([data-theme='dark']) .chart,
 :global([data-theme='dark']) .metricChart,
+:global([data-theme='dark']) .tableScroller,
 :global([data-theme='dark']) .featureSelector {
   border-color: rgba(157, 176, 201, 0.24);
 }
@@ -663,13 +1252,45 @@
   fill: #0b1220;
 }
 
+:global([data-theme='dark']) .webglMapShell {
+  background: #0b1220;
+}
+
+:global([data-theme='dark']) .webglMapOverlay {
+  background: rgba(11, 18, 32, 0.86);
+  border-color: rgba(157, 176, 201, 0.28);
+  color: #e8eef8;
+}
+
+:global([data-theme='dark']) .webglMapOverlay span {
+  color: #9db0c9;
+}
+
 :global([data-theme='dark']) .geoSvg line {
   stroke: #9db0c9;
 }
 
+:global([data-theme='dark']) .geoSvg .graticuleLine {
+  stroke: #34445d;
+}
+
+:global([data-theme='dark']) .geoSvg .densityContour {
+  mix-blend-mode: screen;
+  opacity: 0.18;
+  stroke: #0b1220;
+}
+
 :global([data-theme='dark']) .profileGrid p,
+:global([data-theme='dark']) .diagnosticGrid p,
+:global([data-theme='dark']) .planGrid p,
+:global([data-theme='dark']) .geoStats p,
+:global([data-theme='dark']) .opportunityRow,
 :global([data-theme='dark']) .metricCards p,
-:global([data-theme='dark']) .metricRow div {
+:global([data-theme='dark']) .signalCards p,
+:global([data-theme='dark']) .componentGrid p,
+:global([data-theme='dark']) .metricRow div,
+:global([data-theme='dark']) .featureRoleRow div,
+:global([data-theme='dark']) .histogram {
   background: #0b1220;
   color: #dce6f4;
 }
@@ -680,6 +1301,20 @@
   color: #dce6f4;
 }
 
+:global([data-theme='dark']) .seasonalityButtons button {
+  background: rgba(157, 176, 201, 0.1);
+  border-color: rgba(157, 176, 201, 0.28);
+}
+
+:global([data-theme='dark']) .seasonalityButtons .seasonalityButtonActive {
+  background: rgba(39, 194, 181, 0.16);
+  border-color: #27c2b5;
+}
+
+:global([data-theme='dark']) .routeList span,
+:global([data-theme='dark']) .targetList span,
+:global([data-theme='dark']) .planReasons span,
+:global([data-theme='dark']) .readinessList span,
 :global([data-theme='dark']) .h3List span {
   background: rgba(157, 176, 201, 0.1);
   border-color: rgba(157, 176, 201, 0.28);
@@ -706,7 +1341,8 @@
 @media (max-width: 996px) {
   .header,
   .emptyState,
-  .resultHeader {
+  .resultHeader,
+  .componentHeader {
     align-items: stretch;
     flex-direction: column;
   }
@@ -716,17 +1352,32 @@
   }
 
   .profileGrid,
+  .previewGrid,
+  .diagnosticGrid,
+  .planGrid,
+  .geoStats,
+  .readinessList,
+  .signalCards,
+  .componentGrid,
   .metricCards,
-  .metricRow {
+  .metricRow,
+  .opportunityHeader,
+  .opportunityRow,
+  .featureRoleRow {
     grid-template-columns: 1fr;
   }
 
   .datasetProfile dl {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .controlPanel {
+    position: static;
+  }
 }
 
 @media (max-width: 600px) {
+  .actionGrid,
   .datasetProfile dl {
     grid-template-columns: 1fr;
   }

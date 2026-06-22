@@ -20,12 +20,21 @@ from scripts.run_nyc_taxi_quality_benchmarks import (  # noqa: E402
     build_real_tasks,
     cartoboost_schema,
     clean_tlc_frame,
+    external_baseline_comparison,
     graph_augmented_split_features,
-    lightgbm_comparison,
     pickup_demand_cold_zone_fraction,
+    pickup_zone_diagnostics,
     sample_tlc_frame,
 )
-from scripts.run_repeated_nyc_taxi_benchmarks import collect_quality  # noqa: E402
+from scripts.run_nyc_taxi_quality_benchmarks import (  # noqa: E402
+    output_artifact_manifest as nyc_output_artifact_manifest,
+)
+from scripts.run_repeated_nyc_taxi_benchmarks import (  # noqa: E402
+    collect_quality,
+)
+from scripts.run_repeated_nyc_taxi_benchmarks import (  # noqa: E402
+    output_artifact_manifest as repeated_output_artifact_manifest,
+)
 
 
 def test_nyc_taxi_quality_benchmark_synthetic_smoke(tmp_path: Path):
@@ -61,10 +70,20 @@ def test_nyc_taxi_quality_benchmark_synthetic_smoke(tmp_path: Path):
     assert results["git_commit"] is None or len(results["git_commit"]) == 40
     assert results["benchmark_integrity"]["hpo"] == "fixed_settings_no_hpo"
     assert results["benchmark_integrity"]["split_modes"] == ["random", "spatial_holdout"]
+    selection = results["benchmark_integrity"]["selection_policy"]
+    assert "test labels" in selection["global_hyperparameters"]
+    assert "training split only" in selection["graph_feature_gate"]
+    assert "excluded from fitting" in selection["segment_diagnostics"]
     assert results["feature_access_policy"]["baseline_feature_access"]
     assert set(results["split_definitions"]) == {"random", "spatial_holdout"}
     assert results["model_roster"] == ["mean"]
     assert results["resource_usage"]["python"]
+    assert results["baseline_environment"]["sklearn"]["module_importable"] is True
+    assert "required_class_available" in results["baseline_environment"]["xgboost"]
+    assert results["output_artifacts"]["results.json"]["size_bytes"] > 0
+    assert results["output_artifacts"]["results.md"]["size_bytes"] > 0
+    assert results["output_artifacts"]["results.jsonl"]["size_bytes"] > 0
+    assert nyc_output_artifact_manifest(output_dir)["results.json"]["size_bytes"] > 0
     assert set(results["tasks"]) == {"duration", "fare", "pickup_demand"}
     assert jsonl_rows
     assert {"task_id", "split_id", "model_family", "metric", "value"} <= set(jsonl_rows[0])
@@ -99,6 +118,14 @@ def test_nyc_taxi_quality_benchmark_synthetic_smoke(tmp_path: Path):
             assert np.isfinite(model["metrics"]["rmse"])
             assert np.isfinite(model["metrics"]["mae"])
             assert np.isfinite(model["metrics"]["r2"])
+            assert np.isfinite(model["metrics"]["wape"])
+            diagnostics = model["segment_diagnostics"]["pickup_zone"]
+            assert diagnostics["segment_key"] == "pickup_zone"
+            assert diagnostics["segment_count"] > 0
+            assert diagnostics["row_count_min"] > 0
+            assert diagnostics["row_count_max"] >= diagnostics["row_count_min"]
+            assert np.isfinite(diagnostics["rmse_quantiles"]["p50"])
+            assert diagnostics["worst_rmse_segments"]
             assert model["timing"]["train_seconds"] >= 0.0
             assert model["timing"]["predict_seconds"] >= 0.0
             assert model["timing"]["fit_predict_seconds"] >= 0.0
@@ -126,6 +153,84 @@ def test_nyc_taxi_quality_benchmark_synthetic_smoke(tmp_path: Path):
     assert float(np.std(throughput[..., :3])) > 0.01
 
 
+def test_nyc_taxi_public_doc_matches_maintained_artifact_rows():
+    results_path = REPO_ROOT / "docs" / "assets" / "nyc_taxi_benchmarks" / "results.json"
+    doc_path = REPO_ROOT / "docs" / "benchmarks" / "nyc-taxi.md"
+    results = json.loads(results_path.read_text(encoding="utf-8"))
+    doc = doc_path.read_text(encoding="utf-8")
+
+    for task_name, split_name, model_name in [
+        ("duration", "random", "cartoboost"),
+        ("fare", "spatial_holdout", "cartoboost"),
+        ("pickup_demand", "random", "hist_gradient_boosting"),
+        ("pickup_demand", "spatial_holdout", "mean"),
+    ]:
+        result = results["tasks"][task_name]["splits"][split_name]["models"][model_name]
+        metrics = result["metrics"]
+        timing = result["timing"]
+        expected_row = (
+            f"| {model_name} | ok | {metrics['rmse']:.6f} | "
+            f"{metrics['mae']:.6f} | {metrics['r2']:.6f} | {metrics['wape']:.6f} | "
+            f"{timing['train_seconds']:.3f} | {timing['predict_seconds']:.5f} |"
+        )
+        assert expected_row in doc
+
+    lightgbm = results["tasks"]["duration"]["splits"]["random"]["models"]["lightgbm"]
+    catboost = results["tasks"]["duration"]["splits"]["random"]["models"]["catboost"]
+    assert f"| lightgbm | skipped |  |  |  |  |  |  | {lightgbm['reason']} |" in doc
+    assert f"| catboost | skipped |  |  |  |  |  |  | {catboost['reason']} |" in doc
+
+
+def test_nyc_taxi_maintained_artifacts_are_complete():
+    artifact_dir = REPO_ROOT / "docs" / "assets" / "nyc_taxi_benchmarks"
+    paths = [
+        artifact_dir / "results.json",
+        artifact_dir / "results.jsonl",
+        artifact_dir / "results.md",
+        artifact_dir / "repeated_results.json",
+        artifact_dir / "repeated_results.md",
+    ]
+    for path in paths:
+        assert path.exists(), f"missing maintained NYC benchmark artifact: {path}"
+        assert path.stat().st_size > 0
+
+    results = json.loads((artifact_dir / "results.json").read_text(encoding="utf-8"))
+    rows = [
+        json.loads(line)
+        for line in (artifact_dir / "results.jsonl").read_text(encoding="utf-8").splitlines()
+        if line
+    ]
+    assert len(results["external_baseline_comparison"]) == 5
+    assert (
+        results["output_artifacts"]["results.jsonl"]["size_bytes"]
+        == (artifact_dir / "results.jsonl").stat().st_size
+    )
+    assert {
+        (row["track"], row["task_id"], row["split_id"], row["model_family"], row["metric"])
+        for row in rows
+    } >= {
+        ("spatial", "duration", "random", "cartoboost", "rmse"),
+        ("spatial", "fare", "spatial_holdout", "ridge", "wape"),
+        ("spatial", "pickup_demand", "random", "hist_gradient_boosting", "r2"),
+    }
+
+    repeated = json.loads((artifact_dir / "repeated_results.json").read_text(encoding="utf-8"))
+    assert repeated["seeds"] == [11, 29, 47]
+    assert (
+        repeated["output_artifacts"]["docs/assets/nyc_taxi_benchmarks/repeated_results.json"][
+            "size_bytes"
+        ]
+        == (artifact_dir / "repeated_results.json").stat().st_size
+    )
+    assert (
+        repeated["output_artifacts"]["docs/assets/nyc_taxi_benchmarks/repeated_results.md"][
+            "size_bytes"
+        ]
+        == (artifact_dir / "repeated_results.md").stat().st_size
+    )
+    assert repeated["quality"]
+
+
 def test_nyc_taxi_quality_benchmark_skips_missing_optional_models(tmp_path: Path):
     repo_root = Path(__file__).resolve().parents[2]
     output_dir = tmp_path / "nyc_taxi_optional_skips"
@@ -137,7 +242,7 @@ def test_nyc_taxi_quality_benchmark_skips_missing_optional_models(tmp_path: Path
             str(script),
             "--synthetic-smoke",
             "--models",
-            "lightgbm,xgboost",
+            "lightgbm,xgboost,catboost",
             "--output-dir",
             str(output_dir),
         ],
@@ -148,7 +253,7 @@ def test_nyc_taxi_quality_benchmark_skips_missing_optional_models(tmp_path: Path
     results = json.loads((output_dir / "results.json").read_text(encoding="utf-8"))
     for task in results["tasks"].values():
         for split in task["splits"].values():
-            for model_name in ["lightgbm", "xgboost"]:
+            for model_name in ["lightgbm", "xgboost", "catboost"]:
                 model = split["models"][model_name]
                 if model["status"] == "skipped":
                     assert (
@@ -157,7 +262,7 @@ def test_nyc_taxi_quality_benchmark_skips_missing_optional_models(tmp_path: Path
                     )
 
 
-def test_nyc_taxi_quality_benchmark_reports_best_cartoboost_vs_lightgbm():
+def test_nyc_taxi_quality_benchmark_reports_primary_cartoboost_vs_external_baseline():
     payload = {
         "tasks": {
             "fare": {
@@ -166,15 +271,19 @@ def test_nyc_taxi_quality_benchmark_reports_best_cartoboost_vs_lightgbm():
                         "models": {
                             "cartoboost": {
                                 "status": "ok",
-                                "metrics": {"rmse": 0.15, "r2": 0.86},
+                                "metrics": {"rmse": 0.15, "r2": 0.86, "wape": 0.11},
                             },
                             "cartoboost_graph_node2vec": {
                                 "status": "ok",
-                                "metrics": {"rmse": 0.13, "r2": 0.89},
+                                "metrics": {"rmse": 0.13, "r2": 0.89, "wape": 0.10},
                             },
                             "lightgbm": {
                                 "status": "ok",
-                                "metrics": {"rmse": 0.17, "r2": 0.84},
+                                "metrics": {"rmse": 0.17, "r2": 0.84, "wape": 0.12},
+                            },
+                            "ridge": {
+                                "status": "ok",
+                                "metrics": {"rmse": 0.14, "r2": 0.88, "wape": 0.09},
                             },
                         },
                     },
@@ -195,20 +304,40 @@ def test_nyc_taxi_quality_benchmark_reports_best_cartoboost_vs_lightgbm():
         },
     }
 
-    assert lightgbm_comparison(payload) == [
+    assert external_baseline_comparison(payload) == [
         {
             "task": "fare",
             "split": "random",
-            "best_cartoboost_model": "cartoboost_graph_node2vec",
-            "best_cartoboost_rmse": 0.13,
-            "lightgbm_rmse": 0.17,
-            "rmse_delta_vs_lightgbm": -0.04000000000000001,
-            "best_cartoboost_r2": 0.89,
-            "lightgbm_r2": 0.84,
-            "r2_delta_vs_lightgbm": 0.050000000000000044,
-            "winner": "cartoboost",
+            "cartoboost_model": "cartoboost",
+            "cartoboost_rmse": 0.15,
+            "cartoboost_wape": 0.11,
+            "cartoboost_r2": 0.86,
+            "best_external_baseline": "ridge",
+            "best_external_rmse": 0.14,
+            "best_external_wape": 0.09,
+            "best_external_r2": 0.88,
+            "rmse_delta_vs_external": 0.009999999999999981,
+            "r2_delta_vs_external": -0.020000000000000018,
+            "status": "external_lower_or_tied_rmse",
         }
     ]
+
+
+def test_pickup_zone_diagnostics_reports_quantiles_and_worst_segments():
+    diagnostics = pickup_zone_diagnostics(
+        np.asarray([1.0, 2.0, 4.0, 8.0]),
+        np.asarray([1.0, 3.0, 3.0, 4.0]),
+        np.asarray([10, 10, 11, 12]),
+        top_n=2,
+    )
+
+    assert diagnostics["segment_key"] == "pickup_zone"
+    assert diagnostics["segment_count"] == 3
+    assert diagnostics["row_count_min"] == 1
+    assert diagnostics["row_count_max"] == 2
+    assert diagnostics["rmse_quantiles"]["max"] == pytest.approx(4.0)
+    assert diagnostics["worst_rmse_segments"][0]["pickup_zone"] == 12
+    assert diagnostics["largest_abs_bias_segments"][0]["pickup_zone"] == 12
 
 
 def test_repeated_nyc_quality_summary_reports_cis_and_paired_deltas():
@@ -281,9 +410,27 @@ def test_repeated_nyc_quality_summary_reports_cis_and_paired_deltas():
     assert cartoboost["metrics"]["rmse"]["mean"] == pytest.approx(1.05)
     assert cartoboost["rmse_wins_or_ties"] == 2
 
+    primary = summary["fare/random"]["primary_vs_best_external"]
+    assert primary["n"] == 2
+    assert primary["best_external_model_counts"] == {"lightgbm": 2}
+    assert primary["rmse_delta_mean"] == pytest.approx(-0.2)
+    assert primary["r2_delta_mean"] == pytest.approx(0.1)
+
     delta = summary["fare/random"]["paired_deltas"]["cartoboost_vs_lightgbm"]
     assert delta["rmse_delta_mean"] == pytest.approx(-0.2)
     assert delta["r2_delta_mean"] == pytest.approx(0.1)
+
+
+def test_repeated_nyc_output_artifact_manifest_reports_summary_sizes(tmp_path: Path):
+    summary_json = tmp_path / "repeated_results.json"
+    summary_md = tmp_path / "repeated_results.md"
+    summary_json.write_text("{}\n", encoding="utf-8")
+    summary_md.write_text("# report\n", encoding="utf-8")
+
+    manifest = repeated_output_artifact_manifest(summary_json, summary_md)
+
+    assert manifest[str(summary_json)]["size_bytes"] == summary_json.stat().st_size
+    assert manifest[str(summary_md)]["size_bytes"] == summary_md.stat().st_size
 
 
 def test_nyc_taxi_centroids_are_only_required_for_cartoboost_geometry():

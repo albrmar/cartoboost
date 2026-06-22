@@ -31,6 +31,7 @@ from .local import (
     LocalLevelKalmanForecaster,
     NaiveForecaster,
     OptimizedThetaForecaster,
+    PiecewiseLinearSeasonalForecaster,
     SeasonalNaiveForecaster,
     ThetaForecaster,
 )
@@ -100,6 +101,7 @@ __all__ = [
     "normalize_frequency",
     "OptimizedThetaForecaster",
     "PanelForecasterMixin",
+    "PiecewiseLinearSeasonalForecaster",
     "PredictionInterval",
     "ReferencePathConfig",
     "ReferenceSignal",

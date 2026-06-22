@@ -35,6 +35,38 @@ benchmark suite. They are not real TLC data.
 
 Read: the current scalable synthetic checks favor CartoBoost.
 
+## Prophet Comparison
+
+The `prophet-comparison` roster runs the Rust-native
+`cartoboost_piecewise_linear_seasonal` model against Prophet's additive
+CmdStan-backed model on the same splits. This synthetic suite run uses four
+taxi-shaped daily demand problem families, 4 pickup/dropoff lanes per problem,
+120 daily observations, two rolling-origin folds, and a 7-day horizon. Candidate
+selection and hyperparameter search are disabled.
+
+| Rank | Model | Mean RMSE Ratio | Wins/Ties | Mean Fit+Predict |
+| ---: | --- | ---: | ---: | ---: |
+| 1 | `cartoboost_piecewise_linear_seasonal` | 1.000000 | 4 | 0.001300s |
+| 2 | `prophet_additive` | 2.450789 | 0 | 0.073142s |
+
+| Problem | Model | RMSE | MAE | WAPE |
+| --- | --- | ---: | ---: | ---: |
+| `airport_calendar_events` | `cartoboost_piecewise_linear_seasonal` | 1.579893 | 0.807465 | 0.035577 |
+| `airport_calendar_events` | `prophet_additive` | 2.698843 | 2.236968 | 0.098619 |
+| `borough_monthly_pulses` | `cartoboost_piecewise_linear_seasonal` | 2.059026 | 1.517640 | 0.066407 |
+| `borough_monthly_pulses` | `prophet_additive` | 3.125845 | 2.632188 | 0.114851 |
+| `route_mix_shift` | `cartoboost_piecewise_linear_seasonal` | 0.603890 | 0.484308 | 0.021195 |
+| `route_mix_shift` | `prophet_additive` | 2.683213 | 2.286677 | 0.099971 |
+| `taxi_weekly` | `cartoboost_piecewise_linear_seasonal` | 1.358277 | 1.158468 | 0.050880 |
+| `taxi_weekly` | `prophet_additive` | 2.897991 | 2.533184 | 0.111225 |
+
+Read: on these deterministic synthetic Prophet-shaped tasks, the Rust-native
+piecewise model executes the trend, changepoint, and Fourier seasonality path
+without Stan while preserving the same benchmark split protocol. The mean
+fit-and-predict path is 56.28x faster here. This is synthetic evidence for the
+piecewise linear seasonal implementation path, not a replacement for real taxi or M-series
+forecasting evidence.
+
 ## M4 Sample
 
 The current M4 sample scores the first 96 series from each M4 frequency group.
@@ -136,6 +168,20 @@ uv run --group dev python scripts/forecasting_generalization.py \
   --no-hyperopt \
   --output docs/assets/nyc_taxi_benchmarks/forecasting_generalization_scalable_synthetic.json
 
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run --no-sync --group dev --group bench python scripts/forecasting_library_benchmark.py \
+  --suite synthetic \
+  --source polars \
+  --days 120 \
+  --lanes 4 \
+  --horizon 7 \
+  --suite-folds 2 \
+  --model-roster prophet-comparison \
+  --no-candidate-selection \
+  --no-hyperopt \
+  --cartoboost-n-estimators 5 \
+  --cartoboost-auto-n-estimators 5 \
+  --output target/forecasting_piecewise_prophet_suite.json
+
 uv run --group dev python scripts/forecasting_m4.py \
   --committed \
   --no-hyperopt \
@@ -182,6 +228,8 @@ uv run --group dev --group bench python scripts/forecasting_library_benchmark.py
 
 - Real taxi demand covers one month and a 7-day holdout.
 - Synthetic demand checks are diagnostics.
+- The Prophet comparison is synthetic and should be read as wiring, quality, and
+  timing evidence for Prophet-shaped tasks, not broad real-data evidence.
 - M4 is a 96-series-per-group sample.
 - M5 full-roster evidence is a 100-series sample; the full-corpus artifact is a
   lag-only coverage run.

@@ -23,6 +23,16 @@ DEFAULT_RUN_DIR = ROOT / "target" / "nyc_taxi_repeated"
 DEFAULT_SUMMARY_JSON = ROOT / "docs" / "assets" / "nyc_taxi_benchmarks" / "repeated_results.json"
 DEFAULT_SUMMARY_MD = ROOT / "docs" / "assets" / "nyc_taxi_benchmarks" / "repeated_results.md"
 DEFAULT_SEEDS_CONFIG = ROOT / "benchmarks" / "configs" / "seeds.json"
+EXTERNAL_REGRESSION_BASELINES = {
+    "lightgbm",
+    "xgboost",
+    "catboost",
+    "hist_gradient_boosting",
+    "random_forest",
+    "extra_trees",
+    "ridge",
+    "mean",
+}
 
 
 def parse_args() -> argparse.Namespace:
@@ -45,10 +55,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--models",
         default=(
-            "cartoboost,cartoboost_reference,cartoboost_neural,"
-            "cartoboost_graph_node2vec,cartoboost_graph_graphsage,"
-            "cartoboost_graph_hetero_graphsage,cartoboost_graph_hinsage,"
-            "lightgbm,xgboost,mean"
+            "cartoboost,lightgbm,xgboost,catboost,hist_gradient_boosting,"
+            "random_forest,extra_trees,ridge,mean"
         ),
     )
     parser.add_argument("--n-estimators", type=int, default=100)
@@ -80,6 +88,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--model-workers", type=int, default=1)
     parser.add_argument("--n-threads", type=int, default=1)
     parser.add_argument("--no-download", action="store_true")
+    parser.add_argument("--no-plots", action="store_true")
     parser.add_argument("--synthetic-smoke", action="store_true")
     parser.add_argument(
         "--profile-fit",
@@ -155,6 +164,8 @@ def benchmark_command(args: argparse.Namespace, output_dir: Path) -> list[str]:
         )
     if args.no_download:
         command.append("--no-download")
+    if args.no_plots:
+        command.append("--no-plots")
     return command
 
 
@@ -260,6 +271,7 @@ def collect_ratios(results: list[dict[str, Any]]) -> dict[str, Any]:
 def collect_quality(results: list[dict[str, Any]]) -> dict[str, Any]:
     rows: dict[str, dict[str, dict[str, Any]]] = {}
     win_counts: dict[str, dict[str, int]] = {}
+    best_external_rows: dict[str, list[dict[str, float | str]]] = {}
     for result in results:
         for task_name, task in result["tasks"].items():
             for split_name, split in task["splits"].items():
@@ -271,12 +283,34 @@ def collect_quality(results: list[dict[str, Any]]) -> dict[str, Any]:
                 }
                 if not ok_models:
                     continue
+                cartoboost = ok_models.get("cartoboost")
+                external_candidates = {
+                    model_name: model
+                    for model_name, model in ok_models.items()
+                    if model_name in EXTERNAL_REGRESSION_BASELINES
+                }
+                if cartoboost is not None and external_candidates:
+                    best_external_name, best_external = min(
+                        external_candidates.items(),
+                        key=lambda item: float(item[1]["metrics"]["rmse"]),
+                    )
+                    best_external_rows.setdefault(key, []).append(
+                        {
+                            "best_external_model": best_external_name,
+                            "cartoboost_rmse": float(cartoboost["metrics"]["rmse"]),
+                            "external_rmse": float(best_external["metrics"]["rmse"]),
+                            "cartoboost_r2": float(cartoboost["metrics"]["r2"]),
+                            "external_r2": float(best_external["metrics"]["r2"]),
+                            "cartoboost_wape": float(cartoboost["metrics"].get("wape", 0.0)),
+                            "external_wape": float(best_external["metrics"].get("wape", 0.0)),
+                        }
+                    )
                 best_rmse = min(float(model["metrics"]["rmse"]) for model in ok_models.values())
                 for model_name, model in ok_models.items():
                     model_rows = rows.setdefault(key, {}).setdefault(
                         model_name,
                         {
-                            "metrics": {"rmse": [], "mae": [], "r2": []},
+                            "metrics": {"rmse": [], "mae": [], "r2": [], "wape": []},
                             "timing": {
                                 "train_seconds": [],
                                 "predict_seconds": [],
@@ -284,8 +318,9 @@ def collect_quality(results: list[dict[str, Any]]) -> dict[str, Any]:
                             },
                         },
                     )
-                    for metric in ["rmse", "mae", "r2"]:
-                        model_rows["metrics"][metric].append(float(model["metrics"][metric]))
+                    for metric in ["rmse", "mae", "r2", "wape"]:
+                        if metric in model["metrics"]:
+                            model_rows["metrics"][metric].append(float(model["metrics"][metric]))
                     for timing_name in [
                         "train_seconds",
                         "predict_seconds",
@@ -302,11 +337,46 @@ def collect_quality(results: list[dict[str, Any]]) -> dict[str, Any]:
     summary: dict[str, Any] = {}
     for key, model_rows in sorted(rows.items()):
         summary[key] = {"models": {}, "paired_deltas": {}}
+        if key in best_external_rows:
+            comparison_rows = best_external_rows[key]
+            model_counts: dict[str, int] = {}
+            for row in comparison_rows:
+                model_name = str(row["best_external_model"])
+                model_counts[model_name] = model_counts.get(model_name, 0) + 1
+            rmse_delta = paired_bootstrap_ci(
+                [float(row["cartoboost_rmse"]) for row in comparison_rows],
+                [float(row["external_rmse"]) for row in comparison_rows],
+                seed=11,
+            )
+            r2_delta = paired_bootstrap_ci(
+                [float(row["cartoboost_r2"]) for row in comparison_rows],
+                [float(row["external_r2"]) for row in comparison_rows],
+                seed=11,
+            )
+            wape_delta = paired_bootstrap_ci(
+                [float(row["cartoboost_wape"]) for row in comparison_rows],
+                [float(row["external_wape"]) for row in comparison_rows],
+                seed=11,
+            )
+            summary[key]["primary_vs_best_external"] = {
+                "n": len(comparison_rows),
+                "best_external_model_counts": dict(sorted(model_counts.items())),
+                "rmse_delta_mean": rmse_delta[0],
+                "rmse_delta_ci95_low": rmse_delta[1],
+                "rmse_delta_ci95_high": rmse_delta[2],
+                "r2_delta_mean": r2_delta[0],
+                "r2_delta_ci95_low": r2_delta[1],
+                "r2_delta_ci95_high": r2_delta[2],
+                "wape_delta_mean": wape_delta[0],
+                "wape_delta_ci95_low": wape_delta[1],
+                "wape_delta_ci95_high": wape_delta[2],
+            }
         for model_name, payload in sorted(model_rows.items()):
             summary[key]["models"][model_name] = {
                 "metrics": {
                     metric: ci_payload(values)
                     for metric, values in sorted(payload["metrics"].items())
+                    if values
                 },
                 "timing": {
                     timing_name: median_payload(values)
@@ -372,6 +442,10 @@ def format_delta(value: float | None) -> str:
     return "n/a" if value is None else f"{value:.6f}"
 
 
+def format_interval(low: float, high: float) -> str:
+    return f"{low:.6f} to {high:.6f}"
+
+
 def same_quality(row: dict[str, Any], tolerance: float = 1e-9) -> bool:
     rmse_ref = row["median_rmse_delta_vs_cartoboost_reference"]
     r2_ref = row["median_r2_delta_vs_cartoboost_reference"]
@@ -403,6 +477,10 @@ def write_markdown(summary: dict[str, Any], output: Path) -> None:
         "",
         f"- runs: {summary['runs']}",
         f"- seeds: {', '.join(str(seed) for seed in summary['seeds'])}",
+        f"- command arguments: `{' '.join(summary.get('command_argv', []))}`",
+        f"- run artifacts: `{summary.get('run_dir', '')}`",
+        f"- models: {', '.join(summary.get('model_roster', []))}",
+        f"- sample size: {summary.get('sample_size', 'synthetic_smoke')}",
         (
             f"- baseline estimators: {summary['model_config']['baseline_n_estimators']}; "
             f"CartoBoost candidate estimators: {summary['model_config']['cartoboost_n_estimators']}"
@@ -417,18 +495,35 @@ def write_markdown(summary: dict[str, Any], output: Path) -> None:
         ),
         f"- zone treatment: {summary['model_config'].get('zone_treatment', 'raw')}",
         (
-            "- gate requires train <= XGBoost, predict rows/sec >= XGBoost, "
-            "lower RMSE than XGBoost, and R2 no worse than XGBoost."
+            "- primary comparison uses one `cartoboost` row against the lowest-RMSE "
+            "external baseline that finished in each run."
         ),
         "",
-        "## Quality Summary",
-        "",
-        (
-            "| task/split | model | RMSE mean | RMSE 95% CI | MAE mean | R2 mean | "
-            "RMSE wins/ties | train median sec | predict rows/sec median |"
-        ),
-        "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
     ]
+    artifacts = summary.get("output_artifacts", {})
+    if artifacts:
+        lines.extend(
+            [
+                "## Output Artifacts",
+                "",
+                "| Artifact | Size bytes |",
+                "| --- | ---: |",
+            ]
+        )
+        for name, metadata in sorted(artifacts.items()):
+            lines.append(f"| `{name}` | {metadata['size_bytes']} |")
+        lines.append("")
+    lines.extend(
+        [
+            "## Quality Summary",
+            "",
+            (
+                "| task/split | model | RMSE mean | RMSE 95% CI | MAE mean | R2 mean | "
+                "RMSE wins/ties | train median sec | predict rows/sec median |"
+            ),
+            "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
+        ]
+    )
     for key, quality in summary["quality"].items():
         for model_name, model in quality["models"].items():
             rmse = model["metrics"]["rmse"]
@@ -438,11 +533,52 @@ def write_markdown(summary: dict[str, Any], output: Path) -> None:
             throughput = model["timing"]["predict_rows_per_second"]
             lines.append(
                 f"| {key} | {model_name} | {rmse['mean']:.6f} | "
-                f"{rmse['ci95_low']:.6f}-{rmse['ci95_high']:.6f} | "
+                f"{format_interval(rmse['ci95_low'], rmse['ci95_high'])} | "
                 f"{mae['mean']:.6f} | {r2['mean']:.6f} | "
                 f"{model['rmse_wins_or_ties']} | {train['median']:.6f} | "
                 f"{throughput['median']:.2f} |"
             )
+    lines.extend(
+        [
+            "",
+            "## Primary CartoBoost vs Best External Baseline",
+            "",
+            (
+                "Negative RMSE and WAPE deltas favor CartoBoost. Positive R2 deltas favor "
+                "CartoBoost. The external model count records which baseline was lowest-RMSE "
+                "for that split across runs."
+            ),
+            "",
+            (
+                "| task/split | runs | best external model counts | RMSE delta mean | "
+                "RMSE delta 95% CI | WAPE delta mean | R2 delta mean | R2 delta 95% CI |"
+            ),
+            "| --- | ---: | --- | ---: | ---: | ---: | ---: | ---: |",
+        ]
+    )
+    for key, quality in summary["quality"].items():
+        comparison = quality.get("primary_vs_best_external")
+        if not comparison:
+            continue
+        model_counts = ", ".join(
+            f"{name}: {count}" for name, count in comparison["best_external_model_counts"].items()
+        )
+        rmse_ci = format_interval(
+            comparison["rmse_delta_ci95_low"],
+            comparison["rmse_delta_ci95_high"],
+        )
+        r2_ci = format_interval(
+            comparison["r2_delta_ci95_low"],
+            comparison["r2_delta_ci95_high"],
+        )
+        lines.append(
+            f"| {key} | {comparison['n']} | {model_counts} | "
+            f"{comparison['rmse_delta_mean']:.6f} | "
+            f"{rmse_ci} | "
+            f"{comparison['wape_delta_mean']:.6f} | "
+            f"{comparison['r2_delta_mean']:.6f} | "
+            f"{r2_ci} |"
+        )
     lines.extend(
         [
             "",
@@ -459,11 +595,15 @@ def write_markdown(summary: dict[str, Any], output: Path) -> None:
     )
     for key, quality in summary["quality"].items():
         for comparison, deltas in quality["paired_deltas"].items():
+            rmse_ci = format_interval(
+                deltas["rmse_delta_ci95_low"],
+                deltas["rmse_delta_ci95_high"],
+            )
             lines.append(
                 f"| {key} | {comparison} | {deltas['rmse_delta_mean']:.6f} | "
-                f"{deltas['rmse_delta_ci95_low']:.6f}-{deltas['rmse_delta_ci95_high']:.6f} | "
+                f"{rmse_ci} | "
                 f"{deltas['r2_delta_mean']:.6f} | "
-                f"{deltas['r2_delta_ci95_low']:.6f}-{deltas['r2_delta_ci95_high']:.6f} |"
+                f"{format_interval(deltas['r2_delta_ci95_low'], deltas['r2_delta_ci95_high'])} |"
             )
     lines.extend(
         [
@@ -516,8 +656,25 @@ def main() -> None:
     quality = collect_quality(results)
     summary = {
         "artifact_version": 1,
+        "command_argv": list(sys.argv),
         "runs": args.runs,
         "seeds": seeds[: args.runs],
+        "run_dir": str(args.run_dir),
+        "model_roster": [part.strip() for part in args.models.split(",") if part.strip()],
+        "tasks": [part.strip() for part in args.tasks.split(",") if part.strip()],
+        "sample_size": None if args.synthetic_smoke else int(args.sample_size),
+        "synthetic_smoke": bool(args.synthetic_smoke),
+        "no_download": bool(args.no_download),
+        "no_plots": bool(args.no_plots),
+        "run_datasets": [
+            {
+                "run": run_index,
+                "dataset": result.get("dataset", {}),
+                "dataset_hash": result.get("dataset_hash"),
+                "git_commit": result.get("git_commit"),
+            }
+            for run_index, result in enumerate(results, start=1)
+        ],
         "target": {
             "train_ratio_vs_xgboost_max": 1.0,
             "predict_rps_ratio_vs_xgboost_min": 1.0,
@@ -550,6 +707,21 @@ def main() -> None:
     args.summary_json.parent.mkdir(parents=True, exist_ok=True)
     args.summary_json.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
     write_markdown(summary, args.summary_md)
+    for _ in range(5):
+        manifest = output_artifact_manifest(args.summary_json, args.summary_md)
+        if manifest == summary.get("output_artifacts"):
+            break
+        summary["output_artifacts"] = manifest
+        args.summary_json.write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
+        write_markdown(summary, args.summary_md)
+
+
+def output_artifact_manifest(*paths: Path) -> dict[str, dict[str, int]]:
+    artifacts: dict[str, dict[str, int]] = {}
+    for path in paths:
+        if path.exists():
+            artifacts[str(path)] = {"size_bytes": int(path.stat().st_size)}
+    return artifacts
 
 
 if __name__ == "__main__":

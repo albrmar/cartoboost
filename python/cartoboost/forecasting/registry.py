@@ -125,6 +125,7 @@ def default_model_specs() -> tuple[ForecastModelSpec, ...]:
         LocalLevelKalmanForecaster,
         NaiveForecaster,
         OptimizedThetaForecaster,
+        PiecewiseLinearSeasonalForecaster,
         SeasonalNaiveForecaster,
         ThetaForecaster,
     )
@@ -134,6 +135,7 @@ def default_model_specs() -> tuple[ForecastModelSpec, ...]:
         ForecastModelSpec("seasonal_naive", factory=SeasonalNaiveForecaster),
         ForecastModelSpec("theta", factory=ThetaForecaster),
         ForecastModelSpec("optimized_theta", factory=OptimizedThetaForecaster),
+        ForecastModelSpec("piecewise_linear_seasonal", factory=PiecewiseLinearSeasonalForecaster),
         ForecastModelSpec("ets", factory=ETSForecaster),
         ForecastModelSpec("auto_arima", factory=AutoARIMAForecaster),
         ForecastModelSpec("kalman", factory=KalmanForecaster),

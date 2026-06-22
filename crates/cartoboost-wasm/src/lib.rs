@@ -8,11 +8,14 @@ use cartoboost_core::forecasting::{
     IntermittentDemandConfig, IntermittentDemandForecaster, KalmanForecaster, KrigingForecaster,
     LagFeatureConfig, LagPlusConfig, LagPlusForecaster, LocalLevelKalmanForecaster,
     LocalStandardScaledForecaster, Log1pForecaster, MSTLCartoBoostForecaster, NaiveForecaster,
-    OptimizedThetaForecaster, RectifiedRecursiveForecaster, ReferencePathConfig, ReferenceSignal,
-    STLCartoBoostForecaster, SeasonalNaiveForecaster, SeasonalWindowAverageForecaster,
-    SequenceCandidate, SequenceCandidateEnsemble, SequenceCandidatePrediction, SequenceFrame,
-    SequenceGroupPrediction, SequenceOofCandidateRow, SequenceOofFold, SequenceSeries,
-    SequenceStateSpaceConfig, ThetaForecaster, ThetaSeasonality, WindowAverageForecaster,
+    OptimizedThetaForecaster, PiecewiseLinearComponentMode, PiecewiseLinearEvent,
+    PiecewiseLinearFitLoss, PiecewiseLinearGrowth, PiecewiseLinearSeasonalConfig,
+    PiecewiseLinearSeasonalForecaster, PiecewiseLinearSeasonality, RectifiedRecursiveForecaster,
+    ReferencePathConfig, ReferenceSignal, STLCartoBoostForecaster, SeasonalNaiveForecaster,
+    SeasonalWindowAverageForecaster, SequenceCandidate, SequenceCandidateEnsemble,
+    SequenceCandidatePrediction, SequenceFrame, SequenceGroupPrediction, SequenceOofCandidateRow,
+    SequenceOofFold, SequenceSeries, SequenceStateSpaceConfig, ThetaForecaster, ThetaSeasonality,
+    WindowAverageForecaster,
 };
 use cartoboost_core::loss::{HuberLossConfig, LogL2LossConfig, LossConfig, QuantileLossConfig};
 use cartoboost_core::tree::{Node, Split, SplitterKind};
@@ -77,6 +80,9 @@ struct BrowserForecastOptions {
     window_count: Option<usize>,
     validation_window: Option<usize>,
     max_direct_horizon: Option<usize>,
+    include_components: Option<bool>,
+    include_samples: Option<bool>,
+    include_quantiles: Option<bool>,
     n_estimators: Option<usize>,
     learning_rate: Option<f64>,
     max_depth: Option<usize>,
@@ -94,6 +100,72 @@ struct BrowserForecastOptions {
     coordinate_y: Option<String>,
     kriging_range: Option<f64>,
     kriging_nugget: Option<f64>,
+    changepoints: Option<usize>,
+    changepoint_range: Option<f64>,
+    changepoint_timestamps: Option<Vec<String>>,
+    yearly_fourier_order: Option<usize>,
+    weekly_fourier_order: Option<usize>,
+    daily_fourier_order: Option<usize>,
+    auto_yearly_seasonality: Option<bool>,
+    auto_weekly_seasonality: Option<bool>,
+    auto_daily_seasonality: Option<bool>,
+    custom_seasonalities: Option<Vec<BrowserForecastSeasonality>>,
+    changepoint_l2_regularization: Option<f64>,
+    changepoint_l1_regularization: Option<f64>,
+    seasonality_l2_regularization: Option<f64>,
+    yearly_l2_regularization: Option<f64>,
+    weekly_l2_regularization: Option<f64>,
+    daily_l2_regularization: Option<f64>,
+    event_l2_regularization: Option<f64>,
+    regressor_l2_regularization: Option<f64>,
+    event_l2_regularization_by_name: Option<BTreeMap<String, f64>>,
+    regressor_l2_regularization_by_name: Option<BTreeMap<String, f64>>,
+    events: Option<Vec<BrowserForecastEvent>>,
+    event_mode: Option<String>,
+    extra_regressors: Option<Vec<String>>,
+    regressor_modes: Option<BTreeMap<String, String>>,
+    extra_regressor_monotonic_constraints: Option<BTreeMap<String, i8>>,
+    regressor_standardization: Option<String>,
+    future_regressors: Option<BTreeMap<String, Vec<f64>>>,
+    future_regressors_by_series: Option<BTreeMap<String, BTreeMap<String, Vec<f64>>>>,
+    interval_levels: Option<Vec<f64>>,
+    quantile_levels: Option<Vec<f64>>,
+    uncertainty_samples: Option<usize>,
+    trend_uncertainty_policy: Option<String>,
+    trend_uncertainty_scale: Option<f64>,
+    coefficient_uncertainty_scale: Option<f64>,
+    uncertainty_seed: Option<u64>,
+    growth: Option<String>,
+    component_mode: Option<String>,
+    fit_loss: Option<String>,
+    huber_delta: Option<f64>,
+    irls_iterations: Option<usize>,
+    cap: Option<f64>,
+    floor: Option<f64>,
+    cap_regressor: Option<String>,
+    floor_regressor: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct BrowserForecastEvent {
+    name: String,
+    timestamp: String,
+    #[serde(default)]
+    lower_window: Option<i32>,
+    #[serde(default)]
+    upper_window: Option<i32>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct BrowserForecastSeasonality {
+    name: String,
+    period_days: f64,
+    fourier_order: usize,
+    mode: Option<String>,
+    condition_name: Option<String>,
+    l2_regularization: Option<f64>,
 }
 
 #[derive(Debug, Default, Deserialize)]
@@ -102,6 +174,37 @@ struct BrowserForecastMetadata {
     timestamp_col: Option<String>,
     target_col: Option<String>,
     series_id_col: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct BrowserForecastArtifactPredictOptions {
+    #[serde(default = "default_true")]
+    include_components: bool,
+    #[serde(default = "default_true")]
+    include_samples: bool,
+    #[serde(default = "default_true")]
+    include_quantiles: bool,
+    future_regressors: Option<BTreeMap<String, Vec<f64>>>,
+    future_regressors_by_series: Option<BTreeMap<String, BTreeMap<String, Vec<f64>>>>,
+    interval_levels: Option<Vec<f64>>,
+    quantile_levels: Option<Vec<f64>>,
+    uncertainty_samples: Option<usize>,
+}
+
+impl Default for BrowserForecastArtifactPredictOptions {
+    fn default() -> Self {
+        Self {
+            include_components: true,
+            include_samples: true,
+            include_quantiles: true,
+            future_regressors: None,
+            future_regressors_by_series: None,
+            interval_levels: None,
+            quantile_levels: None,
+            uncertainty_samples: None,
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -144,6 +247,7 @@ struct BrowserRegressionOptions {
     learning_rate: Option<f64>,
     max_depth: Option<usize>,
     min_samples_leaf: Option<usize>,
+    monotonic_constraints: Option<Vec<i8>>,
 }
 
 impl Default for BrowserRegressionOptions {
@@ -163,6 +267,7 @@ impl Default for BrowserRegressionOptions {
             learning_rate: None,
             max_depth: None,
             min_samples_leaf: None,
+            monotonic_constraints: None,
         }
     }
 }
@@ -271,6 +376,19 @@ impl Default for BrowserNeuralOptions {
 struct BrowserForecastResponse {
     metadata: Value,
     forecast: Value,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    components: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    samples: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    quantiles: Option<Value>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BrowserForecastArtifactResponse {
+    metadata: Value,
+    artifact: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -336,6 +454,67 @@ pub fn run_forecast(request: JsValue) -> std::result::Result<JsValue, JsValue> {
     response
         .serialize(&serializer)
         .map_err(|error| JsValue::from_str(&format!("could not encode forecast response: {error}")))
+}
+
+#[wasm_bindgen(js_name = fitPiecewiseLinearSeasonalArtifact)]
+pub fn fit_piecewise_linear_seasonal_artifact(
+    request: JsValue,
+) -> std::result::Result<JsValue, JsValue> {
+    let request: BrowserForecastRequest = serde_wasm_bindgen::from_value(request)
+        .map_err(|error| JsValue::from_str(&format!("invalid forecast request: {error}")))?;
+    let response = fit_piecewise_linear_seasonal_artifact_request(request)
+        .map_err(|error| JsValue::from_str(&error.to_string()))?;
+    let serializer = serde_wasm_bindgen::Serializer::json_compatible();
+    response.serialize(&serializer).map_err(|error| {
+        JsValue::from_str(&format!(
+            "could not encode forecast artifact response: {error}"
+        ))
+    })
+}
+
+#[wasm_bindgen(js_name = predictPiecewiseLinearSeasonalArtifact)]
+pub fn predict_piecewise_linear_seasonal_artifact(
+    artifact: String,
+    horizon: usize,
+) -> std::result::Result<JsValue, JsValue> {
+    let response = predict_piecewise_linear_seasonal_artifact_request(
+        &artifact,
+        horizon,
+        BrowserForecastArtifactPredictOptions::default(),
+    )
+    .map_err(|error| JsValue::from_str(&error.to_string()))?;
+    let serializer = serde_wasm_bindgen::Serializer::json_compatible();
+    response.serialize(&serializer).map_err(|error| {
+        JsValue::from_str(&format!(
+            "could not encode forecast artifact prediction response: {error}"
+        ))
+    })
+}
+
+#[wasm_bindgen(js_name = predictPiecewiseLinearSeasonalArtifactWithOptions)]
+pub fn predict_piecewise_linear_seasonal_artifact_with_options(
+    artifact: String,
+    horizon: usize,
+    options: JsValue,
+) -> std::result::Result<JsValue, JsValue> {
+    let options: BrowserForecastArtifactPredictOptions =
+        if options.is_null() || options.is_undefined() {
+            BrowserForecastArtifactPredictOptions::default()
+        } else {
+            serde_wasm_bindgen::from_value(options).map_err(|error| {
+                JsValue::from_str(&format!(
+                    "invalid forecast artifact prediction options: {error}"
+                ))
+            })?
+        };
+    let response = predict_piecewise_linear_seasonal_artifact_request(&artifact, horizon, options)
+        .map_err(|error| JsValue::from_str(&error.to_string()))?;
+    let serializer = serde_wasm_bindgen::Serializer::json_compatible();
+    response.serialize(&serializer).map_err(|error| {
+        JsValue::from_str(&format!(
+            "could not encode forecast artifact prediction response: {error}"
+        ))
+    })
 }
 
 #[wasm_bindgen(js_name = runRegressionModel)]
@@ -428,6 +607,11 @@ fn forecast_model_registry() -> Vec<BrowserForecastModel> {
             name: "autostats_bank",
             label: "AutoStats Bank",
             pipeline: "selection",
+        },
+        BrowserForecastModel {
+            name: "piecewise_linear_seasonal",
+            label: "Piecewise Linear Seasonal",
+            pipeline: "local",
         },
         BrowserForecastModel {
             name: "intermittent_demand",
@@ -687,23 +871,190 @@ fn run_forecast_request(request: BrowserForecastRequest) -> Result<BrowserForeca
             "forecast horizon must be positive".to_string(),
         ));
     }
-    if request.rows.is_empty() {
+    let model = request.model;
+    let options = request.options;
+    let frame =
+        forecast_frame_from_browser_request(request.rows, request.frequency, request.metadata)?;
+    if is_piecewise_linear_seasonal_model(&model) {
+        let mut config = piecewise_linear_seasonal_config(&options)?;
+        let include_components = options.include_components.unwrap_or(false);
+        let include_samples =
+            options.include_samples.unwrap_or(false) && config.uncertainty_samples > 0;
+        let include_quantiles =
+            options.include_quantiles.unwrap_or(true) && !config.quantile_levels.is_empty();
+        if !include_samples
+            && config.interval_levels.is_empty()
+            && config.quantile_levels.is_empty()
+        {
+            config.uncertainty_samples = 0;
+        }
+        let mut forecaster = PiecewiseLinearSeasonalForecaster::new(config)?;
+        forecaster.fit(&frame)?;
+        let forecast = forecaster.predict(request.horizon)?;
+        let components = if include_components {
+            Some(js_safe_json_value(
+                forecaster.predict_components_json_value(request.horizon)?,
+            ))
+        } else {
+            None
+        };
+        let samples = if include_samples {
+            Some(js_safe_json_value(
+                forecaster.predict_samples_json_value(request.horizon)?,
+            ))
+        } else {
+            None
+        };
+        let quantiles = if include_quantiles {
+            Some(js_safe_json_value(
+                forecaster.predict_quantiles_json_value(request.horizon, None)?,
+            ))
+        } else {
+            None
+        };
+        return Ok(BrowserForecastResponse {
+            metadata: js_safe_json_value(json!({
+                "model": forecaster.model_name(),
+                "input": frame.metadata_value(),
+                "modelMetadata": forecaster.metadata(),
+            })),
+            forecast: forecast.to_json_value(),
+            components,
+            samples,
+            quantiles,
+        });
+    }
+    let mut forecaster = build_forecaster(&model, &options, &frame, request.horizon)?;
+    forecaster.fit(&frame)?;
+    let forecast = forecaster.predict(request.horizon)?;
+    Ok(BrowserForecastResponse {
+        metadata: js_safe_json_value(json!({
+            "model": forecaster.model_name(),
+            "input": frame.metadata_value(),
+            "modelMetadata": forecaster.metadata(),
+        })),
+        forecast: forecast.to_json_value(),
+        components: None,
+        samples: None,
+        quantiles: None,
+    })
+}
+
+fn fit_piecewise_linear_seasonal_artifact_request(
+    request: BrowserForecastRequest,
+) -> Result<BrowserForecastArtifactResponse> {
+    let frame =
+        forecast_frame_from_browser_request(request.rows, request.frequency, request.metadata)?;
+    let mut forecaster = PiecewiseLinearSeasonalForecaster::new(piecewise_linear_seasonal_config(
+        &request.options,
+    )?)?;
+    forecaster.fit(&frame)?;
+    let artifact = forecaster.to_json_string()?;
+    Ok(BrowserForecastArtifactResponse {
+        metadata: js_safe_json_value(json!({
+            "model": forecaster.model_name(),
+            "input": frame.metadata_value(),
+            "modelMetadata": forecaster.metadata(),
+        })),
+        artifact,
+    })
+}
+
+fn predict_piecewise_linear_seasonal_artifact_request(
+    artifact: &str,
+    horizon: usize,
+    options: BrowserForecastArtifactPredictOptions,
+) -> Result<BrowserForecastResponse> {
+    if horizon == 0 {
+        return Err(CartoBoostError::InvalidInput(
+            "forecast horizon must be positive".to_string(),
+        ));
+    }
+    let mut forecaster = PiecewiseLinearSeasonalForecaster::from_json_string(artifact)?;
+    apply_piecewise_artifact_predict_options(&mut forecaster, &options)?;
+    let forecast = forecaster.predict(horizon)?;
+    let components = if options.include_components {
+        Some(js_safe_json_value(
+            forecaster.predict_components_json_value(horizon)?,
+        ))
+    } else {
+        None
+    };
+    let metadata = forecaster.metadata();
+    let samples =
+        if options.include_samples && metadata["uncertainty_samples"].as_u64().unwrap_or(0) > 0 {
+            Some(js_safe_json_value(
+                forecaster.predict_samples_json_value(horizon)?,
+            ))
+        } else {
+            None
+        };
+    let has_quantiles = metadata["quantile_levels"]
+        .as_array()
+        .map(|levels| !levels.is_empty())
+        .unwrap_or(false);
+    let quantiles = if options.include_quantiles && has_quantiles {
+        Some(js_safe_json_value(
+            forecaster.predict_quantiles_json_value(horizon, None)?,
+        ))
+    } else {
+        None
+    };
+    Ok(BrowserForecastResponse {
+        metadata: js_safe_json_value(json!({
+            "model": forecaster.model_name(),
+            "modelMetadata": metadata,
+        })),
+        forecast: forecast.to_json_value(),
+        components,
+        samples,
+        quantiles,
+    })
+}
+
+fn apply_piecewise_artifact_predict_options(
+    forecaster: &mut PiecewiseLinearSeasonalForecaster,
+    options: &BrowserForecastArtifactPredictOptions,
+) -> Result<()> {
+    forecaster.update_config(|config| {
+        if let Some(future_regressors) = &options.future_regressors {
+            config.future_regressors = future_regressors.clone();
+        }
+        if let Some(future_regressors_by_series) = &options.future_regressors_by_series {
+            config.future_regressors_by_series = future_regressors_by_series.clone();
+        }
+        if let Some(levels) = &options.interval_levels {
+            config.interval_levels = levels.clone();
+        }
+        if let Some(levels) = &options.quantile_levels {
+            config.quantile_levels = levels.clone();
+        }
+        if let Some(samples) = options.uncertainty_samples {
+            config.uncertainty_samples = samples;
+        }
+    })
+}
+
+fn forecast_frame_from_browser_request(
+    rows: Vec<BrowserForecastRow>,
+    frequency: String,
+    metadata: BrowserForecastMetadata,
+) -> Result<ForecastFrame> {
+    if rows.is_empty() {
         return Err(CartoBoostError::InvalidInput(
             "forecast request must include at least one row".to_string(),
         ));
     }
-
-    let frequency = ForecastFrequency::parse(&request.frequency)?;
+    let frequency = ForecastFrequency::parse(&frequency)?;
     let metadata = ForecastFrameMetadata {
-        timestamp_col: request.metadata.timestamp_col,
-        target_col: request.metadata.target_col,
-        series_id_col: request.metadata.series_id_col,
+        timestamp_col: metadata.timestamp_col,
+        target_col: metadata.target_col,
+        series_id_col: metadata.series_id_col,
         static_covariates: Vec::new(),
         known_future_covariates: Vec::new(),
         historical_covariates: Vec::new(),
     };
-    let rows = request
-        .rows
+    let rows = rows
         .into_iter()
         .map(|row| {
             cartoboost_core::forecasting::ForecastRow::from_timestamp_str_with_covariates(
@@ -714,19 +1065,33 @@ fn run_forecast_request(request: BrowserForecastRequest) -> Result<BrowserForeca
             )
         })
         .collect::<Result<Vec<_>>>()?;
-    let frame = ForecastFrame::with_metadata(rows, frequency, metadata)?;
-    let mut forecaster =
-        build_forecaster(&request.model, &request.options, &frame, request.horizon)?;
-    forecaster.fit(&frame)?;
-    let forecast = forecaster.predict(request.horizon)?;
-    Ok(BrowserForecastResponse {
-        metadata: json!({
-            "model": forecaster.model_name(),
-            "input": frame.metadata_value(),
-            "modelMetadata": forecaster.metadata(),
-        }),
-        forecast: forecast.to_json_value(),
-    })
+    ForecastFrame::with_metadata(rows, frequency, metadata)
+}
+
+fn js_safe_json_value(value: Value) -> Value {
+    const JS_SAFE_INTEGER_MAX: u64 = 9_007_199_254_740_991;
+    match value {
+        Value::Array(values) => Value::Array(values.into_iter().map(js_safe_json_value).collect()),
+        Value::Object(values) => Value::Object(
+            values
+                .into_iter()
+                .map(|(key, value)| (key, js_safe_json_value(value)))
+                .collect(),
+        ),
+        Value::Number(number) => {
+            if let Some(value) = number.as_u64() {
+                if value > JS_SAFE_INTEGER_MAX {
+                    return Value::String(value.to_string());
+                }
+            } else if let Some(value) = number.as_i64() {
+                if value.unsigned_abs() > JS_SAFE_INTEGER_MAX {
+                    return Value::String(value.to_string());
+                }
+            }
+            Value::Number(number)
+        }
+        other => other,
+    }
 }
 
 fn run_regression_request(request: BrowserRegressionRequest) -> Result<BrowserRegressionResponse> {
@@ -839,6 +1204,7 @@ fn run_regression_request(request: BrowserRegressionRequest) -> Result<BrowserRe
             "loss": regression_loss_label(&request.options),
             "intervalLowerAlpha": request.options.interval_lower_alpha,
             "intervalUpperAlpha": request.options.interval_upper_alpha,
+            "monotonicConstraints": request.options.monotonic_constraints,
             "treeCount": model.trees.len(),
         }),
         metrics,
@@ -1523,6 +1889,7 @@ fn regression_booster_config(options: &BrowserRegressionOptions) -> Result<Boost
         min_samples_leaf: options.min_samples_leaf.unwrap_or(4),
         splitters: regression_splitters(options),
         loss: regression_loss_config(options)?,
+        monotonic_constraints: options.monotonic_constraints.clone().unwrap_or_default(),
         ..Default::default()
     })
 }
@@ -1586,6 +1953,7 @@ fn regression_booster_config_with_loss(
         min_samples_leaf: options.min_samples_leaf.unwrap_or(4),
         splitters: regression_splitters(options),
         loss,
+        monotonic_constraints: options.monotonic_constraints.clone().unwrap_or_default(),
         ..Default::default()
     }
 }
@@ -1818,6 +2186,10 @@ fn default_holdout_fraction() -> f64 {
     0.2
 }
 
+fn default_true() -> bool {
+    true
+}
+
 fn default_neural_pipeline() -> String {
     "embedding".to_string()
 }
@@ -1899,6 +2271,9 @@ fn build_forecaster(
             coordinates_from_frame(frame, options)?,
             options.kriging_range.unwrap_or(1.0),
             options.kriging_nugget.unwrap_or(1e-6),
+        )?)),
+        "piecewise_linear_seasonal" => Ok(Box::new(PiecewiseLinearSeasonalForecaster::new(
+            piecewise_linear_seasonal_config(options)?,
         )?)),
         "intermittent_demand" => {
             let config = IntermittentDemandConfig {
@@ -2066,6 +2441,247 @@ fn theta_seasonality(options: &BrowserForecastOptions) -> Result<Option<ThetaSea
     }
 }
 
+fn is_piecewise_linear_seasonal_model(model: &str) -> bool {
+    matches!(
+        model.trim().to_ascii_lowercase().replace('-', "_").as_str(),
+        "piecewise_linear_seasonal"
+    )
+}
+
+fn piecewise_linear_seasonal_config(
+    options: &BrowserForecastOptions,
+) -> Result<PiecewiseLinearSeasonalConfig> {
+    let mut config = PiecewiseLinearSeasonalConfig::default();
+    if let Some(growth) = options.growth.as_deref() {
+        config.growth = match growth.trim().to_ascii_lowercase().as_str() {
+            "" | "linear" => PiecewiseLinearGrowth::Linear,
+            "flat" => PiecewiseLinearGrowth::Flat,
+            "logistic" => PiecewiseLinearGrowth::Logistic,
+            other => {
+                return Err(CartoBoostError::InvalidInput(format!(
+                    "unsupported piecewise seasonal growth {other:?}"
+                )))
+            }
+        };
+    }
+    if let Some(mode) = options.component_mode.as_deref() {
+        config.component_mode = piecewise_component_mode(mode)?;
+    }
+    if let Some(loss) = options.fit_loss.as_deref() {
+        config.fit_loss = piecewise_fit_loss(loss)?;
+    }
+    if let Some(delta) = options.huber_delta {
+        config.huber_delta = delta;
+    }
+    if let Some(iterations) = options.irls_iterations {
+        config.irls_iterations = iterations;
+    }
+    if let Some(changepoints) = options.changepoints {
+        config.changepoints = changepoints;
+    }
+    if let Some(changepoint_range) = options.changepoint_range {
+        config.changepoint_range = changepoint_range;
+    }
+    if let Some(timestamps) = &options.changepoint_timestamps {
+        config.changepoint_timestamps = timestamps
+            .iter()
+            .map(|timestamp| cartoboost_core::forecasting::parse_forecast_timestamp(timestamp))
+            .collect::<Result<Vec<_>>>()?;
+    }
+    if let Some(order) = options.yearly_fourier_order {
+        config.yearly_fourier_order = order;
+    }
+    if let Some(order) = options.weekly_fourier_order {
+        config.weekly_fourier_order = order;
+    }
+    if let Some(order) = options.daily_fourier_order {
+        config.daily_fourier_order = order;
+    }
+    if let Some(value) = options.auto_yearly_seasonality {
+        config.auto_yearly_seasonality = value;
+    }
+    if let Some(value) = options.auto_weekly_seasonality {
+        config.auto_weekly_seasonality = value;
+    }
+    if let Some(value) = options.auto_daily_seasonality {
+        config.auto_daily_seasonality = value;
+    }
+    if let Some(seasonalities) = &options.custom_seasonalities {
+        config.custom_seasonalities = seasonalities
+            .iter()
+            .map(|seasonality| {
+                Ok(PiecewiseLinearSeasonality {
+                    name: seasonality.name.clone(),
+                    period_days: seasonality.period_days,
+                    fourier_order: seasonality.fourier_order,
+                    mode: seasonality
+                        .mode
+                        .as_deref()
+                        .map(piecewise_component_mode)
+                        .transpose()?,
+                    condition_name: seasonality.condition_name.clone(),
+                    l2_regularization: seasonality.l2_regularization,
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+    }
+    if let Some(value) = options.changepoint_l2_regularization {
+        config.changepoint_l2_regularization = value;
+    }
+    if let Some(value) = options.changepoint_l1_regularization {
+        config.changepoint_l1_regularization = value;
+    }
+    if let Some(value) = options.seasonality_l2_regularization {
+        config.seasonality_l2_regularization = value;
+    }
+    if let Some(value) = options.yearly_l2_regularization {
+        config.yearly_l2_regularization = Some(value);
+    }
+    if let Some(value) = options.weekly_l2_regularization {
+        config.weekly_l2_regularization = Some(value);
+    }
+    if let Some(value) = options.daily_l2_regularization {
+        config.daily_l2_regularization = Some(value);
+    }
+    if let Some(value) = options.event_l2_regularization {
+        config.event_l2_regularization = value;
+    }
+    if let Some(value) = options.regressor_l2_regularization {
+        config.regressor_l2_regularization = value;
+    }
+    if let Some(values) = &options.event_l2_regularization_by_name {
+        config.event_l2_regularization_by_name = values.clone();
+    }
+    if let Some(values) = &options.regressor_l2_regularization_by_name {
+        config.regressor_l2_regularization_by_name = values.clone();
+    }
+    if let Some(events) = &options.events {
+        config.events = events
+            .iter()
+            .map(|event| {
+                Ok(PiecewiseLinearEvent {
+                    name: event.name.clone(),
+                    timestamp: cartoboost_core::forecasting::parse_forecast_timestamp(
+                        &event.timestamp,
+                    )?,
+                    lower_window: event.lower_window.unwrap_or(0),
+                    upper_window: event.upper_window.unwrap_or(0),
+                })
+            })
+            .collect::<Result<Vec<_>>>()?;
+    }
+    if let Some(mode) = options.event_mode.as_deref() {
+        config.event_mode = Some(piecewise_component_mode(mode)?);
+    }
+    if let Some(regressors) = &options.extra_regressors {
+        config.extra_regressors = regressors.clone();
+    }
+    if let Some(regressor_modes) = &options.regressor_modes {
+        config.regressor_modes = regressor_modes
+            .iter()
+            .map(|(name, mode)| Ok((name.clone(), piecewise_component_mode(mode)?)))
+            .collect::<Result<BTreeMap<_, _>>>()?;
+    }
+    if let Some(constraints) = &options.extra_regressor_monotonic_constraints {
+        config.extra_regressor_monotonic_constraints = constraints.clone();
+    }
+    if let Some(value) = options.regressor_standardization.as_deref() {
+        config.regressor_standardization = piecewise_regressor_standardization(value)?;
+    }
+    if let Some(future_regressors) = &options.future_regressors {
+        config.future_regressors = future_regressors.clone();
+    }
+    if let Some(future_regressors_by_series) = &options.future_regressors_by_series {
+        config.future_regressors_by_series = future_regressors_by_series.clone();
+    }
+    if let Some(levels) = &options.interval_levels {
+        config.interval_levels = levels.clone();
+    }
+    if let Some(levels) = &options.quantile_levels {
+        config.quantile_levels = levels.clone();
+    }
+    if let Some(value) = options.uncertainty_samples {
+        config.uncertainty_samples = value;
+    }
+    if let Some(value) = options.trend_uncertainty_policy.as_deref() {
+        config.trend_uncertainty_policy = piecewise_trend_uncertainty_policy(value)?;
+    }
+    if let Some(value) = options.trend_uncertainty_scale {
+        config.trend_uncertainty_scale = value;
+    }
+    if let Some(value) = options.coefficient_uncertainty_scale {
+        config.coefficient_uncertainty_scale = value;
+    }
+    if let Some(value) = options.uncertainty_seed {
+        config.uncertainty_seed = value;
+    }
+    if let Some(cap) = options.cap {
+        config.cap = Some(cap);
+    }
+    if let Some(floor) = options.floor {
+        config.floor = floor;
+    }
+    if let Some(name) = &options.cap_regressor {
+        config.cap_regressor = Some(name.clone());
+    }
+    if let Some(name) = &options.floor_regressor {
+        config.floor_regressor = Some(name.clone());
+    }
+    Ok(config)
+}
+
+fn piecewise_component_mode(value: &str) -> Result<PiecewiseLinearComponentMode> {
+    match value.trim().to_ascii_lowercase().replace('-', "_").as_str() {
+        "" | "additive" => Ok(PiecewiseLinearComponentMode::Additive),
+        "multiplicative" => Ok(PiecewiseLinearComponentMode::Multiplicative),
+        other => Err(CartoBoostError::InvalidInput(format!(
+            "unsupported piecewise seasonal component mode {other:?}"
+        ))),
+    }
+}
+
+fn piecewise_fit_loss(value: &str) -> Result<PiecewiseLinearFitLoss> {
+    match value.trim().to_ascii_lowercase().replace('-', "_").as_str() {
+        "" | "squared" | "l2" | "least_squares" => Ok(PiecewiseLinearFitLoss::Squared),
+        "huber" | "robust" => Ok(PiecewiseLinearFitLoss::Huber),
+        other => Err(CartoBoostError::InvalidInput(format!(
+            "unsupported piecewise seasonal fit loss {other:?}"
+        ))),
+    }
+}
+
+fn piecewise_regressor_standardization(
+    value: &str,
+) -> Result<cartoboost_core::forecasting::PiecewiseLinearRegressorStandardization> {
+    match value.trim().to_ascii_lowercase().replace('-', "_").as_str() {
+        "" | "auto" => {
+            Ok(cartoboost_core::forecasting::PiecewiseLinearRegressorStandardization::Auto)
+        }
+        "none" | "off" | "false" => {
+            Ok(cartoboost_core::forecasting::PiecewiseLinearRegressorStandardization::None)
+        }
+        other => Err(CartoBoostError::InvalidInput(format!(
+            "unsupported piecewise seasonal regressor standardization {other:?}"
+        ))),
+    }
+}
+
+fn piecewise_trend_uncertainty_policy(
+    value: &str,
+) -> Result<cartoboost_core::forecasting::PiecewiseLinearTrendUncertaintyPolicy> {
+    match value.trim().to_ascii_lowercase().replace('-', "_").as_str() {
+        "" | "laplace" => {
+            Ok(cartoboost_core::forecasting::PiecewiseLinearTrendUncertaintyPolicy::Laplace)
+        }
+        "normal" | "gaussian" => {
+            Ok(cartoboost_core::forecasting::PiecewiseLinearTrendUncertaintyPolicy::Normal)
+        }
+        other => Err(CartoBoostError::InvalidInput(format!(
+            "unsupported piecewise seasonal trend uncertainty policy {other:?}"
+        ))),
+    }
+}
+
 fn default_model() -> String {
     "auto_forecast".to_string()
 }
@@ -2194,6 +2810,7 @@ fn _assert_forecast_result_is_serializable(result: &ForecastResult) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::{Duration, NaiveDate};
     use std::collections::BTreeSet;
 
     #[test]
@@ -2214,6 +2831,1250 @@ mod tests {
         );
         let unique = names.iter().copied().collect::<BTreeSet<_>>();
         assert_eq!(unique.len(), names.len());
+    }
+
+    #[test]
+    fn browser_piecewise_linear_seasonal_forecast_runs_through_dispatch() {
+        let response = run_forecast_request(BrowserForecastRequest {
+            rows: sample_panel_rows(),
+            frequency: "daily".to_string(),
+            horizon: 3,
+            model: "piecewise_linear_seasonal".to_string(),
+            options: BrowserForecastOptions {
+                changepoints: Some(2),
+                weekly_fourier_order: Some(0),
+                auto_weekly_seasonality: Some(false),
+                seasonality_l2_regularization: Some(0.001),
+                weekly_l2_regularization: Some(0.002),
+                fit_loss: Some("huber".to_string()),
+                huber_delta: Some(1.25),
+                irls_iterations: Some(4),
+                include_components: Some(true),
+                include_samples: Some(true),
+                include_quantiles: Some(true),
+                uncertainty_samples: Some(4),
+                quantile_levels: Some(vec![0.1, 0.5, 0.9]),
+                coefficient_uncertainty_scale: Some(1.5),
+                ..BrowserForecastOptions::default()
+            },
+            metadata: BrowserForecastMetadata::default(),
+        })
+        .expect("piecewise seasonal forecast");
+        let records = response
+            .forecast
+            .get("records")
+            .and_then(Value::as_array)
+            .expect("forecast records");
+        let component_records = response
+            .components
+            .as_ref()
+            .and_then(|components| components.get("records"))
+            .and_then(Value::as_array)
+            .expect("component records");
+        let sample_records = response
+            .samples
+            .as_ref()
+            .and_then(|samples| samples.get("records"))
+            .and_then(Value::as_array)
+            .expect("sample records");
+        let quantile_records = response
+            .quantiles
+            .as_ref()
+            .and_then(|quantiles| quantiles.get("records"))
+            .and_then(Value::as_array)
+            .expect("quantile records");
+
+        assert_eq!(records.len(), 9);
+        assert_eq!(component_records.len(), 9);
+        assert_eq!(sample_records.len(), 36);
+        assert_eq!(quantile_records.len(), 27);
+        assert!(component_records[0]["components"]["weekly"]
+            .as_f64()
+            .is_some());
+        assert!(sample_records[0]["prediction"].as_f64().is_some());
+        assert_eq!(quantile_records[1]["quantile"].as_f64(), Some(0.5));
+        assert_eq!(
+            response.metadata["model"].as_str(),
+            Some("piecewise_linear_seasonal")
+        );
+        assert_eq!(
+            response.metadata["modelMetadata"]["weekly_l2_regularization"].as_f64(),
+            Some(0.002)
+        );
+        assert_eq!(
+            response.metadata["modelMetadata"]["weekly_fourier_order"].as_u64(),
+            Some(0)
+        );
+        assert_eq!(
+            response.metadata["modelMetadata"]["auto_weekly_seasonality"].as_bool(),
+            Some(false)
+        );
+        assert_eq!(
+            response.metadata["modelMetadata"]["fit_loss"].as_str(),
+            Some("huber")
+        );
+        assert_eq!(
+            response.metadata["modelMetadata"]["huber_delta"].as_f64(),
+            Some(1.25)
+        );
+        assert_eq!(
+            response.metadata["modelMetadata"]["irls_iterations"].as_u64(),
+            Some(4)
+        );
+        assert_eq!(
+            response.metadata["modelMetadata"]["coefficient_uncertainty_scale"].as_f64(),
+            Some(1.5)
+        );
+    }
+
+    #[test]
+    fn browser_piecewise_linear_omits_unused_sample_payload() {
+        let response = run_forecast_request(BrowserForecastRequest {
+            rows: sample_panel_rows(),
+            frequency: "daily".to_string(),
+            horizon: 3,
+            model: "piecewise_linear_seasonal".to_string(),
+            options: BrowserForecastOptions {
+                changepoints: Some(2),
+                weekly_fourier_order: Some(0),
+                auto_weekly_seasonality: Some(false),
+                uncertainty_samples: Some(8),
+                ..BrowserForecastOptions::default()
+            },
+            metadata: BrowserForecastMetadata::default(),
+        })
+        .expect("lean piecewise forecast");
+
+        assert!(response.components.is_none());
+        assert!(response.samples.is_none());
+        assert_eq!(
+            response.metadata["modelMetadata"]["uncertainty_samples"].as_u64(),
+            Some(0)
+        );
+    }
+
+    #[test]
+    fn browser_piecewise_linear_artifact_predicts_without_refit() {
+        let rows = || {
+            (1..=30)
+                .map(|day| {
+                    let queue = if day % 5 == 0 { 1.0 } else { 0.0 };
+                    BrowserForecastRow {
+                        series_id: Some("pickup_zone_1".to_string()),
+                        timestamp: format!("2026-01-{day:02}T00:00:00"),
+                        target: 50.0 + f64::from(day) + 20.0 * queue,
+                        covariates: BTreeMap::from([("airport_queue".to_string(), queue)]),
+                    }
+                })
+                .collect::<Vec<_>>()
+        };
+        let options = || BrowserForecastOptions {
+            changepoints: Some(1),
+            weekly_fourier_order: Some(0),
+            interval_levels: Some(vec![0.8]),
+            extra_regressors: Some(vec!["airport_queue".to_string()]),
+            future_regressors: Some(BTreeMap::from([(
+                "airport_queue".to_string(),
+                vec![1.0, 0.0, 0.0],
+            )])),
+            include_components: Some(true),
+            ..BrowserForecastOptions::default()
+        };
+        let direct = run_forecast_request(BrowserForecastRequest {
+            rows: rows(),
+            frequency: "daily".to_string(),
+            horizon: 3,
+            model: "piecewise_linear_seasonal".to_string(),
+            options: options(),
+            metadata: BrowserForecastMetadata::default(),
+        })
+        .expect("direct forecast");
+        let artifact_response =
+            fit_piecewise_linear_seasonal_artifact_request(BrowserForecastRequest {
+                rows: rows(),
+                frequency: "daily".to_string(),
+                horizon: 3,
+                model: "piecewise_linear_seasonal".to_string(),
+                options: options(),
+                metadata: BrowserForecastMetadata::default(),
+            })
+            .expect("fit artifact");
+        let restored = predict_piecewise_linear_seasonal_artifact_request(
+            &artifact_response.artifact,
+            3,
+            BrowserForecastArtifactPredictOptions::default(),
+        )
+        .expect("artifact forecast");
+
+        assert_eq!(direct.forecast, restored.forecast);
+        let direct_queue = direct.components.as_ref().expect("direct components")["records"][0]
+            ["components"]["regressors"]["airport_queue"]
+            .as_f64()
+            .expect("direct airport queue contribution");
+        let restored_queue = restored.components.as_ref().expect("artifact components")["records"]
+            [0]["components"]["regressors"]["airport_queue"]
+            .as_f64()
+            .expect("airport queue contribution");
+        assert!(restored_queue > 10.0);
+        assert!((direct_queue - restored_queue).abs() < 1.0e-9);
+        assert_eq!(
+            serde_json::from_str::<Value>(&artifact_response.artifact).expect("artifact")["kind"]
+                .as_str(),
+            Some("cartoboost_piecewise_linear_seasonal")
+        );
+        assert_eq!(
+            artifact_response.metadata["model"].as_str(),
+            Some("piecewise_linear_seasonal")
+        );
+
+        let lean_restored = predict_piecewise_linear_seasonal_artifact_request(
+            &artifact_response.artifact,
+            3,
+            BrowserForecastArtifactPredictOptions {
+                include_components: false,
+                include_samples: false,
+                include_quantiles: false,
+                ..BrowserForecastArtifactPredictOptions::default()
+            },
+        )
+        .expect("lean artifact forecast");
+        assert_eq!(direct.forecast, lean_restored.forecast);
+        assert!(lean_restored.components.is_none());
+        assert!(lean_restored.samples.is_none());
+    }
+
+    #[test]
+    fn browser_piecewise_linear_artifact_predict_accepts_quantile_overrides() {
+        let rows = || {
+            (1..=28)
+                .map(|day| BrowserForecastRow {
+                    series_id: Some("pickup_zone_1".to_string()),
+                    timestamp: format!("2026-01-{day:02}T00:00:00"),
+                    target: 40.0 + f64::from(day) + if day % 7 == 0 { 4.0 } else { -1.0 },
+                    covariates: BTreeMap::new(),
+                })
+                .collect::<Vec<_>>()
+        };
+        let artifact_response =
+            fit_piecewise_linear_seasonal_artifact_request(BrowserForecastRequest {
+                rows: rows(),
+                frequency: "daily".to_string(),
+                horizon: 2,
+                model: "piecewise_linear_seasonal".to_string(),
+                options: BrowserForecastOptions {
+                    changepoints: Some(2),
+                    weekly_fourier_order: Some(0),
+                    auto_weekly_seasonality: Some(false),
+                    uncertainty_samples: Some(24),
+                    include_quantiles: Some(false),
+                    ..BrowserForecastOptions::default()
+                },
+                metadata: BrowserForecastMetadata::default(),
+            })
+            .expect("fit artifact without default quantiles");
+
+        let restored = predict_piecewise_linear_seasonal_artifact_request(
+            &artifact_response.artifact,
+            2,
+            BrowserForecastArtifactPredictOptions {
+                quantile_levels: Some(vec![0.1, 0.5, 0.9]),
+                ..BrowserForecastArtifactPredictOptions::default()
+            },
+        )
+        .expect("artifact forecast with quantile override");
+        let quantiles = restored.quantiles.expect("quantile payload");
+
+        assert_eq!(
+            restored.metadata["modelMetadata"]["quantile_levels"],
+            json!([0.1, 0.5, 0.9])
+        );
+        assert_eq!(quantiles["quantile_levels"], json!([0.1, 0.5, 0.9]));
+        assert_eq!(
+            quantiles["records"]
+                .as_array()
+                .expect("quantile records")
+                .len(),
+            2 * 3
+        );
+    }
+
+    #[test]
+    fn browser_piecewise_linear_artifact_predict_accepts_future_regressor_options() {
+        let rows = || {
+            (1..=30)
+                .map(|day| {
+                    let queue = if day % 5 == 0 { 1.0 } else { 0.0 };
+                    BrowserForecastRow {
+                        series_id: Some("pickup_zone_1".to_string()),
+                        timestamp: format!("2026-01-{day:02}T00:00:00"),
+                        target: 50.0 + f64::from(day) + 20.0 * queue,
+                        covariates: BTreeMap::from([("airport_queue".to_string(), queue)]),
+                    }
+                })
+                .collect::<Vec<_>>()
+        };
+        let fit_options = || BrowserForecastOptions {
+            changepoints: Some(1),
+            weekly_fourier_order: Some(0),
+            extra_regressors: Some(vec!["airport_queue".to_string()]),
+            include_components: Some(true),
+            ..BrowserForecastOptions::default()
+        };
+        let future_regressors =
+            BTreeMap::from([("airport_queue".to_string(), vec![1.0, 0.0, 0.0])]);
+        let direct = run_forecast_request(BrowserForecastRequest {
+            rows: rows(),
+            frequency: "daily".to_string(),
+            horizon: 3,
+            model: "piecewise_linear_seasonal".to_string(),
+            options: BrowserForecastOptions {
+                future_regressors: Some(future_regressors.clone()),
+                ..fit_options()
+            },
+            metadata: BrowserForecastMetadata::default(),
+        })
+        .expect("direct forecast");
+        let artifact_response =
+            fit_piecewise_linear_seasonal_artifact_request(BrowserForecastRequest {
+                rows: rows(),
+                frequency: "daily".to_string(),
+                horizon: 3,
+                model: "piecewise_linear_seasonal".to_string(),
+                options: fit_options(),
+                metadata: BrowserForecastMetadata::default(),
+            })
+            .expect("fit artifact without future values");
+
+        let restored = predict_piecewise_linear_seasonal_artifact_request(
+            &artifact_response.artifact,
+            3,
+            BrowserForecastArtifactPredictOptions {
+                future_regressors: Some(future_regressors),
+                ..BrowserForecastArtifactPredictOptions::default()
+            },
+        )
+        .expect("artifact forecast with future values");
+
+        assert_eq!(direct.forecast, restored.forecast);
+        assert_eq!(
+            restored.metadata["modelMetadata"]["future_regressors"]["airport_queue"][0].as_f64(),
+            Some(1.0)
+        );
+        assert!(
+            restored.components.as_ref().expect("components")["records"][0]["components"]
+                ["regressors"]["airport_queue"]
+                .as_f64()
+                .expect("future regressor contribution")
+                > 10.0
+        );
+    }
+
+    #[test]
+    fn browser_piecewise_linear_artifact_predict_accepts_series_future_caps() {
+        let rows = || {
+            ["pickup_zone_a", "pickup_zone_b"]
+                .into_iter()
+                .flat_map(|series_id| {
+                    (1..=28).map(move |day| {
+                        let cap = if series_id == "pickup_zone_a" {
+                            110.0 + 0.25 * f64::from(day)
+                        } else {
+                            65.0 + 0.10 * f64::from(day)
+                        };
+                        let t = f64::from(day) - 14.0;
+                        BrowserForecastRow {
+                            series_id: Some(series_id.to_string()),
+                            timestamp: format!("2026-01-{day:02}T00:00:00"),
+                            target: cap / (1.0 + (-0.18 * t).exp()),
+                            covariates: BTreeMap::from([("zone_capacity".to_string(), cap)]),
+                        }
+                    })
+                })
+                .collect::<Vec<_>>()
+        };
+        let fit_options = BrowserForecastOptions {
+            growth: Some("logistic".to_string()),
+            changepoints: Some(3),
+            weekly_fourier_order: Some(0),
+            auto_weekly_seasonality: Some(false),
+            cap_regressor: Some("zone_capacity".to_string()),
+            include_components: Some(true),
+            ..BrowserForecastOptions::default()
+        };
+        let future_regressors_by_series = BTreeMap::from([
+            (
+                "pickup_zone_a".to_string(),
+                BTreeMap::from([("zone_capacity".to_string(), vec![120.0])]),
+            ),
+            (
+                "pickup_zone_b".to_string(),
+                BTreeMap::from([("zone_capacity".to_string(), vec![70.0])]),
+            ),
+        ]);
+        let direct = run_forecast_request(BrowserForecastRequest {
+            rows: rows(),
+            frequency: "daily".to_string(),
+            horizon: 1,
+            model: "piecewise_linear_seasonal".to_string(),
+            options: BrowserForecastOptions {
+                growth: Some("logistic".to_string()),
+                changepoints: Some(3),
+                weekly_fourier_order: Some(0),
+                auto_weekly_seasonality: Some(false),
+                cap_regressor: Some("zone_capacity".to_string()),
+                include_components: Some(true),
+                future_regressors_by_series: Some(future_regressors_by_series.clone()),
+                ..BrowserForecastOptions::default()
+            },
+            metadata: BrowserForecastMetadata::default(),
+        })
+        .expect("direct panel logistic forecast");
+        let artifact_response =
+            fit_piecewise_linear_seasonal_artifact_request(BrowserForecastRequest {
+                rows: rows(),
+                frequency: "daily".to_string(),
+                horizon: 1,
+                model: "piecewise_linear_seasonal".to_string(),
+                options: fit_options,
+                metadata: BrowserForecastMetadata::default(),
+            })
+            .expect("fit panel logistic artifact without future caps");
+
+        let restored = predict_piecewise_linear_seasonal_artifact_request(
+            &artifact_response.artifact,
+            1,
+            BrowserForecastArtifactPredictOptions {
+                future_regressors_by_series: Some(future_regressors_by_series),
+                ..BrowserForecastArtifactPredictOptions::default()
+            },
+        )
+        .expect("artifact panel logistic forecast with future caps");
+        let records = restored
+            .forecast
+            .get("records")
+            .and_then(Value::as_array)
+            .expect("forecast records");
+        let prediction_a = records
+            .iter()
+            .find(|record| record["series_id"].as_str() == Some("pickup_zone_a"))
+            .and_then(|record| record["prediction"].as_f64())
+            .expect("zone A prediction");
+        let prediction_b = records
+            .iter()
+            .find(|record| record["series_id"].as_str() == Some("pickup_zone_b"))
+            .and_then(|record| record["prediction"].as_f64())
+            .expect("zone B prediction");
+
+        assert_eq!(direct.forecast, restored.forecast);
+        assert!(prediction_a > 0.0 && prediction_a < 120.0);
+        assert!(prediction_b > 0.0 && prediction_b < 70.0);
+        assert!(prediction_a > prediction_b + 20.0);
+        assert_eq!(
+            restored.metadata["modelMetadata"]["future_regressors_by_series"]["pickup_zone_a"]
+                ["zone_capacity"][0]
+                .as_f64(),
+            Some(120.0)
+        );
+    }
+
+    #[test]
+    fn browser_piecewise_linear_artifact_predict_accepts_series_future_floors() {
+        let cap = 140.0;
+        let rows = || {
+            ["pickup_zone_a", "pickup_zone_b"]
+                .into_iter()
+                .flat_map(|series_id| {
+                    (1..=28).map(move |day| {
+                        let floor = if series_id == "pickup_zone_a" {
+                            32.0 + 0.10 * f64::from(day)
+                        } else {
+                            8.0 + 0.05 * f64::from(day)
+                        };
+                        let t = f64::from(day) - 14.0;
+                        BrowserForecastRow {
+                            series_id: Some(series_id.to_string()),
+                            timestamp: format!("2026-01-{day:02}T00:00:00"),
+                            target: floor + (cap - floor) / (1.0 + (-0.18 * t).exp()),
+                            covariates: BTreeMap::from([("service_floor".to_string(), floor)]),
+                        }
+                    })
+                })
+                .collect::<Vec<_>>()
+        };
+        let fit_options = BrowserForecastOptions {
+            growth: Some("logistic".to_string()),
+            changepoints: Some(3),
+            weekly_fourier_order: Some(0),
+            auto_weekly_seasonality: Some(false),
+            cap: Some(cap),
+            floor_regressor: Some("service_floor".to_string()),
+            include_components: Some(true),
+            ..BrowserForecastOptions::default()
+        };
+        let future_regressors_by_series = BTreeMap::from([
+            (
+                "pickup_zone_a".to_string(),
+                BTreeMap::from([("service_floor".to_string(), vec![38.0])]),
+            ),
+            (
+                "pickup_zone_b".to_string(),
+                BTreeMap::from([("service_floor".to_string(), vec![10.0])]),
+            ),
+        ]);
+        let direct = run_forecast_request(BrowserForecastRequest {
+            rows: rows(),
+            frequency: "daily".to_string(),
+            horizon: 1,
+            model: "piecewise_linear_seasonal".to_string(),
+            options: BrowserForecastOptions {
+                growth: Some("logistic".to_string()),
+                changepoints: Some(3),
+                weekly_fourier_order: Some(0),
+                auto_weekly_seasonality: Some(false),
+                cap: Some(cap),
+                floor_regressor: Some("service_floor".to_string()),
+                include_components: Some(true),
+                future_regressors_by_series: Some(future_regressors_by_series.clone()),
+                ..BrowserForecastOptions::default()
+            },
+            metadata: BrowserForecastMetadata::default(),
+        })
+        .expect("direct panel logistic forecast");
+        let artifact_response =
+            fit_piecewise_linear_seasonal_artifact_request(BrowserForecastRequest {
+                rows: rows(),
+                frequency: "daily".to_string(),
+                horizon: 1,
+                model: "piecewise_linear_seasonal".to_string(),
+                options: fit_options,
+                metadata: BrowserForecastMetadata::default(),
+            })
+            .expect("fit panel logistic artifact without future floors");
+
+        let restored = predict_piecewise_linear_seasonal_artifact_request(
+            &artifact_response.artifact,
+            1,
+            BrowserForecastArtifactPredictOptions {
+                future_regressors_by_series: Some(future_regressors_by_series),
+                ..BrowserForecastArtifactPredictOptions::default()
+            },
+        )
+        .expect("artifact panel logistic forecast with future floors");
+        let lower_floor_restored = predict_piecewise_linear_seasonal_artifact_request(
+            &artifact_response.artifact,
+            1,
+            BrowserForecastArtifactPredictOptions {
+                future_regressors_by_series: Some(BTreeMap::from([
+                    (
+                        "pickup_zone_a".to_string(),
+                        BTreeMap::from([("service_floor".to_string(), vec![5.0])]),
+                    ),
+                    (
+                        "pickup_zone_b".to_string(),
+                        BTreeMap::from([("service_floor".to_string(), vec![10.0])]),
+                    ),
+                ])),
+                ..BrowserForecastArtifactPredictOptions::default()
+            },
+        )
+        .expect("artifact panel logistic forecast with lower future floor");
+        let records = restored
+            .forecast
+            .get("records")
+            .and_then(Value::as_array)
+            .expect("forecast records");
+        let prediction_a = records
+            .iter()
+            .find(|record| record["series_id"].as_str() == Some("pickup_zone_a"))
+            .and_then(|record| record["prediction"].as_f64())
+            .expect("zone A prediction");
+        let prediction_b = records
+            .iter()
+            .find(|record| record["series_id"].as_str() == Some("pickup_zone_b"))
+            .and_then(|record| record["prediction"].as_f64())
+            .expect("zone B prediction");
+        let lower_floor_prediction_a = lower_floor_restored
+            .forecast
+            .get("records")
+            .and_then(Value::as_array)
+            .expect("lower floor forecast records")
+            .iter()
+            .find(|record| record["series_id"].as_str() == Some("pickup_zone_a"))
+            .and_then(|record| record["prediction"].as_f64())
+            .expect("zone A lower floor prediction");
+
+        assert_eq!(direct.forecast, restored.forecast);
+        assert!(prediction_a > 38.0 && prediction_a < cap);
+        assert!(prediction_b > 10.0 && prediction_b < cap);
+        assert!(prediction_a > lower_floor_prediction_a);
+        assert_eq!(
+            restored.metadata["modelMetadata"]["future_regressors_by_series"]["pickup_zone_a"]
+                ["service_floor"][0]
+                .as_f64(),
+            Some(38.0)
+        );
+    }
+
+    #[test]
+    fn browser_piecewise_linear_flat_growth_flows_through_dispatch() {
+        let rows = (1..=28)
+            .map(|day| BrowserForecastRow {
+                series_id: Some("pickup_zone_1".to_string()),
+                timestamp: format!("2026-01-{day:02}T00:00:00"),
+                target: 40.0 + 2.0 * f64::from(day),
+                covariates: BTreeMap::new(),
+            })
+            .collect::<Vec<_>>();
+        let response = run_forecast_request(BrowserForecastRequest {
+            rows,
+            frequency: "daily".to_string(),
+            horizon: 3,
+            model: "piecewise_linear_seasonal".to_string(),
+            options: BrowserForecastOptions {
+                growth: Some("flat".to_string()),
+                changepoints: Some(0),
+                weekly_fourier_order: Some(0),
+                ..BrowserForecastOptions::default()
+            },
+            metadata: BrowserForecastMetadata::default(),
+        })
+        .expect("flat piecewise seasonal forecast");
+
+        assert_eq!(
+            response.metadata["modelMetadata"]["growth"].as_str(),
+            Some("flat")
+        );
+    }
+
+    #[test]
+    fn browser_piecewise_linear_logistic_growth_uses_cap_floor_options() {
+        let rows = (0..28)
+            .map(|idx| {
+                let t = idx as f64 - 14.0;
+                let cap = 95.0 + idx as f64;
+                let target = cap / (1.0 + (-0.25 * t).exp());
+                BrowserForecastRow {
+                    series_id: Some("pickup_zone_1".to_string()),
+                    timestamp: format!("2026-01-{:02}T00:00:00", idx + 1),
+                    target,
+                    covariates: BTreeMap::from([("zone_capacity".to_string(), cap)]),
+                }
+            })
+            .collect::<Vec<_>>();
+        let future_caps = vec![123.0, 124.0, 125.0, 126.0];
+        let response = run_forecast_request(BrowserForecastRequest {
+            rows,
+            frequency: "daily".to_string(),
+            horizon: 4,
+            model: "piecewise_linear_seasonal".to_string(),
+            options: BrowserForecastOptions {
+                growth: Some("logistic".to_string()),
+                floor: Some(0.0),
+                cap_regressor: Some("zone_capacity".to_string()),
+                future_regressors: Some(BTreeMap::from([(
+                    "zone_capacity".to_string(),
+                    future_caps.clone(),
+                )])),
+                changepoints: Some(4),
+                weekly_fourier_order: Some(0),
+                ..BrowserForecastOptions::default()
+            },
+            metadata: BrowserForecastMetadata::default(),
+        })
+        .expect("logistic piecewise seasonal forecast");
+        let records = response
+            .forecast
+            .get("records")
+            .and_then(Value::as_array)
+            .expect("forecast records");
+
+        assert_eq!(
+            response.metadata["modelMetadata"]["growth"].as_str(),
+            Some("logistic")
+        );
+        assert_eq!(
+            response.metadata["modelMetadata"]["cap_regressor"].as_str(),
+            Some("zone_capacity")
+        );
+        assert!(records.iter().zip(future_caps.iter()).all(|(record, cap)| {
+            let prediction = record["prediction"].as_f64().expect("prediction");
+            prediction > 0.0 && prediction < *cap
+        }));
+    }
+
+    #[test]
+    fn browser_piecewise_linear_explicit_changepoints_flow_through_dispatch() {
+        let rows = (1..=30)
+            .map(|day| {
+                let target = if day <= 15 {
+                    50.0 + f64::from(day)
+                } else {
+                    65.0 + 5.0 * f64::from(day - 15)
+                };
+                BrowserForecastRow {
+                    series_id: Some("pickup_zone_1".to_string()),
+                    timestamp: format!("2026-01-{day:02}T00:00:00"),
+                    target,
+                    covariates: BTreeMap::new(),
+                }
+            })
+            .collect::<Vec<_>>();
+        let response = run_forecast_request(BrowserForecastRequest {
+            rows,
+            frequency: "daily".to_string(),
+            horizon: 3,
+            model: "piecewise_linear_seasonal".to_string(),
+            options: BrowserForecastOptions {
+                changepoints: Some(0),
+                changepoint_range: Some(0.8),
+                changepoint_timestamps: Some(vec!["2026-01-15T00:00:00".to_string()]),
+                weekly_fourier_order: Some(0),
+                changepoint_l2_regularization: Some(0.001),
+                changepoint_l1_regularization: Some(0.01),
+                ..BrowserForecastOptions::default()
+            },
+            metadata: BrowserForecastMetadata::default(),
+        })
+        .expect("explicit changepoint piecewise seasonal forecast");
+        let records = response
+            .forecast
+            .get("records")
+            .and_then(Value::as_array)
+            .expect("records");
+
+        assert_eq!(
+            response.metadata["modelMetadata"]["changepoint_timestamps"][0].as_str(),
+            Some("2026-01-15T00:00:00")
+        );
+        assert_eq!(
+            response.metadata["modelMetadata"]["changepoint_l1_regularization"].as_f64(),
+            Some(0.01)
+        );
+        assert!(records[2]["prediction"].as_f64().expect("prediction") > 140.0);
+    }
+
+    #[test]
+    fn browser_piecewise_linear_events_flow_through_dispatch() {
+        let rows = (1..=30)
+            .map(|day| {
+                let event_boost = if (14..=16).contains(&day) { 25.0 } else { 0.0 };
+                BrowserForecastRow {
+                    series_id: Some("pickup_zone_1".to_string()),
+                    timestamp: format!("2026-01-{day:02}T00:00:00"),
+                    target: 100.0 + 0.5 * f64::from(day) + event_boost,
+                    covariates: BTreeMap::new(),
+                }
+            })
+            .collect::<Vec<_>>();
+        let response = run_forecast_request(BrowserForecastRequest {
+            rows,
+            frequency: "daily".to_string(),
+            horizon: 3,
+            model: "piecewise_linear_seasonal".to_string(),
+            options: BrowserForecastOptions {
+                changepoints: Some(0),
+                weekly_fourier_order: Some(0),
+                event_l2_regularization: Some(0.001),
+                include_components: Some(true),
+                events: Some(vec![
+                    BrowserForecastEvent {
+                        name: "airport_surge".to_string(),
+                        timestamp: "2026-01-15T00:00:00".to_string(),
+                        lower_window: Some(-1),
+                        upper_window: Some(1),
+                    },
+                    BrowserForecastEvent {
+                        name: "airport_surge".to_string(),
+                        timestamp: "2026-02-01T00:00:00".to_string(),
+                        lower_window: Some(-1),
+                        upper_window: Some(1),
+                    },
+                ]),
+                ..BrowserForecastOptions::default()
+            },
+            metadata: BrowserForecastMetadata::default(),
+        })
+        .expect("event piecewise seasonal forecast");
+        let events = response.metadata["modelMetadata"]["events"]
+            .as_array()
+            .expect("events metadata");
+        let records = response
+            .forecast
+            .get("records")
+            .and_then(Value::as_array)
+            .expect("forecast records");
+        let component_records = response
+            .components
+            .as_ref()
+            .and_then(|components| components.get("records"))
+            .and_then(Value::as_array)
+            .expect("component records");
+
+        assert_eq!(events[0]["name"].as_str(), Some("airport_surge"));
+        assert!(records[1]["prediction"].as_f64().expect("prediction") > 120.0);
+        assert!(
+            component_records[0]["components"]["event_window_offsets"]["airport_surge[-1]"]
+                .as_f64()
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn browser_piecewise_linear_extra_regressors_use_future_values() {
+        let rows = (1..=30)
+            .map(|day| {
+                let queue = if day % 5 == 0 { 1.0 } else { 0.0 };
+                BrowserForecastRow {
+                    series_id: Some("pickup_zone_1".to_string()),
+                    timestamp: format!("2026-01-{day:02}T00:00:00"),
+                    target: 50.0 + f64::from(day) + 20.0 * queue,
+                    covariates: BTreeMap::from([("airport_queue".to_string(), queue)]),
+                }
+            })
+            .collect::<Vec<_>>();
+        let response = run_forecast_request(BrowserForecastRequest {
+            rows,
+            frequency: "daily".to_string(),
+            horizon: 3,
+            model: "piecewise_linear_seasonal".to_string(),
+            options: BrowserForecastOptions {
+                changepoints: Some(0),
+                weekly_fourier_order: Some(0),
+                regressor_l2_regularization: Some(0.001),
+                extra_regressors: Some(vec!["airport_queue".to_string()]),
+                future_regressors: Some(BTreeMap::from([(
+                    "airport_queue".to_string(),
+                    vec![1.0, 0.0, 0.0],
+                )])),
+                ..BrowserForecastOptions::default()
+            },
+            metadata: BrowserForecastMetadata::default(),
+        })
+        .expect("regressor piecewise seasonal forecast");
+        let records = response
+            .forecast
+            .get("records")
+            .and_then(Value::as_array)
+            .expect("forecast records");
+
+        assert_eq!(
+            response.metadata["modelMetadata"]["extra_regressors"][0].as_str(),
+            Some("airport_queue")
+        );
+        assert!(records[0]["prediction"].as_f64().expect("prediction") > 80.0);
+    }
+
+    #[test]
+    fn browser_piecewise_linear_regressor_standardization_flows_through_dispatch() {
+        let rows = (1..=30)
+            .map(|day| {
+                let traffic_index = 100.0 + 4.0 * f64::from(day);
+                BrowserForecastRow {
+                    series_id: Some("pickup_zone_1".to_string()),
+                    timestamp: format!("2026-01-{day:02}T00:00:00"),
+                    target: 40.0 + f64::from(day) + 1.5 * traffic_index,
+                    covariates: BTreeMap::from([("trafficIndex".to_string(), traffic_index)]),
+                }
+            })
+            .collect::<Vec<_>>();
+        let response = run_forecast_request(BrowserForecastRequest {
+            rows,
+            frequency: "daily".to_string(),
+            horizon: 2,
+            model: "piecewise_linear_seasonal".to_string(),
+            options: BrowserForecastOptions {
+                changepoints: Some(0),
+                weekly_fourier_order: Some(0),
+                extra_regressors: Some(vec!["trafficIndex".to_string()]),
+                regressor_standardization: Some("none".to_string()),
+                future_regressors: Some(BTreeMap::from([(
+                    "trafficIndex".to_string(),
+                    vec![224.0, 228.0],
+                )])),
+                ..BrowserForecastOptions::default()
+            },
+            metadata: BrowserForecastMetadata::default(),
+        })
+        .expect("standardization piecewise seasonal forecast");
+
+        assert_eq!(
+            response.metadata["modelMetadata"]["regressor_standardization"].as_str(),
+            Some("none")
+        );
+    }
+
+    #[test]
+    fn browser_piecewise_linear_named_regressor_l2_flows_through_dispatch() {
+        let rows = || {
+            (1..=30)
+                .map(|day| {
+                    let queue = if day % 5 == 0 { 1.0 } else { 0.0 };
+                    BrowserForecastRow {
+                        series_id: Some("pickup_zone_1".to_string()),
+                        timestamp: format!("2026-01-{day:02}T00:00:00"),
+                        target: 50.0 + f64::from(day) + 24.0 * queue,
+                        covariates: BTreeMap::from([("airport_queue".to_string(), queue)]),
+                    }
+                })
+                .collect::<Vec<_>>()
+        };
+        let options = |named_l2: f64| BrowserForecastOptions {
+            changepoints: Some(0),
+            weekly_fourier_order: Some(0),
+            extra_regressors: Some(vec!["airport_queue".to_string()]),
+            regressor_l2_regularization_by_name: Some(BTreeMap::from([(
+                "airport_queue".to_string(),
+                named_l2,
+            )])),
+            future_regressors: Some(BTreeMap::from([("airport_queue".to_string(), vec![1.0])])),
+            ..BrowserForecastOptions::default()
+        };
+        let low_l2_response = run_forecast_request(BrowserForecastRequest {
+            rows: rows(),
+            frequency: "daily".to_string(),
+            horizon: 1,
+            model: "piecewise_linear_seasonal".to_string(),
+            options: options(0.001),
+            metadata: BrowserForecastMetadata::default(),
+        })
+        .expect("low l2 forecast");
+        let high_l2_response = run_forecast_request(BrowserForecastRequest {
+            rows: rows(),
+            frequency: "daily".to_string(),
+            horizon: 1,
+            model: "piecewise_linear_seasonal".to_string(),
+            options: options(1_000.0),
+            metadata: BrowserForecastMetadata::default(),
+        })
+        .expect("high l2 forecast");
+        let low_prediction = low_l2_response.forecast["records"][0]["prediction"]
+            .as_f64()
+            .expect("low l2 prediction");
+        let high_prediction = high_l2_response.forecast["records"][0]["prediction"]
+            .as_f64()
+            .expect("high l2 prediction");
+
+        assert!(low_prediction > high_prediction + 10.0);
+        assert_eq!(
+            high_l2_response.metadata["modelMetadata"]["regressor_l2_regularization_by_name"]
+                ["airport_queue"]
+                .as_f64(),
+            Some(1_000.0)
+        );
+    }
+
+    #[test]
+    fn browser_piecewise_linear_custom_seasonalities_flow_through_dispatch() {
+        let start = NaiveDate::from_ymd_opt(2026, 1, 1)
+            .and_then(|date| date.and_hms_opt(0, 0, 0))
+            .expect("valid start");
+        let rows = (1..=56)
+            .map(|day| {
+                let timestamp = start + Duration::days(i64::from(day - 1));
+                let biweekly = if day % 14 == 0 { 18.0 } else { 0.0 };
+                BrowserForecastRow {
+                    series_id: Some("pickup_zone_1".to_string()),
+                    timestamp: timestamp.format("%Y-%m-%dT%H:%M:%S").to_string(),
+                    target: 80.0 + 0.25 * f64::from(day) + biweekly,
+                    covariates: BTreeMap::new(),
+                }
+            })
+            .collect::<Vec<_>>();
+        let response = run_forecast_request(BrowserForecastRequest {
+            rows,
+            frequency: "daily".to_string(),
+            horizon: 14,
+            model: "piecewise_linear_seasonal".to_string(),
+            options: BrowserForecastOptions {
+                changepoints: Some(0),
+                weekly_fourier_order: Some(0),
+                seasonality_l2_regularization: Some(0.001),
+                custom_seasonalities: Some(vec![BrowserForecastSeasonality {
+                    name: "biweekly_pickup_cycle".to_string(),
+                    period_days: 14.0,
+                    fourier_order: 4,
+                    mode: Some("additive".to_string()),
+                    condition_name: None,
+                    l2_regularization: None,
+                }]),
+                ..BrowserForecastOptions::default()
+            },
+            metadata: BrowserForecastMetadata::default(),
+        })
+        .expect("custom seasonality piecewise seasonal forecast");
+        let records = response
+            .forecast
+            .get("records")
+            .and_then(Value::as_array)
+            .expect("records");
+
+        assert_eq!(
+            response.metadata["modelMetadata"]["custom_seasonalities"][0]["name"].as_str(),
+            Some("biweekly_pickup_cycle")
+        );
+        assert_eq!(
+            response.metadata["modelMetadata"]["custom_seasonalities"][0]["mode"].as_str(),
+            Some("additive")
+        );
+        assert!(records[13]["prediction"].as_f64().expect("prediction") > 95.0);
+    }
+
+    #[test]
+    fn browser_piecewise_linear_conditional_seasonality_uses_future_flags() {
+        let start = NaiveDate::from_ymd_opt(2026, 1, 1)
+            .and_then(|date| date.and_hms_opt(0, 0, 0))
+            .expect("valid start");
+        let rows = || {
+            (1..=42)
+                .map(|day| {
+                    let timestamp = start + Duration::days(i64::from(day - 1));
+                    let rush_hour = if day % 2 == 0 { 1.0 } else { 0.0 };
+                    let cycle = if day % 7 == 0 { 16.0 } else { 0.0 };
+                    BrowserForecastRow {
+                        series_id: Some("pickup_zone_1".to_string()),
+                        timestamp: timestamp.format("%Y-%m-%dT%H:%M:%S").to_string(),
+                        target: 80.0 + 0.2 * f64::from(day) + rush_hour * cycle,
+                        covariates: BTreeMap::from([("rushHour".to_string(), rush_hour)]),
+                    }
+                })
+                .collect::<Vec<_>>()
+        };
+        let options = |future_flags: Vec<f64>| BrowserForecastOptions {
+            changepoints: Some(0),
+            weekly_fourier_order: Some(0),
+            seasonality_l2_regularization: Some(0.001),
+            custom_seasonalities: Some(vec![BrowserForecastSeasonality {
+                name: "rush_hour_weekly".to_string(),
+                period_days: 7.0,
+                fourier_order: 3,
+                mode: None,
+                condition_name: Some("rushHour".to_string()),
+                l2_regularization: None,
+            }]),
+            future_regressors: Some(BTreeMap::from([("rushHour".to_string(), future_flags)])),
+            ..BrowserForecastOptions::default()
+        };
+        let inactive_response = run_forecast_request(BrowserForecastRequest {
+            rows: rows(),
+            frequency: "daily".to_string(),
+            horizon: 7,
+            model: "piecewise_linear_seasonal".to_string(),
+            options: options(vec![0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]),
+            metadata: BrowserForecastMetadata::default(),
+        })
+        .expect("inactive conditional seasonality forecast");
+        let active_response = run_forecast_request(BrowserForecastRequest {
+            rows: rows(),
+            frequency: "daily".to_string(),
+            horizon: 7,
+            model: "piecewise_linear_seasonal".to_string(),
+            options: options(vec![0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]),
+            metadata: BrowserForecastMetadata::default(),
+        })
+        .expect("active conditional seasonality forecast");
+        let inactive_records = inactive_response
+            .forecast
+            .get("records")
+            .and_then(Value::as_array)
+            .expect("inactive records");
+        let active_records = active_response
+            .forecast
+            .get("records")
+            .and_then(Value::as_array)
+            .expect("active records");
+
+        assert_eq!(
+            active_response.metadata["modelMetadata"]["custom_seasonalities"][0]["condition_name"]
+                .as_str(),
+            Some("rushHour")
+        );
+        assert!(
+            active_records[6]["prediction"].as_f64().expect("active")
+                > inactive_records[6]["prediction"]
+                    .as_f64()
+                    .expect("inactive")
+                    + 4.0
+        );
+    }
+
+    #[test]
+    fn browser_piecewise_linear_interval_levels_render_bounds() {
+        let rows = (1..=20)
+            .map(|day| {
+                let noise = if day % 2 == 0 { 2.0 } else { -2.0 };
+                BrowserForecastRow {
+                    series_id: Some("pickup_zone_1".to_string()),
+                    timestamp: format!("2026-01-{day:02}T00:00:00"),
+                    target: 25.0 + f64::from(day) + noise,
+                    covariates: BTreeMap::new(),
+                }
+            })
+            .collect::<Vec<_>>();
+        let response = run_forecast_request(BrowserForecastRequest {
+            rows,
+            frequency: "daily".to_string(),
+            horizon: 2,
+            model: "piecewise_linear_seasonal".to_string(),
+            options: BrowserForecastOptions {
+                changepoints: Some(0),
+                weekly_fourier_order: Some(0),
+                interval_levels: Some(vec![0.8]),
+                ..BrowserForecastOptions::default()
+            },
+            metadata: BrowserForecastMetadata::default(),
+        })
+        .expect("interval piecewise seasonal forecast");
+        let columns = response
+            .forecast
+            .get("columns")
+            .and_then(Value::as_array)
+            .expect("columns");
+        let records = response
+            .forecast
+            .get("records")
+            .and_then(Value::as_array)
+            .expect("records");
+
+        assert!(columns
+            .iter()
+            .any(|column| column.as_str() == Some("prediction_lower_p80")));
+        assert!(records[0]["prediction_lower_p80"].as_f64().is_some());
+        assert!(
+            records[0]["prediction_lower_p80"].as_f64().unwrap()
+                <= records[0]["prediction_upper_p80"].as_f64().unwrap()
+        );
+    }
+
+    #[test]
+    fn browser_piecewise_linear_uncertainty_samples_widen_intervals() {
+        let rows = || {
+            (1..=30)
+                .map(|day| {
+                    let value =
+                        20.0 + 0.5 * f64::from(day) + 3.0 * (f64::from(day) - 15.0).max(0.0);
+                    BrowserForecastRow {
+                        series_id: Some("pickup_zone_1".to_string()),
+                        timestamp: format!("2026-01-{day:02}T00:00:00"),
+                        target: value,
+                        covariates: BTreeMap::new(),
+                    }
+                })
+                .collect::<Vec<_>>()
+        };
+        let options = |uncertainty_samples: usize| BrowserForecastOptions {
+            changepoints: Some(1),
+            changepoint_timestamps: Some(vec!["2026-01-15T00:00:00".to_string()]),
+            changepoint_l2_regularization: Some(0.001),
+            weekly_fourier_order: Some(0),
+            interval_levels: Some(vec![0.8]),
+            uncertainty_samples: Some(uncertainty_samples),
+            trend_uncertainty_policy: Some("normal".to_string()),
+            trend_uncertainty_scale: Some(1.0),
+            uncertainty_seed: Some(7),
+            ..BrowserForecastOptions::default()
+        };
+        let residual_response = run_forecast_request(BrowserForecastRequest {
+            rows: rows(),
+            frequency: "daily".to_string(),
+            horizon: 5,
+            model: "piecewise_linear_seasonal".to_string(),
+            options: options(0),
+            metadata: BrowserForecastMetadata::default(),
+        })
+        .expect("residual interval forecast");
+        let uncertain_response = run_forecast_request(BrowserForecastRequest {
+            rows: rows(),
+            frequency: "daily".to_string(),
+            horizon: 5,
+            model: "piecewise_linear_seasonal".to_string(),
+            options: options(256),
+            metadata: BrowserForecastMetadata::default(),
+        })
+        .expect("uncertain interval forecast");
+        let residual_record = &residual_response.forecast["records"][4];
+        let uncertain_record = &uncertain_response.forecast["records"][4];
+        let residual_width = residual_record["prediction_upper_p80"]
+            .as_f64()
+            .expect("residual upper")
+            - residual_record["prediction_lower_p80"]
+                .as_f64()
+                .expect("residual lower");
+        let uncertain_width = uncertain_record["prediction_upper_p80"]
+            .as_f64()
+            .expect("uncertain upper")
+            - uncertain_record["prediction_lower_p80"]
+                .as_f64()
+                .expect("uncertain lower");
+
+        assert!(uncertain_width > residual_width + 1.0);
+        assert_eq!(
+            uncertain_response.metadata["modelMetadata"]["uncertainty_samples"].as_u64(),
+            Some(256)
+        );
+        assert_eq!(
+            uncertain_response.metadata["modelMetadata"]["trend_uncertainty_policy"].as_str(),
+            Some("normal")
+        );
+    }
+
+    #[test]
+    fn browser_piecewise_linear_multiplicative_mode_flows_through_dispatch() {
+        let rows = (1..=30)
+            .map(|day| {
+                let trend = 20.0 + 2.0 * f64::from(day);
+                let target = if (14..=16).contains(&day) {
+                    trend * 1.5
+                } else {
+                    trend
+                };
+                BrowserForecastRow {
+                    series_id: Some("pickup_zone_1".to_string()),
+                    timestamp: format!("2026-01-{day:02}T00:00:00"),
+                    target,
+                    covariates: BTreeMap::new(),
+                }
+            })
+            .collect::<Vec<_>>();
+        let response = run_forecast_request(BrowserForecastRequest {
+            rows,
+            frequency: "daily".to_string(),
+            horizon: 3,
+            model: "piecewise_linear_seasonal".to_string(),
+            options: BrowserForecastOptions {
+                component_mode: Some("multiplicative".to_string()),
+                changepoints: Some(0),
+                weekly_fourier_order: Some(0),
+                event_l2_regularization: Some(0.001),
+                events: Some(vec![
+                    BrowserForecastEvent {
+                        name: "airport_surge".to_string(),
+                        timestamp: "2026-01-15T00:00:00".to_string(),
+                        lower_window: Some(-1),
+                        upper_window: Some(1),
+                    },
+                    BrowserForecastEvent {
+                        name: "airport_surge".to_string(),
+                        timestamp: "2026-02-01T00:00:00".to_string(),
+                        lower_window: Some(-1),
+                        upper_window: Some(1),
+                    },
+                ]),
+                ..BrowserForecastOptions::default()
+            },
+            metadata: BrowserForecastMetadata::default(),
+        })
+        .expect("multiplicative piecewise seasonal forecast");
+        let records = response
+            .forecast
+            .get("records")
+            .and_then(Value::as_array)
+            .expect("records");
+
+        assert_eq!(
+            response.metadata["modelMetadata"]["component_mode"].as_str(),
+            Some("multiplicative")
+        );
+        assert!(records[1]["prediction"].as_f64().expect("prediction") > 100.0);
     }
 
     #[test]
@@ -2382,6 +4243,7 @@ mod tests {
                 learning_rate: Some(0.08),
                 max_depth: Some(3),
                 min_samples_leaf: Some(2),
+                monotonic_constraints: None,
             },
         };
         let response = run_regression_request(request).expect("regression run");

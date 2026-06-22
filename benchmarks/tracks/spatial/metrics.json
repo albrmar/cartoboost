@@ -2,6 +2,7 @@
   "metrics": [
     {"id": "rmse", "direction": "lower"},
     {"id": "mae", "direction": "lower"},
+    {"id": "wape", "direction": "lower"},
     {"id": "r2", "direction": "higher"},
     {"id": "cold_zone_gap", "direction": "lower"},
     {"id": "borough_gap", "direction": "lower"},
@@ -10,4 +11,3 @@
     {"id": "predict_rows_per_second", "direction": "higher"}
   ]
 }
-
