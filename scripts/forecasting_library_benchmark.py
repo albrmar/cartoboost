@@ -2118,7 +2118,7 @@ def auto_selection_objective(source: str) -> str:
 
 
 def autostats_validation_objective(source: str) -> str:
-    if source in {"m", "m1", "m3", "m4"}:
+    if source in {"m", "m1", "m3"}:
         return "smape_mase_average"
     return "mean_squared_error"
 
