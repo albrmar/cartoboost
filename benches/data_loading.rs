@@ -18,7 +18,7 @@ fn synthetic_csv(rows: usize, cols: usize) -> String {
     csv
 }
 
-fn parse_csv_placeholder(input: &str, cols: usize) -> (Vec<f32>, Vec<f32>) {
+fn parse_csv(input: &str, cols: usize) -> Result<(Vec<f32>, Vec<f32>), std::num::ParseFloatError> {
     let mut values = Vec::new();
     let mut target = Vec::new();
 
@@ -27,7 +27,7 @@ fn parse_csv_placeholder(input: &str, cols: usize) -> (Vec<f32>, Vec<f32>) {
             continue;
         }
         for (index, raw) in line.split(',').enumerate() {
-            let value = raw.parse::<f32>().unwrap_or(0.0);
+            let value = raw.parse::<f32>()?;
             if index < cols {
                 values.push(value);
             } else {
@@ -36,7 +36,7 @@ fn parse_csv_placeholder(input: &str, cols: usize) -> (Vec<f32>, Vec<f32>) {
         }
     }
 
-    (values, target)
+    Ok((values, target))
 }
 
 fn bench_data_loading(c: &mut Criterion) {
@@ -44,10 +44,13 @@ fn bench_data_loading(c: &mut Criterion) {
     for &(rows, cols) in &[(1_000, 16), (25_000, 32)] {
         let input = synthetic_csv(rows, cols);
         group.bench_with_input(
-            BenchmarkId::new("csv_parse_placeholder", format!("{rows}x{cols}")),
+            BenchmarkId::new("csv_parse", format!("{rows}x{cols}")),
             &input,
             |bench, input| {
-                bench.iter(|| parse_csv_placeholder(black_box(input), black_box(cols)));
+                bench.iter(|| {
+                    parse_csv(black_box(input), black_box(cols))
+                        .expect("synthetic CSV benchmark input must parse")
+                });
             },
         );
     }

@@ -790,8 +790,7 @@ def zone_sparse_set(
         zone_id = int(raw_zone_id)
         context = zone_lookup.get(zone_id)
         if context is None:
-            rows.append([])
-            continue
+            raise ValueError(f"missing zone context for {kind} sparse set: {zone_id}")
         if kind == "borough":
             rows.append([int(context.borough_code)])
         elif kind == "service_zone":
@@ -822,7 +821,10 @@ def split_indices(task: BenchmarkTask, *, mode: str, seed: int) -> tuple[np.ndar
     train_indices = np.flatnonzero(~test_mask)
     test_indices = np.flatnonzero(test_mask)
     if len(train_indices) == 0 or len(test_indices) == 0:
-        return split_indices(task, mode="random", seed=seed)
+        raise ValueError(
+            f"spatial_holdout split for task {task.name!r} produced "
+            f"{len(train_indices)} train rows and {len(test_indices)} test rows"
+        )
     return train_indices, test_indices
 
 
@@ -1941,16 +1943,14 @@ def fit_predict_model(
         }
 
     if pickup_demand_cold_zone_fraction(task, train_indices, test_indices) >= 0.8:
-        return skipped(
-            "learned models are skipped for pickup_demand cold-zone spatial holdout; "
+        raise ValueError(
+            "learned models are not valid for pickup_demand cold-zone spatial holdout; "
             "the split removes all zone demand history, so predictions collapse to priors"
         )
 
     if model_name in {"cartoboost", "cartoboost_reference"}:
-        try:
-            from cartoboost import CartoBoostRegressor
-        except ImportError as exc:
-            return skipped(f"cartoboost import failed: {exc}")
+        from cartoboost import CartoBoostRegressor
+
         min_leaf = args.cartoboost_min_samples_leaf
         is_speed_preset = model_name == "cartoboost"
         n_estimators = args.cartoboost_n_estimators if is_speed_preset else args.n_estimators
@@ -1962,10 +1962,8 @@ def fit_predict_model(
         init_train_prediction = np.zeros_like(train_y, dtype=float)
         init_test_prediction = np.zeros(len(test_indices), dtype=float)
         if args.cartoboost_init == "linear":
-            try:
-                from sklearn.linear_model import Ridge
-            except ImportError as exc:
-                return skipped(f"sklearn linear model import failed: {exc}")
+            from sklearn.linear_model import Ridge
+
             init_model = Ridge(alpha=1.0)
             init_model.fit(train_x, train_y)
             init_train_prediction = np.asarray(init_model.predict(train_x), dtype=float)
@@ -1989,51 +1987,48 @@ def fit_predict_model(
             dense_id_sets=use_dense_id_sets,
             include_sparse_sets=use_sparse_sets,
         )
-        try:
-            train_started = time.perf_counter()
-            model.fit(
+        train_started = time.perf_counter()
+        model.fit(
+            train_x,
+            train_y - init_train_prediction,
+            sparse_sets=train_sparse,
+            feature_schema=feature_schema,
+        )
+        calibration_intercept = 0.0
+        calibration_slope = 1.0
+        if args.cartoboost_calibration == "affine":
+            train_raw = init_train_prediction + model.predict(
                 train_x,
-                train_y - init_train_prediction,
                 sparse_sets=train_sparse,
-                feature_schema=feature_schema,
             )
-            calibration_intercept = 0.0
-            calibration_slope = 1.0
-            if args.cartoboost_calibration == "affine":
-                train_raw = init_train_prediction + model.predict(
-                    train_x,
-                    sparse_sets=train_sparse,
-                )
-                design = np.column_stack([np.ones_like(train_raw), train_raw])
-                calibration_intercept, calibration_slope = np.linalg.lstsq(
-                    design,
-                    train_y,
-                    rcond=None,
-                )[0]
-            train_seconds = time.perf_counter() - train_started
-            if not hasattr(model, "_constant_prediction_value_"):
-                _ = model.predict(
-                    test_x[: min(len(test_indices), 16)],
-                    sparse_sets=(
-                        sparse_subset(task.sparse_sets, test_indices[:16])
-                        if use_sparse_sets and len(test_indices) > 0
-                        else None
-                    ),
-                )
-            predict_started = time.perf_counter()
-            predict_path = "model.predict"
-            if hasattr(model, "_constant_prediction_value_"):
-                prediction = np.broadcast_to(
-                    np.asarray(model._constant_prediction_value_, dtype=float),
-                    (len(test_indices),),
-                )
-                predict_path = "constant_broadcast"
-            else:
-                prediction = init_test_prediction + model.predict(test_x, sparse_sets=test_sparse)
-                prediction = calibration_intercept + calibration_slope * prediction
-            predict_seconds = time.perf_counter() - predict_started
-        except Exception as exc:  # noqa: BLE001
-            return skipped(f"cartoboost run failed: {exc}")
+            design = np.column_stack([np.ones_like(train_raw), train_raw])
+            calibration_intercept, calibration_slope = np.linalg.lstsq(
+                design,
+                train_y,
+                rcond=None,
+            )[0]
+        train_seconds = time.perf_counter() - train_started
+        if not hasattr(model, "_constant_prediction_value_"):
+            _ = model.predict(
+                test_x[: min(len(test_indices), 16)],
+                sparse_sets=(
+                    sparse_subset(task.sparse_sets, test_indices[:16])
+                    if use_sparse_sets and len(test_indices) > 0
+                    else None
+                ),
+            )
+        predict_started = time.perf_counter()
+        predict_path = "model.predict"
+        if hasattr(model, "_constant_prediction_value_"):
+            prediction = np.broadcast_to(
+                np.asarray(model._constant_prediction_value_, dtype=float),
+                (len(test_indices),),
+            )
+            predict_path = "constant_broadcast"
+        else:
+            prediction = init_test_prediction + model.predict(test_x, sparse_sets=test_sparse)
+            prediction = calibration_intercept + calibration_slope * prediction
+        predict_seconds = time.perf_counter() - predict_started
         return {
             "status": "ok",
             "metrics": metric_summary(test_y, prediction),
@@ -2063,25 +2058,22 @@ def fit_predict_model(
         }
 
     if model_name == "cartoboost_neural":
-        try:
-            train_started = time.perf_counter()
-            model, predict_input, neural_guard = fit_neural_guarded_model(
-                task=task,
-                train_x=train_x,
-                test_x=test_x,
-                train_y=train_y,
-                train_indices=train_indices,
-                test_indices=test_indices,
-                effective_feature_names=effective_feature_names,
-                args=args,
-            )
-            train_seconds = time.perf_counter() - train_started
-            predict_started = time.perf_counter()
-            _ = model.predict(**{key: value[:16] for key, value in predict_input.items()})
-            prediction = model.predict(**predict_input)
-            predict_seconds = time.perf_counter() - predict_started
-        except Exception as exc:  # noqa: BLE001
-            return skipped(f"cartoboost neural run failed: {exc}")
+        train_started = time.perf_counter()
+        model, predict_input, neural_guard = fit_neural_guarded_model(
+            task=task,
+            train_x=train_x,
+            test_x=test_x,
+            train_y=train_y,
+            train_indices=train_indices,
+            test_indices=test_indices,
+            effective_feature_names=effective_feature_names,
+            args=args,
+        )
+        train_seconds = time.perf_counter() - train_started
+        predict_started = time.perf_counter()
+        _ = model.predict(**{key: value[:16] for key, value in predict_input.items()})
+        prediction = model.predict(**predict_input)
+        predict_seconds = time.perf_counter() - predict_started
         return {
             "status": "ok",
             "metrics": metric_summary(test_y, prediction),
@@ -2114,40 +2106,33 @@ def fit_predict_model(
 
     if model_name == "cartoboost_graph" or model_name in GRAPH_MODEL_FAMILIES:
         graph_family = GRAPH_MODEL_FAMILIES.get(model_name, args.graph_family)
-        try:
-            from cartoboost import CartoBoostRegressor
-        except ImportError as exc:
-            return skipped(f"cartoboost import failed: {exc}")
-        try:
-            train_started = time.perf_counter()
-            train_augmented, test_augmented, graph_config = graph_augmented_split_features(
-                task,
-                train_indices,
-                test_indices,
-                train_x,
-                test_x,
-                args,
-                graph_family=graph_family,
-            )
-            graph_feature_count = int(train_augmented.shape[1] - train_x.shape[1])
-            model, prediction_input, graph_guard_config = fit_graph_guarded_cartoboost(
-                task=task,
-                train_x=train_x,
-                test_x=test_x,
-                train_augmented=train_augmented,
-                test_augmented=test_augmented,
-                train_y=train_y,
-                effective_feature_names=effective_feature_names,
-                graph_feature_count=graph_feature_count,
-                args=args,
-            )
-            train_seconds = time.perf_counter() - train_started
-            predict_started = time.perf_counter()
-            _ = model.predict(prediction_input[: min(len(test_indices), 16)])
-            prediction = model.predict(prediction_input)
-            predict_seconds = time.perf_counter() - predict_started
-        except Exception as exc:  # noqa: BLE001
-            return skipped(f"cartoboost graph run failed: {exc}")
+        train_started = time.perf_counter()
+        train_augmented, test_augmented, graph_config = graph_augmented_split_features(
+            task,
+            train_indices,
+            test_indices,
+            train_x,
+            test_x,
+            args,
+            graph_family=graph_family,
+        )
+        graph_feature_count = int(train_augmented.shape[1] - train_x.shape[1])
+        model, prediction_input, graph_guard_config = fit_graph_guarded_cartoboost(
+            task=task,
+            train_x=train_x,
+            test_x=test_x,
+            train_augmented=train_augmented,
+            test_augmented=test_augmented,
+            train_y=train_y,
+            effective_feature_names=effective_feature_names,
+            graph_feature_count=graph_feature_count,
+            args=args,
+        )
+        train_seconds = time.perf_counter() - train_started
+        predict_started = time.perf_counter()
+        _ = model.predict(prediction_input[: min(len(test_indices), 16)])
+        prediction = model.predict(prediction_input)
+        predict_seconds = time.perf_counter() - predict_started
         return {
             "status": "ok",
             "metrics": metric_summary(test_y, prediction),
@@ -2172,9 +2157,9 @@ def fit_predict_model(
         }
 
     if model_name == "lightgbm":
-        lightgbm = optional_import("lightgbm")
-        if lightgbm is None or not hasattr(lightgbm, "LGBMRegressor"):
-            return skipped("lightgbm is not installed")
+        lightgbm = importlib.import_module("lightgbm")
+        if not hasattr(lightgbm, "LGBMRegressor"):
+            raise ImportError("lightgbm does not expose LGBMRegressor")
         model = lightgbm.LGBMRegressor(
             objective="regression",
             n_estimators=args.n_estimators,
@@ -2212,9 +2197,9 @@ def fit_predict_model(
         }
 
     if model_name == "xgboost":
-        xgboost = optional_import("xgboost")
-        if xgboost is None or not hasattr(xgboost, "XGBRegressor"):
-            return skipped("xgboost is not installed")
+        xgboost = importlib.import_module("xgboost")
+        if not hasattr(xgboost, "XGBRegressor"):
+            raise ImportError("xgboost does not expose XGBRegressor")
         xgboost_params = {
             "objective": "reg:squarederror",
             "n_estimators": args.n_estimators,
@@ -2261,9 +2246,9 @@ def fit_predict_model(
         }
 
     if model_name == "catboost":
-        catboost = optional_import("catboost")
-        if catboost is None or not hasattr(catboost, "CatBoostRegressor"):
-            return skipped("catboost is not installed")
+        catboost = importlib.import_module("catboost")
+        if not hasattr(catboost, "CatBoostRegressor"):
+            raise ImportError("catboost does not expose CatBoostRegressor")
         model = catboost.CatBoostRegressor(
             loss_function="RMSE",
             iterations=args.n_estimators,
@@ -2300,10 +2285,8 @@ def fit_predict_model(
         }
 
     if model_name == "hist_gradient_boosting":
-        try:
-            from sklearn.ensemble import HistGradientBoostingRegressor
-        except ImportError as exc:
-            return skipped(f"sklearn hist gradient boosting import failed: {exc}")
+        from sklearn.ensemble import HistGradientBoostingRegressor
+
         model = HistGradientBoostingRegressor(
             max_iter=args.n_estimators,
             learning_rate=args.learning_rate,
@@ -2336,10 +2319,8 @@ def fit_predict_model(
         }
 
     if model_name == "random_forest":
-        try:
-            from sklearn.ensemble import RandomForestRegressor
-        except ImportError as exc:
-            return skipped(f"sklearn random forest import failed: {exc}")
+        from sklearn.ensemble import RandomForestRegressor
+
         model = RandomForestRegressor(
             n_estimators=args.n_estimators,
             max_depth=args.max_depth,
@@ -2373,10 +2354,8 @@ def fit_predict_model(
         }
 
     if model_name == "extra_trees":
-        try:
-            from sklearn.ensemble import ExtraTreesRegressor
-        except ImportError as exc:
-            return skipped(f"sklearn extra trees import failed: {exc}")
+        from sklearn.ensemble import ExtraTreesRegressor
+
         model = ExtraTreesRegressor(
             n_estimators=args.n_estimators,
             max_depth=args.max_depth,
@@ -2410,10 +2389,8 @@ def fit_predict_model(
         }
 
     if model_name == "ridge":
-        try:
-            from sklearn.linear_model import Ridge
-        except ImportError as exc:
-            return skipped(f"sklearn ridge import failed: {exc}")
+        from sklearn.linear_model import Ridge
+
         model = Ridge(alpha=1.0)
         train_started = time.perf_counter()
         model.fit(train_x, train_y)
@@ -2483,10 +2460,6 @@ def sparse_subset(
     indices: np.ndarray,
 ) -> dict[str, list[list[int]]]:
     return {name: [values[int(index)] for index in indices] for name, values in sparse_sets.items()}
-
-
-def skipped(reason: str) -> dict[str, Any]:
-    return {"status": "skipped", "reason": reason}
 
 
 def run_benchmarks(tasks: list[BenchmarkTask], args: argparse.Namespace) -> dict[str, Any]:
@@ -3258,8 +3231,8 @@ def write_markdown(results: dict[str, Any], output_dir: Path) -> None:
                         f"{timing['predict_rows_per_second']:.2f} | {note} |"
                     )
                 else:
-                    lines.append(
-                        f"| {model_name} | skipped |  |  |  |  |  |  |  | {model['reason']} |"
+                    raise ValueError(
+                        f"unexpected non-ok benchmark result for {model_name}: {model}"
                     )
             lines.append("")
     output_dir.mkdir(parents=True, exist_ok=True)

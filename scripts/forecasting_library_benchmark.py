@@ -1121,8 +1121,10 @@ def load_m1_fixture(args: argparse.Namespace) -> tuple[Any, dict[str, Any]]:
     pl = require_polars()
     try:
         from datasetsforecast.utils import convert_tsf_to_dataframe
-    except ImportError:
-        convert_tsf_to_dataframe = convert_tsf_to_dataframe_fallback
+    except ImportError as exc:
+        raise ImportError(
+            "M1 benchmark source requires datasetsforecast; run `uv sync --group bench`."
+        ) from exc
 
     cache_dir = (
         DEFAULT_FORECASTING_CACHE_DIR if args.cache_dir == DEFAULT_CACHE_DIR else args.cache_dir
@@ -1228,87 +1230,6 @@ def m1_zip_url(group: str) -> str:
         f"https://zenodo.org/records/{group_info['record_id']}/files/"
         f"{group_info['zip_name']}?download=1"
     )
-
-
-def convert_tsf_to_dataframe_fallback(
-    full_file_path_and_name: str,
-    replace_missing_vals_with: str = "NaN",
-    value_column_name: str = "series_value",
-) -> tuple[Any, str | None, int | None, bool | None, bool | None]:
-    pd = require_pandas_for_benchmark()
-    column_names: list[str] = []
-    column_types: list[str] = []
-    rows: dict[str, list[Any]] = {}
-    frequency: str | None = None
-    forecast_horizon: int | None = None
-    contain_missing_values: bool | None = None
-    contain_equal_length: bool | None = None
-    found_data = False
-    series_values: list[Any] = []
-
-    with Path(full_file_path_and_name).open("r", encoding="cp1252") as handle:
-        for raw_line in handle:
-            line = raw_line.strip()
-            if not line or line.startswith("#"):
-                continue
-            if line.startswith("@attribute"):
-                parts = line.split(" ")
-                if len(parts) != 3:
-                    raise ValueError("Invalid TSF attribute specification.")
-                column_names.append(parts[1])
-                column_types.append(parts[2])
-                rows[parts[1]] = []
-            elif line.startswith("@frequency"):
-                frequency = line.split(" ", 1)[1]
-            elif line.startswith("@horizon"):
-                forecast_horizon = int(line.split(" ", 1)[1])
-            elif line.startswith("@missing"):
-                contain_missing_values = line.split(" ", 1)[1].lower() in {"yes", "true", "t", "1"}
-            elif line.startswith("@equallength"):
-                contain_equal_length = line.split(" ", 1)[1].lower() in {"yes", "true", "t", "1"}
-            elif line.startswith("@data"):
-                if not column_names:
-                    raise ValueError("Missing TSF attribute section.")
-                found_data = True
-            elif found_data:
-                parts = line.split(":")
-                if len(parts) != len(column_names) + 1:
-                    raise ValueError("Missing attributes or values in TSF series row.")
-                for name, column_type, value in zip(
-                    column_names,
-                    column_types,
-                    parts[:-1],
-                    strict=True,
-                ):
-                    rows[name].append(parse_tsf_attribute(value, column_type))
-                values = [
-                    replace_missing_vals_with if value == "?" else float(value)
-                    for value in parts[-1].split(",")
-                ]
-                series_values.append(np.array(values, dtype=np.float32))
-            else:
-                raise ValueError("TSF file is missing @data before series rows.")
-
-    if not found_data or not series_values:
-        raise ValueError("Missing TSF series information under @data section.")
-    rows[value_column_name] = series_values
-    return (
-        pd.DataFrame(rows),
-        frequency,
-        forecast_horizon,
-        contain_missing_values,
-        contain_equal_length,
-    )
-
-
-def parse_tsf_attribute(value: str, column_type: str) -> Any:
-    if column_type == "numeric":
-        return int(value)
-    if column_type == "string":
-        return value
-    if column_type == "date":
-        return datetime.strptime(value, "%Y-%m-%d %H-%M-%S")
-    raise ValueError(f"Invalid TSF attribute type: {column_type}")
 
 
 def load_m3_fixture(args: argparse.Namespace) -> tuple[Any, dict[str, Any]]:
@@ -2908,26 +2829,23 @@ def m6_validation_scored_frame(
     validation_test = pre_holdout.filter(pl.col("date").is_in(validation_timestamps))
     if validation_train.is_empty() or validation_test.is_empty():
         return None
-    try:
-        validation_raw, _timing = forecast_model_roster(
-            validation_train,
-            horizon,
-            season_length=season_length,
-            cartoboost_config=cartoboost_config,
-            model_names=model_names,
-            source="m6",
-        )
-        validation_predictions, _selection_timing = apply_shared_candidate_selection(
-            validation_train,
-            horizon,
-            season_length=season_length,
-            source="m6",
-            raw_predictions=validation_raw,
-            cartoboost_config=cartoboost_config,
-            model_names=model_names,
-        )
-    except Exception:
-        return None
+    validation_raw, _timing = forecast_model_roster(
+        validation_train,
+        horizon,
+        season_length=season_length,
+        cartoboost_config=cartoboost_config,
+        model_names=model_names,
+        source="m6",
+    )
+    validation_predictions, _selection_timing = apply_shared_candidate_selection(
+        validation_train,
+        horizon,
+        season_length=season_length,
+        source="m6",
+        raw_predictions=validation_raw,
+        cartoboost_config=cartoboost_config,
+        model_names=model_names,
+    )
 
     actual = (
         validation_test.sort(["lane_id", "date"])
@@ -3854,18 +3772,15 @@ def shared_candidate_validation_scores(
             origin_losses = dict(validation_cache[cache_key])
         else:
             origin_losses = {}
-            try:
-                inner_raw, _inner_timing = candidate_selection_forecast_roster(
-                    inner_train,
-                    horizon,
-                    season_length=season_length,
-                    cartoboost_config=cartoboost_config,
-                    model_names=origin_model_names,
-                    source=source,
-                    known_future=known_future_covariate_frame(train),
-                )
-            except Exception:
-                continue
+            inner_raw, _inner_timing = candidate_selection_forecast_roster(
+                inner_train,
+                horizon,
+                season_length=season_length,
+                cartoboost_config=cartoboost_config,
+                model_names=origin_model_names,
+                source=source,
+                known_future=known_future_covariate_frame(train),
+            )
             actual = (
                 inner_test.sort(["lane_id", "date"])
                 .with_columns((pl.int_range(pl.len()).over("lane_id") + 1).alias("horizon"))
@@ -4793,98 +4708,74 @@ def calibrate_cartoboost_candidate(
     started = perf_counter()
     timestamps = train.select(pl.col("date").unique().sort()).to_series().to_list()
     if len(timestamps) <= max(horizon + 14, 60):
-        return (
-            "cartoboost_raw",
-            1.0,
-            {"cartoboost_raw": 1.0},
-            {
-                "calibration_seconds": perf_counter() - started,
-                "inner_origin_count": 0.0,
-                "inner_base_rmse": 0.0,
-                "inner_raw_rmse": 0.0,
-                "inner_blended_rmse": 0.0,
-                "inner_raw_relative_rmse_gain": 0.0,
-            },
+        raise ValueError(
+            "cartoboost candidate calibration requires more than "
+            f"{max(horizon + 14, 60)} timestamps; got {len(timestamps)}"
         )
     cutoff = timestamps[-horizon]
     inner_train = train.filter(pl.col("date") < cutoff)
     inner_test = train.filter(pl.col("date") >= cutoff)
-    try:
-        raw, _timing = cartoboost_raw_forecast(
-            inner_train,
-            horizon,
-            season_length=season_length,
-            config=config,
-            prediction_col="cartoboost_raw",
-        )
-        base = seasonal_naive_forecast_frame(
-            inner_train,
-            horizon,
-            season_length=season_length,
-            prediction_col="cartoboost_seasonal_base",
-        )
-        calendar_dom = calendar_profile_forecast_frame(
-            inner_train,
-            horizon,
-            prediction_col="cartoboost_calendar_dom",
-            mode="day_of_month",
-        )
-        calendar_elapsed_phase = calendar_profile_forecast_frame(
-            inner_train,
-            horizon,
-            prediction_col="cartoboost_calendar_elapsed_phase",
-            mode="elapsed_phase",
-            elapsed_phase_period=CALENDAR_PROFILE_ELAPSED_PHASE_PERIOD,
-        )
-        drift = trend_forecast_frame(
-            inner_train,
-            horizon,
-            season_length=season_length,
-            prediction_col="cartoboost_drift",
-            mode="drift",
-        )
-        half_drift = trend_forecast_frame(
-            inner_train,
-            horizon,
-            season_length=season_length,
-            prediction_col="cartoboost_half_drift",
-            mode="half_drift",
-        )
-        seasonal_drift = trend_forecast_frame(
-            inner_train,
-            horizon,
-            season_length=season_length,
-            prediction_col="cartoboost_seasonal_drift",
-            mode="seasonal_drift",
-        )
-        seasonal_cycle_drift_050 = trend_forecast_frame(
-            inner_train,
-            horizon,
-            season_length=season_length,
-            prediction_col="cartoboost_seasonal_cycle_drift_050",
-            mode="seasonal_cycle_drift_050",
-        )
-        seasonal_cycle_drift_075 = trend_forecast_frame(
-            inner_train,
-            horizon,
-            season_length=season_length,
-            prediction_col="cartoboost_seasonal_cycle_drift_075",
-            mode="seasonal_cycle_drift_075",
-        )
-    except Exception:
-        return (
-            "cartoboost_raw",
-            1.0,
-            {"cartoboost_raw": 1.0},
-            {
-                "calibration_seconds": perf_counter() - started,
-                "inner_origin_count": 1.0,
-                "inner_base_rmse": 0.0,
-                "inner_raw_rmse": 0.0,
-                "inner_blended_rmse": 0.0,
-                "inner_raw_relative_rmse_gain": 0.0,
-            },
-        )
+    raw, _timing = cartoboost_raw_forecast(
+        inner_train,
+        horizon,
+        season_length=season_length,
+        config=config,
+        prediction_col="cartoboost_raw",
+    )
+    base = seasonal_naive_forecast_frame(
+        inner_train,
+        horizon,
+        season_length=season_length,
+        prediction_col="cartoboost_seasonal_base",
+    )
+    calendar_dom = calendar_profile_forecast_frame(
+        inner_train,
+        horizon,
+        prediction_col="cartoboost_calendar_dom",
+        mode="day_of_month",
+    )
+    calendar_elapsed_phase = calendar_profile_forecast_frame(
+        inner_train,
+        horizon,
+        prediction_col="cartoboost_calendar_elapsed_phase",
+        mode="elapsed_phase",
+        elapsed_phase_period=CALENDAR_PROFILE_ELAPSED_PHASE_PERIOD,
+    )
+    drift = trend_forecast_frame(
+        inner_train,
+        horizon,
+        season_length=season_length,
+        prediction_col="cartoboost_drift",
+        mode="drift",
+    )
+    half_drift = trend_forecast_frame(
+        inner_train,
+        horizon,
+        season_length=season_length,
+        prediction_col="cartoboost_half_drift",
+        mode="half_drift",
+    )
+    seasonal_drift = trend_forecast_frame(
+        inner_train,
+        horizon,
+        season_length=season_length,
+        prediction_col="cartoboost_seasonal_drift",
+        mode="seasonal_drift",
+    )
+    seasonal_cycle_drift_050 = trend_forecast_frame(
+        inner_train,
+        horizon,
+        season_length=season_length,
+        prediction_col="cartoboost_seasonal_cycle_drift_050",
+        mode="seasonal_cycle_drift_050",
+    )
+    seasonal_cycle_drift_075 = trend_forecast_frame(
+        inner_train,
+        horizon,
+        season_length=season_length,
+        prediction_col="cartoboost_seasonal_cycle_drift_075",
+        mode="seasonal_cycle_drift_075",
+    )
     actual = (
         inner_test.sort(["lane_id", "date"])
         .with_columns((pl.int_range(pl.len()).over("lane_id") + 1).alias("horizon"))
@@ -4930,19 +4821,7 @@ def calibrate_cartoboost_candidate(
         ).alias("cartoboost_calendar_elapsed_phase_blend"),
     ).select(*select_columns)
     if scored.is_empty():
-        return (
-            "cartoboost_raw",
-            1.0,
-            {"cartoboost_raw": 1.0},
-            {
-                "calibration_seconds": perf_counter() - started,
-                "inner_origin_count": 1.0,
-                "inner_base_rmse": 0.0,
-                "inner_raw_rmse": 0.0,
-                "inner_blended_rmse": 0.0,
-                "inner_raw_relative_rmse_gain": 0.0,
-            },
-        )
+        raise ValueError("cartoboost candidate calibration produced no aligned scored rows")
     base_rmse = rmse_expr(scored, "cartoboost_seasonal_base")
     raw_rmse = rmse_expr(scored, "cartoboost_raw")
     best_alpha = 1.0

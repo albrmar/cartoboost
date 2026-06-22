@@ -231,35 +231,14 @@ def test_nyc_taxi_maintained_artifacts_are_complete():
     assert repeated["quality"]
 
 
-def test_nyc_taxi_quality_benchmark_skips_missing_optional_models(tmp_path: Path):
+def test_nyc_taxi_quality_benchmark_does_not_skip_requested_model_failures():
     repo_root = Path(__file__).resolve().parents[2]
-    output_dir = tmp_path / "nyc_taxi_optional_skips"
     script = repo_root / "scripts" / "run_nyc_taxi_quality_benchmarks.py"
+    source = script.read_text(encoding="utf-8")
 
-    subprocess.run(
-        [
-            sys.executable,
-            str(script),
-            "--synthetic-smoke",
-            "--models",
-            "lightgbm,xgboost,catboost",
-            "--output-dir",
-            str(output_dir),
-        ],
-        check=True,
-        cwd=repo_root,
-    )
-
-    results = json.loads((output_dir / "results.json").read_text(encoding="utf-8"))
-    for task in results["tasks"].values():
-        for split in task["splits"].values():
-            for model_name in ["lightgbm", "xgboost", "catboost"]:
-                model = split["models"][model_name]
-                if model["status"] == "skipped":
-                    assert (
-                        "not installed" in model["reason"]
-                        or "cold-zone spatial holdout" in model["reason"]
-                    )
+    assert "return skipped" not in source
+    assert "def skipped" not in source
+    assert '"status": "skipped"' not in source
 
 
 def test_nyc_taxi_quality_benchmark_reports_primary_cartoboost_vs_external_baseline():

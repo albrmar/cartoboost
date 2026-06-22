@@ -319,6 +319,8 @@ struct FittedArimaSeries {
     residuals: Vec<f64>,
 }
 
+type ArimaComponents = (f64, Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>);
+
 #[derive(Debug, Clone)]
 struct FittedKalmanState {
     frame: ForecastFrame,
@@ -4062,7 +4064,7 @@ impl FittedArimaSeries {
             )));
         }
         let (intercept, ar_coefficients, ma_coefficients, fitted_diff, residuals) =
-            fit_arima_components(&differences, p, q);
+            fit_arima_components(&differences, p, q)?;
         let fitted_values = undifference_fitted_values(&values, &fitted_diff, d);
         Ok(Self {
             last_timestamp: history.last().expect("history length checked").timestamp,
@@ -5062,7 +5064,11 @@ fn fit_piecewise_linear_weighted_coefficients(
         return Ok(None);
     };
     let coefficient_covariance = if compute_covariance {
-        invert_piecewise_linear_normal_matrix(&xtx).unwrap_or_default()
+        invert_piecewise_linear_normal_matrix(&xtx).ok_or_else(|| {
+            CartoBoostError::InvalidInput(
+                "could not invert piecewise linear covariance normal matrix".to_string(),
+            )
+        })?
     } else {
         Vec::new()
     };
@@ -6317,11 +6323,7 @@ fn solve_arima_normal_equations(
     Some(rhs[..n].to_vec())
 }
 
-fn fit_arima_components(
-    values: &[f64],
-    p: usize,
-    q: usize,
-) -> (f64, Vec<f64>, Vec<f64>, Vec<f64>, Vec<f64>) {
+fn fit_arima_components(values: &[f64], p: usize, q: usize) -> Result<ArimaComponents> {
     let mut residuals = vec![0.0; values.len()];
     let mut intercept = values.iter().sum::<f64>() / values.len() as f64;
     let mut ar_coefficients = vec![0.0; p];
@@ -6329,7 +6331,7 @@ fn fit_arima_components(
     let iterations = if q == 0 { 1 } else { 6 };
     for _ in 0..iterations {
         let (next_intercept, next_ar, next_ma) =
-            fit_arima_coefficients_once(values, &residuals, p, q);
+            fit_arima_coefficients_once(values, &residuals, p, q)?;
         intercept = next_intercept;
         ar_coefficients = next_ar;
         ma_coefficients = next_ma;
@@ -6350,13 +6352,13 @@ fn fit_arima_components(
         &ma_coefficients,
         &residuals,
     );
-    (
+    Ok((
         intercept,
         ar_coefficients,
         ma_coefficients,
         fitted,
         residuals,
-    )
+    ))
 }
 
 fn fit_arima_coefficients_once(
@@ -6364,13 +6366,13 @@ fn fit_arima_coefficients_once(
     residuals: &[f64],
     p: usize,
     q: usize,
-) -> (f64, Vec<f64>, Vec<f64>) {
+) -> Result<(f64, Vec<f64>, Vec<f64>)> {
     if p == 0 && q == 0 {
-        return (
+        return Ok((
             values.iter().sum::<f64>() / values.len() as f64,
             Vec::new(),
             Vec::new(),
-        );
+        ));
     }
     let cols = p + q + 1;
     let mut xtx = [[0.0; MAX_ARIMA_COLUMNS]; MAX_ARIMA_COLUMNS];
@@ -6388,12 +6390,16 @@ fn fit_arima_coefficients_once(
     for (idx, row) in xtx.iter_mut().enumerate().take(cols) {
         row[idx] += 1.0e-8;
     }
-    let solution = solve_arima_normal_equations(xtx, xty, cols).unwrap_or_else(|| vec![0.0; cols]);
-    (
+    let solution = solve_arima_normal_equations(xtx, xty, cols).ok_or_else(|| {
+        CartoBoostError::InvalidInput(
+            "could not solve ARIMA normal equations for coefficient fit".to_string(),
+        )
+    })?;
+    Ok((
         solution[0],
         solution[1..=p].to_vec(),
         solution[(p + 1)..].to_vec(),
-    )
+    ))
 }
 
 fn fitted_arima_values(

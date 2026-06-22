@@ -1259,7 +1259,7 @@ def run_standalone_link_predictor(
         or workload.graph_edges is None
         or workload.graph_node_features is None
     ):
-        return {"status": "skipped", "reason": "workload has no graph topology"}
+        raise ValueError("workload has no graph topology")
     node_count = int(max(workload.graph_source.max(), workload.graph_target.max()) + 1)
     train_edges = sorted(
         {
@@ -1286,7 +1286,7 @@ def run_standalone_link_predictor(
         eval_positives.append((source, target))
         negatives.append(candidate)
     if not negatives:
-        return {"status": "skipped", "reason": "no non-positive link candidates available"}
+        raise ValueError("no non-positive link candidates available")
     pairs = eval_positives + negatives
     labels = [1] * len(eval_positives) + [0] * len(negatives)
     query_ids = [source for source, _target in pairs]
@@ -1623,73 +1623,70 @@ def run_one_model_fixed(
     test_x = workload.features[test_idx]
     train_y = workload.target[train_idx]
     test_y = workload.target[test_idx]
-    try:
-        if model_name == "mean":
-            prediction, timing = run_mean(train_y, len(test_idx))
-            config: dict[str, Any] = {}
-        elif model_name == "cartoboost":
-            prediction, timing, config = run_cartoboost(train_x, train_y, test_x, args)
-        elif model_name == "cartoboost_neural":
-            if workload.embedding_ids is None:
-                return {"status": "skipped", "reason": "workload has no embedding ids"}
-            prediction, timing, config = run_neural(workload, train_idx, test_idx, args)
-        elif model_name in GRAPH_MODEL_FAMILIES:
-            if workload.graph_edges is None:
-                return {"status": "skipped", "reason": "workload has no graph topology"}
-            prediction, timing, config = run_graph(
-                workload,
-                train_idx,
-                test_idx,
-                args,
-                GRAPH_MODEL_FAMILIES[model_name],
-            )
-        elif model_name == "neural_embedding_regressor":
-            if workload.embedding_ids is None:
-                return {"status": "skipped", "reason": "workload has no embedding ids"}
-            prediction, timing, config = run_standalone_neural(workload, train_idx, test_idx, args)
-        elif model_name == "node2vec_regressor":
-            if workload.graph_edges is None:
-                return {"status": "skipped", "reason": "workload has no graph topology"}
-            prediction, timing, config = run_standalone_node2vec_regressor(
-                workload, train_idx, test_idx, args
-            )
-        elif model_name == "graphsage_regressor":
-            if workload.graph_edges is None:
-                return {"status": "skipped", "reason": "workload has no graph topology"}
-            prediction, timing, config = run_standalone_graphsage_regressor(
-                workload, train_idx, test_idx, args
-            )
-        elif model_name in {"hetero_graphsage_regressor", "hinsage_regressor"}:
-            if workload.graph_edges is None:
-                return {"status": "skipped", "reason": "workload has no graph topology"}
-            prediction, timing, config = run_standalone_typed_graphsage_regressor(
-                model_name, workload, train_idx, test_idx, args
-            )
-        elif model_name in {
-            "node2vec_link_predictor",
-            "graphsage_link_predictor",
-            "hetero_graphsage_link_predictor",
-            "hinsage_link_predictor",
-        }:
-            return run_standalone_link_predictor(model_name, workload, train_idx, test_idx, args)
-        elif model_name == "xgboost":
-            prediction, timing, config = run_xgboost(train_x, train_y, test_x, args)
-        elif model_name == "lightgbm":
-            prediction, timing, config = run_lightgbm(train_x, train_y, test_x, args)
-        elif model_name == "catboost":
-            prediction, timing, config = run_catboost(train_x, train_y, test_x, args)
-        elif model_name == "hist_gradient_boosting":
-            prediction, timing, config = run_hist_gradient_boosting(train_x, train_y, test_x, args)
-        elif model_name == "random_forest":
-            prediction, timing, config = run_random_forest(train_x, train_y, test_x, args)
-        elif model_name == "extra_trees":
-            prediction, timing, config = run_extra_trees(train_x, train_y, test_x, args)
-        elif model_name == "ridge":
-            prediction, timing, config = run_ridge(train_x, train_y, test_x, args)
-        else:
-            raise ValueError(f"unknown model {model_name!r}")
-    except Exception as exc:  # noqa: BLE001
-        return {"status": "skipped", "reason": str(exc)}
+    if model_name == "mean":
+        prediction, timing = run_mean(train_y, len(test_idx))
+        config: dict[str, Any] = {}
+    elif model_name == "cartoboost":
+        prediction, timing, config = run_cartoboost(train_x, train_y, test_x, args)
+    elif model_name == "cartoboost_neural":
+        if workload.embedding_ids is None:
+            raise ValueError("workload has no embedding ids")
+        prediction, timing, config = run_neural(workload, train_idx, test_idx, args)
+    elif model_name in GRAPH_MODEL_FAMILIES:
+        if workload.graph_edges is None:
+            raise ValueError("workload has no graph topology")
+        prediction, timing, config = run_graph(
+            workload,
+            train_idx,
+            test_idx,
+            args,
+            GRAPH_MODEL_FAMILIES[model_name],
+        )
+    elif model_name == "neural_embedding_regressor":
+        if workload.embedding_ids is None:
+            raise ValueError("workload has no embedding ids")
+        prediction, timing, config = run_standalone_neural(workload, train_idx, test_idx, args)
+    elif model_name == "node2vec_regressor":
+        if workload.graph_edges is None:
+            raise ValueError("workload has no graph topology")
+        prediction, timing, config = run_standalone_node2vec_regressor(
+            workload, train_idx, test_idx, args
+        )
+    elif model_name == "graphsage_regressor":
+        if workload.graph_edges is None:
+            raise ValueError("workload has no graph topology")
+        prediction, timing, config = run_standalone_graphsage_regressor(
+            workload, train_idx, test_idx, args
+        )
+    elif model_name in {"hetero_graphsage_regressor", "hinsage_regressor"}:
+        if workload.graph_edges is None:
+            raise ValueError("workload has no graph topology")
+        prediction, timing, config = run_standalone_typed_graphsage_regressor(
+            model_name, workload, train_idx, test_idx, args
+        )
+    elif model_name in {
+        "node2vec_link_predictor",
+        "graphsage_link_predictor",
+        "hetero_graphsage_link_predictor",
+        "hinsage_link_predictor",
+    }:
+        return run_standalone_link_predictor(model_name, workload, train_idx, test_idx, args)
+    elif model_name == "xgboost":
+        prediction, timing, config = run_xgboost(train_x, train_y, test_x, args)
+    elif model_name == "lightgbm":
+        prediction, timing, config = run_lightgbm(train_x, train_y, test_x, args)
+    elif model_name == "catboost":
+        prediction, timing, config = run_catboost(train_x, train_y, test_x, args)
+    elif model_name == "hist_gradient_boosting":
+        prediction, timing, config = run_hist_gradient_boosting(train_x, train_y, test_x, args)
+    elif model_name == "random_forest":
+        prediction, timing, config = run_random_forest(train_x, train_y, test_x, args)
+    elif model_name == "extra_trees":
+        prediction, timing, config = run_extra_trees(train_x, train_y, test_x, args)
+    elif model_name == "ridge":
+        prediction, timing, config = run_ridge(train_x, train_y, test_x, args)
+    else:
+        raise ValueError(f"unknown model {model_name!r}")
 
     return {
         "status": "ok",
@@ -1750,11 +1747,7 @@ def run_one_model(
 
     successful = [row for row in validation_rows if row["status"] == "ok"]
     if not successful:
-        return {
-            "status": "skipped",
-            "reason": failed_validation_search_reason(validation_rows),
-            "selection": {"mode": "validation_search", "validation_rows": validation_rows},
-        }
+        raise ValueError(failed_validation_search_reason(validation_rows))
 
     best = min(successful, key=lambda row: (float(row["validation_rmse"]), int(row["trial"])))
     selected_args = candidate_args(args, dict(best["config"]))
@@ -2292,8 +2285,8 @@ def write_markdown(payload: dict[str, Any], output_path: Path) -> None:
                             f"{timing['predict_rows_per_second']:.0f} |"
                         )
                 else:
-                    lines.append(
-                        f"| {model_name} | skipped: {result['reason']} |  |  |  |  |  |  |"
+                    raise ValueError(
+                        f"unexpected non-ok benchmark result for {model_name}: {result}"
                     )
             lines.append("")
     if payload.get("plots_written", True):
@@ -2326,10 +2319,6 @@ def write_markdown(payload: dict[str, Any], output_path: Path) -> None:
                 "- The graph workload benchmarks node2vec, GraphSAGE, HeteroGraphSAGE, and "
                 "HinSAGE feature augmentation from train topology before fitting CartoBoost "
                 "on augmented source-target rows."
-            ),
-            (
-                "- Optional dependency rows are skipped when the corresponding benchmark "
-                "dependency is not installed."
             ),
         ]
     )
