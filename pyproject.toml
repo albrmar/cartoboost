@@ -73,6 +73,7 @@ dev = [
     "pandas>=2.0,<3",
     "polars>=1.0",
     "pre-commit>=4.6.0",
+    "pyarrow>=14.0",
     "pytest>=8",
     "ruff>=0.6",
     "ty>=0.0.50",

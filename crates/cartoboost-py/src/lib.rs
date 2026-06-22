@@ -5,8 +5,11 @@ use cartoboost_core::forecasting::{
     forecast_magnitude_guard_allows,
     include_autostats_candidate as core_include_autostats_candidate,
     lag_origin_consistency_guard as core_lag_origin_consistency_guard,
+    missing_target_continuation as core_missing_target_continuation,
     native_auto_raw_candidate_is_confident as core_native_auto_raw_candidate_is_confident,
     proportional_total_reconciliation as core_proportional_total_reconciliation,
+    reference_path_posterior_mean as core_reference_path_posterior_mean,
+    reference_path_viterbi as core_reference_path_viterbi,
     relative_loss_displacement_allowed as core_relative_loss_displacement_allowed,
     requires_lag_spine as core_requires_lag_spine,
     seasonal_naive_candidate_prediction as core_seasonal_naive_candidate_prediction,
@@ -34,11 +37,14 @@ use cartoboost_core::forecasting::{
     KrigingForecaster as CoreKrigingForecaster, LagFeatureConfig,
     LocalLevelKalmanForecaster as CoreLocalLevelKalmanForecaster,
     NaiveForecaster as CoreNaiveForecaster,
-    OptimizedThetaForecaster as CoreOptimizedThetaForecaster,
+    OptimizedThetaForecaster as CoreOptimizedThetaForecaster, ReferencePathConfig, ReferenceSignal,
     RollingOriginBacktester as CoreRollingOriginBacktester,
     RollingOriginSplitter as CoreRollingOriginSplitter,
-    SeasonalNaiveForecaster as CoreSeasonalNaiveForecaster, ThetaForecaster as CoreThetaForecaster,
-    ThetaSeasonality, WeightedEnsembleForecaster as CoreWeightedEnsembleForecaster,
+    SeasonalNaiveForecaster as CoreSeasonalNaiveForecaster, SequenceCandidate,
+    SequenceCandidateEnsemble, SequenceCandidatePrediction, SequenceFrame, SequenceGroupPrediction,
+    SequenceOofCandidateRow, SequenceOofFold, SequenceSeries, SequenceStateSpaceConfig,
+    ThetaForecaster as CoreThetaForecaster, ThetaSeasonality,
+    WeightedEnsembleForecaster as CoreWeightedEnsembleForecaster,
 };
 use cartoboost_core::geo::{
     assemble_sparse_column, assemble_sparse_row, expand_h3_sparse_set as core_expand_h3_sparse_set,
@@ -5861,6 +5867,218 @@ fn calibrated_rank_bucket_probabilities_value(
 }
 
 #[pyfunction]
+fn sequence_validate_value(py: Python<'_>, frame_json: &str) -> PyResult<String> {
+    let frame = serde_json::from_str::<SequenceFrame>(frame_json)
+        .map_err(|err| PyValueError::new_err(format!("invalid sequence frame: {err}")))?;
+    let payload = py
+        .allow_threads(|| {
+            frame.validate()?;
+            let masks = frame
+                .series
+                .iter()
+                .map(|series| {
+                    let prefix = series.validate()?;
+                    let mask = series.prediction_mask()?;
+                    Ok(json!({
+                        "series_id": series.series_id,
+                        "known_prefix_rows": prefix.row_count,
+                        "prediction_row_ids": mask.row_ids,
+                    }))
+                })
+                .collect::<cartoboost_core::Result<Vec<_>>>()?;
+            Ok::<Value, CartoBoostError>(json!({ "series": masks }))
+        })
+        .map_err(to_py_value_error)?;
+    serde_json::to_string(&payload).map_err(|err| PyRuntimeError::new_err(err.to_string()))
+}
+
+#[pyfunction]
+#[pyo3(signature = (series_json, reference_json, config_json=None, method="ekf"))]
+fn sequence_state_space_value(
+    py: Python<'_>,
+    series_json: &str,
+    reference_json: &str,
+    config_json: Option<&str>,
+    method: &str,
+) -> PyResult<String> {
+    let series = serde_json::from_str::<SequenceSeries>(series_json)
+        .map_err(|err| PyValueError::new_err(format!("invalid sequence series: {err}")))?;
+    let reference = serde_json::from_str::<ReferenceSignal>(reference_json)
+        .map_err(|err| PyValueError::new_err(format!("invalid reference signal: {err}")))?;
+    let config = match config_json {
+        Some(payload) => serde_json::from_str::<SequenceStateSpaceConfig>(payload)
+            .map_err(|err| PyValueError::new_err(format!("invalid state-space config: {err}")))?,
+        None => SequenceStateSpaceConfig::default(),
+    };
+    let method = method.trim().to_ascii_lowercase();
+    let payload = py
+        .allow_threads(|| match method.as_str() {
+            "ekf" | "forward_ekf" => {
+                cartoboost_core::forecasting::forward_ekf(&series, &reference, config)
+            }
+            "ukf" | "ukf_reference" => {
+                cartoboost_core::forecasting::ukf_reference(&series, &reference, config)
+            }
+            "rts" | "rts_smoother" => {
+                cartoboost_core::forecasting::rts_smoother(&series, &reference, config)
+            }
+            "continuation" | "missing_target_continuation" => {
+                let points = core_missing_target_continuation(&series, &reference, config)?;
+                Ok(cartoboost_core::forecasting::SequenceKalmanResult {
+                    points,
+                    log_likelihood: 0.0,
+                })
+            }
+            other => Err(CartoBoostError::InvalidInput(format!(
+                "unknown sequence state-space method {other:?}"
+            ))),
+        })
+        .map_err(to_py_value_error)?;
+    serde_json::to_string(&payload).map_err(|err| PyRuntimeError::new_err(err.to_string()))
+}
+
+#[pyfunction]
+#[pyo3(signature = (series_json, reference_json, config_json=None))]
+fn sequence_reference_path_viterbi_value(
+    py: Python<'_>,
+    series_json: &str,
+    reference_json: &str,
+    config_json: Option<&str>,
+) -> PyResult<String> {
+    let series = serde_json::from_str::<SequenceSeries>(series_json)
+        .map_err(|err| PyValueError::new_err(format!("invalid sequence series: {err}")))?;
+    let reference = serde_json::from_str::<ReferenceSignal>(reference_json)
+        .map_err(|err| PyValueError::new_err(format!("invalid reference signal: {err}")))?;
+    let config = parse_reference_path_config(config_json)?;
+    let result = py
+        .allow_threads(|| core_reference_path_viterbi(&series, &reference, config))
+        .map_err(to_py_value_error)?;
+    serde_json::to_string(&result).map_err(|err| PyRuntimeError::new_err(err.to_string()))
+}
+
+#[pyfunction]
+#[pyo3(signature = (series_json, reference_json, config_json=None))]
+fn sequence_reference_path_posterior_mean_value(
+    py: Python<'_>,
+    series_json: &str,
+    reference_json: &str,
+    config_json: Option<&str>,
+) -> PyResult<String> {
+    let series = serde_json::from_str::<SequenceSeries>(series_json)
+        .map_err(|err| PyValueError::new_err(format!("invalid sequence series: {err}")))?;
+    let reference = serde_json::from_str::<ReferenceSignal>(reference_json)
+        .map_err(|err| PyValueError::new_err(format!("invalid reference signal: {err}")))?;
+    let config = parse_reference_path_config(config_json)?;
+    let result = py
+        .allow_threads(|| core_reference_path_posterior_mean(&series, &reference, config))
+        .map_err(to_py_value_error)?;
+    serde_json::to_string(&result).map_err(|err| PyRuntimeError::new_err(err.to_string()))
+}
+
+#[pyfunction]
+#[pyo3(signature = (candidates_json, weights_json=None, actuals_json=None, mode="fixed"))]
+fn sequence_blend_value(
+    py: Python<'_>,
+    candidates_json: &str,
+    weights_json: Option<&str>,
+    actuals_json: Option<&str>,
+    mode: &str,
+) -> PyResult<String> {
+    let candidates = serde_json::from_str::<Vec<SequenceCandidate>>(candidates_json)
+        .map_err(|err| PyValueError::new_err(format!("invalid sequence candidates: {err}")))?;
+    let mode = mode.trim().to_ascii_lowercase();
+    let ensemble = match mode.as_str() {
+        "fixed" => {
+            let payload = weights_json.ok_or_else(|| {
+                PyValueError::new_err("fixed sequence blending requires weights_json")
+            })?;
+            let weights = serde_json::from_str::<BTreeMap<String, f64>>(payload)
+                .map_err(|err| PyValueError::new_err(format!("invalid blend weights: {err}")))?;
+            SequenceCandidateEnsemble::fixed(weights).map_err(to_py_value_error)?
+        }
+        "validation" | "validation_derived" => {
+            let actuals = parse_sequence_actuals(actuals_json)?;
+            py.allow_threads(|| {
+                SequenceCandidateEnsemble::validation_derived(&candidates, &actuals)
+            })
+            .map_err(to_py_value_error)?
+        }
+        "constrained" | "nonnegative" | "constrained_nonnegative_linear_blend" => {
+            let actuals = parse_sequence_actuals(actuals_json)?;
+            py.allow_threads(|| {
+                SequenceCandidateEnsemble::constrained_nonnegative_linear_blend(
+                    &candidates,
+                    &actuals,
+                )
+            })
+            .map_err(to_py_value_error)?
+        }
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown sequence blend mode {other:?}"
+            )));
+        }
+    };
+    let predictions = py
+        .allow_threads(|| ensemble.predict(&candidates))
+        .map_err(to_py_value_error)?;
+    let payload = json!({
+        "weights": ensemble.weights,
+        "predictions": predictions,
+    });
+    serde_json::to_string(&payload).map_err(|err| PyRuntimeError::new_err(err.to_string()))
+}
+
+#[pyfunction]
+fn sequence_validate_oof_meta_training_value(py: Python<'_>, rows_json: &str) -> PyResult<()> {
+    let rows = serde_json::from_str::<Vec<SequenceOofCandidateRow>>(rows_json)
+        .map_err(|err| PyValueError::new_err(format!("invalid OOF rows: {err}")))?;
+    py.allow_threads(|| cartoboost_core::forecasting::validate_oof_meta_training(&rows))
+        .map_err(to_py_value_error)
+}
+
+#[pyfunction]
+fn sequence_generate_group_oof_candidate_rows_value(
+    py: Python<'_>,
+    fold_json: &str,
+) -> PyResult<String> {
+    let fold = serde_json::from_str::<SequenceOofFold>(fold_json)
+        .map_err(|err| PyValueError::new_err(format!("invalid OOF fold: {err}")))?;
+    let rows = py
+        .allow_threads(|| cartoboost_core::forecasting::generate_group_oof_candidate_rows(&fold))
+        .map_err(to_py_value_error)?;
+    serde_json::to_string(&rows).map_err(|err| PyRuntimeError::new_err(err.to_string()))
+}
+
+#[pyfunction]
+fn sequence_group_error_summary_value(py: Python<'_>, rows_json: &str) -> PyResult<String> {
+    let rows = serde_json::from_str::<Vec<SequenceGroupPrediction>>(rows_json)
+        .map_err(|err| PyValueError::new_err(format!("invalid group prediction rows: {err}")))?;
+    let result = py
+        .allow_threads(|| cartoboost_core::forecasting::per_group_error_summary(&rows))
+        .map_err(to_py_value_error)?;
+    serde_json::to_string(&result).map_err(|err| PyRuntimeError::new_err(err.to_string()))
+}
+
+fn parse_reference_path_config(config_json: Option<&str>) -> PyResult<ReferencePathConfig> {
+    match config_json {
+        Some(payload) => serde_json::from_str::<ReferencePathConfig>(payload)
+            .map_err(|err| PyValueError::new_err(format!("invalid reference path config: {err}"))),
+        None => Ok(ReferencePathConfig::default()),
+    }
+}
+
+fn parse_sequence_actuals(
+    actuals_json: Option<&str>,
+) -> PyResult<Vec<SequenceCandidatePrediction>> {
+    let payload = actuals_json.ok_or_else(|| {
+        PyValueError::new_err("validation-derived sequence blending requires actuals_json")
+    })?;
+    serde_json::from_str::<Vec<SequenceCandidatePrediction>>(payload)
+        .map_err(|err| PyValueError::new_err(format!("invalid sequence actuals: {err}")))
+}
+
+#[pyfunction]
 fn h3_normalize_id_text(value: &str) -> PyResult<u64> {
     normalize_h3_id_text(value).map_err(to_py_value_error)
 }
@@ -6909,6 +7127,23 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
         calibrated_rank_bucket_probabilities_value,
         m
     )?)?;
+    m.add_function(wrap_pyfunction!(sequence_validate_value, m)?)?;
+    m.add_function(wrap_pyfunction!(sequence_state_space_value, m)?)?;
+    m.add_function(wrap_pyfunction!(sequence_reference_path_viterbi_value, m)?)?;
+    m.add_function(wrap_pyfunction!(
+        sequence_reference_path_posterior_mean_value,
+        m
+    )?)?;
+    m.add_function(wrap_pyfunction!(sequence_blend_value, m)?)?;
+    m.add_function(wrap_pyfunction!(
+        sequence_validate_oof_meta_training_value,
+        m
+    )?)?;
+    m.add_function(wrap_pyfunction!(
+        sequence_generate_group_oof_candidate_rows_value,
+        m
+    )?)?;
+    m.add_function(wrap_pyfunction!(sequence_group_error_summary_value, m)?)?;
     m.add_function(wrap_pyfunction!(h3_normalize_id_text, m)?)?;
     m.add_function(wrap_pyfunction!(s2_normalize_id_text, m)?)?;
     m.add_function(wrap_pyfunction!(h3_normalize_resolution_value, m)?)?;

@@ -21,11 +21,81 @@ from cartoboost import (
     theta_forecast,
     tsb_forecast,
 )
+from cartoboost.forecasting.sequence import (
+    ReferenceSignal,
+    SequenceRow,
+    SequenceSeries,
+    forward_ekf,
+    generate_group_oof_candidate_rows,
+    reference_path_viterbi,
+    sequence_blend,
+    validate_oof_meta_training,
+)
 
 
 def assert_finite_forecast(values, horizon):
     assert len(values) == horizon
     assert all(math.isfinite(value) for value in values)
+
+
+def test_sequence_wrappers_are_native_backed():
+    series = SequenceSeries(
+        "pickup_zone_1",
+        [
+            SequenceRow("r0", 0.0, 0.0),
+            SequenceRow("r1", 1.0, 1.0),
+            SequenceRow("r2", 2.0, None),
+        ],
+    )
+    reference = ReferenceSignal([0.0, 1.0, 2.0], [0.0, 1.0, 2.0])
+
+    ekf = forward_ekf(series, reference)
+    path = reference_path_viterbi(series, reference)
+
+    assert len(ekf["points"]) == 3
+    assert math.isfinite(ekf["points"][-1]["predicted_signal"])
+    assert path["points"][1]["axis"] == pytest.approx(1.0)
+
+    blended = sequence_blend(
+        [
+            {
+                "name": "a",
+                "predictions": [{"series_id": "s", "row_id": "r", "value": 1.0}],
+            },
+            {
+                "name": "b",
+                "predictions": [{"series_id": "s", "row_id": "r", "value": 3.0}],
+            },
+        ],
+        weights={"a": 0.25, "b": 0.75},
+    )
+    assert blended["predictions"][0]["value"] == pytest.approx(2.5)
+
+    oof_rows = generate_group_oof_candidate_rows(
+        validation_group_id="pickup_zone_1",
+        train_group_ids=["pickup_zone_2"],
+        actuals=[{"series_id": "pickup_zone_1", "row_id": "r1", "value": 1.0}],
+        candidates=[
+            {
+                "name": "a",
+                "predictions": [{"series_id": "pickup_zone_1", "row_id": "r1", "value": 1.1}],
+            }
+        ],
+    )
+    assert oof_rows[0]["candidate_predictions"]["a"] == pytest.approx(1.1)
+
+    with pytest.raises(ValueError, match="leakage"):
+        validate_oof_meta_training(
+            [
+                {
+                    "group_id": "pickup_zone_1",
+                    "row_id": "r1",
+                    "actual": 1.0,
+                    "candidate_predictions": {"a": 1.1},
+                    "train_group_ids": ["pickup_zone_1"],
+                }
+            ]
+        )
 
 
 def test_general_series_forecast_wrappers_are_native_backed():

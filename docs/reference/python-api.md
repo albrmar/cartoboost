@@ -117,6 +117,19 @@ Evaluation and persistence:
 | `ForecastArtifact` / `ForecastArtifactManifest` | JSON manifest plus CSV or Parquet forecast persistence. |
 | `ForecastingConfig` | Strict TOML config parsing for forecast runs. |
 
+Sequence primitives:
+
+| Entry point | Notes |
+| --- | --- |
+| `SequenceSeries`, `SequenceRow`, `ReferenceSignal` | Generic sequence and reference-axis containers for Rust-backed utilities. |
+| `SequenceStateSpaceConfig` | Process and observation noise configuration for sequence EKF/UKF/RTS routines. |
+| `ReferencePathConfig` | Robust emission scale, Student-t degrees of freedom, transition penalty, and start-axis penalty for discrete reference-path inference. |
+| `validate_sequence_frame` | Hard-fails on unordered positions, empty known prefixes, empty prediction suffixes, duplicate reference axes, and target leakage into prediction rows. |
+| `forward_ekf`, `ukf_reference`, `rts_smoother`, `missing_target_continuation` | Generic state-space continuation over a reference signal. These do not replace the local-level or local-linear forecasting APIs. |
+| `reference_path_viterbi`, `reference_path_posterior_mean` | Domain-neutral path inference over a reference axis. |
+| `sequence_blend` | Fixed, validation-derived, or constrained nonnegative blending of aligned candidate sequence predictions. |
+| `generate_group_oof_candidate_rows`, `validate_oof_meta_training`, `per_group_error_summary` | Group-level OOF candidate generation, meta-training leakage checks, and group RMSE/MAE summaries. |
+
 For honest forecasting evidence, prefer `RollingOriginBacktester` or an
 explicit future holdout over random row splits. Keep `series_id`, `timestamp`,
 and `horizon` in the forecast table so CartoBoost and external tools can be
@@ -179,6 +192,7 @@ main model comparison.
 | `cartoboost.empirical_variogram(observations, ...)` | Binned empirical semivariogram with lag ranges, mean lag distances, semivariances, and pair counts. |
 | `cartoboost.fit_ordinary_kriging_variogram(observations, ...)` | Weighted least-squares variogram fitting over model/range/nugget/sill candidate grids. |
 | `cartoboost.ordinary_kriging_leave_one_out_diagnostics(observations, ...)` | Leave-one-out predictions plus residual metrics such as bias, MAE, RMSE, standardized residuals, interval coverage, and average kriging variance. |
+| `cartoboost.forecasting.sequence.*` | Rust-backed sequence reference utilities for known-prefix continuation, reference path inference, leakage-safe OOF row generation and validation, group metrics, and aligned candidate blending. |
 
 ## Direct Graph Encoders
 

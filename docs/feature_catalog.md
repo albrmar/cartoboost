@@ -127,9 +127,12 @@ See [Graph Models And Features](graph-features.md).
 ## General Utilities, Evaluation, And Forecasting
 
 General utilities include Rust-backed single-series forecasts, Kalman filters,
-intermittent-demand methods, and ordinary kriging. Kalman support includes
-frame-based local-level, local-linear, and self-tuning forecasters plus
-diagnostic filter utilities. Evaluation helpers include
+intermittent-demand methods, sequence reference utilities, and ordinary
+kriging. Kalman support includes frame-based local-level, local-linear, and
+self-tuning forecasters plus diagnostic filter utilities. Sequence utilities
+cover known-prefix continuation, reference-axis path inference, group-level OOF
+candidate row generation, OOF leakage checks, per-group error summaries, and
+aligned candidate blending. Evaluation helpers include
 out-of-time, temporal blocked, spatial blocked, and grouped blocked splits;
 pinball loss; interval diagnostics; residual Moran's I; jitter volatility; and
 conformal residual helpers.

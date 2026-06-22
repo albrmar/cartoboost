@@ -16,7 +16,6 @@ import json
 import math
 import os
 import platform
-import resource
 import shlex
 import subprocess
 import sys
@@ -25,10 +24,16 @@ import warnings
 import zipfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from time import perf_counter
+from time import perf_counter, process_time
 from typing import Any
 
 import numpy as np
+
+try:
+    import resource
+except ImportError:  # pragma: no cover - exercised on Windows CI.
+    resource = None
+
 from cartoboost import __version__, _native
 from cartoboost.forecasting.global_models import CartoBoostLagForecaster
 from cartoboost.forecasting.local import AutoStatsBank
@@ -605,6 +610,11 @@ def invocation_metadata() -> dict[str, Any]:
 
 
 def resource_usage_snapshot() -> dict[str, Any]:
+    if resource is None:
+        return {
+            "process_cpu_seconds": float(process_time()),
+            "peak_rss_mb": windows_peak_rss_mb(),
+        }
     usage = resource.getrusage(resource.RUSAGE_SELF)
     return {
         "process_cpu_seconds": float(usage.ru_utime + usage.ru_stime),
@@ -616,6 +626,42 @@ def peak_rss_mb(raw_maxrss: int) -> float:
     if platform.system() == "Darwin":
         return float(raw_maxrss) / (1024.0 * 1024.0)
     return float(raw_maxrss) / 1024.0
+
+
+def windows_peak_rss_mb() -> float:
+    if platform.system() != "Windows":
+        return 1.0
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        class ProcessMemoryCounters(ctypes.Structure):
+            _fields_ = [
+                ("cb", wintypes.DWORD),
+                ("PageFaultCount", wintypes.DWORD),
+                ("PeakWorkingSetSize", ctypes.c_size_t),
+                ("WorkingSetSize", ctypes.c_size_t),
+                ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+                ("QuotaPagedPoolUsage", ctypes.c_size_t),
+                ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+                ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+                ("PagefileUsage", ctypes.c_size_t),
+                ("PeakPagefileUsage", ctypes.c_size_t),
+            ]
+
+        counters = ProcessMemoryCounters()
+        counters.cb = ctypes.sizeof(ProcessMemoryCounters)
+        handle = ctypes.windll.kernel32.GetCurrentProcess()
+        ok = ctypes.windll.psapi.GetProcessMemoryInfo(
+            handle,
+            ctypes.byref(counters),
+            counters.cb,
+        )
+        if ok:
+            return float(counters.PeakWorkingSetSize) / (1024.0 * 1024.0)
+    except Exception:
+        return 1.0
+    return 1.0
 
 
 def benchmark_model_names(roster: str) -> list[str]:
@@ -4952,12 +4998,18 @@ def calibrate_cartoboost_candidate(
 
 
 def validation_ensemble_weights(candidate_scores: dict[str, float]) -> dict[str, float]:
-    return {
+    weights = {
         str(name): float(weight)
         for name, weight in _native.forecast_validation_ensemble_weights_value(
             {str(name): float(score) for name, score in candidate_scores.items()}
         ).items()
     }
+    return dict(
+        sorted(
+            weights.items(),
+            key=lambda item: (float(candidate_scores.get(item[0], float("inf"))), item[0]),
+        )
+    )
 
 
 def weighted_candidate_expr(weights: dict[str, float]) -> Any:
