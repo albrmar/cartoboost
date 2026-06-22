@@ -2117,6 +2117,12 @@ def auto_selection_objective(source: str) -> str:
     return "rmse"
 
 
+def autostats_validation_objective(source: str) -> str:
+    if source in {"m", "m1", "m3", "m4"}:
+        return "smape_mase_average"
+    return "mean_squared_error"
+
+
 def forecast_objective_loss(
     objective: str,
     *,
@@ -3207,6 +3213,7 @@ def forecast_model_roster(
                 horizon,
                 season_length=season_length,
                 prediction_col="cartoboost_autostats_bank",
+                validation_objective=autostats_validation_objective(source),
             )
             auto_predictions = auto_predictions.join(
                 autostats_predictions,
@@ -4001,6 +4008,7 @@ def m4_candidate_selection_forecast_roster(
             horizon,
             season_length=season_length,
             prediction_col="cartoboost_autostats_bank",
+            validation_objective=autostats_validation_objective("m4"),
         )
         frames.append(autostats_predictions)
         timing["models"]["cartoboost_autostats_bank"] = autostats_timing
@@ -4039,6 +4047,7 @@ def m5_candidate_selection_forecast_roster(
         horizon,
         season_length=season_length,
         prediction_col="cartoboost_autostats_bank",
+        validation_objective=autostats_validation_objective("m5"),
     )
     frames.append(autostats_predictions)
     if "cartoboost_auto_forecast" in model_names:
@@ -4474,6 +4483,7 @@ def m5_autostats_reconciled_forecast_frame(
         horizon,
         season_length=season_length,
         prediction_col="__m5_reconcile_target",
+        validation_objective=autostats_validation_objective("m5"),
     )
     aggregate_target = aggregate_target.with_columns(
         pl.col("series_id").cast(pl.Utf8).alias(group_key),
@@ -5072,6 +5082,7 @@ def cartoboost_autostats_forecast(
     *,
     season_length: int,
     prediction_col: str,
+    validation_objective: str = "mean_squared_error",
 ) -> tuple[Any, dict[str, Any]]:
     pl = require_polars()
     pd = require_pandas_for_benchmark()
@@ -5093,6 +5104,7 @@ def cartoboost_autostats_forecast(
     model = AutoStatsBank(
         season_length=max(int(season_length), 1),
         validation_window=validation_window,
+        validation_objective=validation_objective,
     )
     fit_start = perf_counter()
     model.fit(frame)

@@ -1,5 +1,5 @@
 use crate::forecasting::classical_bank::{
-    ClassicalExpert, ClassicalExpertBank, ClassicalExpertScore,
+    ClassicalExpert, ClassicalExpertBank, ClassicalExpertScore, ClassicalExpertValidationObjective,
 };
 use crate::forecasting::{ForecastFrame, ForecastResult, Forecaster};
 use crate::Result;
@@ -18,6 +18,18 @@ impl AutoStatsBank {
     pub fn with_validation_window(
         season_length: usize,
         validation_window: Option<usize>,
+    ) -> Result<Self> {
+        Self::with_validation_objective(
+            season_length,
+            validation_window,
+            ClassicalExpertValidationObjective::MeanSquaredError,
+        )
+    }
+
+    pub fn with_validation_objective(
+        season_length: usize,
+        validation_window: Option<usize>,
+        validation_objective: ClassicalExpertValidationObjective,
     ) -> Result<Self> {
         let mut experts = vec![
             ClassicalExpert::Naive,
@@ -81,7 +93,11 @@ impl AutoStatsBank {
             );
         }
         Ok(Self {
-            bank: ClassicalExpertBank::with_validation_window(experts, validation_window)?,
+            bank: ClassicalExpertBank::with_validation_options(
+                experts,
+                validation_window,
+                validation_objective,
+            )?,
             season_length,
         })
     }

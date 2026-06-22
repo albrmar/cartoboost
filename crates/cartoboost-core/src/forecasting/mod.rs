@@ -47,7 +47,9 @@ pub use artifacts::{
 pub use auto::{AutoForecastConfig, AutoForecastModel, AutoForecastObjective};
 pub use autostats::AutoStatsBank;
 pub use backtesting::{BacktestFoldResult, BacktestResult, RollingOriginBacktester};
-pub use classical_bank::{ClassicalExpert, ClassicalExpertBank, ClassicalExpertScore};
+pub use classical_bank::{
+    ClassicalExpert, ClassicalExpertBank, ClassicalExpertScore, ClassicalExpertValidationObjective,
+};
 pub use config::{ForecastModelConfig, ForecastingConfig};
 pub use conformal::{ConformalCalibrator, ConformalInterval};
 pub use decomposition::{MSTLCartoBoostForecaster, STLCartoBoostForecaster};

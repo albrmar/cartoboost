@@ -5,6 +5,7 @@ use crate::forecasting::local::{
     OptimizedThetaForecaster, SeasonalNaiveForecaster, SeasonalWindowAverageForecaster,
     ThetaForecaster, ThetaSeasonality, WindowAverageForecaster,
 };
+use crate::forecasting::metrics::m_competition_mase_scale;
 use crate::forecasting::{
     ForecastFrame, ForecastPrediction, ForecastResult, ForecastRow, Forecaster,
 };
@@ -57,6 +58,7 @@ pub enum ClassicalExpert {
 pub struct ClassicalExpertBank {
     experts: Vec<ClassicalExpert>,
     validation_window: Option<usize>,
+    validation_objective: ClassicalExpertValidationObjective,
     fitted: Option<FittedClassicalBankState>,
 }
 
@@ -70,7 +72,23 @@ struct FittedClassicalBankState {
 pub struct ClassicalExpertScore {
     pub expert: ClassicalExpert,
     pub mse: f64,
+    pub validation_loss: f64,
     pub validation_rows: usize,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClassicalExpertValidationObjective {
+    MeanSquaredError,
+    SmapeMaseAverage { seasonality: usize },
+}
+
+impl ClassicalExpertValidationObjective {
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::MeanSquaredError => "mean_squared_error",
+            Self::SmapeMaseAverage { .. } => "smape_mase_average",
+        }
+    }
 }
 
 impl ClassicalExpert {
@@ -208,6 +226,18 @@ impl ClassicalExpertBank {
         experts: Vec<ClassicalExpert>,
         validation_window: Option<usize>,
     ) -> Result<Self> {
+        Self::with_validation_options(
+            experts,
+            validation_window,
+            ClassicalExpertValidationObjective::MeanSquaredError,
+        )
+    }
+
+    pub fn with_validation_options(
+        experts: Vec<ClassicalExpert>,
+        validation_window: Option<usize>,
+        validation_objective: ClassicalExpertValidationObjective,
+    ) -> Result<Self> {
         if experts.is_empty() {
             return Err(CartoBoostError::InvalidInput(
                 "classical expert bank requires at least one expert".to_string(),
@@ -218,9 +248,18 @@ impl ClassicalExpertBank {
                 "validation_window must be positive when provided".to_string(),
             ));
         }
+        if matches!(
+            validation_objective,
+            ClassicalExpertValidationObjective::SmapeMaseAverage { seasonality: 0 }
+        ) {
+            return Err(CartoBoostError::InvalidInput(
+                "smape_mase_average seasonality must be positive".to_string(),
+            ));
+        }
         Ok(Self {
             experts,
             validation_window,
+            validation_objective,
             fitted: None,
         })
     }
@@ -252,7 +291,12 @@ impl Forecaster for ClassicalExpertBank {
         if validation_window > 0 {
             let split = split_validation_frame(frame, validation_window)?;
             for expert in &self.experts {
-                if let Ok(score) = score_expert(expert, &split.train, &split.validation) {
+                if let Ok(score) = score_expert(
+                    expert,
+                    &split.train,
+                    &split.validation,
+                    self.validation_objective,
+                ) {
                     scores.push(score);
                 }
             }
@@ -276,7 +320,7 @@ impl Forecaster for ClassicalExpertBank {
         }
         scores.sort_by_key(|score| {
             (
-                OrderedF64(score.mse),
+                OrderedF64(score.validation_loss),
                 expert_rank(&score.expert),
                 score.expert.name(),
             )
@@ -318,12 +362,14 @@ impl Forecaster for ClassicalExpertBank {
         json!({
             "model": self.model_name(),
             "validation_window": self.validation_window,
+            "validation_objective": self.validation_objective.name(),
             "experts": self.experts.iter().map(ClassicalExpert::metadata).collect::<Vec<_>>(),
             "selected_expert": self.selected_expert().map(ClassicalExpert::metadata),
             "validation_scores": self.validation_scores().iter().map(|score| {
                 json!({
                     "expert": score.expert.metadata(),
                     "mse": score.mse,
+                    "validation_loss": score.validation_loss,
                     "validation_rows": score.validation_rows,
                 })
             }).collect::<Vec<_>>(),
@@ -437,12 +483,16 @@ fn score_expert(
     expert: &ClassicalExpert,
     train: &ForecastFrame,
     validation: &[ForecastRow],
+    objective: ClassicalExpertValidationObjective,
 ) -> Result<ClassicalExpertScore> {
     let horizon = validation_horizon(validation);
     let mut model = expert.build()?;
     model.fit(train)?;
     let predictions = model.predict(horizon)?;
     let mut squared_error = 0.0;
+    let mut abs_error = 0.0;
+    let mut smape_sum = 0.0;
+    let mut smape_count = 0usize;
     let mut count = 0usize;
     for actual in validation {
         let train_len = train.rows_for_series(&actual.series_id).len();
@@ -459,6 +509,12 @@ fn score_expert(
         }) {
             let err = prediction.mean - actual.target;
             squared_error += err * err;
+            abs_error += err.abs();
+            let denominator = prediction.mean.abs() + actual.target.abs();
+            if denominator > 0.0 {
+                smape_sum += 2.0 * err.abs() / denominator;
+                smape_count += 1;
+            }
             count += 1;
         }
     }
@@ -467,9 +523,35 @@ fn score_expert(
             "classical expert produced no comparable validation predictions".to_string(),
         ));
     }
+    let mse = squared_error / count as f64;
+    let validation_loss = match objective {
+        ClassicalExpertValidationObjective::MeanSquaredError => mse,
+        ClassicalExpertValidationObjective::SmapeMaseAverage { seasonality } => {
+            let training_series = train
+                .series_ids()
+                .iter()
+                .map(|series_id| {
+                    train
+                        .rows_for_series(series_id)
+                        .iter()
+                        .map(|row| row.target)
+                        .collect::<Vec<_>>()
+                })
+                .collect::<Vec<_>>();
+            let scale = m_competition_mase_scale(&training_series, seasonality)?;
+            let mase = (abs_error / count as f64) / scale.max(1.0e-12);
+            let smape = if smape_count == 0 {
+                0.0
+            } else {
+                smape_sum / smape_count as f64
+            };
+            0.5 * (smape + mase)
+        }
+    };
     Ok(ClassicalExpertScore {
         expert: expert.clone(),
-        mse: squared_error / count as f64,
+        mse,
+        validation_loss,
         validation_rows: count,
     })
 }
@@ -536,10 +618,10 @@ fn robust_classical_expert(scores: &[ClassicalExpertScore]) -> Result<&Classical
     let best = scores.first().ok_or_else(|| {
         CartoBoostError::InvalidInput("classical expert scores must not be empty".to_string())
     })?;
-    let tolerance = best.mse;
+    let tolerance = best.validation_loss;
     scores
         .iter()
-        .filter(|score| score.mse <= tolerance)
+        .filter(|score| score.validation_loss <= tolerance)
         .min_by_key(|score| (expert_rank(&score.expert), score.expert.name()))
         .ok_or_else(|| {
             CartoBoostError::InvalidInput(
@@ -575,11 +657,35 @@ mod tests {
             ClassicalExpertScore {
                 expert: ClassicalExpert::AutoLocalLevelKalman,
                 mse: 100.0,
+                validation_loss: 100.0,
                 validation_rows: 8,
             },
             ClassicalExpertScore {
                 expert: ClassicalExpert::Naive,
                 mse: 100.5,
+                validation_loss: 100.5,
+                validation_rows: 8,
+            },
+        ];
+
+        let selected = robust_classical_expert(&scores).expect("selected expert");
+
+        assert_eq!(selected.expert, ClassicalExpert::AutoLocalLevelKalman);
+    }
+
+    #[test]
+    fn robust_selector_uses_validation_loss_not_mse() {
+        let scores = vec![
+            ClassicalExpertScore {
+                expert: ClassicalExpert::AutoLocalLevelKalman,
+                mse: 100.0,
+                validation_loss: 1.0,
+                validation_rows: 8,
+            },
+            ClassicalExpertScore {
+                expert: ClassicalExpert::Naive,
+                mse: 50.0,
+                validation_loss: 2.0,
                 validation_rows: 8,
             },
         ];

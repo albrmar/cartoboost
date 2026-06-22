@@ -25,12 +25,12 @@ use cartoboost_core::forecasting::{
     BacktestResult as CoreBacktestResult, CalendarFeature,
     CandidateSelectionPolicy as CoreCandidateSelectionPolicy,
     CandidateValidationCutoffSchedule as CoreCandidateValidationCutoffSchedule,
-    CartoBoostLagForecaster as CoreCartoBoostLagForecaster, ETSForecaster as CoreETSForecaster,
-    ForecastActual, ForecastFold as CoreForecastFold, ForecastFrame as CoreForecastFrame,
-    ForecastFrameMetadata, ForecastFrequency, ForecastMetricSet as CoreForecastMetricSet,
-    ForecastObjective as CoreForecastObjective, ForecastPrediction,
-    ForecastResult as CoreForecastResult, ForecastRow as CoreForecastRow, ForecastWindow,
-    Forecaster, GlobalForecastTargetMode, KalmanForecaster as CoreKalmanForecaster,
+    CartoBoostLagForecaster as CoreCartoBoostLagForecaster, ClassicalExpertValidationObjective,
+    ETSForecaster as CoreETSForecaster, ForecastActual, ForecastFold as CoreForecastFold,
+    ForecastFrame as CoreForecastFrame, ForecastFrameMetadata, ForecastFrequency,
+    ForecastMetricSet as CoreForecastMetricSet, ForecastObjective as CoreForecastObjective,
+    ForecastPrediction, ForecastResult as CoreForecastResult, ForecastRow as CoreForecastRow,
+    ForecastWindow, Forecaster, GlobalForecastTargetMode, KalmanForecaster as CoreKalmanForecaster,
     KrigingForecaster as CoreKrigingForecaster, LagFeatureConfig,
     LocalLevelKalmanForecaster as CoreLocalLevelKalmanForecaster,
     NaiveForecaster as CoreNaiveForecaster,
@@ -1788,11 +1788,21 @@ struct NativeAutoStatsBank {
 #[pymethods]
 impl NativeAutoStatsBank {
     #[new]
-    #[pyo3(signature = (season_length, validation_window=None))]
-    fn new(season_length: usize, validation_window: Option<usize>) -> PyResult<Self> {
+    #[pyo3(signature = (season_length, validation_window=None, validation_objective="mean_squared_error"))]
+    fn new(
+        season_length: usize,
+        validation_window: Option<usize>,
+        validation_objective: &str,
+    ) -> PyResult<Self> {
+        let validation_objective =
+            parse_classical_validation_objective(validation_objective, season_length)?;
         Ok(Self {
-            model: CoreAutoStatsBank::with_validation_window(season_length, validation_window)
-                .map_err(to_py_value_error)?,
+            model: CoreAutoStatsBank::with_validation_objective(
+                season_length,
+                validation_window,
+                validation_objective,
+            )
+            .map_err(to_py_value_error)?,
         })
     }
 
@@ -2519,6 +2529,23 @@ fn parse_kriging_drift(value: &str) -> PyResult<KrigingDrift> {
         "linear" | "universal_linear" | "universal" => Ok(KrigingDrift::Linear),
         other => Err(PyValueError::new_err(format!(
             "unsupported kriging drift {other:?}; expected ordinary or linear"
+        ))),
+    }
+}
+
+fn parse_classical_validation_objective(
+    value: &str,
+    season_length: usize,
+) -> PyResult<ClassicalExpertValidationObjective> {
+    match value.trim().to_ascii_lowercase().replace('-', "_").as_str() {
+        "mse" | "mean_squared_error" => Ok(ClassicalExpertValidationObjective::MeanSquaredError),
+        "smape_mase_average" | "owa_proxy" => Ok(
+            ClassicalExpertValidationObjective::SmapeMaseAverage {
+                seasonality: season_length.max(1),
+            },
+        ),
+        other => Err(PyValueError::new_err(format!(
+            "unsupported validation_objective {other:?}; expected mean_squared_error or smape_mase_average"
         ))),
     }
 }
