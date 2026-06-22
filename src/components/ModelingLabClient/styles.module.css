@@ -2,11 +2,22 @@
   --lab-accent: #168f86;
   --lab-bg: #e8eef5;
   --lab-border: #d5deea;
+  --lab-border-strong: #d8e0ea;
+  --lab-control: #ffffff;
+  --lab-control-border: #cfd8e3;
+  --lab-heading: #0b1220;
+  --lab-muted: #526274;
   --lab-panel: #ffffff;
+  --lab-panel-elevated: rgba(255, 255, 255, 0.96);
+  --lab-panel-soft: #f7fafc;
+  --lab-panel-tint: #f4f7fb;
+  --lab-shell-glow: rgba(255, 255, 255, 0.72);
+  --lab-tabs: #e3eaf3;
+  --lab-text: #122033;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(232, 238, 245, 0) 18rem),
+    linear-gradient(180deg, var(--lab-shell-glow), rgba(232, 238, 245, 0) 18rem),
     var(--lab-bg);
-  color: #122033;
+  color: var(--lab-text);
   min-height: calc(100vh - var(--ifm-navbar-height, 3.75rem));
   padding: calc(var(--ifm-navbar-height, 3.75rem) + 0.85rem) clamp(1rem, 2.4vw, 2rem) 5.25rem;
 }
@@ -21,7 +32,7 @@ body:has(.shell) :global(.footer) {
 
 .header {
   align-items: center;
-  background: rgba(255, 255, 255, 0.92);
+  background: var(--lab-panel-elevated);
   border: 1px solid var(--lab-border);
   border-radius: 8px;
   box-shadow: 0 16px 42px rgba(11, 18, 32, 0.07);
@@ -34,7 +45,7 @@ body:has(.shell) :global(.footer) {
 }
 
 .header h1 {
-  color: #0b1220;
+  color: var(--lab-heading);
   font-size: clamp(1.28rem, 1.85vw, 1.86rem);
   letter-spacing: 0;
   line-height: 1.08;
@@ -43,7 +54,7 @@ body:has(.shell) :global(.footer) {
 }
 
 .header p {
-  color: #526274;
+  color: var(--lab-muted);
   font-size: 0.9rem;
   line-height: 1.35;
   margin: 0;
@@ -78,7 +89,7 @@ body:has(.shell) :global(.footer) {
 }
 
 .controlPanel {
-  background: rgba(255, 255, 255, 0.96);
+  background: var(--lab-panel-elevated);
   border: 1px solid var(--lab-border);
   border-radius: 8px;
   align-self: start;
@@ -107,13 +118,13 @@ body:has(.shell) :global(.footer) {
 }
 
 .dropZone strong {
-  color: #0b1220;
+  color: var(--lab-heading);
   font-size: 0.9rem;
 }
 
 .dropZone span,
 .status {
-  color: #526274;
+  color: var(--lab-muted);
   font-size: 0.82rem;
 }
 
@@ -124,7 +135,7 @@ body:has(.shell) :global(.footer) {
 }
 
 .controlSection {
-  background: #ffffff;
+  background: var(--lab-panel);
   border: 1px solid var(--lab-border);
   border-radius: 8px;
   padding: 0.6rem;
@@ -157,7 +168,7 @@ body:has(.shell) :global(.footer) {
 .stepHeader h2,
 .stepHeader strong,
 .actionHeader strong {
-  color: #0b1220;
+  color: var(--lab-heading);
   font-size: 0.78rem;
   letter-spacing: 0;
   margin: 0;
@@ -188,15 +199,15 @@ body:has(.shell) :global(.footer) {
 }
 
 .surfaceBlock {
-  background: #ffffff;
+  background: var(--lab-panel);
   border: 1px solid var(--lab-border);
   border-radius: 8px;
   padding: 0.55rem;
 }
 
 .surfaceTabs {
-  background: #e3eaf3;
-  border: 1px solid #d0d9e6;
+  background: var(--lab-tabs);
+  border: 1px solid var(--lab-control-border);
   border-radius: 8px;
   display: grid;
   gap: 0.25rem;
@@ -211,7 +222,7 @@ body:has(.shell) :global(.footer) {
   background: transparent;
   border: 0;
   border-radius: 6px;
-  color: #4f5f72;
+  color: var(--lab-muted);
   cursor: pointer;
   font: inherit;
   font-size: 0.8rem;
@@ -221,15 +232,15 @@ body:has(.shell) :global(.footer) {
 }
 
 .surfaceTabs .surfaceTabActive {
-  background: #ffffff;
+  background: var(--lab-control);
   box-shadow: 0 6px 16px rgba(11, 18, 32, 0.12);
-  color: #0b1220;
+  color: var(--lab-heading);
 }
 
 .neuralSummary {
   align-items: start;
-  background: #f7fafc;
-  border: 1px solid #d8e0ea;
+  background: var(--lab-panel-soft);
+  border: 1px solid var(--lab-border-strong);
   border-radius: 8px;
   display: flex;
   gap: 0.6rem;
@@ -240,7 +251,7 @@ body:has(.shell) :global(.footer) {
 }
 
 .neuralSummary strong {
-  color: #122033;
+  color: var(--lab-text);
   font-size: 0.8rem;
   line-height: 1.25;
   min-width: 0;
@@ -249,7 +260,7 @@ body:has(.shell) :global(.footer) {
 }
 
 .neuralSummary span {
-  color: #526274;
+  color: var(--lab-muted);
   font-size: 0.66rem;
   font-weight: 800;
   line-height: 1.25;
@@ -266,7 +277,7 @@ body:has(.shell) :global(.footer) {
 }
 
 .field span {
-  color: #526274;
+  color: var(--lab-muted);
   font-size: 0.68rem;
   font-weight: 800;
   text-transform: uppercase;
@@ -274,10 +285,10 @@ body:has(.shell) :global(.footer) {
 
 .field select,
 .field input {
-  background: #ffffff;
-  border: 1px solid #cfd8e3;
+  background: var(--lab-control);
+  border: 1px solid var(--lab-control-border);
   border-radius: 8px;
-  color: #122033;
+  color: var(--lab-text);
   font: inherit;
   min-height: 2.1rem;
   padding: 0.3rem 0.48rem;
@@ -300,7 +311,7 @@ body:has(.shell) :global(.footer) {
 }
 
 .seasonalityHeader span {
-  color: #526274;
+  color: var(--lab-muted);
   font-size: 0.78rem;
   font-weight: 800;
   text-transform: uppercase;
@@ -319,10 +330,10 @@ body:has(.shell) :global(.footer) {
 }
 
 .seasonalityButtons button {
-  background: #f4f7fb;
-  border: 1px solid #d8e0ea;
+  background: var(--lab-panel-tint);
+  border: 1px solid var(--lab-border-strong);
   border-radius: 8px;
-  color: #122033;
+  color: var(--lab-text);
   cursor: pointer;
   font: inherit;
   min-height: 2rem;
@@ -340,7 +351,7 @@ body:has(.shell) :global(.footer) {
 }
 
 .seasonalityButtons span {
-  color: #526274;
+  color: var(--lab-muted);
   font-size: 0.72rem;
 }
 
@@ -350,10 +361,10 @@ body:has(.shell) :global(.footer) {
 }
 
 .settingHint {
-  background: #f8fafc;
+  background: var(--lab-panel-soft);
   border: 1px solid var(--lab-border);
   border-radius: 8px;
-  color: #526274;
+  color: var(--lab-muted);
   font-size: 0.78rem;
   line-height: 1.35;
   margin: 0.5rem 0 0;
@@ -371,7 +382,7 @@ body:has(.shell) :global(.footer) {
 }
 
 .actionBlock {
-  background: #ffffff;
+  background: var(--lab-panel);
   border-top: 1px solid rgba(216, 224, 234, 0.84);
   margin: 0.6rem -0.7rem 0;
   padding: 0.65rem 0.7rem 0;
@@ -404,17 +415,17 @@ body:has(.shell) :global(.footer) {
 }
 
 .secondaryButton {
-  background: #ffffff;
-  border: 1px solid #cfd8e3;
-  color: #122033;
+  background: var(--lab-control);
+  border: 1px solid var(--lab-control-border);
+  color: var(--lab-text);
   flex: 0 0 auto;
 }
 
 .secondaryActionButton {
-  background: #ffffff;
-  border: 1px solid #cfd8e3;
+  background: var(--lab-control);
+  border: 1px solid var(--lab-control-border);
   border-radius: 8px;
-  color: #122033;
+  color: var(--lab-text);
   cursor: pointer;
   font: inherit;
   font-weight: 800;
@@ -460,8 +471,8 @@ body:has(.shell) :global(.footer) {
 }
 
 .progressWrap {
-  background: #f7fafc;
-  border: 1px solid #d8e0ea;
+  background: var(--lab-panel-soft);
+  border: 1px solid var(--lab-border-strong);
   border-radius: 8px;
   display: grid;
   gap: 0.45rem;
@@ -478,7 +489,7 @@ body:has(.shell) :global(.footer) {
 
 .progressMeta span,
 .progressMeta strong {
-  color: #122033;
+  color: var(--lab-text);
   font-size: 0.76rem;
   font-weight: 800;
   min-width: 0;
@@ -486,7 +497,7 @@ body:has(.shell) :global(.footer) {
 }
 
 .progressMeta strong {
-  color: #526274;
+  color: var(--lab-muted);
   flex: 0 0 auto;
 }
 
@@ -508,11 +519,12 @@ body:has(.shell) :global(.footer) {
   align-self: start;
   display: grid;
   gap: 0.65rem;
+  max-width: 100%;
   min-width: 0;
 }
 
 .resultHeader {
-  background: rgba(255, 255, 255, 0.96);
+  background: var(--lab-panel-elevated);
   border: 1px solid var(--lab-border);
   border-radius: 8px;
   align-items: start;
@@ -520,12 +532,14 @@ body:has(.shell) :global(.footer) {
   gap: 1rem;
   justify-content: space-between;
   margin-bottom: 0;
+  max-width: 100%;
+  min-width: 0;
   padding: 0.7rem 0.8rem;
 }
 
 .emptyState {
   align-content: start;
-  background: rgba(255, 255, 255, 0.96);
+  background: var(--lab-panel-elevated);
   border: 1px solid var(--lab-border);
   border-radius: 8px;
   display: grid;
@@ -536,7 +550,7 @@ body:has(.shell) :global(.footer) {
 
 .emptyState h2,
 .resultHeader h2 {
-  color: #0b1220;
+  color: var(--lab-heading);
   font-size: clamp(1.15rem, 1.6vw, 1.45rem);
   letter-spacing: 0;
   margin: 0;
@@ -553,25 +567,28 @@ body:has(.shell) :global(.footer) {
 }
 
 .resultHeader dt {
-  color: #526274;
+  color: var(--lab-muted);
   font-size: 0.75rem;
   font-weight: 800;
   text-transform: uppercase;
 }
 
 .resultHeader dd {
-  color: #0b1220;
+  color: var(--lab-heading);
   font-size: 1.1rem;
   font-weight: 800;
   margin: 0;
 }
 
 .chart {
-  background: #ffffff;
+  background: var(--lab-panel);
   border: 1px solid var(--lab-border);
   border-radius: 8px;
   box-shadow: 0 12px 30px rgba(11, 18, 32, 0.05);
   margin: 0;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
   padding: 0.7rem;
 }
 
@@ -592,7 +609,7 @@ body:has(.shell) :global(.footer) {
 }
 
 .chartGridline text {
-  fill: #526274;
+  fill: var(--lab-muted);
   font-size: 0.72rem;
   text-anchor: end;
 }
@@ -621,7 +638,7 @@ body:has(.shell) :global(.footer) {
 }
 
 .chartTooltip rect {
-  fill: #122033;
+  fill: var(--lab-heading);
   opacity: 0.94;
 }
 
@@ -652,10 +669,13 @@ body:has(.shell) :global(.footer) {
 }
 
 .componentPanel {
-  background: #ffffff;
+  background: var(--lab-panel);
   border: 1px solid var(--lab-border);
   border-radius: 8px;
   margin: 0;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
   padding: 0.75rem;
 }
 
@@ -668,14 +688,14 @@ body:has(.shell) :global(.footer) {
 }
 
 .componentHeader h3 {
-  color: #122033;
+  color: var(--lab-text);
   font-size: 1rem;
   margin: 0.1rem 0 0;
   overflow-wrap: anywhere;
 }
 
 .componentHeader p {
-  color: #526274;
+  color: var(--lab-muted);
   font-size: 0.82rem;
   margin: 0;
   text-align: right;
@@ -689,9 +709,9 @@ body:has(.shell) :global(.footer) {
 }
 
 .componentGrid p {
-  background: #f4f7fb;
+  background: var(--lab-panel-tint);
   border-radius: 8px;
-  color: #122033;
+  color: var(--lab-text);
   font-size: 1.05rem;
   font-weight: 800;
   margin: 0;
@@ -701,7 +721,7 @@ body:has(.shell) :global(.footer) {
 }
 
 .componentGrid span {
-  color: #526274;
+  color: var(--lab-muted);
   display: block;
   font-size: 0.72rem;
   margin-bottom: 0.2rem;
@@ -709,7 +729,7 @@ body:has(.shell) :global(.footer) {
 }
 
 .chart figcaption {
-  color: #526274;
+  color: var(--lab-muted);
   font-size: 0.8rem;
   margin-top: 0.3rem;
 }
@@ -723,7 +743,7 @@ body:has(.shell) :global(.footer) {
 
 .legend span {
   align-items: center;
-  color: #526274;
+  color: var(--lab-muted);
   display: inline-flex;
   font-size: 0.82rem;
   gap: 0.35rem;
@@ -744,11 +764,11 @@ body:has(.shell) :global(.footer) {
 }
 
 .signalCards p {
-  background: #ffffff;
+  background: var(--lab-panel);
   border: 1px solid var(--lab-border);
   border-radius: 8px;
   box-shadow: 0 10px 28px rgba(11, 18, 32, 0.04);
-  color: #122033;
+  color: var(--lab-text);
   font-size: 1rem;
   font-weight: 800;
   margin: 0;
@@ -766,7 +786,7 @@ body:has(.shell) :global(.footer) {
 }
 
 .signalCards span {
-  color: #526274;
+  color: var(--lab-muted);
   margin-bottom: 0.2rem;
   text-transform: uppercase;
 }
@@ -777,7 +797,7 @@ body:has(.shell) :global(.footer) {
 }
 
 .metricChart {
-  background: #ffffff;
+  background: var(--lab-panel);
   border: 1px solid var(--lab-border);
   border-radius: 8px;
   margin: 0;
@@ -785,7 +805,7 @@ body:has(.shell) :global(.footer) {
 }
 
 .metricChart figcaption {
-  color: #526274;
+  color: var(--lab-muted);
   font-size: 0.86rem;
   margin: 0 0 0.75rem;
 }
@@ -798,9 +818,9 @@ body:has(.shell) :global(.footer) {
 }
 
 .metricCards p {
-  background: #f7fafc;
+  background: var(--lab-panel-soft);
   border-radius: 8px;
-  color: #122033;
+  color: var(--lab-text);
   font-size: 1.1rem;
   font-weight: 800;
   margin: 0;
@@ -808,7 +828,7 @@ body:has(.shell) :global(.footer) {
 }
 
 .metricCards span {
-  color: #526274;
+  color: var(--lab-muted);
   display: block;
   font-size: 0.72rem;
   margin-bottom: 0.25rem;
@@ -825,12 +845,12 @@ body:has(.shell) :global(.footer) {
 
 .metricRow span,
 .metricRow strong {
-  color: #122033;
+  color: var(--lab-text);
   font-size: 0.86rem;
 }
 
 .metricRow div {
-  background: #eef2f7;
+  background: var(--lab-panel-tint);
   border-radius: 999px;
   height: 0.7rem;
   overflow: hidden;
@@ -844,7 +864,7 @@ body:has(.shell) :global(.footer) {
 }
 
 .tableScroller {
-  background: #ffffff;
+  background: var(--lab-panel);
   border: 1px solid var(--lab-border);
   border-radius: 8px;
   max-height: min(44vh, 34rem);
@@ -900,6 +920,9 @@ body:has(.shell) :global(.footer) {
   background: #ffffff;
   border: 1px solid #d8e0ea;
   border-radius: 8px;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
   padding: 0.85rem;
 }
 
@@ -1300,6 +1323,8 @@ body:has(.shell) :global(.footer) {
   display: inline-flex;
   font-size: 0.78rem;
   gap: 0.4rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
   padding: 0.35rem 0.5rem;
 }
 
@@ -1427,8 +1452,43 @@ body:has(.shell) :global(.footer) {
 }
 
 :global([data-theme='dark']) .shell {
+  --lab-bg: #0b1220;
+  --lab-border: rgba(157, 176, 201, 0.24);
+  --lab-border-strong: rgba(157, 176, 201, 0.28);
+  --lab-control: #07101e;
+  --lab-control-border: rgba(157, 176, 201, 0.34);
+  --lab-heading: #e8eef8;
+  --lab-muted: #9db0c9;
+  --lab-panel: #111a2b;
+  --lab-panel-elevated: #111a2b;
+  --lab-panel-soft: #0b1220;
+  --lab-panel-tint: rgba(157, 176, 201, 0.1);
+  --lab-shell-glow: rgba(20, 31, 50, 0.72);
+  --lab-tabs: #0b1220;
+  --lab-text: #dce6f4;
   background: #0b1220;
   color: #dce6f4;
+}
+
+@media (prefers-color-scheme: dark) {
+  :global(html:not([data-theme='light'])) .shell {
+    --lab-bg: #0b1220;
+    --lab-border: rgba(157, 176, 201, 0.24);
+    --lab-border-strong: rgba(157, 176, 201, 0.28);
+    --lab-control: #07101e;
+    --lab-control-border: rgba(157, 176, 201, 0.34);
+    --lab-heading: #e8eef8;
+    --lab-muted: #9db0c9;
+    --lab-panel: #111a2b;
+    --lab-panel-elevated: #111a2b;
+    --lab-panel-soft: #0b1220;
+    --lab-panel-tint: rgba(157, 176, 201, 0.1);
+    --lab-shell-glow: rgba(20, 31, 50, 0.72);
+    --lab-tabs: #0b1220;
+    --lab-text: #dce6f4;
+    background: #0b1220;
+    color: #dce6f4;
+  }
 }
 
 :global([data-theme='dark']) .header h1,

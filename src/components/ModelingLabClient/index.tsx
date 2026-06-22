@@ -212,6 +212,15 @@ const neuralPipelineLabels: Record<string, string> = {
 const graphNeuralPipelines = new Set(['node2vec', 'graphsage', 'hetero_graphsage', 'hinsage']);
 type ActiveModelingSurface = 'forecast' | 'model' | 'neural';
 const TAXI_WEEK_SAMPLE_ROWS = 2500;
+const TAXI_ZONE_CENTROIDS: Record<string, {lat: number; lon: number}> = {
+  132: {lat: 40.646985, lon: -73.786533},
+  142: {lat: 40.775932, lon: -73.982196},
+  161: {lat: 40.758028, lon: -73.977698},
+  236: {lat: 40.780436, lon: -73.957012},
+  237: {lat: 40.768615, lon: -73.965635},
+  238: {lat: 40.791705, lon: -73.973049},
+  239: {lat: 40.783962, lon: -73.978632},
+};
 
 export default function ModelingLabClient(): React.ReactElement {
   const wasmJsUrl = useBaseUrl('/wasm/cartoboost/cartoboost_wasm.js');
@@ -1086,6 +1095,7 @@ export default function ModelingLabClient(): React.ReactElement {
               </div>
               <ForecastSignalSummary actualRows={actualRows} forecastRows={chartRows} frequency={frequency} seasonLength={seasonLength} />
               <ForecastChart actualRows={actualRows} rows={chartRows} quantiles={firstSeriesQuantileRows(result)} />
+              {table && <GeoDatasetVisualization table={table} targetCol={targetCol} seriesCol={seriesCol} />}
               <ForecastComponentSummary components={result.components} />
               <ForecastTable records={result.forecast.records.slice(0, 12)} />
             </>
@@ -4418,7 +4428,7 @@ function downsampleTable(table: ParsedTable, maxRows: number): ParsedTable {
 function buildTaxiWeekSampleTable(table: ParsedTable, maxRows: number): ParsedTable {
   const requiredColumns = ['tpep_pickup_datetime', 'tpep_dropoff_datetime', 'PULocationID', 'DOLocationID'];
   if (!requiredColumns.every((column) => table.columns.includes(column))) {
-    return downsampleTable(table, maxRows);
+    return downsampleTable(enrichTaxiRouteGeoColumns(table), maxRows);
   }
   const groups = new Map<
     string,
@@ -4465,37 +4475,73 @@ function buildTaxiWeekSampleTable(table: ParsedTable, maxRows: number): ParsedTa
   }
   const rows = Array.from(groups.values())
     .sort((left, right) => left.timestamp.localeCompare(right.timestamp) || left.pickup.localeCompare(right.pickup) || left.dropoff.localeCompare(right.dropoff))
-    .map((group) => ({
-      timestamp: group.timestamp,
-      series_id: `${group.pickup}-${group.dropoff}`,
-      PULocationID: group.pickup,
-      DOLocationID: group.dropoff,
-      target: String(group.count),
-      trip_count: String(group.count),
-      avg_total_amount: formatFixed(group.totalAmount / group.count, 2),
-      avg_fare_amount: formatFixed(group.fareAmount / group.count, 2),
-      avg_trip_distance: formatFixed(group.tripDistance / group.count, 2),
-      avg_duration_minutes: formatFixed(group.durationMinutes / group.count, 2),
-    }));
-  return downsampleTable(
-    {
-      columns: [
-        'timestamp',
-        'series_id',
-        'PULocationID',
-        'DOLocationID',
-        'target',
-        'trip_count',
-        'avg_total_amount',
-        'avg_fare_amount',
-        'avg_trip_distance',
-        'avg_duration_minutes',
-      ],
-      rows,
-      fileName: 'yellow_tripdata_2024-01-week1-route-hour-demand.parquet',
-    },
-    maxRows,
-  );
+    .map((group) => {
+      const pickupCentroid = TAXI_ZONE_CENTROIDS[group.pickup];
+      const dropoffCentroid = TAXI_ZONE_CENTROIDS[group.dropoff];
+      return {
+        timestamp: group.timestamp,
+        series_id: `${group.pickup}-${group.dropoff}`,
+        PULocationID: group.pickup,
+        DOLocationID: group.dropoff,
+        pickup_latitude: formatCoordinate(pickupCentroid?.lat),
+        pickup_longitude: formatCoordinate(pickupCentroid?.lon),
+        dropoff_latitude: formatCoordinate(dropoffCentroid?.lat),
+        dropoff_longitude: formatCoordinate(dropoffCentroid?.lon),
+        target: String(group.count),
+        trip_count: String(group.count),
+        avg_total_amount: formatFixed(group.totalAmount / group.count, 2),
+        avg_fare_amount: formatFixed(group.fareAmount / group.count, 2),
+        avg_trip_distance: formatFixed(group.tripDistance / group.count, 2),
+        avg_duration_minutes: formatFixed(group.durationMinutes / group.count, 2),
+      };
+    });
+  return downsampleTable(enrichTaxiRouteGeoColumns({
+    columns: [
+      'timestamp',
+      'series_id',
+      'PULocationID',
+      'DOLocationID',
+      'target',
+      'trip_count',
+      'avg_total_amount',
+      'avg_fare_amount',
+      'avg_trip_distance',
+      'avg_duration_minutes',
+    ],
+    rows,
+    fileName: 'yellow_tripdata_2024-01-week1-route-hour-demand.parquet',
+  }), maxRows);
+}
+
+function enrichTaxiRouteGeoColumns(table: ParsedTable): ParsedTable {
+  if (!table.columns.includes('PULocationID') || !table.columns.includes('DOLocationID')) {
+    return table;
+  }
+  const geoColumns = ['pickup_latitude', 'pickup_longitude', 'dropoff_latitude', 'dropoff_longitude'];
+  const columns = [
+    ...table.columns.filter((column) => !geoColumns.includes(column)),
+    ...geoColumns,
+  ];
+  const rows = table.rows.map((row) => {
+    const pickupCentroid = TAXI_ZONE_CENTROIDS[row.PULocationID ?? ''];
+    const dropoffCentroid = TAXI_ZONE_CENTROIDS[row.DOLocationID ?? ''];
+    return {
+      ...row,
+      pickup_latitude: formatCoordinate(pickupCentroid?.lat),
+      pickup_longitude: formatCoordinate(pickupCentroid?.lon),
+      dropoff_latitude: formatCoordinate(dropoffCentroid?.lat),
+      dropoff_longitude: formatCoordinate(dropoffCentroid?.lon),
+    };
+  });
+  return {
+    ...table,
+    columns,
+    rows,
+  };
+}
+
+function formatCoordinate(value: number | undefined) {
+  return Number.isFinite(value) ? formatFixed(value, 6) : '';
 }
 
 function formatCellValue(value: unknown, columnName = '') {

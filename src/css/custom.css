@@ -41,6 +41,14 @@ html {
   scroll-padding-top: 5rem;
 }
 
+@media (max-width: 996px) {
+  html,
+  body,
+  .main-wrapper {
+    overflow-x: hidden;
+  }
+}
+
 .navbar {
   border-bottom: 1px solid var(--cb-border);
   box-shadow: none;
@@ -75,9 +83,17 @@ html {
   margin-top: 2.75rem;
 }
 
+.theme-doc-markdown {
+  max-width: 100%;
+  min-width: 0;
+}
+
 .theme-doc-markdown table {
-  display: table;
-  width: 100%;
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  width: max-content;
+  -webkit-overflow-scrolling: touch;
 }
 
 .theme-doc-markdown th {
