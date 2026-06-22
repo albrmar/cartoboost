@@ -27,12 +27,9 @@ benchmark suite. They are not real TLC data.
 | Run | Rank | Model | Mean RMSE Ratio | Wins/Ties | Artifact |
 | --- | ---: | --- | ---: | ---: | --- |
 | CartoBoost sample | 1 | `cartoboost_auto_forecast` | 1.000000 | 4 | `forecasting_overhaul_committed_suite.json` |
-| CartoBoost sample | 1 | `cartoboost_lag` | 1.000000 | 4 | `forecasting_overhaul_committed_suite.json` |
 | Scalable external roster | 1 | `cartoboost_auto_forecast` | 1.013744 | 3 | `forecasting_overhaul_committed_suite_scalable_roster.json` |
-| Scalable external roster | 1 | `cartoboost_lag` | 1.013744 | 3 | `forecasting_overhaul_committed_suite_scalable_roster.json` |
 | Scalable external roster | 3 | `lightgbm_lag` | 1.279238 | 1 | `forecasting_overhaul_committed_suite_scalable_roster.json` |
 | Generalization guardrail | 1 | `cartoboost_auto_forecast` | 1.000000 | 4 | `forecasting_generalization_scalable_synthetic.json` |
-| Generalization guardrail | 1 | `cartoboost_lag` | 1.000000 | 4 | `forecasting_generalization_scalable_synthetic.json` |
 | Generalization guardrail | 3 | `lightgbm_lag` | 1.196396 | 0 | `forecasting_generalization_scalable_synthetic.json` |
 | Generalization guardrail | 4 | `xgboost_lag` | 1.258816 | 0 | `forecasting_generalization_scalable_synthetic.json` |
 
