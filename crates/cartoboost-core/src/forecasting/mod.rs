@@ -34,6 +34,7 @@ mod reconciliation;
 mod registry;
 mod result;
 mod schema;
+mod sequence;
 pub(crate) mod splitters;
 mod stl;
 mod target_transform;
@@ -47,7 +48,9 @@ pub use artifacts::{
 pub use auto::{AutoForecastConfig, AutoForecastModel, AutoForecastObjective};
 pub use autostats::AutoStatsBank;
 pub use backtesting::{BacktestFoldResult, BacktestResult, RollingOriginBacktester};
-pub use classical_bank::{ClassicalExpert, ClassicalExpertBank, ClassicalExpertScore};
+pub use classical_bank::{
+    ClassicalExpert, ClassicalExpertBank, ClassicalExpertScore, ClassicalExpertValidationObjective,
+};
 pub use config::{ForecastModelConfig, ForecastingConfig};
 pub use conformal::{ConformalCalibrator, ConformalInterval};
 pub use decomposition::{MSTLCartoBoostForecaster, STLCartoBoostForecaster};
@@ -101,6 +104,16 @@ pub use reconciliation::{proportional_total_reconciliation, Reconciler, Reconcil
 pub use registry::{ForecastModelSpec, ForecastRegistry, RegisterMode, RegisteredForecastModel};
 pub use result::{ForecastPrediction, ForecastResult};
 pub use schema::{ForecastFrame, ForecastFrameMetadata, ForecastRow, SINGLE_SERIES_ID};
+pub use sequence::{
+    forward_ekf, generate_group_oof_candidate_rows, missing_target_continuation,
+    per_group_error_summary, reference_path_posterior_mean, reference_path_viterbi, rts_smoother,
+    ukf_reference, validate_oof_meta_training, KnownPrefix, PredictionMask, ReferencePathConfig,
+    ReferencePathPoint, ReferencePathResult, ReferenceSignal, SequenceBlendPrediction,
+    SequenceCandidate, SequenceCandidateEnsemble, SequenceCandidatePrediction, SequenceFrame,
+    SequenceGroupMetric, SequenceGroupPrediction, SequenceKalmanPoint, SequenceKalmanResult,
+    SequenceOofCandidateRow, SequenceOofFold, SequenceRow, SequenceSeries,
+    SequenceStateSpaceConfig,
+};
 pub use splitters::{
     CandidateValidationCutoffSchedule, ForecastFold, ForecastFoldMetadata, ForecastWindow,
     RollingOriginSplitter,

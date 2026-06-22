@@ -3209,13 +3209,13 @@ def test_forecasting_benchmark_m4_lag_spine_targets_high_frequency_risk():
     sys.modules[spec.name] = benchmark
     spec.loader.exec_module(benchmark)
 
-    assert benchmark.m4_requires_lag_spine(season_length=24, horizon=48)
+    assert not benchmark.m4_requires_lag_spine(season_length=24, horizon=48)
     assert benchmark.m4_requires_lag_spine(season_length=12, horizon=18)
     assert benchmark.m4_requires_lag_spine(season_length=1, horizon=13)
     assert not benchmark.m4_requires_lag_spine(season_length=1, horizon=6)
     assert not benchmark.m4_requires_lag_spine(season_length=4, horizon=8)
     assert not benchmark.requires_lag_spine(source="synthetic", season_length=7, horizon=14)
-    assert benchmark.requires_lag_spine(source="m4", season_length=24, horizon=48)
+    assert not benchmark.requires_lag_spine(source="m4", season_length=24, horizon=48)
     assert not benchmark.requires_lag_spine(source="m5", season_length=1, horizon=28)
     assert not benchmark.requires_lag_spine(source="m6", season_length=1, horizon=28)
     script = module_path.read_text(encoding="utf-8")

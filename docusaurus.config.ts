@@ -69,7 +69,21 @@ const config: Config = {
     ],
   ],
 
-  themes: ['@docusaurus/theme-mermaid'],
+  themes: [
+    '@docusaurus/theme-mermaid',
+    [
+      '@easyops-cn/docusaurus-search-local',
+      {
+        docsRouteBasePath: 'docs',
+        hashed: 'filename',
+        indexBlog: false,
+        indexDocs: true,
+        indexPages: true,
+        language: ['en'],
+        searchBarPosition: 'right',
+      },
+    ],
+  ],
 
   plugins: [
     llmsTxtDocsPlugin,
@@ -110,6 +124,7 @@ const config: Config = {
         { to: '/forecast-lab', label: 'Forecast Lab', position: 'left' },
         { to: '/docs/reference/python-api', label: 'Reference', position: 'left' },
         { to: '/docs/benchmarks', label: 'Benchmarks', position: 'left' },
+        { type: 'search', position: 'right' },
         {
           href: 'https://github.com/TheCulliganMan/CartoBoost',
           label: 'GitHub',

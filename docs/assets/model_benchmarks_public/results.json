@@ -1,0 +1,370 @@
+{
+  "artifact_version": 1,
+  "seed": 42,
+  "n_rows": 2400,
+  "train_frac": 0.8,
+  "models_requested": [
+    "mean",
+    "cartoboost",
+    "lightgbm",
+    "xgboost",
+    "node2vec_regressor",
+    "graphsage_regressor"
+  ],
+  "model_config": {
+    "n_estimators": 24,
+    "learning_rate": 0.08,
+    "max_depth": 4,
+    "neural_dim": 12,
+    "graph_dim": 4,
+    "graph_epochs": 2,
+    "graph_model_families": {
+      "cartoboost_graph": "graphsage",
+      "cartoboost_graph_node2vec": "node2vec",
+      "cartoboost_graph_graphsage": "graphsage",
+      "cartoboost_graph_hetero_graphsage": "hetero_graphsage",
+      "cartoboost_graph_hinsage": "hinsage"
+    },
+    "cartoboost_qualitative_splitters": [
+      "axis_histogram:256",
+      "diagonal_2d",
+      "gaussian_2d"
+    ]
+  },
+  "workloads": {
+    "diabetes": {
+      "display_name": "sklearn diabetes",
+      "description": "Frozen public scikit-learn diabetes regression workload with 442 rows, 10 numeric features, and disease-progression target.",
+      "row_count": 442,
+      "feature_count": 10,
+      "splits": {
+        "random": {
+          "train_rows": 353,
+          "test_rows": 89,
+          "models": {
+            "mean": {
+              "status": "ok",
+              "metrics": {
+                "mae": 66.01951172931852,
+                "rmse": 80.15889141259207,
+                "r2": -0.008666110450081588
+              },
+              "timing": {
+                "train_seconds": 2.0832987502217293e-05,
+                "predict_seconds": 5.458015948534012e-06,
+                "predict_rows_per_second": 16306291.670676563
+              },
+              "config": {}
+            },
+            "cartoboost": {
+              "status": "ok",
+              "metrics": {
+                "mae": 44.81842747095987,
+                "rmse": 52.977078972753915,
+                "r2": 0.5594248049263566
+              },
+              "timing": {
+                "train_seconds": 0.20248745899880305,
+                "predict_seconds": 0.0009386670426465571,
+                "predict_rows_per_second": 94815.30293112868
+              },
+              "config": {
+                "backend": "rust"
+              }
+            },
+            "lightgbm": {
+              "status": "ok",
+              "metrics": {
+                "mae": 43.77800116300569,
+                "rmse": 53.01442265173208,
+                "r2": 0.5588034608377631
+              },
+              "timing": {
+                "train_seconds": 0.06554262503050268,
+                "predict_seconds": 0.0019443330238573253,
+                "predict_rows_per_second": 45774.05151687163
+              },
+              "config": {
+                "num_leaves": 16
+              }
+            },
+            "xgboost": {
+              "status": "ok",
+              "metrics": {
+                "mae": 47.4113922976376,
+                "rmse": 56.50517913935758,
+                "r2": 0.4987890655138062
+              },
+              "timing": {
+                "train_seconds": 0.06581441697198898,
+                "predict_seconds": 0.0007407079683616757,
+                "predict_rows_per_second": 120155.31599700941
+              },
+              "config": {
+                "tree_method": "hist"
+              }
+            },
+            "node2vec_regressor": {
+              "status": "skipped",
+              "reason": "workload has no graph topology"
+            },
+            "graphsage_regressor": {
+              "status": "skipped",
+              "reason": "workload has no graph topology"
+            }
+          }
+        }
+      }
+    },
+    "karate": {
+      "display_name": "Zachary karate club",
+      "description": "Frozen public 78-edge Zachary karate club graph workload. Rows are observed edges; the regression target is whether the two endpoints share the same post-split club label.",
+      "row_count": 78,
+      "feature_count": 5,
+      "splits": {
+        "random": {
+          "train_rows": 62,
+          "test_rows": 16,
+          "models": {
+            "mean": {
+              "status": "ok",
+              "metrics": {
+                "mae": 0.2036290322580645,
+                "rmse": 0.26144459802334397,
+                "r2": -0.16656260839403392
+              },
+              "timing": {
+                "train_seconds": 9.000010322779417e-06,
+                "predict_seconds": 4.62500611320138e-06,
+                "predict_rows_per_second": 3459454.8868444567
+              },
+              "config": {}
+            },
+            "cartoboost": {
+              "status": "ok",
+              "metrics": {
+                "mae": 0.20719375024623699,
+                "rmse": 0.2664834153294709,
+                "r2": -0.21196220835258495
+              },
+              "timing": {
+                "train_seconds": 0.01989970897557214,
+                "predict_seconds": 0.00032341701444238424,
+                "predict_rows_per_second": 49471.73242442491
+              },
+              "config": {
+                "backend": "rust"
+              }
+            },
+            "lightgbm": {
+              "status": "ok",
+              "metrics": {
+                "mae": 0.1992541509932204,
+                "rmse": 0.25569289825502106,
+                "r2": -0.11579918025476377
+              },
+              "timing": {
+                "train_seconds": 0.016374833008740097,
+                "predict_seconds": 0.0007204169523902237,
+                "predict_rows_per_second": 22209.360769363713
+              },
+              "config": {
+                "num_leaves": 16
+              }
+            },
+            "xgboost": {
+              "status": "ok",
+              "metrics": {
+                "mae": 0.034892430528998375,
+                "rmse": 0.04444117718437359,
+                "r2": 0.966293022215972
+              },
+              "timing": {
+                "train_seconds": 0.056207875022664666,
+                "predict_seconds": 0.0007270830101333559,
+                "predict_rows_per_second": 22005.740440923528
+              },
+              "config": {
+                "tree_method": "hist"
+              }
+            },
+            "node2vec_regressor": {
+              "status": "ok",
+              "metrics": {
+                "mae": 0.19021980474198916,
+                "rmse": 0.25879773093903746,
+                "r2": -0.14306159853558476
+              },
+              "timing": {
+                "train_seconds": 0.02359891595551744,
+                "predict_seconds": 0.0007275419775396585,
+                "predict_rows_per_second": 21991.858193677675
+              },
+              "config": {
+                "graph_dim": 4,
+                "graph_epochs": 2
+              }
+            },
+            "graphsage_regressor": {
+              "status": "ok",
+              "metrics": {
+                "mae": 0.20232449511574116,
+                "rmse": 0.25466745119747997,
+                "r2": -0.10686738260344897
+              },
+              "timing": {
+                "train_seconds": 0.01755175000289455,
+                "predict_seconds": 0.0006401250138878822,
+                "predict_rows_per_second": 24995.11759870455
+              },
+              "config": {
+                "graph_dim": 4,
+                "graph_epochs": 2
+              }
+            }
+          }
+        },
+        "group_holdout": {
+          "train_rows": 52,
+          "test_rows": 26,
+          "models": {
+            "mean": {
+              "status": "ok",
+              "metrics": {
+                "mae": 0.2337278106508876,
+                "rmse": 0.3217923178977214,
+                "r2": -0.014492753623188248
+              },
+              "timing": {
+                "train_seconds": 6.166053935885429e-06,
+                "predict_seconds": 3.875000402331352e-06,
+                "predict_rows_per_second": 6709676.722706242
+              },
+              "config": {}
+            },
+            "cartoboost": {
+              "status": "ok",
+              "metrics": {
+                "mae": 0.23365557012868116,
+                "rmse": 0.3018934511936095,
+                "r2": 0.10709554535441046
+              },
+              "timing": {
+                "train_seconds": 0.015407417027745396,
+                "predict_seconds": 0.0005579590215347707,
+                "predict_rows_per_second": 46598.40417757228
+              },
+              "config": {
+                "backend": "rust"
+              }
+            },
+            "lightgbm": {
+              "status": "ok",
+              "metrics": {
+                "mae": 0.23144484261073664,
+                "rmse": 0.3148530154841632,
+                "r2": 0.0287896110289535
+              },
+              "timing": {
+                "train_seconds": 0.013284083979669958,
+                "predict_seconds": 0.0006710420129820704,
+                "predict_rows_per_second": 38745.71114326741
+              },
+              "config": {
+                "num_leaves": 16
+              }
+            },
+            "xgboost": {
+              "status": "ok",
+              "metrics": {
+                "mae": 0.10235228274877255,
+                "rmse": 0.2584116965199584,
+                "r2": 0.34578282737295096
+              },
+              "timing": {
+                "train_seconds": 0.05328083300264552,
+                "predict_seconds": 0.0006897500134073198,
+                "predict_rows_per_second": 37694.81622995802
+              },
+              "config": {
+                "tree_method": "hist"
+              }
+            },
+            "node2vec_regressor": {
+              "status": "ok",
+              "metrics": {
+                "mae": 0.2355321990166906,
+                "rmse": 0.31838390626526725,
+                "r2": 0.006884365859973984
+              },
+              "timing": {
+                "train_seconds": 0.01951070799259469,
+                "predict_seconds": 0.00075645896140486,
+                "predict_rows_per_second": 34370.668240500476
+              },
+              "config": {
+                "graph_dim": 4,
+                "graph_epochs": 2
+              }
+            },
+            "graphsage_regressor": {
+              "status": "ok",
+              "metrics": {
+                "mae": 0.23144484297598764,
+                "rmse": 0.3148530155231039,
+                "r2": 0.028789610788717113
+              },
+              "timing": {
+                "train_seconds": 0.012339542037807405,
+                "predict_seconds": 0.0007004999788478017,
+                "predict_rows_per_second": 37116.346588283115
+              },
+              "config": {
+                "graph_dim": 4,
+                "graph_epochs": 2
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "lightgbm_comparison": [
+    {
+      "workload": "diabetes",
+      "split": "random",
+      "best_cartoboost_model": "cartoboost",
+      "best_cartoboost_rmse": 52.977078972753915,
+      "lightgbm_rmse": 53.01442265173208,
+      "rmse_delta_vs_lightgbm": -0.037343678978167816,
+      "best_cartoboost_r2": 0.5594248049263566,
+      "lightgbm_r2": 0.5588034608377631,
+      "r2_delta_vs_lightgbm": 0.0006213440885934896,
+      "winner": "cartoboost"
+    },
+    {
+      "workload": "karate",
+      "split": "random",
+      "best_cartoboost_model": "graphsage_regressor",
+      "best_cartoboost_rmse": 0.25466745119747997,
+      "lightgbm_rmse": 0.25569289825502106,
+      "rmse_delta_vs_lightgbm": -0.0010254470575410957,
+      "best_cartoboost_r2": -0.10686738260344897,
+      "lightgbm_r2": -0.11579918025476377,
+      "r2_delta_vs_lightgbm": 0.008931797651314799,
+      "winner": "cartoboost"
+    },
+    {
+      "workload": "karate",
+      "split": "group_holdout",
+      "best_cartoboost_model": "cartoboost",
+      "best_cartoboost_rmse": 0.3018934511936095,
+      "lightgbm_rmse": 0.3148530154841632,
+      "rmse_delta_vs_lightgbm": -0.012959564290553727,
+      "best_cartoboost_r2": 0.10709554535441046,
+      "lightgbm_r2": 0.0287896110289535,
+      "r2_delta_vs_lightgbm": 0.07830593432545696,
+      "winner": "cartoboost"
+    }
+  ]
+}

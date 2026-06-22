@@ -24,6 +24,7 @@ type WasmModule = {
   runForecast: (request: unknown) => ForecastResponse;
   runRegressionModel: (request: unknown) => RegressionResponse;
   runNeuralModel: (request: unknown) => RegressionResponse;
+  runSequence?: (request: unknown) => unknown;
   availableForecastModels?: () => WasmModelMetadata[];
 };
 
@@ -1774,7 +1775,7 @@ function buildSuggestedConfig({
     browserWasm: {
       page: '/forecast-lab',
       crate: 'cartoboost-wasm',
-      entrypoints: ['runForecast', 'runRegressionModel', 'runNeuralModel', 'availableForecastModels'],
+      entrypoints: ['runForecast', 'runRegressionModel', 'runNeuralModel', 'runSequence', 'availableForecastModels'],
     },
     geography: {
       enabled: true,

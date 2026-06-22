@@ -14,6 +14,49 @@ interpolation problem.
 import cartoboost as cb
 ```
 
+## Sequence Reference Utilities
+
+Use `cartoboost.forecasting.sequence` when a row sequence has a known target
+prefix, a target-missing prediction suffix, and an external reference axis such
+as a canonical pickup-demand profile. The utilities validate the prefix/suffix
+boundary, reject target leakage in prediction rows, and keep the implementation
+in Rust for Python and browser callers.
+
+```python
+from cartoboost.forecasting.sequence import (
+    ReferenceSignal,
+    SequenceRow,
+    SequenceSeries,
+    forward_ekf,
+    reference_path_viterbi,
+)
+
+series = SequenceSeries(
+    "PULocationID_142",
+    [
+        SequenceRow("hour_00", 0.0, 0.0),
+        SequenceRow("hour_01", 1.0, 1.0),
+        SequenceRow("hour_02", 2.0, None),
+    ],
+)
+reference = ReferenceSignal(axis=[0.0, 1.0, 2.0], signal=[0.0, 1.0, 2.0])
+
+filtered = forward_ekf(series, reference)
+path = reference_path_viterbi(series, reference)
+```
+
+Available Rust-backed entry points:
+
+| Entry point | Purpose |
+| --- | --- |
+| `validate_sequence_frame` | Validates finite ordered positions, nonempty known prefixes, nonempty prediction suffixes, monotonic deduplicated reference axes, and no target leakage into prediction rows. |
+| `forward_ekf`, `ukf_reference`, `rts_smoother` | State-space continuation over a reference signal with configurable process and observation noise plus optional auxiliary rate observations. |
+| `missing_target_continuation` | Returns only prediction-suffix continuation rows after fitting from the known prefix. |
+| `reference_path_viterbi` | Discrete robust-emission Viterbi path over a reference axis. |
+| `reference_path_posterior_mean` | Forward-backward posterior mean path bounded by the reference axis. |
+| `sequence_blend` | Fixed, validation-derived, or constrained nonnegative candidate blending over aligned sequence row IDs. |
+| `generate_group_oof_candidate_rows`, `validate_oof_meta_training`, `per_group_error_summary` | Leakage-safe group-level OOF candidate row generation, meta-training checks, and per-group RMSE/MAE summaries. |
+
 ## Local-Level Kalman
 
 Use local-level Kalman filtering when the signal is a noisy measurement of a

@@ -3533,6 +3533,18 @@
       "ranking": [
         "cartoboost_lag",
         "cartoboost_auto_forecast"
+      ],
+      "primary_ranking": [
+        "cartoboost_lag",
+        "cartoboost_auto_forecast"
+      ],
+      "rps_ranking": [
+        "cartoboost_lag",
+        "cartoboost_auto_forecast"
+      ],
+      "investment_ranking": [
+        "cartoboost_lag",
+        "cartoboost_auto_forecast"
       ]
     },
     "objective": "M6-style rank-probability scoring plus deterministic decisions",

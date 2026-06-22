@@ -8,9 +8,11 @@ use cartoboost_core::forecasting::{
     IntermittentDemandConfig, IntermittentDemandForecaster, KalmanForecaster, KrigingForecaster,
     LagFeatureConfig, LagPlusConfig, LagPlusForecaster, LocalLevelKalmanForecaster,
     LocalStandardScaledForecaster, Log1pForecaster, MSTLCartoBoostForecaster, NaiveForecaster,
-    OptimizedThetaForecaster, RectifiedRecursiveForecaster, STLCartoBoostForecaster,
-    SeasonalNaiveForecaster, SeasonalWindowAverageForecaster, ThetaForecaster, ThetaSeasonality,
-    WindowAverageForecaster,
+    OptimizedThetaForecaster, RectifiedRecursiveForecaster, ReferencePathConfig, ReferenceSignal,
+    STLCartoBoostForecaster, SeasonalNaiveForecaster, SeasonalWindowAverageForecaster,
+    SequenceCandidate, SequenceCandidateEnsemble, SequenceCandidatePrediction, SequenceFrame,
+    SequenceGroupPrediction, SequenceOofCandidateRow, SequenceOofFold, SequenceSeries,
+    SequenceStateSpaceConfig, ThetaForecaster, ThetaSeasonality, WindowAverageForecaster,
 };
 use cartoboost_core::loss::{HuberLossConfig, LogL2LossConfig, LossConfig, QuantileLossConfig};
 use cartoboost_core::tree::{Node, Split, SplitterKind};
@@ -184,6 +186,23 @@ struct BrowserNeuralRequest {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct BrowserSequenceRequest {
+    operation: String,
+    series: Option<SequenceSeries>,
+    frame: Option<SequenceFrame>,
+    reference: Option<ReferenceSignal>,
+    state_space_config: Option<SequenceStateSpaceConfig>,
+    reference_path_config: Option<ReferencePathConfig>,
+    candidates: Option<Vec<SequenceCandidate>>,
+    weights: Option<BTreeMap<String, f64>>,
+    actuals: Option<Vec<SequenceCandidatePrediction>>,
+    oof_fold: Option<SequenceOofFold>,
+    oof_rows: Option<Vec<SequenceOofCandidateRow>>,
+    group_predictions: Option<Vec<SequenceGroupPrediction>>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct BrowserNeuralRow {
     id: Option<u64>,
     source: Option<usize>,
@@ -343,6 +362,18 @@ pub fn run_neural_model(request: JsValue) -> std::result::Result<JsValue, JsValu
         .map_err(|error| JsValue::from_str(&format!("could not encode neural response: {error}")))
 }
 
+#[wasm_bindgen(js_name = runSequence)]
+pub fn run_sequence(request: JsValue) -> std::result::Result<JsValue, JsValue> {
+    let request: BrowserSequenceRequest = serde_wasm_bindgen::from_value(request)
+        .map_err(|error| JsValue::from_str(&format!("invalid sequence request: {error}")))?;
+    let response =
+        run_sequence_request(request).map_err(|error| JsValue::from_str(&error.to_string()))?;
+    let serializer = serde_wasm_bindgen::Serializer::json_compatible();
+    response
+        .serialize(&serializer)
+        .map_err(|error| JsValue::from_str(&format!("could not encode sequence response: {error}")))
+}
+
 #[wasm_bindgen(js_name = availableForecastModels)]
 pub fn available_forecast_models() -> std::result::Result<JsValue, JsValue> {
     let serializer = serde_wasm_bindgen::Serializer::json_compatible();
@@ -494,6 +525,160 @@ fn forecast_model_registry() -> Vec<BrowserForecastModel> {
             pipeline: "local",
         },
     ]
+}
+
+fn run_sequence_request(request: BrowserSequenceRequest) -> Result<Value> {
+    match request.operation.trim().to_ascii_lowercase().as_str() {
+        "validate" | "validate_frame" => {
+            let frame = request.frame.ok_or_else(|| {
+                CartoBoostError::InvalidInput("sequence validate requires frame".to_string())
+            })?;
+            frame.validate()?;
+            Ok(json!({ "ok": true }))
+        }
+        "ekf" | "forward_ekf" => {
+            let series = sequence_series_arg(&request)?;
+            let reference = sequence_reference_arg(&request)?;
+            let config = request.state_space_config.unwrap_or_default();
+            serde_json::to_value(cartoboost_core::forecasting::forward_ekf(
+                &series, &reference, config,
+            )?)
+            .map_err(|err| CartoBoostError::InvalidInput(err.to_string()))
+        }
+        "ukf" | "ukf_reference" => {
+            let series = sequence_series_arg(&request)?;
+            let reference = sequence_reference_arg(&request)?;
+            let config = request.state_space_config.unwrap_or_default();
+            serde_json::to_value(cartoboost_core::forecasting::ukf_reference(
+                &series, &reference, config,
+            )?)
+            .map_err(|err| CartoBoostError::InvalidInput(err.to_string()))
+        }
+        "rts" | "rts_smoother" => {
+            let series = sequence_series_arg(&request)?;
+            let reference = sequence_reference_arg(&request)?;
+            let config = request.state_space_config.unwrap_or_default();
+            serde_json::to_value(cartoboost_core::forecasting::rts_smoother(
+                &series, &reference, config,
+            )?)
+            .map_err(|err| CartoBoostError::InvalidInput(err.to_string()))
+        }
+        "continuation" | "missing_target_continuation" => {
+            let series = sequence_series_arg(&request)?;
+            let reference = sequence_reference_arg(&request)?;
+            let config = request.state_space_config.unwrap_or_default();
+            serde_json::to_value(cartoboost_core::forecasting::missing_target_continuation(
+                &series, &reference, config,
+            )?)
+            .map_err(|err| CartoBoostError::InvalidInput(err.to_string()))
+        }
+        "viterbi" | "reference_path_viterbi" => {
+            let series = sequence_series_arg(&request)?;
+            let reference = sequence_reference_arg(&request)?;
+            let config = request.reference_path_config.unwrap_or_default();
+            serde_json::to_value(cartoboost_core::forecasting::reference_path_viterbi(
+                &series, &reference, config,
+            )?)
+            .map_err(|err| CartoBoostError::InvalidInput(err.to_string()))
+        }
+        "posterior_mean" | "reference_path_posterior_mean" => {
+            let series = sequence_series_arg(&request)?;
+            let reference = sequence_reference_arg(&request)?;
+            let config = request.reference_path_config.unwrap_or_default();
+            serde_json::to_value(cartoboost_core::forecasting::reference_path_posterior_mean(
+                &series, &reference, config,
+            )?)
+            .map_err(|err| CartoBoostError::InvalidInput(err.to_string()))
+        }
+        "blend_fixed" => {
+            let candidates = request.candidates.ok_or_else(|| {
+                CartoBoostError::InvalidInput("sequence blend requires candidates".to_string())
+            })?;
+            let weights = request.weights.ok_or_else(|| {
+                CartoBoostError::InvalidInput("fixed sequence blend requires weights".to_string())
+            })?;
+            let ensemble = SequenceCandidateEnsemble::fixed(weights)?;
+            Ok(json!({
+                "weights": ensemble.weights,
+                "predictions": ensemble.predict(&candidates)?,
+            }))
+        }
+        "blend_validation" => {
+            let candidates = request.candidates.ok_or_else(|| {
+                CartoBoostError::InvalidInput("sequence blend requires candidates".to_string())
+            })?;
+            let actuals = request.actuals.ok_or_else(|| {
+                CartoBoostError::InvalidInput(
+                    "validation sequence blend requires actuals".to_string(),
+                )
+            })?;
+            let ensemble = SequenceCandidateEnsemble::validation_derived(&candidates, &actuals)?;
+            Ok(json!({
+                "weights": ensemble.weights,
+                "predictions": ensemble.predict(&candidates)?,
+            }))
+        }
+        "blend_constrained" => {
+            let candidates = request.candidates.ok_or_else(|| {
+                CartoBoostError::InvalidInput("sequence blend requires candidates".to_string())
+            })?;
+            let actuals = request.actuals.ok_or_else(|| {
+                CartoBoostError::InvalidInput(
+                    "constrained sequence blend requires actuals".to_string(),
+                )
+            })?;
+            let ensemble = SequenceCandidateEnsemble::constrained_nonnegative_linear_blend(
+                &candidates,
+                &actuals,
+            )?;
+            Ok(json!({
+                "weights": ensemble.weights,
+                "predictions": ensemble.predict(&candidates)?,
+            }))
+        }
+        "validate_oof" | "validate_oof_meta_training" => {
+            let rows = request.oof_rows.ok_or_else(|| {
+                CartoBoostError::InvalidInput("OOF validation requires oofRows".to_string())
+            })?;
+            cartoboost_core::forecasting::validate_oof_meta_training(&rows)?;
+            Ok(json!({ "ok": true }))
+        }
+        "generate_oof" | "generate_group_oof_candidate_rows" => {
+            let fold = request.oof_fold.ok_or_else(|| {
+                CartoBoostError::InvalidInput("OOF generation requires oofFold".to_string())
+            })?;
+            serde_json::to_value(
+                cartoboost_core::forecasting::generate_group_oof_candidate_rows(&fold)?,
+            )
+            .map_err(|err| CartoBoostError::InvalidInput(err.to_string()))
+        }
+        "group_metrics" | "per_group_error_summary" => {
+            let rows = request.group_predictions.ok_or_else(|| {
+                CartoBoostError::InvalidInput(
+                    "group metric summary requires groupPredictions".to_string(),
+                )
+            })?;
+            serde_json::to_value(cartoboost_core::forecasting::per_group_error_summary(
+                &rows,
+            )?)
+            .map_err(|err| CartoBoostError::InvalidInput(err.to_string()))
+        }
+        other => Err(CartoBoostError::InvalidInput(format!(
+            "unknown sequence operation {other:?}"
+        ))),
+    }
+}
+
+fn sequence_series_arg(request: &BrowserSequenceRequest) -> Result<SequenceSeries> {
+    request.series.clone().ok_or_else(|| {
+        CartoBoostError::InvalidInput("sequence operation requires series".to_string())
+    })
+}
+
+fn sequence_reference_arg(request: &BrowserSequenceRequest) -> Result<ReferenceSignal> {
+    request.reference.clone().ok_or_else(|| {
+        CartoBoostError::InvalidInput("sequence operation requires reference".to_string())
+    })
 }
 
 fn run_forecast_request(request: BrowserForecastRequest) -> Result<BrowserForecastResponse> {
@@ -2032,6 +2217,75 @@ mod tests {
     }
 
     #[test]
+    fn browser_sequence_viterbi_runs_through_wasm_dispatch() {
+        let response = run_sequence_request(BrowserSequenceRequest {
+            operation: "reference_path_viterbi".to_string(),
+            frame: None,
+            series: Some(sample_sequence_series()),
+            reference: Some(ReferenceSignal {
+                axis: vec![0.0, 1.0, 2.0, 3.0],
+                signal: vec![0.0, 1.0, 2.0, 3.0],
+            }),
+            state_space_config: None,
+            reference_path_config: Some(ReferencePathConfig::default()),
+            candidates: None,
+            weights: None,
+            actuals: None,
+            oof_fold: None,
+            oof_rows: None,
+            group_predictions: None,
+        })
+        .expect("sequence request");
+        let points = response
+            .get("points")
+            .and_then(Value::as_array)
+            .expect("path points");
+        assert_eq!(points.len(), 4);
+        assert_eq!(points[1]["axis"].as_f64(), Some(1.0));
+    }
+
+    #[test]
+    fn browser_sequence_oof_generation_runs_through_wasm_dispatch() {
+        let response = run_sequence_request(BrowserSequenceRequest {
+            operation: "generate_group_oof_candidate_rows".to_string(),
+            frame: None,
+            series: None,
+            reference: None,
+            state_space_config: None,
+            reference_path_config: None,
+            candidates: None,
+            weights: None,
+            actuals: None,
+            oof_fold: Some(SequenceOofFold {
+                validation_group_id: "pickup_zone_1".to_string(),
+                train_group_ids: vec!["pickup_zone_2".to_string()],
+                actuals: vec![SequenceCandidatePrediction {
+                    series_id: "pickup_zone_1".to_string(),
+                    row_id: "hour_01".to_string(),
+                    value: 10.0,
+                }],
+                candidates: vec![SequenceCandidate {
+                    name: "candidate_a".to_string(),
+                    predictions: vec![SequenceCandidatePrediction {
+                        series_id: "pickup_zone_1".to_string(),
+                        row_id: "hour_01".to_string(),
+                        value: 11.0,
+                    }],
+                }],
+            }),
+            oof_rows: None,
+            group_predictions: None,
+        })
+        .expect("sequence OOF request");
+        let rows = response.as_array().expect("OOF rows");
+        assert_eq!(rows.len(), 1);
+        assert_eq!(
+            rows[0]["candidate_predictions"]["candidate_a"].as_f64(),
+            Some(11.0)
+        );
+    }
+
+    #[test]
     fn every_registered_browser_forecast_model_runs_on_representative_panel() {
         for model in forecast_model_registry() {
             let request = BrowserForecastRequest {
@@ -2413,6 +2667,33 @@ mod tests {
                 }
             })
             .collect()
+    }
+
+    fn sample_sequence_series() -> SequenceSeries {
+        SequenceSeries {
+            series_id: "pickup_zone_1".to_string(),
+            rows: vec![
+                sequence_row("r0", 0.0, Some(0.0)),
+                sequence_row("r1", 1.0, Some(1.0)),
+                sequence_row("r2", 2.0, None),
+                sequence_row("r3", 3.0, None),
+            ],
+        }
+    }
+
+    fn sequence_row(
+        row_id: &str,
+        position: f64,
+        target: Option<f64>,
+    ) -> cartoboost_core::forecasting::SequenceRow {
+        cartoboost_core::forecasting::SequenceRow {
+            row_id: row_id.to_string(),
+            position,
+            target,
+            reference_axis: None,
+            reference_signal: None,
+            auxiliary_rate: None,
+        }
     }
 
     fn sample_node_features() -> Vec<Vec<f32>> {
