@@ -3,10 +3,12 @@ use cartoboost_core::forecasting::{
     ArimaForecaster, AutoARIMAForecaster, CalendarFeature, CartoBoostLagForecaster, ETSForecaster,
     ForecastFrame, ForecastFrequency, ForecastRow, Forecaster, GlobalForecastTargetMode,
     KalmanForecaster, KrigingForecaster, LagFeatureConfig, NaiveForecaster,
-    OptimizedThetaForecaster, SeasonalNaiveForecaster, SeasonalWindowAverageForecaster,
+    OptimizedThetaForecaster, PiecewiseLinearComponentMode, PiecewiseLinearEvent,
+    PiecewiseLinearFitLoss, PiecewiseLinearSeasonalConfig, PiecewiseLinearSeasonalForecaster,
+    PiecewiseLinearSeasonality, SeasonalNaiveForecaster, SeasonalWindowAverageForecaster,
     ThetaForecaster, WeightedEnsembleForecaster, WindowAverageForecaster,
 };
-use chrono::{NaiveDate, NaiveDateTime};
+use chrono::{Duration, NaiveDate, NaiveDateTime};
 use std::collections::BTreeMap;
 
 fn ts(day: u32) -> NaiveDateTime {
@@ -41,6 +43,13 @@ fn assert_close(actual: f64, expected: f64) {
     assert!(
         (actual - expected).abs() < 1.0e-6,
         "expected {actual} to be within 1e-6 of {expected}"
+    );
+}
+
+fn assert_roughly(actual: f64, expected: f64, tolerance: f64) {
+    assert!(
+        (actual - expected).abs() <= tolerance,
+        "expected {actual} to be within {tolerance} of {expected}"
     );
 }
 
@@ -134,6 +143,220 @@ fn ets_and_arima_reproduce_linear_series_known_answers() {
     assert_eq!(auto_arima.selected_order(), Some((0, 1, 0)));
     assert_eq!(means(&auto_arima, 2), vec![18.0, 20.0]);
     assert_eq!(auto_arima.metadata()["selected_order"]["d"], 1);
+}
+
+#[test]
+fn piecewise_linear_seasonal_public_api_covers_trend_components_and_artifacts() {
+    let start = ts(1);
+    let frame = ForecastFrame::new(
+        (0..42)
+            .map(|day| {
+                let airport_queue = if day % 6 == 0 { 1.0 } else { 0.0 };
+                let rush_hour = if day % 2 == 0 { 1.0 } else { 0.0 };
+                ForecastRow::with_covariates(
+                    "PULocationID=132->DOLocationID=236",
+                    start + Duration::days(day),
+                    35.0 + 1.25 * day as f64 + 18.0 * airport_queue + 4.0 * rush_hour,
+                    BTreeMap::from([
+                        ("airport_queue".to_string(), airport_queue),
+                        ("rush_hour".to_string(), rush_hour),
+                    ]),
+                )
+            })
+            .collect(),
+        ForecastFrequency::Daily,
+    )
+    .expect("valid frame");
+    let mut model = PiecewiseLinearSeasonalForecaster::new(PiecewiseLinearSeasonalConfig {
+        changepoints: 1,
+        changepoint_timestamps: vec![start + Duration::days(21)],
+        weekly_fourier_order: 0,
+        auto_weekly_seasonality: false,
+        custom_seasonalities: vec![PiecewiseLinearSeasonality {
+            name: "rush_hour_weekly".to_string(),
+            period_days: 7.0,
+            fourier_order: 2,
+            mode: Some(PiecewiseLinearComponentMode::Additive),
+            condition_name: Some("rush_hour".to_string()),
+            l2_regularization: Some(0.001),
+        }],
+        events: vec![PiecewiseLinearEvent {
+            name: "airport_surge".to_string(),
+            timestamp: start + Duration::days(44),
+            lower_window: 0,
+            upper_window: 0,
+        }],
+        extra_regressors: vec!["airport_queue".to_string()],
+        regressor_l2_regularization: 0.001,
+        future_regressors: BTreeMap::from([
+            ("airport_queue".to_string(), vec![1.0, 0.0, 0.0]),
+            ("rush_hour".to_string(), vec![1.0, 0.0, 1.0]),
+        ]),
+        interval_levels: vec![0.8],
+        quantile_levels: vec![0.25, 0.75],
+        uncertainty_samples: 8,
+        uncertainty_seed: 31,
+        fit_loss: PiecewiseLinearFitLoss::Huber,
+        huber_delta: 1.2,
+        irls_iterations: 3,
+        ..PiecewiseLinearSeasonalConfig::default()
+    })
+    .expect("valid piecewise seasonal config");
+
+    model.fit(&frame).expect("fit piecewise seasonal");
+    let forecast = model.predict(3).expect("predict");
+    let components = model
+        .predict_components_json_value(3)
+        .expect("component forecast");
+    let quantiles = model
+        .predict_quantiles_json_value(3, None)
+        .expect("quantiles");
+    let samples = model.predict_samples_json_value(3).expect("samples");
+    let restored = PiecewiseLinearSeasonalForecaster::from_json_string(
+        &model.to_json_string().expect("serialize artifact"),
+    )
+    .expect("restore artifact");
+    let restored_forecast = restored.predict(3).expect("restored predict");
+
+    assert_eq!(forecast.predictions().len(), 3);
+    assert_eq!(forecast.intervals().len(), 3);
+    assert_eq!(forecast.predictions()[0].model, "piecewise_linear_seasonal");
+    assert_eq!(
+        forecast.predictions()[0].series_id,
+        "PULocationID=132->DOLocationID=236"
+    );
+    assert!(forecast.predictions()[0].mean > forecast.predictions()[1].mean);
+    assert_roughly(forecast.predictions()[2].mean, 92.0, 8.0);
+    assert_close(
+        components["records"][0]["prediction"]
+            .as_f64()
+            .expect("component prediction"),
+        forecast.predictions()[0].mean,
+    );
+    assert!(
+        components["records"][0]["components"]["regressors"]["airport_queue"]
+            .as_f64()
+            .expect("airport queue contribution")
+            > 10.0
+    );
+    assert_eq!(quantiles["records"].as_array().expect("quantiles").len(), 6);
+    assert_eq!(samples["sample_count"].as_u64(), Some(8));
+    assert_eq!(samples["records"].as_array().expect("samples").len(), 24);
+    assert_eq!(
+        model.metadata()["custom_seasonalities"][0]["condition_name"].as_str(),
+        Some("rush_hour")
+    );
+    assert_eq!(model.metadata()["fit_loss"].as_str(), Some("huber"));
+    assert_eq!(
+        model.metadata()["changepoint_timestamps"][0].as_str(),
+        Some("2026-01-22T00:00:00")
+    );
+    assert_eq!(
+        restored_forecast.predictions().len(),
+        forecast.predictions().len()
+    );
+    assert_eq!(
+        restored_forecast.intervals().len(),
+        forecast.intervals().len()
+    );
+    for (restored_prediction, prediction) in restored_forecast
+        .predictions()
+        .iter()
+        .zip(forecast.predictions().iter())
+    {
+        assert_eq!(restored_prediction.series_id, prediction.series_id);
+        assert_eq!(restored_prediction.timestamp, prediction.timestamp);
+        assert_eq!(restored_prediction.horizon, prediction.horizon);
+        assert_eq!(restored_prediction.model, prediction.model);
+        assert_close(restored_prediction.mean, prediction.mean);
+    }
+    for (restored_interval, interval) in restored_forecast
+        .intervals()
+        .iter()
+        .zip(forecast.intervals().iter())
+    {
+        assert_eq!(restored_interval.series_id, interval.series_id);
+        assert_eq!(restored_interval.timestamp, interval.timestamp);
+        assert_eq!(restored_interval.horizon, interval.horizon);
+        assert_eq!(restored_interval.model, interval.model);
+        assert_close(restored_interval.level, interval.level);
+        assert_close(restored_interval.lower, interval.lower);
+        assert_close(restored_interval.upper, interval.upper);
+    }
+}
+
+#[test]
+fn piecewise_linear_seasonal_public_api_rejects_invalid_or_missing_future_state() {
+    let invalid_event_config = PiecewiseLinearSeasonalConfig {
+        events: vec![PiecewiseLinearEvent {
+            name: "airport_surge".to_string(),
+            timestamp: ts(5),
+            lower_window: 1,
+            upper_window: -1,
+        }],
+        ..PiecewiseLinearSeasonalConfig::default()
+    };
+    assert!(PiecewiseLinearSeasonalForecaster::new(invalid_event_config)
+        .expect_err("invalid event window")
+        .to_string()
+        .contains("lower_window must be <= upper_window"));
+
+    let rows = (1..=14)
+        .map(|day| {
+            let airport_queue = if day % 2 == 0 { 1.0 } else { 0.0 };
+            ForecastRow::with_covariates(
+                "__single__",
+                ts(day),
+                20.0 + day as f64 + 5.0 * airport_queue,
+                BTreeMap::from([("airport_queue".to_string(), airport_queue)]),
+            )
+        })
+        .collect();
+    let frame = ForecastFrame::new(rows, ForecastFrequency::Daily).expect("valid frame");
+    let base_config = PiecewiseLinearSeasonalConfig {
+        changepoints: 0,
+        weekly_fourier_order: 0,
+        auto_weekly_seasonality: false,
+        extra_regressors: vec!["airport_queue".to_string()],
+        ..PiecewiseLinearSeasonalConfig::default()
+    };
+    let mut missing_future =
+        PiecewiseLinearSeasonalForecaster::new(base_config.clone()).expect("valid missing config");
+    let mut short_future = PiecewiseLinearSeasonalForecaster::new(PiecewiseLinearSeasonalConfig {
+        future_regressors: BTreeMap::from([("airport_queue".to_string(), vec![1.0])]),
+        ..base_config
+    })
+    .expect("valid short config");
+
+    missing_future.fit(&frame).expect("fit missing future");
+    short_future.fit(&frame).expect("fit short future");
+
+    assert!(missing_future
+        .predict(1)
+        .expect_err("future regressor is required")
+        .to_string()
+        .contains("future"));
+    assert!(short_future
+        .predict(2)
+        .expect_err("future regressor horizon is required")
+        .to_string()
+        .contains("fewer than 2 values"));
+
+    let mut updated = missing_future.clone();
+    assert!(updated
+        .update_config(|config| {
+            config.future_regressors =
+                BTreeMap::from([("airport_queue".to_string(), vec![1.0, 0.0])]);
+        })
+        .is_ok());
+    assert_eq!(
+        updated
+            .predict(2)
+            .expect("predict with future")
+            .predictions()
+            .len(),
+        2
+    );
 }
 
 #[test]
