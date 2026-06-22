@@ -107,6 +107,14 @@ Forecasters:
 | `WeightedEnsembleForecaster` | Combines aligned component forecasts with fixed weights. |
 | `BacktestWeightedEnsembleForecaster` | Reserved; raises clearly until Rust backtest-weight learning is implemented. |
 
+`PiecewiseLinearSeasonalForecaster` accepts `growth`, `component_mode`,
+changepoint controls, yearly/weekly/daily Fourier orders, custom conditional
+seasonalities, event windows, additive or multiplicative regressor modes,
+dynamic cap/floor regressors, prediction interval levels, quantile levels,
+trend/coefficient uncertainty controls, and robust Huber fitting. Fitted models
+serialize with `to_json()` / `from_json()` and prediction results preserve
+interval columns through native JSON round-trips.
+
 Evaluation and persistence:
 
 | Entry point | Notes |

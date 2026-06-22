@@ -44,6 +44,12 @@ taxi-shaped daily demand problem families, 4 pickup/dropoff lanes per problem,
 120 daily observations, two rolling-origin folds, and a 7-day horizon. Candidate
 selection and hyperparameter search are disabled.
 
+This benchmark is the maintained evidence for the Stan-free piecewise path:
+the CartoBoost row uses the Rust-native trend, changepoint, Fourier
+seasonality, event, and regressor implementation surfaced as
+`piecewise_linear_seasonal` in Python and WASM. The Prophet row is an external
+baseline in the benchmark harness, not a reusable CartoBoost model alias.
+
 | Rank | Model | Mean RMSE Ratio | Wins/Ties | Mean Fit+Predict |
 | ---: | --- | ---: | ---: | ---: |
 | 1 | `cartoboost_piecewise_linear_seasonal` | 1.000000 | 4 | 0.001300s |
@@ -66,6 +72,24 @@ without Stan while preserving the same benchmark split protocol. The mean
 fit-and-predict path is 56.28x faster here. This is synthetic evidence for the
 piecewise linear seasonal implementation path, not a replacement for real taxi or M-series
 forecasting evidence.
+
+Rerun command:
+
+```bash
+PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run --no-sync --group dev --group bench python scripts/forecasting_library_benchmark.py \
+  --suite synthetic \
+  --source polars \
+  --days 120 \
+  --lanes 4 \
+  --horizon 7 \
+  --suite-folds 2 \
+  --model-roster prophet-comparison \
+  --no-candidate-selection \
+  --no-hyperopt \
+  --cartoboost-n-estimators 5 \
+  --cartoboost-auto-n-estimators 5 \
+  --output target/forecasting_piecewise_prophet_suite.json
+```
 
 ## M4 Sample
 

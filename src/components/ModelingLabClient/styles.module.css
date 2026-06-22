@@ -42,7 +42,7 @@
 .workspace {
   display: grid;
   gap: 1rem;
-  grid-template-columns: minmax(280px, 0.31fr) minmax(0, 1fr);
+  grid-template-columns: minmax(340px, 0.36fr) minmax(0, 1fr);
   padding: 0 clamp(1rem, 3vw, 2.4rem) clamp(2rem, 4vw, 3.5rem);
 }
 
@@ -117,7 +117,7 @@
 .controlsGrid {
   display: grid;
   gap: 0.5rem;
-  grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(7.4rem, 1fr));
   margin: 0;
 }
 
@@ -131,9 +131,8 @@
   background: #f4f7fb;
   border: 1px solid #d8e0ea;
   border-radius: 8px;
-  display: flex;
+  display: grid;
   gap: 0.6rem;
-  justify-content: space-between;
   margin-bottom: 0.6rem;
   min-width: 0;
   padding: 0.55rem 0.65rem;
@@ -161,10 +160,34 @@
   margin-top: 0.65rem;
 }
 
+.modelFamilySelect {
+  display: grid;
+  gap: 0.35rem;
+  margin-bottom: 0.55rem;
+}
+
+.modelFamilySelect span {
+  color: #526274;
+  font-size: 0.72rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.modelFamilySelect select {
+  background: #ffffff;
+  border: 1px solid #cfd8e3;
+  border-radius: 8px;
+  color: #122033;
+  font: inherit;
+  min-height: 2.25rem;
+  padding: 0.35rem 0.55rem;
+  width: 100%;
+}
+
 .modelPickerGrid {
   display: grid;
   gap: 0.55rem;
-  max-height: 12.5rem;
+  max-height: 8.5rem;
   overflow: auto;
   padding-right: 0.1rem;
 }
@@ -1343,6 +1366,7 @@
 
 :global([data-theme='dark']) .field select,
 :global([data-theme='dark']) .field input,
+:global([data-theme='dark']) .modelFamilySelect select,
 :global([data-theme='dark']) .secondaryButton,
 :global([data-theme='dark']) .secondaryActionButton,
 :global([data-theme='dark']) .inlineActionButton,
@@ -1428,6 +1452,7 @@
 :global([data-theme='dark']) .neuralSummary span,
 :global([data-theme='dark']) .modelPickerHeader span,
 :global([data-theme='dark']) .modelGroup > span,
+:global([data-theme='dark']) .modelFamilySelect span,
 :global([data-theme='dark']) .modelGroup button em {
   color: #9db0c9;
 }

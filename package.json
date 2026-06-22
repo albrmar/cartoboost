@@ -11,6 +11,7 @@
     "serve": "docusaurus serve",
     "clear": "docusaurus clear",
     "typecheck": "tsc --noEmit",
+    "test:ui": "node --import tsx --test tests/js/*.test.ts",
     "check": "npm run typecheck && npm run build"
   },
   "dependencies": {
@@ -38,6 +39,7 @@
   "devDependencies": {
     "@docusaurus/module-type-aliases": "3.10.1",
     "@docusaurus/tsconfig": "3.10.1",
+    "tsx": "^4.22.4",
     "typescript": "~5.8.3",
     "wasm-pack": "^0.13.1"
   },

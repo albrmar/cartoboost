@@ -3,6 +3,7 @@ import useBaseUrl from '@docusaurus/useBaseUrl';
 import {contourDensity, geoGraticule, geoMercator, geoPath, interpolateTurbo, scaleSequential} from 'd3';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
+import {coerceFiniteNumber, formatFixed, formatPercent} from './numberFormat';
 import styles from './styles.module.css';
 
 type ParsedTable = {
@@ -703,20 +704,6 @@ export default function ModelingLabClient(): React.ReactElement {
               </div>
             </ControlSection>
 
-            <ControlSection title="Forecast">
-              <div className={styles.controlsGrid}>
-                <Select label="Frequency" value={frequency} onChange={setFrequency} options={['hourly', 'daily', 'weekly']} />
-                <NumberInput label="Horizon" value={horizon} min={1} max={365} onChange={setHorizon} />
-                <SeasonalityControl frequency={frequency} value={seasonLength} onChange={setSeasonLength} />
-              </div>
-              <ModelPicker
-                modelOptions={modelOptions}
-                selectedModel={selectedForecastModel}
-                value={model}
-                onChange={setModel}
-              />
-            </ControlSection>
-
             <ControlSection title="Neural and graph settings">
               <div className={styles.neuralSummary}>
                 <strong>{neuralPipelineLabels[neuralPipeline]}</strong>
@@ -745,6 +732,20 @@ export default function ModelingLabClient(): React.ReactElement {
                 <Select label="Graph Target" value={graphTargetCol} onChange={setGraphTargetCol} options={table?.columns ?? []} allowBlank blankLabel="No target column" />
                 <Select label="Graph Weight" value={graphWeightCol} onChange={setGraphWeightCol} options={table?.columns ?? []} allowBlank blankLabel="Unweighted graph" />
               </div>
+            </ControlSection>
+
+            <ControlSection title="Forecast">
+              <div className={styles.controlsGrid}>
+                <Select label="Frequency" value={frequency} onChange={setFrequency} options={['hourly', 'daily', 'weekly']} />
+                <NumberInput label="Horizon" value={horizon} min={1} max={365} onChange={setHorizon} />
+                <SeasonalityControl frequency={frequency} value={seasonLength} onChange={setSeasonLength} />
+              </div>
+              <ModelPicker
+                modelOptions={modelOptions}
+                selectedModel={selectedForecastModel}
+                value={model}
+                onChange={setModel}
+              />
             </ControlSection>
 
             <ControlSection title="Regression modeling">
@@ -1134,32 +1135,50 @@ function ModelPicker({
   onChange: (value: string) => void;
 }) {
   const groups = forecastModelGroups(modelOptions);
+  const activeGroup = groups.find((group) => group.options.some((option) => option.value === value)) ?? groups[0];
+  const [selectedGroupLabel, setSelectedGroupLabel] = useState(activeGroup?.label ?? '');
+  const visibleGroup = groups.find((group) => group.label === selectedGroupLabel) ?? activeGroup;
+  useEffect(() => {
+    if (activeGroup && !visibleGroup?.options.some((option) => option.value === value)) {
+      setSelectedGroupLabel(activeGroup.label);
+    }
+  }, [activeGroup, value, visibleGroup]);
   return (
     <div className={styles.modelPicker}>
       <div className={styles.modelPickerHeader}>
         <span>Forecast model</span>
         <strong>{selectedModel ? selectedModel.label : value}</strong>
       </div>
+      <label className={styles.modelFamilySelect}>
+        <span>Model family</span>
+        <select value={visibleGroup?.label ?? ''} onChange={(event) => setSelectedGroupLabel(event.target.value)}>
+          {groups.map((group) => (
+            <option value={group.label} key={group.label}>
+              {group.label}
+            </option>
+          ))}
+        </select>
+      </label>
       <div className={styles.modelPickerGrid}>
-        {groups.map((group) => (
-          <div className={styles.modelGroup} key={group.label}>
-            <span>{group.label}</span>
+        {visibleGroup && (
+          <div className={styles.modelGroup}>
+            <span>{visibleGroup.label}</span>
             <div>
-              {group.options.map((option) => (
-                <button
-                  className={option.value === value ? styles.modelOptionActive : undefined}
-                  type="button"
-                  onClick={() => onChange(option.value)}
-                  key={option.value}
-                  title={option.value}
-                >
-                  <strong>{option.label.replace(` (${option.value})`, '')}</strong>
-                  <em>{option.value}</em>
-                </button>
-              ))}
+              {visibleGroup.options.map((option) => (
+                  <button
+                    className={option.value === value ? styles.modelOptionActive : undefined}
+                    type="button"
+                    onClick={() => onChange(option.value)}
+                    key={option.value}
+                    title={option.value}
+                  >
+                    <strong>{option.label.replace(` (${option.value})`, '')}</strong>
+                    <em>{option.value}</em>
+                  </button>
+                ))}
             </div>
           </div>
-        ))}
+        )}
       </div>
     </div>
   );
@@ -2924,31 +2943,6 @@ function projectedCellPath(
   }
   const projected = corners as [number, number][];
   return `M${projected.map((corner) => `${corner[0]},${corner[1]}`).join('L')}Z`;
-}
-
-export function coerceFiniteNumber(value: unknown): number | null {
-  if (typeof value === 'number') {
-    return Number.isFinite(value) ? value : null;
-  }
-  if (typeof value === 'string') {
-    const trimmed = value.trim();
-    if (trimmed === '') {
-      return null;
-    }
-    const parsed = Number(trimmed);
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-  return null;
-}
-
-export function formatFixed(value: unknown, digits = 3) {
-  const numeric = coerceFiniteNumber(value);
-  return numeric === null ? '-' : numeric.toFixed(digits);
-}
-
-function formatPercent(value: unknown, digits = 1) {
-  const numeric = coerceFiniteNumber(value);
-  return numeric === null ? '-' : `${numeric >= 0 ? '+' : ''}${(numeric * 100).toFixed(digits)}%`;
 }
 
 function formatCompact(value: unknown) {
