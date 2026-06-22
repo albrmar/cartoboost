@@ -11,6 +11,18 @@
       "feature_count": 10,
       "datasheet": "benchmarks/reports/dataset_card_template.md",
       "notes": "Small frozen public tabular regression task used for runner plumbing and baseline policy validation; not a broad tabular benchmark by itself."
+    },
+    {
+      "id": "sklearn_california_housing_regression_seed42_5000_v1",
+      "source": "scikit-learn fetched California housing regression dataset",
+      "source_url": "https://scikit-learn.org/stable/modules/generated/sklearn.datasets.fetch_california_housing.html",
+      "source_identity": "sklearn.datasets.fetch_california_housing from scikit-learn 1.9.0, deterministic 5,000-row sample with benchmark seed 42",
+      "hash": "sha256:d0f75cd29b2fa35166c72d168c78cd2f206ab5b1c2d6a29e38437c55d3fa77ad",
+      "hash_material": "scripts/run_model_benchmark_suite.py workload_fingerprint over workload name, source string, sampled features, and sampled target values",
+      "row_count": 5000,
+      "feature_count": 8,
+      "datasheet": "benchmarks/reports/dataset_card_template.md",
+      "notes": "Bounded public tabular regression workload used in maintained model-suite evidence; raw source has 20,640 rows and the benchmark fixes the deterministic sample by seed."
     }
   ]
 }

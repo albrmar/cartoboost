@@ -2,6 +2,7 @@
   "metrics": [
     {"id": "rmse", "direction": "lower"},
     {"id": "mae", "direction": "lower"},
+    {"id": "wape", "direction": "lower"},
     {"id": "r2", "direction": "higher"},
     {"id": "log_loss", "direction": "lower"},
     {"id": "brier", "direction": "lower"},
@@ -9,4 +10,3 @@
     {"id": "subgroup_gap", "direction": "lower"}
   ]
 }
-

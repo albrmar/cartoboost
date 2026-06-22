@@ -50,6 +50,12 @@ onnx = [
 optuna = [
     "optuna>=4.0",
 ]
+visualization = [
+    "geopandas>=1.0",
+    "matplotlib>=3.7",
+    "pydeck>=0.9",
+    "shapely>=2.0",
+]
 polars = [
     "polars>=1.0",
 ]

@@ -50,6 +50,54 @@ impl HuberLoss {
     }
 }
 
+pub fn huber_irls_weights(residuals: &[f64], delta: f64) -> Vec<f64> {
+    let scale = residual_mad_scale(residuals)
+        .or_else(|| residual_rmse_scale(residuals))
+        .unwrap_or(1.0)
+        .max(1.0e-12);
+    let cutoff = delta * scale;
+    residuals
+        .iter()
+        .map(|residual| {
+            let magnitude = residual.abs();
+            if !magnitude.is_finite() || magnitude <= cutoff {
+                1.0
+            } else {
+                (cutoff / magnitude).clamp(0.0, 1.0)
+            }
+        })
+        .collect()
+}
+
+fn residual_mad_scale(residuals: &[f64]) -> Option<f64> {
+    let mut absolute = residuals
+        .iter()
+        .map(|value| value.abs())
+        .filter(|value| value.is_finite())
+        .collect::<Vec<_>>();
+    if absolute.is_empty() {
+        return None;
+    }
+    absolute.sort_by(|a, b| a.total_cmp(b));
+    let median = if absolute.len() % 2 == 0 {
+        let mid = absolute.len() / 2;
+        0.5 * (absolute[mid - 1] + absolute[mid])
+    } else {
+        absolute[absolute.len() / 2]
+    };
+    (median > 0.0).then_some(1.4826 * median)
+}
+
+fn residual_rmse_scale(residuals: &[f64]) -> Option<f64> {
+    let mut count = 0usize;
+    let mut sum_squared = 0.0;
+    for residual in residuals.iter().copied().filter(|value| value.is_finite()) {
+        count += 1;
+        sum_squared += residual * residual;
+    }
+    (count > 0 && sum_squared > 0.0).then_some((sum_squared / count as f64).sqrt())
+}
+
 impl L2Loss {
     pub fn value(&self, y: &[f64], pred: &[f64]) -> f64 {
         if y.is_empty() {
@@ -142,5 +190,21 @@ mod tests {
             loss.residuals(&[1.0, 2.0, 4.0], &[0.0, 2.5, 3.0]),
             vec![1.0, -0.5, 1.0]
         );
+    }
+
+    #[test]
+    fn huber_irls_weights_downweight_outliers_with_mad_scale() {
+        let weights = huber_irls_weights(&[1.0, -1.0, 1.0, 100.0], 1.0);
+
+        assert_eq!(&weights[..3], &[1.0, 1.0, 1.0]);
+        assert!(weights[3] > 0.0 && weights[3] < 0.02);
+    }
+
+    #[test]
+    fn huber_irls_weights_fall_back_to_rmse_when_mad_is_zero() {
+        let weights = huber_irls_weights(&[0.0, 0.0, 10.0], 1.0);
+
+        assert_eq!(&weights[..2], &[1.0, 1.0]);
+        assert!(weights[2] > 0.5 && weights[2] < 0.7);
     }
 }

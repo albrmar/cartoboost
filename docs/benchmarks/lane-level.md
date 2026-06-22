@@ -12,7 +12,7 @@ uv add cartoboost
 ```
 
 From a source checkout, rebuild the local native extension before regenerating
-the committed acceptance artifacts:
+the maintained acceptance artifacts:
 
 ```sh
 uv run --group dev maturin develop

@@ -5,6 +5,7 @@ import json
 import numpy as np
 import pytest
 from cartoboost import CartoBoostRegressor
+from cartoboost.forecasting import ForecastFrame, PiecewiseLinearSeasonalForecaster
 
 
 def _radial_fixture() -> tuple[np.ndarray, np.ndarray]:
@@ -13,6 +14,448 @@ def _radial_fixture() -> tuple[np.ndarray, np.ndarray]:
     x = np.column_stack([xx.ravel(), yy.ravel()])
     y = np.where(np.hypot(x[:, 0], x[:, 1]) <= 1.5, 10.0, -10.0)
     return x, y
+
+
+def _assert_json_close(left, right) -> None:
+    if isinstance(left, float) or isinstance(right, float):
+        assert left == pytest.approx(right)
+    elif isinstance(left, dict) and isinstance(right, dict):
+        assert left.keys() == right.keys()
+        for key in left:
+            _assert_json_close(left[key], right[key])
+    elif isinstance(left, list) and isinstance(right, list):
+        assert len(left) == len(right)
+        for left_item, right_item in zip(left, right, strict=True):
+            _assert_json_close(left_item, right_item)
+    else:
+        assert left == right
+
+
+def test_piecewise_linear_seasonal_python_wrapper_uses_native_features():
+    pd = pytest.importorskip("pandas")
+    try:
+        from cartoboost import _native  # noqa: F401
+    except ImportError as exc:
+        pytest.skip(str(exc))
+
+    frame = pd.DataFrame(
+        {
+            "series_id": ["pickup_zone_1"] * 30,
+            "timestamp": pd.date_range("2026-01-01", periods=30, freq="D"),
+            "fare": [50.0 + day + (20.0 if day % 5 == 0 else 0.0) for day in range(1, 31)],
+            "airport_queue": [1.0 if day % 5 == 0 else 0.0 for day in range(1, 31)],
+            "rush_hour": [1.0 if day % 2 == 0 else 0.0 for day in range(1, 31)],
+        }
+    )
+    forecast_frame = ForecastFrame.from_pandas(
+        frame,
+        timestamp_col="timestamp",
+        target_col="fare",
+        series_id_col="series_id",
+        freq="D",
+        known_future_covariates=["airport_queue", "rush_hour"],
+    )
+    model = PiecewiseLinearSeasonalForecaster(
+        changepoints=0,
+        changepoint_range=0.8,
+        changepoint_timestamps=["2026-01-15T00:00:00"],
+        changepoint_l1_regularization=0.01,
+        weekly_fourier_order=0,
+        events=[
+            {
+                "name": "airport_surge",
+                "timestamp": "2026-02-01T00:00:00",
+                "lower_window": 0,
+                "upper_window": 0,
+            }
+        ],
+        event_l2_regularization_by_name={"airport_surge": 0.02},
+        extra_regressors=["airport_queue"],
+        regressor_l2_regularization_by_name={"airport_queue": 0.001},
+        future_regressors={"airport_queue": [1.0, 0.0, 0.0], "rush_hour": [0.0, 1.0, 0.0]},
+        custom_seasonalities=[
+            {
+                "name": "biweekly_pickup_cycle",
+                "period_days": 14.0,
+                "fourier_order": 2,
+                "mode": "additive",
+                "condition_name": "rush_hour",
+                "l2_regularization": 0.002,
+            }
+        ],
+        regressor_modes={"airport_queue": "additive"},
+        prediction_interval_levels=[0.8],
+        uncertainty_samples=64,
+        trend_uncertainty_scale=0.5,
+        coefficient_uncertainty_scale=1.5,
+        uncertainty_seed=7,
+        fit_loss="huber",
+        huber_delta=1.25,
+        irls_iterations=4,
+    ).fit(forecast_frame)
+
+    result = model.predict(3)
+    components = model.components(3)
+    samples = model.samples(3)
+    restored = PiecewiseLinearSeasonalForecaster.from_json(model.to_json())
+    restored_result = restored.predict(3)
+    restored_components = restored.components(3)
+    restored_samples = restored.samples(3)
+    columns = result.columns()
+    records = json.loads(result.to_json())["records"]
+    restored_records = json.loads(restored_result.to_json())["records"]
+
+    assert "prediction_lower_p80" in columns
+    _assert_json_close(records, restored_records)
+    _assert_json_close(components, restored_components)
+    _assert_json_close(samples, restored_samples)
+    assert components["records"][0]["prediction"] == pytest.approx(records[0]["prediction"])
+    assert samples["sample_count"] == 64
+    assert len(samples["records"]) == 3 * 64
+    assert {"prediction", "mean", "residual_draw", "coefficient_draw", "trend_draw"}.issubset(
+        samples["records"][0]
+    )
+    assert any(abs(record["coefficient_draw"]) > 0.0 for record in samples["records"])
+    assert any(abs(record["residual_draw"]) > 0.0 for record in samples["records"])
+    assert components["records"][0]["components"]["regressors"]["airport_queue"] > 10.0
+    assert "biweekly_pickup_cycle" in components["records"][0]["components"]
+    assert records[0]["model"] == "piecewise_linear_seasonal"
+    assert records[0]["prediction"] > records[1]["prediction"]
+    assert model.metadata_["extra_regressors"] == ["airport_queue"]
+    assert model.metadata_["changepoint_range"] == pytest.approx(0.8)
+    assert model.metadata_["changepoint_l1_regularization"] == pytest.approx(0.01)
+    assert model.metadata_["changepoint_timestamps"] == ["2026-01-15T00:00:00"]
+    assert model.metadata_["custom_seasonalities"][0]["name"] == "biweekly_pickup_cycle"
+    assert model.metadata_["custom_seasonalities"][0]["mode"] == "additive"
+    assert model.metadata_["custom_seasonalities"][0]["condition_name"] == "rush_hour"
+    assert model.metadata_["custom_seasonalities"][0]["l2_regularization"] == pytest.approx(0.002)
+    assert model.metadata_["event_l2_regularization_by_name"] == {
+        "airport_surge": pytest.approx(0.02)
+    }
+    assert model.metadata_["regressor_l2_regularization_by_name"] == {
+        "airport_queue": pytest.approx(0.001)
+    }
+    assert model.metadata_["regressor_modes"] == {"airport_queue": "additive"}
+    assert model.metadata_["uncertainty_samples"] == 64
+    assert model.metadata_["trend_uncertainty_policy"] == "laplace"
+    assert model.metadata_["trend_uncertainty_scale"] == pytest.approx(0.5)
+    assert model.metadata_["coefficient_uncertainty_scale"] == pytest.approx(1.5)
+    assert model.metadata_["uncertainty_seed"] == 7
+    assert model.metadata_["fit_loss"] == "huber"
+    assert model.metadata_["huber_delta"] == pytest.approx(1.25)
+    assert model.metadata_["irls_iterations"] == 4
+    with pytest.raises(ValueError, match="fit_loss"):
+        PiecewiseLinearSeasonalForecaster(fit_loss="absolute")
+    with pytest.raises(ValueError, match="trend_uncertainty_policy"):
+        PiecewiseLinearSeasonalForecaster(trend_uncertainty_policy="student_t")
+
+
+def test_piecewise_linear_seasonal_python_wrapper_accepts_flat_growth():
+    pd = pytest.importorskip("pandas")
+    try:
+        from cartoboost import _native  # noqa: F401
+    except ImportError as exc:
+        pytest.skip(str(exc))
+
+    frame = pd.DataFrame(
+        {
+            "series_id": ["pickup_zone_1"] * 14,
+            "timestamp": pd.date_range("2026-01-01", periods=14, freq="D"),
+            "fare": [40.0 + 2.0 * day for day in range(1, 15)],
+        }
+    )
+    forecast_frame = ForecastFrame.from_pandas(
+        frame,
+        timestamp_col="timestamp",
+        target_col="fare",
+        series_id_col="series_id",
+        freq="D",
+    )
+    model = PiecewiseLinearSeasonalForecaster(
+        growth="flat",
+        changepoints=0,
+        weekly_fourier_order=0,
+    ).fit(forecast_frame)
+
+    assert model.metadata_["growth"] == "flat"
+    assert len(json.loads(model.predict(2).to_json())["records"]) == 2
+
+
+def test_piecewise_linear_seasonal_python_wrapper_exposes_regressor_standardization():
+    pd = pytest.importorskip("pandas")
+    try:
+        from cartoboost import _native  # noqa: F401
+    except ImportError as exc:
+        pytest.skip(str(exc))
+
+    frame = pd.DataFrame(
+        {
+            "series_id": ["pickup_zone_1"] * 30,
+            "timestamp": pd.date_range("2026-01-01", periods=30, freq="D"),
+            "fare": [40.0 + day + 1.5 * (100.0 + 4.0 * day) for day in range(1, 31)],
+            "traffic_index": [100.0 + 4.0 * day for day in range(1, 31)],
+        }
+    )
+    forecast_frame = ForecastFrame.from_pandas(
+        frame,
+        timestamp_col="timestamp",
+        target_col="fare",
+        series_id_col="series_id",
+        freq="D",
+        known_future_covariates=["traffic_index"],
+    )
+    model = PiecewiseLinearSeasonalForecaster(
+        changepoints=0,
+        weekly_fourier_order=0,
+        extra_regressors=["traffic_index"],
+        future_regressors={"traffic_index": [224.0, 228.0]},
+    ).fit(forecast_frame)
+    raw_model = PiecewiseLinearSeasonalForecaster(
+        changepoints=0,
+        weekly_fourier_order=0,
+        extra_regressors=["traffic_index"],
+        regressor_standardization="none",
+        future_regressors={"traffic_index": [224.0, 228.0]},
+    ).fit(forecast_frame)
+
+    assert model.metadata_["regressor_standardization"] == "auto"
+    assert raw_model.metadata_["regressor_standardization"] == "none"
+    with pytest.raises(ValueError, match="regressor_standardization"):
+        PiecewiseLinearSeasonalForecaster(regressor_standardization="standardize")
+
+
+def test_piecewise_linear_seasonal_python_predict_accepts_future_regressors():
+    pd = pytest.importorskip("pandas")
+    try:
+        from cartoboost import _native  # noqa: F401
+    except ImportError as exc:
+        pytest.skip(str(exc))
+
+    frame = pd.DataFrame(
+        {
+            "series_id": ["pickup_zone_1"] * 30,
+            "timestamp": pd.date_range("2026-01-01", periods=30, freq="D"),
+            "fare": [50.0 + day + (20.0 if day % 5 == 0 else 0.0) for day in range(1, 31)],
+            "airport_queue": [1.0 if day % 5 == 0 else 0.0 for day in range(1, 31)],
+        }
+    )
+    forecast_frame = ForecastFrame.from_pandas(
+        frame,
+        timestamp_col="timestamp",
+        target_col="fare",
+        series_id_col="series_id",
+        freq="D",
+        known_future_covariates=["airport_queue"],
+    )
+    future_regressors = {"airport_queue": [1.0, 0.0, 0.0]}
+    constructor_model = PiecewiseLinearSeasonalForecaster(
+        changepoints=0,
+        weekly_fourier_order=0,
+        extra_regressors=["airport_queue"],
+        future_regressors=future_regressors,
+    ).fit(forecast_frame)
+    predict_model = PiecewiseLinearSeasonalForecaster(
+        changepoints=0,
+        weekly_fourier_order=0,
+        extra_regressors=["airport_queue"],
+    ).fit(forecast_frame)
+
+    constructor_records = json.loads(constructor_model.predict(3).to_json())["records"]
+    predict_records = json.loads(
+        predict_model.predict(3, future_regressors=future_regressors).to_json()
+    )["records"]
+    restored_model = PiecewiseLinearSeasonalForecaster.from_json(predict_model.to_json())
+    restored_records = json.loads(
+        restored_model.predict(3, future_regressors=future_regressors).to_json()
+    )["records"]
+    predict_components = predict_model.components(3, future_regressors=future_regressors)
+    restored_components = restored_model.components(3, future_regressors=future_regressors)
+
+    _assert_json_close(constructor_records, predict_records)
+    _assert_json_close(constructor_records, restored_records)
+    _assert_json_close(predict_components, restored_components)
+    assert predict_components["records"][0]["components"]["regressors"]["airport_queue"] > 10.0
+
+
+def test_piecewise_linear_seasonal_python_wrapper_exposes_builtin_seasonality_l2():
+    pd = pytest.importorskip("pandas")
+    try:
+        from cartoboost import _native  # noqa: F401
+    except ImportError as exc:
+        pytest.skip(str(exc))
+
+    frame = pd.DataFrame(
+        {
+            "series_id": ["pickup_zone_1"] * 28,
+            "timestamp": pd.date_range("2026-01-01", periods=28, freq="D"),
+            "fare": [60.0 + day + (12.0 if day % 7 == 0 else 0.0) for day in range(1, 29)],
+        }
+    )
+    forecast_frame = ForecastFrame.from_pandas(
+        frame,
+        timestamp_col="timestamp",
+        target_col="fare",
+        series_id_col="series_id",
+        freq="D",
+    )
+    model = PiecewiseLinearSeasonalForecaster(
+        changepoints=0,
+        weekly_fourier_order=3,
+        auto_weekly_seasonality=False,
+        weekly_l2_regularization=123.0,
+        yearly_l2_regularization=456.0,
+    ).fit(forecast_frame)
+
+    assert model.metadata_["weekly_l2_regularization"] == pytest.approx(123.0)
+    assert model.metadata_["yearly_l2_regularization"] == pytest.approx(456.0)
+    assert model.metadata_["daily_l2_regularization"] is None
+    assert model.metadata_["auto_weekly_seasonality"] is False
+
+
+def test_piecewise_linear_seasonal_python_wrapper_uses_dynamic_logistic_cap():
+    pd = pytest.importorskip("pandas")
+    try:
+        from cartoboost import _native  # noqa: F401
+    except ImportError as exc:
+        pytest.skip(str(exc))
+
+    days = np.arange(1, 29, dtype=float)
+    caps = 80.0 + days
+    frame = pd.DataFrame(
+        {
+            "series_id": ["pickup_zone_1"] * len(days),
+            "timestamp": pd.date_range("2026-01-01", periods=len(days), freq="D"),
+            "fare": caps / (1.0 + np.exp(-0.2 * (days - 14.0))),
+            "zone_capacity": caps,
+        }
+    )
+    forecast_frame = ForecastFrame.from_pandas(
+        frame,
+        timestamp_col="timestamp",
+        target_col="fare",
+        series_id_col="series_id",
+        freq="D",
+        known_future_covariates=["zone_capacity"],
+    )
+    future_caps = [109.0, 110.0, 111.0]
+    model = PiecewiseLinearSeasonalForecaster(
+        growth="logistic",
+        changepoints=3,
+        weekly_fourier_order=0,
+        cap_regressor="zone_capacity",
+        future_regressors={"zone_capacity": future_caps},
+    ).fit(forecast_frame)
+
+    records = json.loads(model.predict(3).to_json())["records"]
+
+    assert model.metadata_["cap_regressor"] == "zone_capacity"
+    assert all(
+        0.0 < record["prediction"] < cap for record, cap in zip(records, future_caps, strict=True)
+    )
+
+
+def test_piecewise_linear_seasonal_python_wrapper_uses_dynamic_logistic_floor():
+    pd = pytest.importorskip("pandas")
+    try:
+        from cartoboost import _native  # noqa: F401
+    except ImportError as exc:
+        pytest.skip(str(exc))
+
+    days = np.arange(1, 29, dtype=float)
+    cap = 140.0
+    floors = 20.0 + days * 0.25
+    frame = pd.DataFrame(
+        {
+            "series_id": ["pickup_zone_1"] * len(days),
+            "timestamp": pd.date_range("2026-01-01", periods=len(days), freq="D"),
+            "fare": floors + (cap - floors) / (1.0 + np.exp(-0.2 * (days - 14.0))),
+            "service_floor": floors,
+        }
+    )
+    forecast_frame = ForecastFrame.from_pandas(
+        frame,
+        timestamp_col="timestamp",
+        target_col="fare",
+        series_id_col="series_id",
+        freq="D",
+        known_future_covariates=["service_floor"],
+    )
+    high_floor = PiecewiseLinearSeasonalForecaster(
+        growth="logistic",
+        changepoints=3,
+        weekly_fourier_order=0,
+        cap=cap,
+        floor_regressor="service_floor",
+        future_regressors={"service_floor": [32.0, 33.0, 34.0]},
+    ).fit(forecast_frame)
+    restored = PiecewiseLinearSeasonalForecaster.from_json(high_floor.to_json())
+    low_floor_records = json.loads(
+        restored.predict(3, future_regressors={"service_floor": [5.0, 6.0, 7.0]}).to_json()
+    )["records"]
+    high_floor_records = json.loads(high_floor.predict(3).to_json())["records"]
+
+    assert high_floor.metadata_["floor_regressor"] == "service_floor"
+    assert all(
+        floor < record["prediction"] < cap
+        for record, floor in zip(high_floor_records, [32.0, 33.0, 34.0], strict=True)
+    )
+    assert all(
+        high["prediction"] > low["prediction"]
+        for high, low in zip(high_floor_records, low_floor_records, strict=True)
+    )
+
+
+def test_piecewise_linear_seasonal_python_wrapper_supports_monotone_regressors_and_quantiles():
+    pd = pytest.importorskip("pandas")
+    try:
+        from cartoboost import _native  # noqa: F401
+    except ImportError as exc:
+        pytest.skip(str(exc))
+
+    frame = pd.DataFrame(
+        {
+            "series_id": ["pickup_zone_1"] * 30,
+            "timestamp": pd.date_range("2026-01-01", periods=30, freq="D"),
+            "fare": [100.0 - 4.0 * (10.0 if day % 2 == 0 else 0.0) for day in range(1, 31)],
+            "traffic": [10.0 if day % 2 == 0 else 0.0 for day in range(1, 31)],
+        }
+    )
+    forecast_frame = ForecastFrame.from_pandas(
+        frame,
+        timestamp_col="timestamp",
+        target_col="fare",
+        series_id_col="series_id",
+        freq="D",
+        known_future_covariates=["traffic"],
+    )
+    model = PiecewiseLinearSeasonalForecaster(
+        growth="flat",
+        changepoints=0,
+        weekly_fourier_order=0,
+        regressor_l2_regularization=0.0,
+        extra_regressors=["traffic"],
+        extra_regressor_monotonic_constraints={"traffic": 1},
+        future_regressors={"traffic": [0.0, 10.0]},
+        quantile_levels=[0.25, 0.75],
+        uncertainty_samples=32,
+        uncertainty_seed=11,
+    ).fit(forecast_frame)
+
+    components = model.components(2)
+    low = components["records"][0]["components"]["regressors"]["traffic"]
+    high = components["records"][1]["components"]["regressors"]["traffic"]
+    default_quantiles = model.quantiles(2)
+    override_quantiles = model.quantiles(2, quantile_levels=[0.1, 0.5, 0.9])
+
+    assert high >= low
+    assert model.metadata_["extra_regressor_monotonic_constraints"] == {"traffic": 1}
+    assert [row["quantile"] for row in default_quantiles["records"][:2]] == [0.25, 0.75]
+    assert [row["quantile"] for row in override_quantiles["records"][:3]] == [0.1, 0.5, 0.9]
+    with pytest.raises(ValueError, match="monotonic constraint"):
+        PiecewiseLinearSeasonalForecaster(
+            extra_regressors=["traffic"],
+            extra_regressor_monotonic_constraints={"traffic": 2},
+        )
 
 
 def test_native_fuzzy_gaussian_serialization_preserves_predictions(tmp_path):

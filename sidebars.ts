@@ -86,6 +86,7 @@ const sidebars: SidebarsConfig = {
         'graph-features',
         'neural-features',
         'general_utilities',
+        'plotting',
         'user-guide/cli',
       ],
     },

@@ -88,8 +88,11 @@ pub use local::{
     ETSValidationScore, KalmanForecaster, KalmanParameterSet, KalmanValidationScore,
     KrigingForecaster, LocalLevelKalmanForecaster, LocalLevelKalmanParameterSet,
     LocalLevelKalmanValidationScore, NaiveForecaster, OptimizedThetaForecaster,
-    SeasonalNaiveForecaster, SeasonalWindowAverageForecaster, ThetaForecaster, ThetaSeasonality,
-    WindowAverageForecaster,
+    PiecewiseLinearComponentMode, PiecewiseLinearEvent, PiecewiseLinearFitLoss,
+    PiecewiseLinearGrowth, PiecewiseLinearRegressorStandardization, PiecewiseLinearSeasonalConfig,
+    PiecewiseLinearSeasonalForecaster, PiecewiseLinearSeasonality,
+    PiecewiseLinearTrendUncertaintyPolicy, SeasonalNaiveForecaster,
+    SeasonalWindowAverageForecaster, ThetaForecaster, ThetaSeasonality, WindowAverageForecaster,
 };
 pub use metrics::{
     evaluate_forecast, evaluate_forecast_with_training, evaluate_m_competition_metrics,
@@ -102,7 +105,7 @@ pub use quantiles::{pinball_loss, repair_non_crossing_quantiles, QuantileForecas
 pub use rank_probability::{rank_probability_score, RankProbabilityForecast};
 pub use reconciliation::{proportional_total_reconciliation, Reconciler, ReconciliationMethod};
 pub use registry::{ForecastModelSpec, ForecastRegistry, RegisterMode, RegisteredForecastModel};
-pub use result::{ForecastPrediction, ForecastResult};
+pub use result::{ForecastIntervalPrediction, ForecastPrediction, ForecastResult};
 pub use schema::{ForecastFrame, ForecastFrameMetadata, ForecastRow, SINGLE_SERIES_ID};
 pub use sequence::{
     forward_ekf, generate_group_oof_candidate_rows, missing_target_continuation,

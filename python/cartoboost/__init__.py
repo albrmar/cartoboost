@@ -1,6 +1,6 @@
 """Python interface for the clean-room CartoBoost-inspired regressor."""
 
-from . import graph
+from . import graph, plotting
 from ._native import GraphSageEncoder, HeteroGraphSageEncoder, HinSageEncoder, Node2VecEncoder
 from .evaluation import (
     grouped_blocked_cv,
@@ -38,6 +38,25 @@ from .neural import (
     benchmark_neural_vs_cartoboost,
 )
 from .overlay import OverlayConfig, weighted_overlay
+from .plotting import (
+    plot_backtest_metrics,
+    plot_changepoint_effects,
+    plot_cutoff_predictions,
+    plot_forecast,
+    plot_forecast_components,
+    plot_horizon_metrics,
+    plot_interval_calibration,
+    plot_metric_comparison,
+    plot_predicted_actual,
+    plot_residual_diagnostics,
+    plot_route_segments,
+    plot_seasonality_curve,
+    plot_spatial_points,
+    save_figure,
+    write_plot_report,
+    write_pydeck_point_map,
+    write_pydeck_route_map,
+)
 from .regressor import CartoBoostRegressor
 from .s2 import (
     build_s2_sparse_sets,
@@ -92,6 +111,7 @@ __all__ = [
     "Node2VecEncoder",
     "FeatureSchema",
     "graph",
+    "plotting",
     "NeuralEmbeddingFeatures",
     "NeuralEmbeddingRegressor",
     "NeuralEmbeddingStandaloneRegressor",
@@ -146,9 +166,23 @@ __all__ = [
     "ordinary_kriging_leave_one_out",
     "ordinary_kriging_leave_one_out_diagnostics",
     "ordinary_kriging_predict",
+    "plot_backtest_metrics",
+    "plot_changepoint_effects",
+    "plot_cutoff_predictions",
+    "plot_forecast",
+    "plot_forecast_components",
+    "plot_horizon_metrics",
+    "plot_interval_calibration",
+    "plot_metric_comparison",
+    "plot_predicted_actual",
+    "plot_residual_diagnostics",
+    "plot_route_segments",
+    "plot_seasonality_curve",
+    "plot_spatial_points",
     "pinball_loss",
     "residual_morans_i",
     "s2_parent_id",
+    "save_figure",
     "seasonal_naive_forecast",
     "sba_forecast",
     "series_forecast",
@@ -157,4 +191,7 @@ __all__ = [
     "theta_forecast",
     "tsb_forecast",
     "weighted_overlay",
+    "write_pydeck_point_map",
+    "write_pydeck_route_map",
+    "write_plot_report",
 ]

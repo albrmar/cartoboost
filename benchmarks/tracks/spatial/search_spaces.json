@@ -5,6 +5,10 @@
     {"model_family": "cartoboost_graph", "budget": "standard", "parameters": ["graph_family", "graph_dim", "graph_epochs", "n_estimators", "learning_rate", "max_depth", "zone_treatment"]},
     {"model_family": "lightgbm", "budget": "standard", "parameters": ["n_estimators", "learning_rate", "max_depth", "subsample", "train_only_target_encodings"]},
     {"model_family": "xgboost", "budget": "standard", "parameters": ["n_estimators", "learning_rate", "max_depth", "tree_method", "max_bin", "subsample", "colsample_bytree", "train_only_target_encodings"]},
+    {"model_family": "hist_gradient_boosting", "budget": "standard", "parameters": ["max_iter", "learning_rate", "max_leaf_nodes", "train_only_target_encodings"]},
+    {"model_family": "random_forest", "budget": "standard", "parameters": ["n_estimators", "max_depth", "min_samples_leaf", "train_only_target_encodings"]},
+    {"model_family": "extra_trees", "budget": "standard", "parameters": ["n_estimators", "max_depth", "min_samples_leaf", "train_only_target_encodings"]},
+    {"model_family": "ridge", "budget": "fixed", "parameters": ["alpha", "train_only_target_encodings"]},
     {"model_family": "mean", "budget": "fixed", "parameters": []}
   ]
 }

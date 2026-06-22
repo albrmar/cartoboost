@@ -10,21 +10,30 @@ temporal, spatial, geotemporal, graph, and neural-embedding modeling.
 - Docusaurus config: ./docusaurus.config.ts
 - Docusaurus sidebar: ./sidebars.ts
 - Docs homepage component: ./src/pages/index.tsx
+- Forecast Lab page: ./src/pages/forecast-lab.tsx
+- Forecast Lab client: ./src/components/ForecastLabClient/index.tsx
 - Docs theme stylesheet: ./src/css/custom.css
 - Installation: ./docs/installation.md
 - Getting started: ./docs/getting-started.md
 - Choose a model: ./docs/user-guide/model-types.md
 - Model guides: ./docs/user-guide/forecasting-models/index.md
+- Piecewise linear seasonal forecasting is exposed through
+  `cartoboost.forecasting.PiecewiseLinearSeasonalForecaster` and the WASM
+  `piecewise_linear_seasonal` forecast model, including fitted artifact
+  prediction and component decomposition payloads.
 - AutoForecaster guide: ./docs/user-guide/forecasting-models/auto-forecaster.md
 - ARIMA and AutoARIMA guide: ./docs/user-guide/forecasting-models/arima.md
 - ARIMA examples: ./docs/user-guide/forecasting-models/arima-examples.md
 - Python API reference: ./docs/reference/python-api.md
+- Plotting: ./docs/plotting.md
 - Parameters: ./docs/user-guide/parameters.md
 - Spatial modeling: ./docs/spatial_modeling.md
 - Graph models and features: ./docs/graph-features.md
 - Neural embedding models and features: ./docs/neural-features.md
 - Benchmarks: ./docs/benchmarks/index.md
-- Forecasting benchmarks and M4/M5/M6 evidence: ./docs/benchmarks/forecasting.md
+- Forecasting benchmarks, synthetic Prophet comparison, and M4/M5/M6 evidence: ./docs/benchmarks/forecasting.md
+- NYC regression benchmark evidence: ./docs/benchmarks/nyc-taxi.md
+- Tabular and graph model-suite evidence: ./docs/benchmarks/model-suite.md
 - Forecasting overhaul: ./docs/forecasting_overhaul.md
 - Forecasting hybridization assessment: ./docs/forecasting_hybridization_assessment.md
 
@@ -45,6 +54,11 @@ temporal, spatial, geotemporal, graph, and neural-embedding modeling.
 - `cartoboost.Node2VecLinkPredictor`, `cartoboost.GraphSageLinkPredictor`,
   `cartoboost.HeteroGraphSageLinkPredictor`, and
   `cartoboost.HinSageLinkPredictor`: standalone source-target link predictors.
+- `cartoboost.plotting`: optional visualization diagnostics for predictions,
+  residuals, forecast artifacts, component rows, changepoints, horizon metrics,
+  seasonality curves, cutoff predictions, backtest fold metrics, interval
+  calibration, static spatial plots, interactive PyDeck route maps, report
+  bundles, and benchmark metric rows.
 
 ## Optional Integrations
 
@@ -57,11 +71,17 @@ temporal, spatial, geotemporal, graph, and neural-embedding modeling.
 - `cartoboost[explain]`: SHAP explanation helpers.
 - `cartoboost[optuna]`: Optuna tuning helpers.
 - `cartoboost[onnx]`: ONNX export for the supported dense axis-tree subset.
+- `cartoboost[visualization]`: Matplotlib diagnostics, static spatial plots,
+  and interactive PyDeck route maps.
 
 ## Usage Notes For LLMs
 
 - Prefer taxi-style examples: pickup zones, dropoff zones, pickup-dropoff pairs,
   trip distance, fare, duration, and demand.
+- Use the Forecast Lab for browser-local WebAssembly forecasting, regression,
+  graph/neural modeling smoke tests, and taxi-style target diagnostics with
+  MapLibre/deck.gl WebGL maps, D3 fallback diagnostics, and exported targeting
+  run plans.
 - Treat graph and neural standalone models as first-class direct APIs. Do not
   require `CartoBoostRegressor` when explaining standalone graph or neural usage.
 - Use `GraphFeatureTransformer` and `NeuralEmbeddingFeatures` only when the user

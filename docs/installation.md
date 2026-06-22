@@ -35,6 +35,7 @@ uv add "cartoboost[duckdb]"
 uv add "cartoboost[optuna]"
 uv add "cartoboost[polars]"
 uv add "cartoboost[onnx]"
+uv add "cartoboost[visualization]"
 ```
 
 | Extra | Adds | Use when |
@@ -46,6 +47,7 @@ uv add "cartoboost[onnx]"
 | `optuna` | Hyperparameter tuning examples and workflows. | You are tuning under a fixed validation protocol. |
 | `polars` | Polars input support. | Data preparation uses Polars tables. |
 | `onnx` | ONNX export for the supported dense axis-tree subset. | Deployment requires ONNX and the model stays inside the supported subset. |
+| `visualization` | Matplotlib, GeoPandas, Shapely, and PyDeck plotting helpers. | You need diagnostic plots, static spatial plots, or interactive taxi route maps. |
 
 ## Verify The Install
 

@@ -12,6 +12,7 @@ def test_default_registry_contains_forecasting_v1_models():
         "seasonal_naive",
         "theta",
         "optimized_theta",
+        "piecewise_linear_seasonal",
         "ets",
         "auto_arima",
         "kalman",
