@@ -44,6 +44,14 @@ body:has(.shell) :global(.footer) {
   max-width: 760px;
 }
 
+.headerActions {
+  align-items: stretch;
+  display: grid;
+  flex: 0 0 16rem;
+  gap: 0.45rem;
+  min-width: min(100%, 13rem);
+}
+
 .eyebrow {
   color: #168f86;
   display: block;
@@ -206,6 +214,32 @@ body:has(.shell) :global(.footer) {
 
 .modelPicker {
   margin-top: 0.5rem;
+}
+
+.modelFamilyTabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: 0.55rem;
+}
+
+.modelFamilyTabs button {
+  background: #f4f7fb;
+  border: 1px solid #d8e0ea;
+  border-radius: 999px;
+  color: #526274;
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 800;
+  min-height: 1.95rem;
+  padding: 0.28rem 0.58rem;
+}
+
+.modelFamilyTabs .modelFamilyTabActive {
+  background: #e0f5f3;
+  border-color: #168f86;
+  color: #0b6f68;
 }
 
 .modelFamilySelect {
@@ -433,8 +467,85 @@ body:has(.shell) :global(.footer) {
   width: 100%;
 }
 
+.primaryButton:disabled,
+.secondaryButton:disabled,
+.secondaryActionButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.58;
+}
+
 .status {
   margin: 0.65rem 0 0;
+}
+
+.loadingBar,
+.progressBar {
+  background: #d8e0ea;
+  border-radius: 999px;
+  height: 0.46rem;
+  overflow: hidden;
+  position: relative;
+}
+
+.loadingBar span,
+.progressBar span {
+  background: #168f86;
+  border-radius: inherit;
+  display: block;
+  height: 100%;
+}
+
+.loadingBar span,
+.progressBarIndeterminate span {
+  animation: loading-slide 1.05s ease-in-out infinite;
+  left: 0;
+  position: absolute;
+  width: 42%;
+}
+
+.progressWrap {
+  background: #f7fafc;
+  border: 1px solid #d8e0ea;
+  border-radius: 8px;
+  display: grid;
+  gap: 0.45rem;
+  margin-top: 0.6rem;
+  padding: 0.55rem;
+}
+
+.progressMeta {
+  align-items: center;
+  display: flex;
+  gap: 0.75rem;
+  justify-content: space-between;
+}
+
+.progressMeta span,
+.progressMeta strong {
+  color: #122033;
+  font-size: 0.76rem;
+  font-weight: 800;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.progressMeta strong {
+  color: #526274;
+  flex: 0 0 auto;
+}
+
+@keyframes loading-slide {
+  0% {
+    transform: translateX(-110%);
+  }
+
+  52% {
+    transform: translateX(95%);
+  }
+
+  100% {
+    transform: translateX(260%);
+  }
 }
 
 .outputPanel {
@@ -532,12 +643,12 @@ body:has(.shell) :global(.footer) {
   cursor: crosshair;
   fill: transparent;
   opacity: 1;
-  stroke-width: 2;
+  stroke-width: 1.25;
 }
 
 .chart .interactivePoint:focus {
   outline: none;
-  stroke-width: 4;
+  stroke-width: 2.5;
 }
 
 .chartTooltip rect {
@@ -1397,6 +1508,7 @@ body:has(.shell) :global(.footer) {
 }
 
 :global([data-theme='dark']) .controlPanel,
+:global([data-theme='dark']) .header,
 :global([data-theme='dark']) .emptyState,
 :global([data-theme='dark']) .resultHeader,
 :global([data-theme='dark']) .datasetProfile,
@@ -1422,6 +1534,8 @@ body:has(.shell) :global(.footer) {
 :global([data-theme='dark']) .field select,
 :global([data-theme='dark']) .field input,
 :global([data-theme='dark']) .modelFamilySelect select,
+:global([data-theme='dark']) .surfaceTabs,
+:global([data-theme='dark']) .progressWrap,
 :global([data-theme='dark']) .secondaryButton,
 :global([data-theme='dark']) .secondaryActionButton,
 :global([data-theme='dark']) .inlineActionButton,
@@ -1429,6 +1543,13 @@ body:has(.shell) :global(.footer) {
 :global([data-theme='dark']) .featureSelector {
   background: #0b1220;
   border-color: rgba(157, 176, 201, 0.3);
+  color: #e8eef8;
+}
+
+:global([data-theme='dark']) .field select option,
+:global([data-theme='dark']) .modelFamilySelect select option,
+:global([data-theme='dark']) .modelFamilySelect select optgroup {
+  background: #0b1220;
   color: #e8eef8;
 }
 
@@ -1493,14 +1614,45 @@ body:has(.shell) :global(.footer) {
 :global([data-theme='dark']) .featureRoleRow div,
 :global([data-theme='dark']) .histogram,
 :global([data-theme='dark']) .neuralSummary,
-:global([data-theme='dark']) .modelPickerHeader {
+:global([data-theme='dark']) .modelPickerHeader,
+:global([data-theme='dark']) .surfaceTabs {
   background: #0b1220;
   color: #dce6f4;
 }
 
+:global([data-theme='dark']) .surfaceTabs button {
+  color: #9db0c9;
+}
+
+:global([data-theme='dark']) .surfaceTabs .surfaceTabActive {
+  background: #111a2b;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.32);
+  color: #e8eef8;
+}
+
+:global([data-theme='dark']) .loadingBar,
+:global([data-theme='dark']) .progressBar {
+  background: rgba(157, 176, 201, 0.2);
+}
+
+:global([data-theme='dark']) .loadingBar span,
+:global([data-theme='dark']) .progressBar span {
+  background: #27c2b5;
+}
+
 :global([data-theme='dark']) .neuralSummary strong,
 :global([data-theme='dark']) .modelPickerHeader strong,
-:global([data-theme='dark']) .modelGroup button strong {
+:global([data-theme='dark']) .modelGroup button strong,
+:global([data-theme='dark']) .resultHeader dd,
+:global([data-theme='dark']) .metricCards p,
+:global([data-theme='dark']) .signalCards p,
+:global([data-theme='dark']) .componentGrid p,
+:global([data-theme='dark']) .profileGrid p,
+:global([data-theme='dark']) .diagnosticGrid p,
+:global([data-theme='dark']) .planGrid p,
+:global([data-theme='dark']) .geoStats p,
+:global([data-theme='dark']) .tableScroller td,
+:global([data-theme='dark']) .progressMeta span {
   color: #e8eef8;
 }
 
@@ -1508,18 +1660,26 @@ body:has(.shell) :global(.footer) {
 :global([data-theme='dark']) .modelPickerHeader span,
 :global([data-theme='dark']) .modelGroup > span,
 :global([data-theme='dark']) .modelFamilySelect span,
-:global([data-theme='dark']) .modelGroup button em {
+:global([data-theme='dark']) .modelGroup button em,
+:global([data-theme='dark']) .progressMeta strong {
   color: #9db0c9;
 }
 
+:global([data-theme='dark']) .modelFamilyTabs button,
 :global([data-theme='dark']) .modelGroup button {
   background: rgba(157, 176, 201, 0.1);
   border-color: rgba(157, 176, 201, 0.28);
+  color: #dce6f4;
 }
 
+:global([data-theme='dark']) .modelFamilyTabs .modelFamilyTabActive,
 :global([data-theme='dark']) .modelGroup .modelOptionActive {
   background: rgba(39, 194, 181, 0.16);
   border-color: #27c2b5;
+  color: #b9fff8;
+}
+
+:global([data-theme='dark']) .modelGroup .modelOptionActive {
   box-shadow: inset 0 0 0 1px #27c2b5;
 }
 
@@ -1537,6 +1697,42 @@ body:has(.shell) :global(.footer) {
 :global([data-theme='dark']) .seasonalityButtons .seasonalityButtonActive {
   background: rgba(39, 194, 181, 0.16);
   border-color: #27c2b5;
+}
+
+:global([data-theme='dark']) .readinessReady {
+  background: rgba(39, 194, 181, 0.14);
+}
+
+:global([data-theme='dark']) .readinessReview {
+  background: rgba(255, 180, 84, 0.14);
+}
+
+:global([data-theme='dark']) .opportunityScoreBar {
+  background: rgba(157, 176, 201, 0.22);
+}
+
+:global([data-theme='dark']) .chart line {
+  stroke: #6f829f;
+}
+
+:global([data-theme='dark']) .chartGridline line {
+  stroke: #34445d;
+}
+
+:global([data-theme='dark']) .chartGridline text {
+  fill: #9db0c9;
+}
+
+:global([data-theme='dark']) .chartTooltip rect {
+  fill: #07101e;
+}
+
+:global([data-theme='dark']) .referenceLine {
+  stroke: #ffb454;
+}
+
+:global([data-theme='dark']) .intervalLine {
+  stroke: #65c9ff;
 }
 
 :global([data-theme='dark']) .routeList span,
@@ -1559,6 +1755,17 @@ body:has(.shell) :global(.footer) {
   background: rgba(39, 194, 181, 0.16);
   border-color: #27c2b5;
   color: #b9fff8;
+}
+
+:global([data-theme='dark']) .eyebrow,
+:global([data-theme='dark']) .featureRoleRow em,
+:global([data-theme='dark']) .routeList i,
+:global([data-theme='dark']) .targetList i,
+:global([data-theme='dark']) .h3List i,
+:global([data-theme='dark']) .opportunityRow em,
+:global([data-theme='dark']) .opportunityRow i,
+:global([data-theme='dark']) .signalCards em {
+  color: #27c2b5;
 }
 
 :global([data-theme='dark']) .tableScroller th,

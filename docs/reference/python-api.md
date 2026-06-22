@@ -88,6 +88,12 @@ Core schema:
 | `ForecastResult.save_json(path)` / `ForecastResult.load_json(path)` | Round-trip forecast tables through JSON. |
 | `PredictionInterval(level, lower, upper)` | Validates lower/upper interval bounds. |
 
+`ForecastFrame.from_pandas(..., sample_weight_col="trip_count")` is the
+opt-in path for duplicate taxi observations at one timestamp. Duplicate
+series/timestamp rows are collapsed before native validation: targets and
+numeric covariates are weighted means, while the weight column is summed and
+kept as a historical covariate.
+
 Forecasters:
 
 | Entry point | Notes |
@@ -102,7 +108,7 @@ Forecasters:
 | `KalmanForecaster` | Rust-native local-linear-trend Kalman model for noisy level and trend series. |
 | `AutoLocalLevelKalmanForecaster` | Rust-native deterministic grid search over local-level process/observation variances; metadata includes `selected_params` and `validation_scores`. |
 | `AutoKalmanForecaster` | Rust-native deterministic grid search over local-linear level/trend/observation variances; metadata includes `selected_params` and `validation_scores`. |
-| `PiecewiseLinearSeasonalForecaster` | Rust-native piecewise linear seasonal local model with linear, flat, or logistic growth, changepoints, Fourier seasonalities, conditional custom seasonalities, events, automatic extra-regressor standardization, per-component regularization, residual intervals, deterministic sampled trend uncertainty, fitted JSON round-trips, and `components()` / `components_json()` trend-seasonality-event-regressor decomposition; browser/WASM exposes matching fitted artifact prediction and component helpers. |
+| `PiecewiseLinearSeasonalForecaster` | Rust-native piecewise linear seasonal local model with linear, flat, or logistic growth, changepoints, Fourier seasonalities, conditional custom seasonalities, events, automatic extra-regressor standardization, per-component regularization, residual intervals, deterministic sampled trend uncertainty, external trend adjustments, residual shock propagation, fitted JSON round-trips, and `components()` / `components_json()` trend-seasonality-event-regressor decomposition; browser/WASM exposes matching fitted artifact prediction and component helpers. |
 | `CartoBoostLagForecaster` | Global recursive forecaster using leakage-safe lag, rolling, calendar, static, and known-future features with `CartoBoostRegressor`. |
 | `WeightedEnsembleForecaster` | Combines aligned component forecasts with fixed weights. |
 | `BacktestWeightedEnsembleForecaster` | Reserved; raises clearly until Rust backtest-weight learning is implemented. |
@@ -111,9 +117,11 @@ Forecasters:
 changepoint controls, yearly/weekly/daily Fourier orders, custom conditional
 seasonalities, event windows, additive or multiplicative regressor modes,
 dynamic cap/floor regressors, prediction interval levels, quantile levels,
-trend/coefficient uncertainty controls, and robust Huber fitting. Fitted models
-serialize with `to_json()` / `from_json()` and prediction results preserve
-interval columns through native JSON round-trips.
+trend/coefficient uncertainty controls, `trend_adjustments`,
+`trend_adjustments_by_series`, `residual_shock_window`,
+`residual_shock_scale`, `residual_shock_decay`, and robust Huber fitting.
+Fitted models serialize with `to_json()` / `from_json()` and prediction results
+preserve interval columns through native JSON round-trips.
 
 Evaluation and persistence:
 

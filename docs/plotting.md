@@ -67,6 +67,12 @@ residuals by prediction and the residual distribution, which makes bias,
 heteroskedasticity, and outlier-heavy taxi rows easier to spot than a metric
 table alone.
 
+Rendered taxi examples from the maintained NYC taxi benchmark:
+
+![Taxi fare predicted versus actual](assets/nyc_taxi_benchmarks/plots/fare_random_cartoboost_predicted_actual.png)
+
+![Taxi fare residuals by zone](assets/nyc_taxi_benchmarks/plots/fare_random_cartoboost_zone_residuals.png)
+
 ## Model metric comparisons
 
 `plot_metric_comparison` accepts a list of dictionaries, a dict of columns, or a
@@ -94,6 +100,10 @@ save_figure(fig, "target/plots/taxi_duration_rmse.png", close=True)
 
 The default sort places the lowest metric value first, which matches RMSE, MAE,
 WAPE, and most loss-style benchmark tables.
+
+Rendered taxi benchmark metric comparison:
+
+![NYC taxi benchmark metric summary](assets/nyc_taxi_benchmarks/metric_summary.png)
 
 ## Forecast plots
 
@@ -126,6 +136,12 @@ For panel forecasts, pass `series_id` and `series_id_col` to focus the chart on
 one pickup zone, route, or lane. If interval columns are present, the function
 validates that every lower value is less than or equal to its upper value before
 drawing the band.
+
+Rendered real taxi lane-demand forecast examples:
+
+![NYC taxi lane forecast lines](assets/nyc_taxi_benchmarks/forecasting_plots/nyc-taxi_forecast_lines.png)
+
+![NYC taxi lane forecast predicted versus actual](assets/nyc_taxi_benchmarks/forecasting_plots/nyc-taxi_actual_vs_predicted.png)
 
 ## Forecast components
 
@@ -167,6 +183,11 @@ If `component_cols` is omitted, the helper infers numeric columns while skipping
 standard forecast identifiers, predictions, and interval bounds. Explicit
 columns are preferred for benchmark evidence because they keep component order
 stable across reruns.
+
+For component-style forecast reports, pair this plot with the forecast-line and
+horizon diagnostics so trend, seasonality, and holdout error are read together:
+
+![NYC taxi lane forecast horizon RMSE](assets/nyc_taxi_benchmarks/forecasting_plots/nyc-taxi_horizon_rmse_by_tool.png)
 
 `plot_seasonality_curve` focuses on one or more periodic curves and supports
 optional lower/upper bands.
@@ -214,6 +235,9 @@ fig = plot_changepoint_effects(
 save_figure(fig, "target/plots/pickup_changepoints.png", close=True)
 ```
 
+For Prophet-style taxi demand reviews, render changepoints alongside forecast
+lines and component panels so step changes are visible in the same report.
+
 ## Horizon metrics
 
 `plot_horizon_metrics` compares forecast quality over horizon for one or more
@@ -239,6 +263,10 @@ save_figure(fig, "target/plots/pickup_demand_horizon_rmse.png", close=True)
 
 Use this chart next to rolling-origin metric tables when a model wins on short
 horizons but loses as the taxi demand forecast moves further from the cutoff.
+
+Rendered taxi horizon metric example:
+
+![NYC taxi forecast horizon RMSE by model](assets/nyc_taxi_benchmarks/forecasting_plots/nyc-taxi_horizon_rmse_by_tool.png)
 
 ## Backtest and interval diagnostics
 
@@ -287,6 +315,11 @@ Coverage values are validated as probabilities between 0 and 1. The diagonal
 line marks perfectly calibrated intervals; points below it indicate
 under-coverage on the evaluated taxi demand rows.
 
+For a maintained forecast report, put interval calibration next to the same
+model-comparison image used for point metrics:
+
+![NYC taxi forecast model metric comparison](assets/nyc_taxi_benchmarks/forecasting_plots/nyc-taxi_tool_metric_comparison.png)
+
 `plot_cutoff_predictions` overlays actual holdout values with the predictions
 emitted from each validation cutoff. This is useful when a rolling-origin metric
 curve needs a row-level explanation.
@@ -308,6 +341,11 @@ fig = plot_cutoff_predictions(
 )
 save_figure(fig, "target/plots/pickup_cutoff_predictions.png", close=True)
 ```
+
+The rendered forecast-line image shows the same idea at report scale: actual
+taxi lane demand remains visible while model forecasts are overlaid by horizon.
+
+![NYC taxi rolling forecast lines](assets/nyc_taxi_benchmarks/forecasting_plots/nyc-taxi_forecast_lines.png)
 
 ## Diagnostic reports
 
@@ -338,6 +376,11 @@ The report writer deliberately skips inputs that are not provided. Pass forecast
 rows, component rows, horizon rows, backtest rows, or interval rows to add those
 figures to the same directory. Pass seasonality, changepoint, or cutoff rows to
 include component and validation diagnostics in the same bundle.
+
+Rendered report bundles should include both quality and speed views when the
+claim compares model families:
+
+![NYC taxi prediction throughput](assets/nyc_taxi_benchmarks/prediction_throughput.png)
 
 ## Map visualizations
 
@@ -387,6 +430,12 @@ write_pydeck_point_map(
     tooltip_cols=["pickup_count"],
 )
 ```
+
+Rendered static taxi route and zone diagnostics:
+
+![Taxi lane heatmap](assets/lane_level_tests/lane_heatmap.png)
+
+![Taxi route midpoint geometry](assets/lane_level_tests/route_midpoint_geometry.png)
 
 If the optional packages are missing, map helpers raise an `ImportError` with
 the install command:

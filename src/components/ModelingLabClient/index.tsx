@@ -100,6 +100,12 @@ type BacktestResult = {
   error?: string;
 };
 
+type RunProgress = {
+  label: string;
+  current?: number;
+  total?: number;
+};
+
 type RegressionResponse = {
   metadata: {
     model: string;
@@ -205,6 +211,7 @@ const neuralPipelineLabels: Record<string, string> = {
 
 const graphNeuralPipelines = new Set(['node2vec', 'graphsage', 'hetero_graphsage', 'hinsage']);
 type ActiveModelingSurface = 'forecast' | 'model' | 'neural';
+const TAXI_WEEK_SAMPLE_ROWS = 2500;
 
 export default function ModelingLabClient(): React.ReactElement {
   const wasmJsUrl = useBaseUrl('/wasm/cartoboost/cartoboost_wasm.js');
@@ -235,6 +242,8 @@ export default function ModelingLabClient(): React.ReactElement {
   const [graphWeightCol, setGraphWeightCol] = useState('');
   const [status, setStatus] = useState('Drop a CSV, TSV, or Parquet file to start.');
   const [isRunning, setIsRunning] = useState(false);
+  const [isLoadingTaxiWeek, setIsLoadingTaxiWeek] = useState(false);
+  const [runProgress, setRunProgress] = useState<RunProgress | null>(null);
   const [modelOptions, setModelOptions] = useState<ModelOption[]>(fallbackModelOptions);
 
   const previewRows = table?.rows.slice(0, 6) ?? [];
@@ -317,34 +326,46 @@ export default function ModelingLabClient(): React.ReactElement {
   );
 
   const loadJanuaryTaxiParquet = useCallback(async () => {
+    setIsLoadingTaxiWeek(true);
     setStatus('Loading real January 2024 yellow taxi Parquet week.');
-    const response = await fetch(januaryTaxiParquetUrl);
-    if (!response.ok) {
-      throw new Error(`Unable to load January taxi Parquet (${response.status}).`);
+    try {
+      const response = await fetch(januaryTaxiParquetUrl);
+      if (!response.ok) {
+        throw new Error(`Unable to load January taxi Parquet (${response.status}).`);
+      }
+      const parsed = buildTaxiWeekSampleTable(
+        await parseParquetBuffer(
+          await response.arrayBuffer(),
+          'yellow_tripdata_2024-01-week1.parquet',
+        ),
+        TAXI_WEEK_SAMPLE_ROWS,
+      );
+      const nextTimestampCol = guessColumn(parsed.columns, ['timestamp', 'tpep_pickup_datetime', 'pickup_datetime', 'date', 'ds', 'time']) ?? parsed.columns[0] ?? '';
+      const nextTargetCol = guessColumn(parsed.columns, ['target', 'total_amount', 'fare_amount', 'trip_distance', 'y', 'demand', 'trips', 'count', 'fare', 'duration']) ?? parsed.columns[1] ?? '';
+      const nextSeriesCol = guessColumn(parsed.columns, ['series_id', 'unique_id', 'PULocationID', 'DOLocationID', 'zone', 'route']) ?? '';
+      setTable(parsed);
+      setResult(null);
+      setComparisonResults([]);
+      setBacktestResults([]);
+      setRegressionResult(null);
+      setNeuralResult(null);
+      setTimestampCol(nextTimestampCol);
+      setTargetCol(nextTargetCol);
+      setSeriesCol(nextSeriesCol);
+      setFrequency('hourly');
+      setSeasonLength(24);
+      setFeatureCols(defaultFeatureColumns(parsed, nextTargetCol, nextTimestampCol, nextSeriesCol));
+      setSparseFeatureCols(defaultSparseFeatureColumns(parsed, nextTargetCol, nextTimestampCol, nextSeriesCol));
+      setNeuralIdCol(guessColumn(parsed.columns, ['pickup_zone_id', 'PULocationID', 'zone_id', 'id']) ?? '');
+      setGraphSourceCol(guessColumn(parsed.columns, ['pickup_zone_id', 'PULocationID', 'source', 'source_id']) ?? '');
+      setGraphTargetCol(guessColumn(parsed.columns, ['dropoff_zone_id', 'DOLocationID', 'target_node', 'target_id', 'destination']) ?? '');
+      setGraphWeightCol(guessColumn(parsed.columns, ['edge_weight', 'weight', 'trip_count']) ?? '');
+      setStatus(`Loaded ${parsed.rows.length.toLocaleString()} sampled route-hour demand rows from January 2024 yellow taxi week 1.`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : String(error));
+    } finally {
+      setIsLoadingTaxiWeek(false);
     }
-    const parsed = await parseParquetBuffer(
-      await response.arrayBuffer(),
-      'yellow_tripdata_2024-01-week1.parquet',
-    );
-    const nextTimestampCol = guessColumn(parsed.columns, ['timestamp', 'tpep_pickup_datetime', 'pickup_datetime', 'date', 'ds', 'time']) ?? parsed.columns[0] ?? '';
-    const nextTargetCol = guessColumn(parsed.columns, ['target', 'total_amount', 'fare_amount', 'trip_distance', 'y', 'demand', 'trips', 'count', 'fare', 'duration']) ?? parsed.columns[1] ?? '';
-    const nextSeriesCol = guessColumn(parsed.columns, ['series_id', 'unique_id', 'PULocationID', 'DOLocationID', 'zone', 'route']) ?? '';
-    setTable(parsed);
-    setResult(null);
-    setComparisonResults([]);
-    setBacktestResults([]);
-    setRegressionResult(null);
-    setNeuralResult(null);
-    setTimestampCol(nextTimestampCol);
-    setTargetCol(nextTargetCol);
-    setSeriesCol(nextSeriesCol);
-    setFeatureCols(defaultFeatureColumns(parsed, nextTargetCol, nextTimestampCol, nextSeriesCol));
-    setSparseFeatureCols(defaultSparseFeatureColumns(parsed, nextTargetCol, nextTimestampCol, nextSeriesCol));
-    setNeuralIdCol(guessColumn(parsed.columns, ['pickup_zone_id', 'PULocationID', 'zone_id', 'id']) ?? '');
-    setGraphSourceCol(guessColumn(parsed.columns, ['pickup_zone_id', 'PULocationID', 'source', 'source_id']) ?? '');
-    setGraphTargetCol(guessColumn(parsed.columns, ['dropoff_zone_id', 'DOLocationID', 'target_node', 'target_id', 'destination']) ?? '');
-    setGraphWeightCol(guessColumn(parsed.columns, ['edge_weight', 'weight', 'trip_count']) ?? '');
-    setStatus(`Loaded ${parsed.rows.length.toLocaleString()} real January 2024 yellow taxi rows from week 1.`);
   }, [januaryTaxiParquetUrl]);
 
   const onDrop = useCallback(
@@ -364,6 +385,7 @@ export default function ModelingLabClient(): React.ReactElement {
       return;
     }
     setIsRunning(true);
+    setRunProgress({label: 'Fitting forecast'});
     setStatus('Loading CartoBoost WebAssembly and fitting the forecast.');
     try {
       const response = await runBrowserForecast({
@@ -389,6 +411,7 @@ export default function ModelingLabClient(): React.ReactElement {
       setResult(null);
     } finally {
       setIsRunning(false);
+      setRunProgress(null);
     }
   }, [
     frequency,
@@ -410,6 +433,7 @@ export default function ModelingLabClient(): React.ReactElement {
       return;
     }
     setIsRunning(true);
+    setRunProgress({label: 'Preparing native roster', current: 0, total: modelOptions.length});
     setResult(null);
     setBacktestResults([]);
     setRegressionResult(null);
@@ -417,8 +441,10 @@ export default function ModelingLabClient(): React.ReactElement {
     setComparisonResults([]);
     setStatus('Running native model roster.');
     const roster = modelOptions.filter((option) => option.value !== 'kriging' || hasCoordinateColumns(table.columns));
+    setRunProgress({label: 'Running native roster', current: 0, total: roster.length});
     const nextResults: ComparisonResult[] = [];
-    for (const option of roster) {
+    for (const [index, option] of roster.entries()) {
+      setRunProgress({label: `Running ${option.label}`, current: index, total: roster.length});
       setStatus(`Running ${option.label}.`);
       try {
         const response = await runBrowserForecast({
@@ -448,10 +474,12 @@ export default function ModelingLabClient(): React.ReactElement {
         });
       }
       setComparisonResults([...nextResults]);
+      setRunProgress({label: `Checked ${option.label}`, current: index + 1, total: roster.length});
     }
     const successes = nextResults.filter((item) => item.response).length;
     setStatus(`Model roster complete: ${successes.toLocaleString()} succeeded, ${(nextResults.length - successes).toLocaleString()} reported constraints.`);
     setIsRunning(false);
+    setRunProgress(null);
   }, [
     frequency,
     horizon,
@@ -472,6 +500,7 @@ export default function ModelingLabClient(): React.ReactElement {
       return;
     }
     setIsRunning(true);
+    setRunProgress({label: 'Preparing holdout backtest'});
     setResult(null);
     setComparisonResults([]);
     setBacktestResults([]);
@@ -481,8 +510,10 @@ export default function ModelingLabClient(): React.ReactElement {
     try {
       const split = holdoutSplit(table, timestampCol, targetCol, seriesCol, horizon);
       const roster = modelOptions.filter((option) => option.value !== 'kriging' || hasCoordinateColumns(table.columns));
+      setRunProgress({label: 'Running holdout backtest', current: 0, total: roster.length});
       const nextResults: BacktestResult[] = [];
-      for (const option of roster) {
+      for (const [index, option] of roster.entries()) {
+        setRunProgress({label: `Backtesting ${option.label}`, current: index, total: roster.length});
         setStatus(`Backtesting ${option.label}.`);
         try {
           const response = await runBrowserForecast({
@@ -514,6 +545,7 @@ export default function ModelingLabClient(): React.ReactElement {
           });
         }
         setBacktestResults([...nextResults]);
+        setRunProgress({label: `Checked ${option.label}`, current: index + 1, total: roster.length});
       }
       const successes = nextResults.filter((item) => item.rmse !== undefined).length;
       setStatus(`Holdout backtest complete: ${successes.toLocaleString()} scored, ${(nextResults.length - successes).toLocaleString()} reported constraints.`);
@@ -521,6 +553,7 @@ export default function ModelingLabClient(): React.ReactElement {
       setStatus(error instanceof Error ? error.message : String(error));
     } finally {
       setIsRunning(false);
+      setRunProgress(null);
     }
   }, [
     frequency,
@@ -542,6 +575,7 @@ export default function ModelingLabClient(): React.ReactElement {
       return;
     }
     setIsRunning(true);
+    setRunProgress({label: 'Fitting regression model'});
     setResult(null);
     setComparisonResults([]);
     setBacktestResults([]);
@@ -565,6 +599,7 @@ export default function ModelingLabClient(): React.ReactElement {
       setStatus(error instanceof Error ? error.message : String(error));
     } finally {
       setIsRunning(false);
+      setRunProgress(null);
     }
   }, [featureCols, modelingLoss, modelingMode, selectedColumnsReady, sparseFeatureCols, table, targetCol, wasmBinaryUrl, wasmJsUrl]);
 
@@ -582,6 +617,7 @@ export default function ModelingLabClient(): React.ReactElement {
       return;
     }
     setIsRunning(true);
+    setRunProgress({label: `Fitting ${neuralPipelineLabels[neuralPipeline] ?? neuralPipeline}`});
     setResult(null);
     setComparisonResults([]);
     setBacktestResults([]);
@@ -607,6 +643,7 @@ export default function ModelingLabClient(): React.ReactElement {
       setStatus(error instanceof Error ? error.message : String(error));
     } finally {
       setIsRunning(false);
+      setRunProgress(null);
     }
   }, [
     featureCols,
@@ -701,9 +738,16 @@ export default function ModelingLabClient(): React.ReactElement {
             locally through WebAssembly. No dataset leaves the browser.
           </p>
         </div>
-        <button className={styles.secondaryButton} type="button" onClick={() => void loadJanuaryTaxiParquet()}>
-          Load taxi week
-        </button>
+        <div className={styles.headerActions}>
+          <button className={styles.secondaryButton} type="button" disabled={isLoadingTaxiWeek || isRunning} onClick={() => void loadJanuaryTaxiParquet()}>
+            {isLoadingTaxiWeek ? 'Loading taxi week' : 'Load taxi week'}
+          </button>
+          {isLoadingTaxiWeek && (
+            <div className={styles.loadingBar} role="progressbar" aria-label="Loading taxi week">
+              <span />
+            </div>
+          )}
+        </div>
       </section>
 
       <section className={styles.workspace}>
@@ -861,31 +905,34 @@ export default function ModelingLabClient(): React.ReactElement {
           <div className={styles.actionGrid}>
             {activeModelingSurface === 'forecast' && (
               <>
-                <button className={styles.primaryButton} type="button" disabled={!selectedColumnsReady || isRunning} onClick={() => void runForecast()}>
+                <button className={styles.primaryButton} type="button" disabled={!selectedColumnsReady || isRunning || isLoadingTaxiWeek} onClick={() => void runForecast()}>
                   {isRunning ? 'Running forecast' : 'Run forecast'}
                 </button>
-                <button className={styles.secondaryActionButton} type="button" disabled={!selectedColumnsReady || isRunning} onClick={() => void runComparison()}>
+                <button className={styles.secondaryActionButton} type="button" disabled={!selectedColumnsReady || isRunning || isLoadingTaxiWeek} onClick={() => void runComparison()}>
                   Compare roster
                 </button>
-                <button className={styles.secondaryActionButton} type="button" disabled={!selectedColumnsReady || isRunning} onClick={() => void runBacktest()}>
+                <button className={styles.secondaryActionButton} type="button" disabled={!selectedColumnsReady || isRunning || isLoadingTaxiWeek} onClick={() => void runBacktest()}>
                   Backtest
                 </button>
               </>
             )}
             {activeModelingSurface === 'model' && (
-              <button className={styles.primaryButton} type="button" disabled={!selectedColumnsReady || featureCols.length === 0 || isRunning} onClick={() => void runRegression()}>
+              <button className={styles.primaryButton} type="button" disabled={!selectedColumnsReady || featureCols.length === 0 || isRunning || isLoadingTaxiWeek} onClick={() => void runRegression()}>
                 {isRunning ? 'Running model' : 'Run model'}
               </button>
             )}
             {activeModelingSurface === 'neural' && (
-              <button className={styles.primaryButton} type="button" disabled={!selectedColumnsReady || featureCols.length === 0 || isRunning} onClick={() => void runNeural()}>
+              <button className={styles.primaryButton} type="button" disabled={!selectedColumnsReady || featureCols.length === 0 || isRunning || isLoadingTaxiWeek} onClick={() => void runNeural()}>
                 {isRunning ? 'Running neural' : 'Run neural'}
               </button>
             )}
-            <button className={styles.secondaryActionButton} type="button" disabled={!table || isRunning} onClick={exportSuggestedConfig}>
+            <button className={styles.secondaryActionButton} type="button" disabled={!table || isRunning || isLoadingTaxiWeek} onClick={exportSuggestedConfig}>
               Export config
             </button>
           </div>
+          {(runProgress || isLoadingTaxiWeek) && (
+            <ProgressBar progress={runProgress} label={isLoadingTaxiWeek ? 'Loading taxi week' : undefined} />
+          )}
           <p className={styles.status}>{status}</p>
         </div>
 
@@ -1187,7 +1234,7 @@ function forecastModelGroups(modelOptions: ModelOption[]): SelectGroup[] {
   for (const option of modelOptions) {
     const groupLabel = forecastPipelineLabels[option.group] ?? option.group;
     const group = grouped.get(groupLabel) ?? [];
-    group.push({value: option.value, label: `${option.label} (${option.value})`});
+    group.push({value: option.value, label: option.label});
     grouped.set(groupLabel, group);
   }
   return Array.from(grouped, ([label, options]) => ({label, options}));
@@ -1204,31 +1251,33 @@ function ModelPicker({
   value: string;
   onChange: (value: string) => void;
 }) {
-  const groups = forecastModelGroups(modelOptions);
+  const groups = useMemo(() => forecastModelGroups(modelOptions), [modelOptions]);
   const activeGroup = groups.find((group) => group.options.some((option) => option.value === value)) ?? groups[0];
   const [selectedGroupLabel, setSelectedGroupLabel] = useState(activeGroup?.label ?? '');
   const visibleGroup = groups.find((group) => group.label === selectedGroupLabel) ?? activeGroup;
   useEffect(() => {
-    if (activeGroup && !visibleGroup?.options.some((option) => option.value === value)) {
-      setSelectedGroupLabel(activeGroup.label);
+    if (!groups.some((group) => group.label === selectedGroupLabel)) {
+      setSelectedGroupLabel(activeGroup?.label ?? '');
     }
-  }, [activeGroup, value, visibleGroup]);
+  }, [activeGroup?.label, groups, selectedGroupLabel]);
   return (
     <div className={styles.modelPicker}>
       <div className={styles.modelPickerHeader}>
         <span>Forecast model</span>
         <strong>{selectedModel ? selectedModel.label : value}</strong>
       </div>
-      <label className={styles.modelFamilySelect}>
-        <span>Model family</span>
-        <select value={visibleGroup?.label ?? ''} onChange={(event) => setSelectedGroupLabel(event.target.value)}>
-          {groups.map((group) => (
-            <option value={group.label} key={group.label}>
-              {group.label}
-            </option>
-          ))}
-        </select>
-      </label>
+      <div className={styles.modelFamilyTabs} aria-label="Model family">
+        {groups.map((group) => (
+          <button
+            className={group.label === visibleGroup?.label ? styles.modelFamilyTabActive : undefined}
+            type="button"
+            onClick={() => setSelectedGroupLabel(group.label)}
+            key={group.label}
+          >
+            {group.label}
+          </button>
+        ))}
+      </div>
       <div className={styles.modelPickerGrid}>
         {visibleGroup && (
           <div className={styles.modelGroup}>
@@ -1242,13 +1291,40 @@ function ModelPicker({
                     key={option.value}
                     title={option.value}
                   >
-                    <strong>{option.label.replace(` (${option.value})`, '')}</strong>
+                    <strong>{option.label}</strong>
                     <em>{option.value}</em>
                   </button>
                 ))}
             </div>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+function ProgressBar({progress, label}: {progress: RunProgress | null; label?: string}) {
+  const total = progress?.total ?? 0;
+  const current = progress?.current ?? 0;
+  const hasValue = total > 0;
+  const progressLabel = label ?? progress?.label ?? 'Working';
+  const clampedCurrent = Math.min(current, total);
+  const percentage = hasValue ? Math.min(100, Math.max(0, (clampedCurrent / total) * 100)) : undefined;
+  return (
+    <div className={styles.progressWrap}>
+      <div className={styles.progressMeta}>
+        <span>{progressLabel}</span>
+        {hasValue && <strong>{`${clampedCurrent.toLocaleString()} / ${total.toLocaleString()}`}</strong>}
+      </div>
+      <div
+        className={hasValue ? styles.progressBar : `${styles.progressBar} ${styles.progressBarIndeterminate}`}
+        role="progressbar"
+        aria-label={progressLabel}
+        aria-valuemin={hasValue ? 0 : undefined}
+        aria-valuemax={hasValue ? total : undefined}
+        aria-valuenow={hasValue ? clampedCurrent : undefined}
+      >
+        <span style={hasValue ? {width: `${percentage}%`} : undefined} />
       </div>
     </div>
   );
@@ -1528,10 +1604,13 @@ function RegressionPredictionTable({result}: {result: RegressionResponse}) {
 }
 
 function ComparisonChart({actualRows, results}: {actualRows: ActualRecord[]; results: ComparisonResult[]}) {
-  const forecastSeries = results
-    .filter((result) => result.response)
-    .slice(0, 8)
-    .map((result) => ({
+  const successfulResults = results.filter((result) => result.response);
+  const piecewiseResult = successfulResults.find((result) => result.requestedModel === 'piecewise_linear_seasonal');
+  const plottedResults = successfulResults.slice(0, 8);
+  if (piecewiseResult && !plottedResults.some((result) => result.requestedModel === piecewiseResult.requestedModel)) {
+    plottedResults[plottedResults.length - 1] = piecewiseResult;
+  }
+  const forecastSeries = plottedResults.map((result) => ({
       label: result.label,
       records: firstSeriesForecastRows(result.response as ForecastResponse),
     }));
@@ -1613,7 +1692,7 @@ function LineChart({caption, series}: {caption: string; series: ChartSeries[]}) 
               className={styles.interactivePoint}
               cx={point.x}
               cy={point.y}
-              r="7"
+              r="3"
               tabIndex={0}
               role="button"
               aria-label={`${item.label} step ${point.index}: ${formatMetric(point.value)}`}
@@ -4229,6 +4308,104 @@ async function parseParquetBuffer(buffer: ArrayBuffer, fileName: string): Promis
       }
     }
   }
+}
+
+function downsampleTable(table: ParsedTable, maxRows: number): ParsedTable {
+  if (table.rows.length <= maxRows) {
+    return table;
+  }
+  const step = table.rows.length / maxRows;
+  const rows = Array.from({length: maxRows}, (_, index) => table.rows[Math.floor(index * step)]).filter(
+    (row): row is Record<string, string> => row !== undefined,
+  );
+  return {
+    ...table,
+    rows,
+    fileName: `${stripExtension(table.fileName)}-sample-${rows.length.toLocaleString()}.parquet`,
+  };
+}
+
+function buildTaxiWeekSampleTable(table: ParsedTable, maxRows: number): ParsedTable {
+  const requiredColumns = ['tpep_pickup_datetime', 'tpep_dropoff_datetime', 'PULocationID', 'DOLocationID'];
+  if (!requiredColumns.every((column) => table.columns.includes(column))) {
+    return downsampleTable(table, maxRows);
+  }
+  const groups = new Map<
+    string,
+    {
+      timestamp: string;
+      pickup: string;
+      dropoff: string;
+      count: number;
+      totalAmount: number;
+      fareAmount: number;
+      tripDistance: number;
+      durationMinutes: number;
+    }
+  >();
+  for (const row of table.rows) {
+    const pickupTime = new Date(row.tpep_pickup_datetime);
+    const dropoffTime = new Date(row.tpep_dropoff_datetime);
+    const pickup = row.PULocationID;
+    const dropoff = row.DOLocationID;
+    if (Number.isNaN(pickupTime.getTime()) || Number.isNaN(dropoffTime.getTime()) || pickup === '' || dropoff === '') {
+      continue;
+    }
+    pickupTime.setMinutes(0, 0, 0);
+    const timestamp = pickupTime.toISOString().slice(0, 19);
+    const key = `${timestamp}|${pickup}|${dropoff}`;
+    const group =
+      groups.get(key) ??
+      {
+        timestamp,
+        pickup,
+        dropoff,
+        count: 0,
+        totalAmount: 0,
+        fareAmount: 0,
+        tripDistance: 0,
+        durationMinutes: 0,
+      };
+    group.count += 1;
+    group.totalAmount += coerceFiniteNumber(row.total_amount) ?? 0;
+    group.fareAmount += coerceFiniteNumber(row.fare_amount) ?? 0;
+    group.tripDistance += coerceFiniteNumber(row.trip_distance) ?? 0;
+    group.durationMinutes += Math.max(0, (dropoffTime.getTime() - new Date(row.tpep_pickup_datetime).getTime()) / 60000);
+    groups.set(key, group);
+  }
+  const rows = Array.from(groups.values())
+    .sort((left, right) => left.timestamp.localeCompare(right.timestamp) || left.pickup.localeCompare(right.pickup) || left.dropoff.localeCompare(right.dropoff))
+    .map((group) => ({
+      timestamp: group.timestamp,
+      series_id: `${group.pickup}-${group.dropoff}`,
+      PULocationID: group.pickup,
+      DOLocationID: group.dropoff,
+      target: String(group.count),
+      trip_count: String(group.count),
+      avg_total_amount: formatFixed(group.totalAmount / group.count, 2),
+      avg_fare_amount: formatFixed(group.fareAmount / group.count, 2),
+      avg_trip_distance: formatFixed(group.tripDistance / group.count, 2),
+      avg_duration_minutes: formatFixed(group.durationMinutes / group.count, 2),
+    }));
+  return downsampleTable(
+    {
+      columns: [
+        'timestamp',
+        'series_id',
+        'PULocationID',
+        'DOLocationID',
+        'target',
+        'trip_count',
+        'avg_total_amount',
+        'avg_fare_amount',
+        'avg_trip_distance',
+        'avg_duration_minutes',
+      ],
+      rows,
+      fileName: 'yellow_tripdata_2024-01-week1-route-hour-demand.parquet',
+    },
+    maxRows,
+  );
 }
 
 function formatCellValue(value: unknown, columnName = '') {

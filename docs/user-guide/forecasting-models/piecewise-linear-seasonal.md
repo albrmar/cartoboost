@@ -15,6 +15,9 @@ series when the forecast should be explained as:
 - one or more repeating seasonal components;
 - known event windows or known future regressors;
 - additive or multiplicative component effects;
+- external trend belief adjustments for forecast horizons;
+- recent residual shock propagation when the fitted trend has under- or
+  over-predicted for several consecutive observations;
 - residual intervals or quantile-style uncertainty summaries.
 
 It is a good fit for airport pickup demand with event windows, Midtown demand
@@ -70,16 +73,60 @@ frame = ForecastFrame.from_pandas(
 
 model = PiecewiseLinearSeasonalForecaster(
     growth="linear",
-    season_length=24,
-    changepoint_count=8,
+    changepoints=8,
+    weekly_fourier_order=3,
+    daily_fourier_order=4,
     prediction_interval_levels=(0.8, 0.95),
 )
 
 forecast = model.fit(frame).predict(24)
-components = model.components()
+components = model.components(24)
 ```
 
 The Python class validates configuration and delegates fitting, prediction,
 component extraction, fitted artifact serialization, and forecast rows to the
 native binding. Python should not reimplement component math or fallback
 prediction behavior.
+
+## Trend Beliefs And Residual Shocks
+
+Use `trend_adjustments` when forecast-time market beliefs should move the local
+trend path without changing the fitted historical coefficients. The mapping is
+keyed by forecast horizon, with values interpreted as trend multipliers. For
+example, `{1: 1.01, 2: 1.02}` raises the horizon-1 trend by 1 percent and the
+horizon-2 trend by 2 percent before the final forecast is assembled. Panel
+models can use `trend_adjustments_by_series` for route- or zone-specific
+beliefs; per-series values override global horizon values.
+
+```python
+model = PiecewiseLinearSeasonalForecaster(
+    changepoints=8,
+    weekly_fourier_order=3,
+    trend_adjustments={1: 1.01, 2: 1.02, 3: 1.03},
+    trend_adjustments_by_series={
+        "132": {1: 1.04, 2: 1.05},
+    },
+)
+```
+
+Use residual shocks when recent same-sign residuals indicate that the local
+trend is persistently under- or over-predicting a market. Set
+`residual_shock_window` to the required run length, `residual_shock_scale` to
+the fraction of the recent average residual to pass through, and
+`residual_shock_decay` to control how quickly the shock fades across horizons.
+The default scale is zero, so shock propagation is opt-in.
+
+```python
+model = PiecewiseLinearSeasonalForecaster(
+    changepoints=8,
+    weekly_fourier_order=3,
+    residual_shock_window=3,
+    residual_shock_scale=0.5,
+    residual_shock_decay=0.8,
+)
+```
+
+Component records include `trend`, `adjusted_trend`,
+`trend_adjustment_multiplier`, `trend_adjustment`, and `residual_shock` so a
+taxi demand report can separate fitted trend, external market belief, and
+recent residual carry-forward.

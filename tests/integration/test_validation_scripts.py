@@ -3611,6 +3611,10 @@ def test_forecasting_benchmark_model_settings_include_auto_policy():
         "cartoboost_lag",
         "cartoboost_auto_forecast",
     ]
+    assert benchmark.benchmark_model_names("piecewise") == [
+        "cartoboost_piecewise_linear_seasonal",
+    ]
+    assert benchmark.forecasting_library_models_for_roster("piecewise") == {}
     assert benchmark.benchmark_model_names("prophet-comparison") == [
         "cartoboost_piecewise_linear_seasonal",
         "prophet_additive",

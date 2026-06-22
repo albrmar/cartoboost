@@ -281,6 +281,63 @@ def test_piecewise_linear_seasonal_python_predict_accepts_future_regressors():
     assert predict_components["records"][0]["components"]["regressors"]["airport_queue"] > 10.0
 
 
+def test_piecewise_linear_seasonal_python_wrapper_exposes_trend_and_shock_controls():
+    pd = pytest.importorskip("pandas")
+    try:
+        from cartoboost import _native  # noqa: F401
+    except ImportError as exc:
+        pytest.skip(str(exc))
+
+    frame = pd.DataFrame(
+        {
+            "series_id": ["pickup_zone_1"] * 24,
+            "timestamp": pd.date_range("2026-01-01", periods=24, freq="D"),
+            "fare": [20.0 + 0.5 * day + (12.0 if day >= 22 else 0.0) for day in range(1, 25)],
+        }
+    )
+    forecast_frame = ForecastFrame.from_pandas(
+        frame,
+        timestamp_col="timestamp",
+        target_col="fare",
+        series_id_col="series_id",
+        freq="D",
+    )
+    baseline = PiecewiseLinearSeasonalForecaster(
+        changepoints=0,
+        weekly_fourier_order=0,
+        auto_weekly_seasonality=False,
+    ).fit(forecast_frame)
+    adjusted = PiecewiseLinearSeasonalForecaster(
+        changepoints=0,
+        weekly_fourier_order=0,
+        auto_weekly_seasonality=False,
+        trend_adjustments={2: 1.10},
+        residual_shock_window=3,
+        residual_shock_scale=0.8,
+        residual_shock_decay=0.5,
+    ).fit(forecast_frame)
+
+    baseline_records = json.loads(baseline.predict(2).to_json())["records"]
+    adjusted_records = json.loads(adjusted.predict(2).to_json())["records"]
+    override_records = json.loads(baseline.predict(2, trend_adjustments={2: 1.10}).to_json())[
+        "records"
+    ]
+    components = adjusted.components(2)
+
+    assert adjusted_records[0]["prediction"] > baseline_records[0]["prediction"]
+    assert adjusted_records[1]["prediction"] > override_records[1]["prediction"]
+    assert components["records"][1]["trend_adjustment_multiplier"] == pytest.approx(1.10)
+    assert components["records"][0]["residual_shock"] > components["records"][1]["residual_shock"]
+    assert adjusted.metadata_["trend_adjustments"] == {"2": pytest.approx(1.10)}
+    assert adjusted.metadata_["residual_shock_window"] == 3
+    assert adjusted.metadata_["residual_shock_scale"] == pytest.approx(0.8)
+    assert adjusted.metadata_["residual_shock_decay"] == pytest.approx(0.5)
+    with pytest.raises(ValueError, match="trend_adjustments"):
+        PiecewiseLinearSeasonalForecaster(trend_adjustments={0: 1.0})
+    with pytest.raises(ValueError, match="residual_shock_decay"):
+        PiecewiseLinearSeasonalForecaster(residual_shock_decay=1.5)
+
+
 def test_piecewise_linear_seasonal_python_wrapper_exposes_builtin_seasonality_l2():
     pd = pytest.importorskip("pandas")
     try:

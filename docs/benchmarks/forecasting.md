@@ -35,43 +35,40 @@ benchmark suite. They are not real TLC data.
 
 Read: the current scalable synthetic checks favor CartoBoost.
 
-## Prophet Comparison
+## CartoBoost Piecewise Local Diagnostics
 
-The `prophet-comparison` roster runs the Rust-native
-`cartoboost_piecewise_linear_seasonal` model against Prophet's additive
-CmdStan-backed model on the same splits. This synthetic suite run uses four
-taxi-shaped daily demand problem families, 4 pickup/dropoff lanes per problem,
-120 daily observations, two rolling-origin folds, and a 7-day horizon. Candidate
-selection and hyperparameter search are disabled.
+The `piecewise` roster runs only CartoBoost's Rust-native
+`cartoboost_piecewise_linear_seasonal` model. This is the local Prophet-style
+tool: trend, changepoints, Fourier seasonality, events, regressors, fitted
+artifacts, and component decomposition are implemented in Rust and surfaced as
+`piecewise_linear_seasonal` in Python and WASM.
 
-This benchmark is the maintained evidence for the Stan-free piecewise path:
-the CartoBoost row uses the Rust-native trend, changepoint, Fourier
-seasonality, event, and regressor implementation surfaced as
-`piecewise_linear_seasonal` in Python and WASM. The Prophet row is an external
-baseline in the benchmark harness, not a reusable CartoBoost model alias.
-
-| Rank | Model | Mean RMSE Ratio | Wins/Ties | Mean Fit+Predict |
-| ---: | --- | ---: | ---: | ---: |
-| 1 | `cartoboost_piecewise_linear_seasonal` | 1.000000 | 4 | 0.001300s |
-| 2 | `prophet_additive` | 2.450789 | 0 | 0.073142s |
+This synthetic suite run uses four taxi-shaped daily demand problem families, 4
+pickup/dropoff lanes per problem, 120 daily observations, two rolling-origin
+folds, and a 7-day horizon. Candidate selection and hyperparameter search are
+disabled so the plots show the local model behavior directly.
 
 | Problem | Model | RMSE | MAE | WAPE |
 | --- | --- | ---: | ---: | ---: |
 | `airport_calendar_events` | `cartoboost_piecewise_linear_seasonal` | 1.579893 | 0.807465 | 0.035577 |
-| `airport_calendar_events` | `prophet_additive` | 2.698843 | 2.236968 | 0.098619 |
 | `borough_monthly_pulses` | `cartoboost_piecewise_linear_seasonal` | 2.059026 | 1.517640 | 0.066407 |
-| `borough_monthly_pulses` | `prophet_additive` | 3.125845 | 2.632188 | 0.114851 |
 | `route_mix_shift` | `cartoboost_piecewise_linear_seasonal` | 0.603890 | 0.484308 | 0.021195 |
-| `route_mix_shift` | `prophet_additive` | 2.683213 | 2.286677 | 0.099971 |
 | `taxi_weekly` | `cartoboost_piecewise_linear_seasonal` | 1.358277 | 1.158468 | 0.050880 |
-| `taxi_weekly` | `prophet_additive` | 2.897991 | 2.533184 | 0.111225 |
 
-Read: on these deterministic synthetic Prophet-shaped tasks, the Rust-native
-piecewise model executes the trend, changepoint, and Fourier seasonality path
-without Stan while preserving the same benchmark split protocol. The mean
-fit-and-predict path is 56.28x faster here. This is synthetic evidence for the
-piecewise linear seasonal implementation path, not a replacement for real taxi or M-series
-forecasting evidence.
+Read: on these deterministic synthetic Prophet-shaped tasks, the local
+CartoBoost piecewise model executes the trend, changepoint, and Fourier
+seasonality path without Stan while preserving the rolling-origin split
+protocol. This is synthetic evidence for the piecewise linear seasonal
+implementation path, not a replacement for real taxi or M-series forecasting
+evidence.
+
+Rendered local CartoBoost piecewise diagnostics:
+
+![CartoBoost piecewise forecast lines for taxi weekly demand](../assets/nyc_taxi_benchmarks/piecewise_local_plots/taxi_weekly_forecast_lines.png)
+
+![CartoBoost piecewise horizon RMSE for airport calendar events](../assets/nyc_taxi_benchmarks/piecewise_local_plots/airport_calendar_events_horizon_rmse_by_tool.png)
+
+![CartoBoost piecewise actual versus predicted for route mix shift](../assets/nyc_taxi_benchmarks/piecewise_local_plots/route_mix_shift_actual_vs_predicted.png)
 
 Rerun command:
 
@@ -83,12 +80,13 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run --no-sync --group dev --group bench pyth
   --lanes 4 \
   --horizon 7 \
   --suite-folds 2 \
-  --model-roster prophet-comparison \
+  --model-roster piecewise \
   --no-candidate-selection \
   --no-hyperopt \
   --cartoboost-n-estimators 5 \
   --cartoboost-auto-n-estimators 5 \
-  --output target/forecasting_piecewise_prophet_suite.json
+  --output target/forecasting_piecewise_local_suite.json \
+  --plot-dir docs/assets/nyc_taxi_benchmarks/piecewise_local_plots
 ```
 
 ## M4 Sample
@@ -199,12 +197,13 @@ PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run --no-sync --group dev --group bench pyth
   --lanes 4 \
   --horizon 7 \
   --suite-folds 2 \
-  --model-roster prophet-comparison \
+  --model-roster piecewise \
   --no-candidate-selection \
   --no-hyperopt \
   --cartoboost-n-estimators 5 \
   --cartoboost-auto-n-estimators 5 \
-  --output target/forecasting_piecewise_prophet_suite.json
+  --output target/forecasting_piecewise_local_suite.json \
+  --plot-dir docs/assets/nyc_taxi_benchmarks/piecewise_local_plots
 
 uv run --group dev python scripts/forecasting_m4.py \
   --committed \
@@ -252,8 +251,9 @@ uv run --group dev --group bench python scripts/forecasting_library_benchmark.py
 
 - Real taxi demand covers one month and a 7-day holdout.
 - Synthetic demand checks are diagnostics.
-- The Prophet comparison is synthetic and should be read as wiring, quality, and
-  timing evidence for Prophet-shaped tasks, not broad real-data evidence.
+- The CartoBoost piecewise local diagnostics are synthetic and should be read as
+  wiring and behavior evidence for Prophet-shaped tasks, not broad real-data
+  evidence.
 - M4 is a 96-series-per-group sample.
 - M5 full-roster evidence is a 100-series sample; the full-corpus artifact is a
   lag-only coverage run.

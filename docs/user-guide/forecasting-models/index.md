@@ -88,9 +88,10 @@ in benchmark harnesses and reports.
 Use [Piecewise Linear Seasonal](/docs/user-guide/forecasting-models/piecewise-linear-seasonal) when the forecast
 claim depends on inspectable local structure: growth, changepoints, Fourier
 seasonalities, event windows, known future regressors, uncertainty intervals,
-quantiles, and component contributions. The implementation is Rust-native and
-is also exposed to the browser through the `piecewise_linear_seasonal` WASM
-model. There is no `prophet` alias in reusable CartoBoost APIs.
+quantiles, trend-belief adjustments, residual shock propagation, and component
+contributions. The implementation is Rust-native and is also exposed to the
+browser through the `piecewise_linear_seasonal` WASM model. There is no
+`prophet` alias in reusable CartoBoost APIs.
 
 ## Shared Result Shape
 

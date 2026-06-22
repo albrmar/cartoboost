@@ -331,12 +331,13 @@ def main() -> int:
     )
     parser.add_argument(
         "--model-roster",
-        choices=["full", "scalable", "cartoboost", "prophet-comparison"],
+        choices=["full", "scalable", "cartoboost", "piecewise", "prophet-comparison"],
         default="full",
         help=(
             "Forecast model roster. Use scalable for full M5-style panels where "
-            "per-series Prophet/StatsForecast models are impractical. Use "
-            "prophet-comparison for the native piecewise-linear model and Prophet only."
+            "per-series Prophet/StatsForecast models are impractical. Use piecewise "
+            "for only the native piecewise-linear model, or prophet-comparison for "
+            "the native piecewise-linear model and Prophet only."
         ),
     )
     parser.add_argument(
@@ -673,6 +674,8 @@ def windows_peak_rss_mb() -> float:
 def benchmark_model_names(roster: str) -> list[str]:
     if roster == "cartoboost":
         return list(CARTOBOOST_BENCHMARK_MODELS)
+    if roster == "piecewise":
+        return [PIECEWISE_LINEAR_BENCHMARK_MODEL]
     if roster == "prophet-comparison":
         return [PIECEWISE_LINEAR_BENCHMARK_MODEL, "prophet_additive"]
     if roster == "scalable":
@@ -685,7 +688,7 @@ def benchmark_model_names(roster: str) -> list[str]:
 
 
 def forecasting_library_models_for_roster(roster: str) -> dict[str, list[str]]:
-    if roster == "cartoboost":
+    if roster in {"cartoboost", "piecewise"}:
         return {}
     if roster == "prophet-comparison":
         return {"prophet": PROPHET_MODELS}
@@ -711,7 +714,7 @@ def run_synthetic_suite(
         table, dataset = load_synthetic_fixture(problem_args)
         dataset["dataset_hash"] = canonical_dataset_hash(table)
         load_seconds = perf_counter() - load_start
-        split_results, metrics, quality, timing = score_rolling_origin_problem(
+        split_results, metrics, quality, timing, scored = score_rolling_origin_problem(
             table,
             horizon=args.horizon,
             season_length=7,
@@ -720,11 +723,22 @@ def run_synthetic_suite(
             model_names=benchmark_model_names(args.model_roster),
             source="synthetic",
         )
+        plots = (
+            write_forecast_plots(
+                scored,
+                args.plot_dir,
+                prefix=problem,
+                models=benchmark_model_names(args.model_roster),
+            )
+            if args.plot_dir
+            else []
+        )
         results[problem] = {
             "dataset": dataset,
             "splits": split_results,
             "metrics": metrics,
             "quality": quality,
+            "plots": plots,
         }
         timings[problem] = {
             "load_seconds": load_seconds,
@@ -2239,11 +2253,12 @@ def score_rolling_origin_problem(
     cartoboost_config: dict[str, Any],
     model_names: list[str],
     source: str = "synthetic",
-) -> tuple[dict[str, Any], dict[str, dict[str, float]], dict[str, Any], dict[str, Any]]:
+) -> tuple[dict[str, Any], dict[str, dict[str, float]], dict[str, Any], dict[str, Any], Any]:
     split_results: dict[str, Any] = {}
     timing: dict[str, Any] = {"splits": {}}
     cutoffs = rolling_origin_cutoffs(table, horizon=horizon, folds=folds)
     candidate_validation_cache: dict[Any, dict[str, float]] = {}
+    scored_folds: list[Any] = []
     for fold_index, cutoff in enumerate(cutoffs, start=1):
         split_name = f"rolling_origin_{fold_index}"
         metrics, quality, split_timing, _scored = score_models(
@@ -2262,8 +2277,11 @@ def score_rolling_origin_problem(
             "quality": quality,
         }
         timing["splits"][split_name] = split_timing
+        scored_folds.append(_scored)
     aggregate_metrics = aggregate_split_metrics(split_results)
-    return split_results, aggregate_metrics, quality_summary(aggregate_metrics), timing
+    pl = require_polars()
+    scored = pl.concat(scored_folds, how="vertical") if len(scored_folds) > 1 else scored_folds[0]
+    return split_results, aggregate_metrics, quality_summary(aggregate_metrics), timing, scored
 
 
 def aggregate_split_metrics(split_results: dict[str, Any]) -> dict[str, dict[str, float]]:

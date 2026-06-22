@@ -187,6 +187,11 @@ pub struct PiecewiseLinearSeasonalConfig {
     pub regressor_standardization: PiecewiseLinearRegressorStandardization,
     pub future_regressors: BTreeMap<String, Vec<f64>>,
     pub future_regressors_by_series: BTreeMap<String, BTreeMap<String, Vec<f64>>>,
+    pub trend_adjustments: BTreeMap<usize, f64>,
+    pub trend_adjustments_by_series: BTreeMap<String, BTreeMap<usize, f64>>,
+    pub residual_shock_window: usize,
+    pub residual_shock_scale: f64,
+    pub residual_shock_decay: f64,
     pub interval_levels: Vec<f64>,
     pub quantile_levels: Vec<f64>,
     pub uncertainty_samples: usize,
@@ -522,6 +527,11 @@ impl Default for PiecewiseLinearSeasonalConfig {
             regressor_standardization: PiecewiseLinearRegressorStandardization::Auto,
             future_regressors: BTreeMap::new(),
             future_regressors_by_series: BTreeMap::new(),
+            trend_adjustments: BTreeMap::new(),
+            trend_adjustments_by_series: BTreeMap::new(),
+            residual_shock_window: 0,
+            residual_shock_scale: 0.0,
+            residual_shock_decay: 1.0,
             interval_levels: Vec::new(),
             quantile_levels: Vec::new(),
             uncertainty_samples: 0,
@@ -641,6 +651,10 @@ impl PiecewiseLinearSeasonalForecaster {
                 "horizon",
                 "prediction",
                 "trend",
+                "adjusted_trend",
+                "trend_adjustment_multiplier",
+                "trend_adjustment",
+                "residual_shock",
                 "linear_predictor",
                 "components",
             ],
@@ -2619,6 +2633,26 @@ impl Forecaster for PiecewiseLinearSeasonalForecaster {
                 "future_regressors_by_series".to_string(),
                 json!(self.config.future_regressors_by_series),
             );
+            values.insert(
+                "trend_adjustments".to_string(),
+                json!(self.config.trend_adjustments),
+            );
+            values.insert(
+                "trend_adjustments_by_series".to_string(),
+                json!(self.config.trend_adjustments_by_series),
+            );
+            values.insert(
+                "residual_shock_window".to_string(),
+                json!(self.config.residual_shock_window),
+            );
+            values.insert(
+                "residual_shock_scale".to_string(),
+                json!(self.config.residual_shock_scale),
+            );
+            values.insert(
+                "residual_shock_decay".to_string(),
+                json!(self.config.residual_shock_decay),
+            );
             values.insert("fit_loss".to_string(), json!(self.config.fit_loss.name()));
             values.insert("huber_delta".to_string(), json!(self.config.huber_delta));
             values.insert(
@@ -3084,10 +3118,21 @@ impl FittedPiecewiseLinearSeasonalSeries {
             .zip(self.coefficients.iter())
             .map(|(feature, coefficient)| feature * coefficient)
             .sum::<f64>();
-        let prediction = inverse_piecewise_target(linear_predictor, bounds, config);
         let trend_linear =
             piecewise_trend_value(elapsed_days, &self.coefficients, &self.changepoints, config);
         let trend = inverse_piecewise_target(trend_linear, bounds, config);
+        let trend_adjustment_multiplier = piecewise_trend_adjustment_multiplier(
+            series_id,
+            step,
+            &config.trend_adjustments,
+            &config.trend_adjustments_by_series,
+        );
+        let adjusted_trend = trend * trend_adjustment_multiplier;
+        let trend_adjustment = adjusted_trend - trend;
+        let residual_shock = self.residual_shock(step, config);
+        let prediction = inverse_piecewise_target(linear_predictor, bounds, config)
+            + trend_adjustment
+            + residual_shock;
         let components = piecewise_component_contributions(
             &features,
             &self.coefficients,
@@ -3100,6 +3145,10 @@ impl FittedPiecewiseLinearSeasonalSeries {
             "horizon": step,
             "prediction": prediction,
             "trend": trend,
+            "adjusted_trend": adjusted_trend,
+            "trend_adjustment_multiplier": trend_adjustment_multiplier,
+            "trend_adjustment": trend_adjustment,
+            "residual_shock": residual_shock,
             "linear_predictor": linear_predictor,
             "trend_linear": trend_linear,
             "component_scale": if config.growth == PiecewiseLinearGrowth::Logistic {
@@ -3250,6 +3299,18 @@ impl FittedPiecewiseLinearSeasonalSeries {
             .map(|(feature, coefficient)| feature * coefficient)
             .sum::<f64>();
         let mean = inverse_piecewise_target(linear_predictor, bounds, config);
+        let trend_linear =
+            piecewise_trend_value(elapsed_days, &self.coefficients, &self.changepoints, config);
+        let trend = inverse_piecewise_target(trend_linear, bounds, config);
+        let trend_adjustment_multiplier = piecewise_trend_adjustment_multiplier(
+            series_id,
+            step,
+            &config.trend_adjustments,
+            &config.trend_adjustments_by_series,
+        );
+        let adjusted_trend = trend * trend_adjustment_multiplier;
+        let residual_shock = self.residual_shock(step, config);
+        let adjusted_mean = mean + adjusted_trend - trend + residual_shock;
         let variance = if config.coefficient_uncertainty_scale > 0.0
             && !self.coefficient_covariance.is_empty()
             && self.transformed_residual_scale > 0.0
@@ -3266,7 +3327,7 @@ impl FittedPiecewiseLinearSeasonalSeries {
         let derivative = inverse_piecewise_target_derivative(linear_predictor, bounds, config);
         let coefficient_scale = linear_coefficient_scale * derivative.abs();
         Ok(PiecewisePredictionTerms {
-            mean,
+            mean: adjusted_mean,
             linear_predictor,
             coefficient_scale: if coefficient_scale.is_finite() {
                 coefficient_scale
@@ -3362,6 +3423,48 @@ impl FittedPiecewiseLinearSeasonalSeries {
     fn trend_component(&self, elapsed_days: f64, config: &PiecewiseLinearSeasonalConfig) -> f64 {
         piecewise_trend_value(elapsed_days, &self.coefficients, &self.changepoints, config)
     }
+
+    fn residual_shock(&self, step: usize, config: &PiecewiseLinearSeasonalConfig) -> f64 {
+        if config.residual_shock_window == 0 || config.residual_shock_scale <= 0.0 {
+            return 0.0;
+        }
+        let window = config.residual_shock_window.min(self.residuals.len());
+        if window == 0 {
+            return 0.0;
+        }
+        let recent = &self.residuals[self.residuals.len() - window..];
+        let first = recent[0];
+        if first == 0.0 || !first.is_finite() {
+            return 0.0;
+        }
+        let sign = first.signum();
+        if recent
+            .iter()
+            .any(|residual| !residual.is_finite() || *residual == 0.0 || residual.signum() != sign)
+        {
+            return 0.0;
+        }
+        let average = recent.iter().sum::<f64>() / window as f64;
+        average
+            * config.residual_shock_scale
+            * config
+                .residual_shock_decay
+                .powi(step.saturating_sub(1) as i32)
+    }
+}
+
+fn piecewise_trend_adjustment_multiplier(
+    series_id: &str,
+    step: usize,
+    global: &BTreeMap<usize, f64>,
+    by_series: &BTreeMap<String, BTreeMap<usize, f64>>,
+) -> f64 {
+    by_series
+        .get(series_id)
+        .and_then(|values| values.get(&step))
+        .or_else(|| global.get(&step))
+        .copied()
+        .unwrap_or(1.0)
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -4322,6 +4425,31 @@ fn validate_piecewise_linear_seasonal_config(config: &PiecewiseLinearSeasonalCon
             }
         }
     }
+    validate_piecewise_trend_adjustments(&config.trend_adjustments, "trend_adjustments")?;
+    for (series_id, adjustments) in &config.trend_adjustments_by_series {
+        if series_id.is_empty() {
+            return Err(CartoBoostError::InvalidInput(
+                "trend adjustment series ids must not be empty".to_string(),
+            ));
+        }
+        validate_piecewise_trend_adjustments(
+            adjustments,
+            &format!("trend_adjustments_by_series[{series_id:?}]"),
+        )?;
+    }
+    if !config.residual_shock_scale.is_finite() || config.residual_shock_scale < 0.0 {
+        return Err(CartoBoostError::InvalidInput(
+            "residual_shock_scale must be a finite nonnegative value".to_string(),
+        ));
+    }
+    if !config.residual_shock_decay.is_finite()
+        || config.residual_shock_decay < 0.0
+        || config.residual_shock_decay > 1.0
+    {
+        return Err(CartoBoostError::InvalidInput(
+            "residual_shock_decay must be finite and in [0, 1]".to_string(),
+        ));
+    }
     let event_names = piecewise_event_names(config);
     for (name, value) in &config.event_l2_regularization_by_name {
         if name.is_empty() {
@@ -4410,6 +4538,25 @@ fn validate_piecewise_linear_seasonal_config(config: &PiecewiseLinearSeasonalCon
                         .to_string(),
                 ));
             }
+        }
+    }
+    Ok(())
+}
+
+fn validate_piecewise_trend_adjustments(
+    adjustments: &BTreeMap<usize, f64>,
+    name: &str,
+) -> Result<()> {
+    for (horizon, multiplier) in adjustments {
+        if *horizon == 0 {
+            return Err(CartoBoostError::InvalidInput(format!(
+                "{name} horizon keys must be positive"
+            )));
+        }
+        if !multiplier.is_finite() || *multiplier <= 0.0 {
+            return Err(CartoBoostError::InvalidInput(format!(
+                "{name} multipliers must be positive finite values"
+            )));
         }
     }
     Ok(())
@@ -6762,7 +6909,11 @@ mod tests {
                 .expect("airport queue contribution")
                 > 10.0
         );
-        assert_eq!(components["columns"][6].as_str(), Some("components"));
+        assert!(components["columns"]
+            .as_array()
+            .expect("columns")
+            .iter()
+            .any(|column| column.as_str() == Some("components")));
     }
 
     #[test]
@@ -8099,6 +8250,97 @@ mod tests {
                 ["standardized"]
                 .as_bool(),
             Some(true)
+        );
+    }
+
+    #[test]
+    fn piecewise_linear_trend_adjustments_shift_future_trend() {
+        let frame = ForecastFrame::new(
+            (1..=30)
+                .map(|day| ForecastRow::single(ts(day), 10.0 + f64::from(day)))
+                .collect(),
+            ForecastFrequency::Daily,
+        )
+        .expect("valid frame");
+        let base_config = PiecewiseLinearSeasonalConfig {
+            changepoints: 0,
+            weekly_fourier_order: 0,
+            auto_weekly_seasonality: false,
+            ..PiecewiseLinearSeasonalConfig::default()
+        };
+        let mut baseline =
+            PiecewiseLinearSeasonalForecaster::new(base_config.clone()).expect("baseline config");
+        let mut adjusted = PiecewiseLinearSeasonalForecaster::new(PiecewiseLinearSeasonalConfig {
+            trend_adjustments: BTreeMap::from([(2, 1.20)]),
+            ..base_config
+        })
+        .expect("adjusted config");
+
+        baseline.fit(&frame).expect("baseline fit");
+        adjusted.fit(&frame).expect("adjusted fit");
+        let baseline_forecast = baseline.predict(2).expect("baseline predict");
+        let adjusted_forecast = adjusted.predict(2).expect("adjusted predict");
+        let baseline_second = baseline_forecast.predictions()[1].mean;
+        let adjusted_second = adjusted_forecast.predictions()[1].mean;
+        let components = adjusted
+            .predict_components_json_value(2)
+            .expect("components");
+        let second_record = &components["records"][1];
+
+        assert!(adjusted_second > baseline_second + 7.0);
+        assert_eq!(
+            second_record["trend_adjustment_multiplier"].as_f64(),
+            Some(1.20)
+        );
+        assert!(
+            second_record["adjusted_trend"].as_f64().unwrap()
+                > second_record["trend"].as_f64().unwrap()
+        );
+    }
+
+    #[test]
+    fn piecewise_linear_residual_shock_passes_recent_signed_residuals_forward() {
+        let rows = (1..=24)
+            .map(|day| {
+                let shock = if day >= 22 { 12.0 } else { 0.0 };
+                ForecastRow::single(ts(day), 20.0 + 0.5 * f64::from(day) + shock)
+            })
+            .collect::<Vec<_>>();
+        let frame = ForecastFrame::new(rows, ForecastFrequency::Daily).expect("valid frame");
+        let base_config = PiecewiseLinearSeasonalConfig {
+            changepoints: 0,
+            weekly_fourier_order: 0,
+            auto_weekly_seasonality: false,
+            ..PiecewiseLinearSeasonalConfig::default()
+        };
+        let mut baseline =
+            PiecewiseLinearSeasonalForecaster::new(base_config.clone()).expect("baseline config");
+        let mut shock_model =
+            PiecewiseLinearSeasonalForecaster::new(PiecewiseLinearSeasonalConfig {
+                residual_shock_window: 3,
+                residual_shock_scale: 0.8,
+                residual_shock_decay: 0.5,
+                ..base_config
+            })
+            .expect("shock config");
+
+        baseline.fit(&frame).expect("baseline fit");
+        shock_model.fit(&frame).expect("shock fit");
+        let baseline_forecast = baseline.predict(2).expect("baseline predict");
+        let shock_forecast = shock_model.predict(2).expect("shock predict");
+        let components = shock_model
+            .predict_components_json_value(2)
+            .expect("components");
+
+        assert!(shock_forecast.predictions()[0].mean > baseline_forecast.predictions()[0].mean);
+        assert!(shock_forecast.predictions()[1].mean > baseline_forecast.predictions()[1].mean);
+        assert!(
+            components["records"][0]["residual_shock"].as_f64().unwrap()
+                > components["records"][1]["residual_shock"].as_f64().unwrap()
+        );
+        assert_eq!(
+            shock_model.metadata()["residual_shock_window"].as_u64(),
+            Some(3)
         );
     }
 

@@ -5,6 +5,7 @@ use cartoboost_core::forecasting::{
     SeasonalNaiveForecaster,
 };
 use chrono::{NaiveDate, NaiveDateTime};
+use std::collections::BTreeMap;
 
 fn ts(day: u32) -> NaiveDateTime {
     NaiveDate::from_ymd_opt(2026, 1, day)
@@ -53,6 +54,51 @@ fn rejects_duplicate_panel_timestamp() {
     )
     .expect_err("duplicate should be rejected");
     assert!(err.to_string().contains("duplicate forecast timestamp"));
+}
+
+#[test]
+fn weighted_string_rows_collapse_duplicate_panel_timestamps() {
+    let frame = ForecastFrame::from_string_rows_with_covariates_and_weights(
+        vec![
+            (
+                "A".to_string(),
+                "2026-01-01T00:00:00".to_string(),
+                10.0,
+                BTreeMap::from([
+                    ("trip_distance".to_string(), 1.0),
+                    ("trip_count".to_string(), 1.0),
+                ]),
+            ),
+            (
+                "A".to_string(),
+                "2026-01-01T00:00:00".to_string(),
+                20.0,
+                BTreeMap::from([
+                    ("trip_distance".to_string(), 3.0),
+                    ("trip_count".to_string(), 3.0),
+                ]),
+            ),
+            (
+                "A".to_string(),
+                "2026-01-02T00:00:00".to_string(),
+                30.0,
+                BTreeMap::from([
+                    ("trip_distance".to_string(), 5.0),
+                    ("trip_count".to_string(), 2.0),
+                ]),
+            ),
+        ],
+        vec![1.0, 3.0, 2.0],
+        Some("trip_count".to_string()),
+        ForecastFrequency::Daily,
+        ForecastFrameMetadata::default(),
+    )
+    .expect("weighted duplicate frame");
+
+    assert_eq!(frame.rows().len(), 2);
+    assert_eq!(frame.rows()[0].target, 17.5);
+    assert_eq!(frame.rows()[0].covariates["trip_distance"], 2.5);
+    assert_eq!(frame.rows()[0].covariates["trip_count"], 4.0);
 }
 
 #[test]

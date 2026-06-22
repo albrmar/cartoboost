@@ -41,6 +41,7 @@ class ForecastFrame:
     known_future_covariates: tuple[str, ...] = ()
     historical_covariates: tuple[str, ...] = ()
     allow_irregular: bool = False
+    sample_weight_col: str | None = None
     _native_frame: Any | None = field(default=None, repr=False, compare=False)
 
     def __post_init__(self) -> None:
@@ -64,6 +65,7 @@ class ForecastFrame:
         known_future_covariates: Sequence[str] | None = None,
         historical_covariates: Sequence[str] | None = None,
         allow_irregular: bool = False,
+        sample_weight_col: str | None = None,
     ) -> ForecastFrame:
         pd = require_pandas()
         if not isinstance(frame, pd.DataFrame):
@@ -71,6 +73,14 @@ class ForecastFrame:
         static = _as_list(static_covariates, name="static_covariates")
         known_future = _as_list(known_future_covariates, name="known_future_covariates")
         historical = _as_list(historical_covariates, name="historical_covariates")
+        if sample_weight_col is not None:
+            sample_weight_col = str(sample_weight_col)
+            if sample_weight_col in {timestamp_col, target_col, series_id_col}:
+                raise ValueError("sample_weight_col cannot be a reserved forecast column")
+            if sample_weight_col in static or sample_weight_col in known_future:
+                raise ValueError("sample_weight_col must not be a static or known-future covariate")
+            if sample_weight_col not in historical:
+                historical.append(sample_weight_col)
         required = [timestamp_col, target_col, *static, *known_future, *historical]
         if series_id_col is not None:
             required.append(series_id_col)
@@ -111,12 +121,28 @@ class ForecastFrame:
                 raise ValueError(
                     f"forecast covariate column {covariate_col!r} must contain only finite values"
                 )
+        if sample_weight_col is not None:
+            sample_weights = data[sample_weight_col].to_numpy(dtype=float, copy=False)
+            if not np.isfinite(sample_weights).all() or (sample_weights <= 0.0).any():
+                raise ValueError(
+                    f"sample weight column {sample_weight_col!r} must contain "
+                    "positive finite values"
+                )
 
         sort_cols = [timestamp_col] if series_id_col is None else [series_id_col, timestamp_col]
         data = data.sort_values(sort_cols, kind="mergesort").reset_index(drop=True)
         duplicate_cols = (
             [timestamp_col] if series_id_col is None else [series_id_col, timestamp_col]
         )
+        native_source_data = data
+        if sample_weight_col is not None:
+            data = _aggregate_duplicate_timestamps(
+                data,
+                group_cols=duplicate_cols,
+                target_col=target_col,
+                value_cols=[*static, *known_future, *historical],
+                sample_weight_col=sample_weight_col,
+            )
         duplicates = data.duplicated(subset=duplicate_cols, keep=False)
         if duplicates.any():
             raise ValueError("forecast data contains duplicate timestamp rows within a series")
@@ -148,8 +174,9 @@ class ForecastFrame:
             known_future_covariates=tuple(known_future),
             historical_covariates=tuple(historical),
             allow_irregular=allow_irregular,
+            sample_weight_col=sample_weight_col,
         )
-        native_frame = _build_native_frame(result)
+        native_frame = _build_native_frame(result, data=native_source_data)
         return cls(
             data=result.data,
             timestamp_col=result.timestamp_col,
@@ -160,6 +187,7 @@ class ForecastFrame:
             known_future_covariates=result.known_future_covariates,
             historical_covariates=result.historical_covariates,
             allow_irregular=result.allow_irregular,
+            sample_weight_col=result.sample_weight_col,
             _native_frame=native_frame,
         )
 
@@ -193,6 +221,7 @@ class ForecastFrame:
             "known_future_covariates": list(self.known_future_covariates),
             "historical_covariates": list(self.historical_covariates),
             "allow_irregular": self.allow_irregular,
+            "sample_weight_col": self.sample_weight_col,
         }
 
 
@@ -448,6 +477,44 @@ def _validate_covariate_metadata(
         raise ValueError("covariate columns must belong to only one forecasting role")
 
 
+def _aggregate_duplicate_timestamps(
+    data: Any,
+    *,
+    group_cols: Sequence[str],
+    target_col: str,
+    value_cols: Sequence[str],
+    sample_weight_col: str,
+) -> Any:
+    working = data.copy()
+    weight = working[sample_weight_col].to_numpy(dtype=float, copy=False)
+    weighted_cols = [target_col, *[col for col in value_cols if col != sample_weight_col]]
+    for column in weighted_cols:
+        working[f"__cartoboost_weighted_{column}"] = (
+            working[column].to_numpy(dtype=float, copy=False) * weight
+        )
+
+    aggregations = {sample_weight_col: "sum"}
+    for column in weighted_cols:
+        aggregations[f"__cartoboost_weighted_{column}"] = "sum"
+
+    grouped = (
+        working.groupby(list(group_cols), sort=False, dropna=False).agg(aggregations).reset_index()
+    )
+    total_weight = grouped[sample_weight_col].to_numpy(dtype=float, copy=False)
+    if (total_weight <= 0.0).any():
+        raise ValueError(f"sample weight column {sample_weight_col!r} must sum to positive values")
+    for column in weighted_cols:
+        grouped[column] = grouped[f"__cartoboost_weighted_{column}"] / total_weight
+        grouped = grouped.drop(columns=[f"__cartoboost_weighted_{column}"])
+
+    ordered_columns = [column for column in data.columns if column in grouped.columns]
+    return (
+        grouped[ordered_columns]
+        .sort_values(list(group_cols), kind="mergesort")
+        .reset_index(drop=True)
+    )
+
+
 def _resolve_frequency(
     timestamps: Any,
     freq: str | None,
@@ -492,7 +559,7 @@ def _resolve_panel_frequency(
     return next(iter(resolved))
 
 
-def _build_native_frame(frame: ForecastFrame) -> Any:
+def _build_native_frame(frame: ForecastFrame, *, data: Any | None = None) -> Any:
     if frame.freq is None:
         return None
     try:
@@ -506,7 +573,10 @@ def _build_native_frame(frame: ForecastFrame) -> Any:
         *frame.known_future_covariates,
         *frame.historical_covariates,
     ]
-    data = frame.data
+    data = frame.data if data is None else data
+    sample_weights = None
+    if frame.sample_weight_col is not None:
+        sample_weights = [float(value) for value in data[frame.sample_weight_col].tolist()]
     for row in data.itertuples(index=False):
         values = row._asdict()
         series_id = (
@@ -527,6 +597,8 @@ def _build_native_frame(frame: ForecastFrame) -> Any:
             known_future_covariates=list(frame.known_future_covariates),
             historical_covariates=list(frame.historical_covariates),
             row_covariates=row_covariates if covariate_cols else None,
+            sample_weights=sample_weights,
+            sample_weight_col=frame.sample_weight_col,
         )
     except TypeError:
         return _native.ForecastFrame(rows, frame.freq)

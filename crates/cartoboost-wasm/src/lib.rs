@@ -128,6 +128,11 @@ struct BrowserForecastOptions {
     regressor_standardization: Option<String>,
     future_regressors: Option<BTreeMap<String, Vec<f64>>>,
     future_regressors_by_series: Option<BTreeMap<String, BTreeMap<String, Vec<f64>>>>,
+    trend_adjustments: Option<BTreeMap<usize, f64>>,
+    trend_adjustments_by_series: Option<BTreeMap<String, BTreeMap<usize, f64>>>,
+    residual_shock_window: Option<usize>,
+    residual_shock_scale: Option<f64>,
+    residual_shock_decay: Option<f64>,
     interval_levels: Option<Vec<f64>>,
     quantile_levels: Option<Vec<f64>>,
     uncertainty_samples: Option<usize>,
@@ -187,6 +192,8 @@ struct BrowserForecastArtifactPredictOptions {
     include_quantiles: bool,
     future_regressors: Option<BTreeMap<String, Vec<f64>>>,
     future_regressors_by_series: Option<BTreeMap<String, BTreeMap<String, Vec<f64>>>>,
+    trend_adjustments: Option<BTreeMap<usize, f64>>,
+    trend_adjustments_by_series: Option<BTreeMap<String, BTreeMap<usize, f64>>>,
     interval_levels: Option<Vec<f64>>,
     quantile_levels: Option<Vec<f64>>,
     uncertainty_samples: Option<usize>,
@@ -200,6 +207,8 @@ impl Default for BrowserForecastArtifactPredictOptions {
             include_quantiles: true,
             future_regressors: None,
             future_regressors_by_series: None,
+            trend_adjustments: None,
+            trend_adjustments_by_series: None,
             interval_levels: None,
             quantile_levels: None,
             uncertainty_samples: None,
@@ -1022,6 +1031,12 @@ fn apply_piecewise_artifact_predict_options(
         }
         if let Some(future_regressors_by_series) = &options.future_regressors_by_series {
             config.future_regressors_by_series = future_regressors_by_series.clone();
+        }
+        if let Some(trend_adjustments) = &options.trend_adjustments {
+            config.trend_adjustments = trend_adjustments.clone();
+        }
+        if let Some(trend_adjustments_by_series) = &options.trend_adjustments_by_series {
+            config.trend_adjustments_by_series = trend_adjustments_by_series.clone();
         }
         if let Some(levels) = &options.interval_levels {
             config.interval_levels = levels.clone();
@@ -2594,6 +2609,21 @@ fn piecewise_linear_seasonal_config(
     if let Some(future_regressors_by_series) = &options.future_regressors_by_series {
         config.future_regressors_by_series = future_regressors_by_series.clone();
     }
+    if let Some(trend_adjustments) = &options.trend_adjustments {
+        config.trend_adjustments = trend_adjustments.clone();
+    }
+    if let Some(trend_adjustments_by_series) = &options.trend_adjustments_by_series {
+        config.trend_adjustments_by_series = trend_adjustments_by_series.clone();
+    }
+    if let Some(value) = options.residual_shock_window {
+        config.residual_shock_window = value;
+    }
+    if let Some(value) = options.residual_shock_scale {
+        config.residual_shock_scale = value;
+    }
+    if let Some(value) = options.residual_shock_decay {
+        config.residual_shock_decay = value;
+    }
     if let Some(levels) = &options.interval_levels {
         config.interval_levels = levels.clone();
     }
@@ -2950,6 +2980,109 @@ mod tests {
         assert_eq!(
             response.metadata["modelMetadata"]["uncertainty_samples"].as_u64(),
             Some(0)
+        );
+    }
+
+    #[test]
+    fn browser_piecewise_linear_trend_adjustment_and_shock_options_flow_through_dispatch() {
+        let base_options = || BrowserForecastOptions {
+            changepoints: Some(0),
+            weekly_fourier_order: Some(0),
+            auto_weekly_seasonality: Some(false),
+            include_components: Some(true),
+            ..BrowserForecastOptions::default()
+        };
+        let trend_adjustments = BTreeMap::from([(2, 1.10)]);
+        let baseline = run_forecast_request(BrowserForecastRequest {
+            rows: sample_panel_rows(),
+            frequency: "daily".to_string(),
+            horizon: 2,
+            model: "piecewise_linear_seasonal".to_string(),
+            options: base_options(),
+            metadata: BrowserForecastMetadata::default(),
+        })
+        .expect("baseline piecewise forecast");
+        let trend_adjusted = run_forecast_request(BrowserForecastRequest {
+            rows: sample_panel_rows(),
+            frequency: "daily".to_string(),
+            horizon: 2,
+            model: "piecewise_linear_seasonal".to_string(),
+            options: BrowserForecastOptions {
+                trend_adjustments: Some(trend_adjustments.clone()),
+                ..base_options()
+            },
+            metadata: BrowserForecastMetadata::default(),
+        })
+        .expect("trend-adjusted piecewise forecast");
+        let shock_adjusted = run_forecast_request(BrowserForecastRequest {
+            rows: sample_panel_rows(),
+            frequency: "daily".to_string(),
+            horizon: 2,
+            model: "piecewise_linear_seasonal".to_string(),
+            options: BrowserForecastOptions {
+                trend_adjustments: Some(trend_adjustments.clone()),
+                residual_shock_window: Some(2),
+                residual_shock_scale: Some(0.5),
+                residual_shock_decay: Some(0.8),
+                ..base_options()
+            },
+            metadata: BrowserForecastMetadata::default(),
+        })
+        .expect("shock-adjusted piecewise forecast");
+        let artifact_response =
+            fit_piecewise_linear_seasonal_artifact_request(BrowserForecastRequest {
+                rows: sample_panel_rows(),
+                frequency: "daily".to_string(),
+                horizon: 2,
+                model: "piecewise_linear_seasonal".to_string(),
+                options: base_options(),
+                metadata: BrowserForecastMetadata::default(),
+            })
+            .expect("fit piecewise artifact");
+        let restored = predict_piecewise_linear_seasonal_artifact_request(
+            &artifact_response.artifact,
+            2,
+            BrowserForecastArtifactPredictOptions {
+                trend_adjustments: Some(trend_adjustments),
+                ..BrowserForecastArtifactPredictOptions::default()
+            },
+        )
+        .expect("artifact trend-adjusted forecast");
+
+        let baseline_records = baseline.forecast["records"].as_array().expect("records");
+        let trend_adjusted_records = trend_adjusted.forecast["records"]
+            .as_array()
+            .expect("records");
+        let shock_adjusted_records = shock_adjusted.forecast["records"]
+            .as_array()
+            .expect("records");
+        let restored_records = restored.forecast["records"].as_array().expect("records");
+        assert!(
+            trend_adjusted_records[1]["prediction"].as_f64().unwrap()
+                > baseline_records[1]["prediction"].as_f64().unwrap()
+        );
+        assert!(
+            shock_adjusted_records[0]["prediction"].as_f64().unwrap()
+                != trend_adjusted_records[0]["prediction"].as_f64().unwrap()
+        );
+        assert_eq!(trend_adjusted.forecast, restored.forecast);
+        assert_eq!(
+            shock_adjusted.metadata["modelMetadata"]["trend_adjustments"]["2"].as_f64(),
+            Some(1.10)
+        );
+        assert_eq!(
+            shock_adjusted.metadata["modelMetadata"]["residual_shock_window"].as_u64(),
+            Some(2)
+        );
+        assert_eq!(
+            shock_adjusted.components.as_ref().expect("components")["records"][1]
+                ["trend_adjustment_multiplier"]
+                .as_f64(),
+            Some(1.10)
+        );
+        assert_eq!(
+            restored_records[1]["prediction"].as_f64(),
+            trend_adjusted_records[1]["prediction"].as_f64()
         );
     }
 

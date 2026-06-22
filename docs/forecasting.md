@@ -64,6 +64,32 @@ Known-future covariates are values available at forecast creation time; lagged
 targets, rolling summaries, and other history-derived features must be built
 from rows before the forecast origin.
 
+When raw taxi observations have multiple rows at the same timestamp, aggregate
+them before modeling or pass a positive `sample_weight_col`. With
+`sample_weight_col`, CartoBoost collapses each duplicate series/timestamp group
+into one native forecast row: the target and numeric covariates become weighted
+means, and the weight column becomes the total weight for that timestamp.
+
+```python
+frame = ForecastFrame.from_pandas(
+    trip_observations,
+    timestamp_col="pickup_hour",
+    target_col="fare",
+    series_id_col="pickup_dropoff_lane",
+    freq="h",
+    historical_covariates=["trip_distance"],
+    sample_weight_col="trip_count",
+)
+```
+
+If five taxi trips share the same lane and `pickup_hour`, the native
+forecasting model sees one hourly lane row. With `trip_count` as the weight, the
+hourly target is the trip-count-weighted mean fare, `trip_distance` is the
+trip-count-weighted mean distance, and `trip_count` is the sum of the five
+weights. Without `sample_weight_col`, those five rows still fail as duplicate
+timestamps because the Rust forecasting core requires one target per
+series/timestamp.
+
 ## Results And Metrics
 
 Forecast outputs use stable columns so model rows can be aligned across

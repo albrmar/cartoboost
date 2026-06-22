@@ -123,7 +123,7 @@ struct NativeForecastFrame {
 #[pymethods]
 impl NativeForecastFrame {
     #[new]
-    #[pyo3(signature = (rows, frequency, timestamp_col=None, target_col=None, series_id_col=None, static_covariates=None, known_future_covariates=None, historical_covariates=None, row_covariates=None))]
+    #[pyo3(signature = (rows, frequency, timestamp_col=None, target_col=None, series_id_col=None, static_covariates=None, known_future_covariates=None, historical_covariates=None, row_covariates=None, sample_weights=None, sample_weight_col=None))]
     #[allow(clippy::too_many_arguments)]
     fn new(
         py: Python<'_>,
@@ -136,6 +136,8 @@ impl NativeForecastFrame {
         known_future_covariates: Option<Vec<String>>,
         historical_covariates: Option<Vec<String>>,
         row_covariates: Option<Vec<BTreeMap<String, f64>>>,
+        sample_weights: Option<Vec<f64>>,
+        sample_weight_col: Option<String>,
     ) -> PyResult<Self> {
         let frequency = ForecastFrequency::parse(frequency).map_err(to_py_value_error)?;
         let frequency_name = frequency.as_str().to_string();
@@ -164,11 +166,29 @@ impl NativeForecastFrame {
                                 (series_id, timestamp, target, covariates)
                             })
                             .collect();
-                        CoreForecastFrame::from_string_rows_with_covariates(
-                            rows, frequency, metadata,
-                        )
+                        match sample_weights {
+                            Some(weights) => {
+                                CoreForecastFrame::from_string_rows_with_covariates_and_weights(
+                                    rows,
+                                    weights,
+                                    sample_weight_col,
+                                    frequency,
+                                    metadata,
+                                )
+                            }
+                            None => CoreForecastFrame::from_string_rows_with_covariates(
+                                rows, frequency, metadata,
+                            ),
+                        }
                     }
-                    None => CoreForecastFrame::from_string_rows(rows, frequency, metadata),
+                    None => {
+                        if sample_weights.is_some() {
+                            return Err(cartoboost_core::CartoBoostError::InvalidInput(
+                                "sample_weights require row_covariates".to_string(),
+                            ));
+                        }
+                        CoreForecastFrame::from_string_rows(rows, frequency, metadata)
+                    }
                 }
             })
             .map_err(to_py_value_error)?;
@@ -1684,6 +1704,11 @@ impl NativePiecewiseLinearSeasonalForecaster {
         regressor_standardization="auto",
         future_regressors=None,
         future_regressors_by_series=None,
+        trend_adjustments=None,
+        trend_adjustments_by_series=None,
+        residual_shock_window=0,
+        residual_shock_scale=0.0,
+        residual_shock_decay=1.0,
         prediction_interval_levels=None,
         quantile_levels=None,
         uncertainty_samples=0,
@@ -1731,6 +1756,11 @@ impl NativePiecewiseLinearSeasonalForecaster {
         regressor_standardization: &str,
         future_regressors: Option<BTreeMap<String, Vec<f64>>>,
         future_regressors_by_series: Option<BTreeMap<String, BTreeMap<String, Vec<f64>>>>,
+        trend_adjustments: Option<BTreeMap<usize, f64>>,
+        trend_adjustments_by_series: Option<BTreeMap<String, BTreeMap<usize, f64>>>,
+        residual_shock_window: usize,
+        residual_shock_scale: f64,
+        residual_shock_decay: f64,
         prediction_interval_levels: Option<Vec<f64>>,
         quantile_levels: Option<Vec<f64>>,
         uncertainty_samples: usize,
@@ -1786,6 +1816,11 @@ impl NativePiecewiseLinearSeasonalForecaster {
             )?,
             future_regressors: future_regressors.unwrap_or_default(),
             future_regressors_by_series: future_regressors_by_series.unwrap_or_default(),
+            trend_adjustments: trend_adjustments.unwrap_or_default(),
+            trend_adjustments_by_series: trend_adjustments_by_series.unwrap_or_default(),
+            residual_shock_window,
+            residual_shock_scale,
+            residual_shock_decay,
             interval_levels: prediction_interval_levels.unwrap_or_default(),
             quantile_levels: quantile_levels.unwrap_or_default(),
             uncertainty_samples,
@@ -1809,7 +1844,8 @@ impl NativePiecewiseLinearSeasonalForecaster {
         fit_forecaster_py(py, &mut self.model, frame)
     }
 
-    #[pyo3(signature = (horizon, future_regressors=None, future_regressors_by_series=None, prediction_interval_levels=None, uncertainty_samples=None))]
+    #[pyo3(signature = (horizon, future_regressors=None, future_regressors_by_series=None, prediction_interval_levels=None, uncertainty_samples=None, trend_adjustments=None, trend_adjustments_by_series=None))]
+    #[allow(clippy::too_many_arguments)]
     fn predict(
         &self,
         py: Python<'_>,
@@ -1818,6 +1854,8 @@ impl NativePiecewiseLinearSeasonalForecaster {
         future_regressors_by_series: Option<BTreeMap<String, BTreeMap<String, Vec<f64>>>>,
         prediction_interval_levels: Option<Vec<f64>>,
         uncertainty_samples: Option<usize>,
+        trend_adjustments: Option<BTreeMap<usize, f64>>,
+        trend_adjustments_by_series: Option<BTreeMap<String, BTreeMap<usize, f64>>>,
     ) -> PyResult<NativeForecastResult> {
         validate_interval_levels(prediction_interval_levels.as_deref())?;
         let model = piecewise_model_with_prediction_overrides(
@@ -1827,6 +1865,8 @@ impl NativePiecewiseLinearSeasonalForecaster {
             prediction_interval_levels,
             None,
             uncertainty_samples,
+            trend_adjustments,
+            trend_adjustments_by_series,
         )?;
         predict_forecaster_py(py, &model, horizon)
     }
@@ -1841,13 +1881,15 @@ impl NativePiecewiseLinearSeasonalForecaster {
             .map_err(to_py_value_error)
     }
 
-    #[pyo3(signature = (horizon, future_regressors=None, future_regressors_by_series=None))]
+    #[pyo3(signature = (horizon, future_regressors=None, future_regressors_by_series=None, trend_adjustments=None, trend_adjustments_by_series=None))]
     fn components_json(
         &self,
         py: Python<'_>,
         horizon: usize,
         future_regressors: Option<BTreeMap<String, Vec<f64>>>,
         future_regressors_by_series: Option<BTreeMap<String, BTreeMap<String, Vec<f64>>>>,
+        trend_adjustments: Option<BTreeMap<usize, f64>>,
+        trend_adjustments_by_series: Option<BTreeMap<String, BTreeMap<usize, f64>>>,
     ) -> PyResult<String> {
         let model = piecewise_model_with_prediction_overrides(
             &self.model,
@@ -1856,12 +1898,15 @@ impl NativePiecewiseLinearSeasonalForecaster {
             None,
             None,
             None,
+            trend_adjustments,
+            trend_adjustments_by_series,
         )?;
         py.allow_threads(|| model.predict_components_json_string(horizon))
             .map_err(to_py_value_error)
     }
 
-    #[pyo3(signature = (horizon, future_regressors=None, future_regressors_by_series=None, uncertainty_samples=None))]
+    #[pyo3(signature = (horizon, future_regressors=None, future_regressors_by_series=None, uncertainty_samples=None, trend_adjustments=None, trend_adjustments_by_series=None))]
+    #[allow(clippy::too_many_arguments)]
     fn samples_json(
         &self,
         py: Python<'_>,
@@ -1869,6 +1914,8 @@ impl NativePiecewiseLinearSeasonalForecaster {
         future_regressors: Option<BTreeMap<String, Vec<f64>>>,
         future_regressors_by_series: Option<BTreeMap<String, BTreeMap<String, Vec<f64>>>>,
         uncertainty_samples: Option<usize>,
+        trend_adjustments: Option<BTreeMap<usize, f64>>,
+        trend_adjustments_by_series: Option<BTreeMap<String, BTreeMap<usize, f64>>>,
     ) -> PyResult<String> {
         let model = piecewise_model_with_prediction_overrides(
             &self.model,
@@ -1877,12 +1924,15 @@ impl NativePiecewiseLinearSeasonalForecaster {
             None,
             None,
             uncertainty_samples,
+            trend_adjustments,
+            trend_adjustments_by_series,
         )?;
         py.allow_threads(|| model.predict_samples_json_string(horizon))
             .map_err(to_py_value_error)
     }
 
-    #[pyo3(signature = (horizon, quantile_levels=None, future_regressors=None, future_regressors_by_series=None, uncertainty_samples=None))]
+    #[pyo3(signature = (horizon, quantile_levels=None, future_regressors=None, future_regressors_by_series=None, uncertainty_samples=None, trend_adjustments=None, trend_adjustments_by_series=None))]
+    #[allow(clippy::too_many_arguments)]
     fn quantiles_json(
         &self,
         py: Python<'_>,
@@ -1891,6 +1941,8 @@ impl NativePiecewiseLinearSeasonalForecaster {
         future_regressors: Option<BTreeMap<String, Vec<f64>>>,
         future_regressors_by_series: Option<BTreeMap<String, BTreeMap<String, Vec<f64>>>>,
         uncertainty_samples: Option<usize>,
+        trend_adjustments: Option<BTreeMap<usize, f64>>,
+        trend_adjustments_by_series: Option<BTreeMap<String, BTreeMap<usize, f64>>>,
     ) -> PyResult<String> {
         validate_interval_levels(quantile_levels.as_deref())?;
         let model = piecewise_model_with_prediction_overrides(
@@ -1900,6 +1952,8 @@ impl NativePiecewiseLinearSeasonalForecaster {
             None,
             quantile_levels.clone(),
             uncertainty_samples,
+            trend_adjustments,
+            trend_adjustments_by_series,
         )?;
         py.allow_threads(|| model.predict_quantiles_json_string(horizon, quantile_levels))
             .map_err(to_py_value_error)
@@ -1914,6 +1968,7 @@ impl NativePiecewiseLinearSeasonalForecaster {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn piecewise_model_with_prediction_overrides(
     model: &CorePiecewiseLinearSeasonalForecaster,
     future_regressors: Option<BTreeMap<String, Vec<f64>>>,
@@ -1921,6 +1976,8 @@ fn piecewise_model_with_prediction_overrides(
     interval_levels: Option<Vec<f64>>,
     quantile_levels: Option<Vec<f64>>,
     uncertainty_samples: Option<usize>,
+    trend_adjustments: Option<BTreeMap<usize, f64>>,
+    trend_adjustments_by_series: Option<BTreeMap<String, BTreeMap<usize, f64>>>,
 ) -> PyResult<CorePiecewiseLinearSeasonalForecaster> {
     let mut model = model.clone();
     model
@@ -1939,6 +1996,12 @@ fn piecewise_model_with_prediction_overrides(
             }
             if let Some(uncertainty_samples) = uncertainty_samples {
                 config.uncertainty_samples = uncertainty_samples;
+            }
+            if let Some(trend_adjustments) = trend_adjustments {
+                config.trend_adjustments = trend_adjustments;
+            }
+            if let Some(trend_adjustments_by_series) = trend_adjustments_by_series {
+                config.trend_adjustments_by_series = trend_adjustments_by_series;
             }
         })
         .map_err(to_py_value_error)?;

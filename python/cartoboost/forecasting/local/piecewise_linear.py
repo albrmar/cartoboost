@@ -56,6 +56,11 @@ class PiecewiseLinearSeasonalForecaster(NativeForecastWrapper):
         regressor_standardization: str = "auto",
         future_regressors: Mapping[str, Sequence[float]] | None = None,
         future_regressors_by_series: Mapping[str, Mapping[str, Sequence[float]]] | None = None,
+        trend_adjustments: Mapping[int, float] | None = None,
+        trend_adjustments_by_series: Mapping[str, Mapping[int, float]] | None = None,
+        residual_shock_window: int = 0,
+        residual_shock_scale: float = 0.0,
+        residual_shock_decay: float = 1.0,
         prediction_interval_levels: list[float] | tuple[float, ...] = (),
         quantile_levels: list[float] | tuple[float, ...] = (),
         uncertainty_samples: int = 0,
@@ -108,6 +113,15 @@ class PiecewiseLinearSeasonalForecaster(NativeForecastWrapper):
         coefficient_uncertainty_scale = float(coefficient_uncertainty_scale)
         if coefficient_uncertainty_scale < 0.0:
             raise ValueError("coefficient_uncertainty_scale must be nonnegative")
+        residual_shock_window = int(residual_shock_window)
+        if residual_shock_window < 0:
+            raise ValueError("residual_shock_window must be nonnegative")
+        residual_shock_scale = float(residual_shock_scale)
+        if residual_shock_scale < 0.0:
+            raise ValueError("residual_shock_scale must be nonnegative")
+        residual_shock_decay = float(residual_shock_decay)
+        if residual_shock_decay < 0.0 or residual_shock_decay > 1.0:
+            raise ValueError("residual_shock_decay must be in [0, 1]")
         super().__init__(
             growth=growth,
             component_mode=component_mode,
@@ -151,6 +165,13 @@ class PiecewiseLinearSeasonalForecaster(NativeForecastWrapper):
             future_regressors_by_series=_future_regressor_values_by_series(
                 future_regressors_by_series
             ),
+            trend_adjustments=_trend_adjustment_values(trend_adjustments),
+            trend_adjustments_by_series=_trend_adjustment_values_by_series(
+                trend_adjustments_by_series
+            ),
+            residual_shock_window=residual_shock_window,
+            residual_shock_scale=residual_shock_scale,
+            residual_shock_decay=residual_shock_decay,
             prediction_interval_levels=_prediction_interval_levels(prediction_interval_levels),
             quantile_levels=_prediction_interval_levels(quantile_levels),
             uncertainty_samples=int(uncertainty_samples),
@@ -179,6 +200,8 @@ class PiecewiseLinearSeasonalForecaster(NativeForecastWrapper):
         future_regressors_by_series: Mapping[str, Mapping[str, Sequence[float]]] | None = None,
         prediction_interval_levels: list[float] | tuple[float, ...] | None = None,
         uncertainty_samples: int | None = None,
+        trend_adjustments: Mapping[int, float] | None = None,
+        trend_adjustments_by_series: Mapping[str, Mapping[int, float]] | None = None,
     ) -> Any:
         self._check_is_fitted()
         return self._native_model.predict(
@@ -191,6 +214,10 @@ class PiecewiseLinearSeasonalForecaster(NativeForecastWrapper):
             if prediction_interval_levels is not None
             else None,
             None if uncertainty_samples is None else int(uncertainty_samples),
+            _trend_adjustment_values(trend_adjustments) if trend_adjustments is not None else None,
+            _trend_adjustment_values_by_series(trend_adjustments_by_series)
+            if trend_adjustments_by_series is not None
+            else None,
         )
 
     def components(
@@ -199,6 +226,8 @@ class PiecewiseLinearSeasonalForecaster(NativeForecastWrapper):
         *,
         future_regressors: Mapping[str, Sequence[float]] | None = None,
         future_regressors_by_series: Mapping[str, Mapping[str, Sequence[float]]] | None = None,
+        trend_adjustments: Mapping[int, float] | None = None,
+        trend_adjustments_by_series: Mapping[str, Mapping[int, float]] | None = None,
     ) -> dict[str, Any]:
         self._check_is_fitted()
         return dict(
@@ -211,6 +240,12 @@ class PiecewiseLinearSeasonalForecaster(NativeForecastWrapper):
                     _future_regressor_values_by_series(future_regressors_by_series)
                     if future_regressors_by_series is not None
                     else None,
+                    _trend_adjustment_values(trend_adjustments)
+                    if trend_adjustments is not None
+                    else None,
+                    _trend_adjustment_values_by_series(trend_adjustments_by_series)
+                    if trend_adjustments_by_series is not None
+                    else None,
                 )
             )
         )
@@ -221,6 +256,8 @@ class PiecewiseLinearSeasonalForecaster(NativeForecastWrapper):
         *,
         future_regressors: Mapping[str, Sequence[float]] | None = None,
         future_regressors_by_series: Mapping[str, Mapping[str, Sequence[float]]] | None = None,
+        trend_adjustments: Mapping[int, float] | None = None,
+        trend_adjustments_by_series: Mapping[str, Mapping[int, float]] | None = None,
     ) -> str:
         self._check_is_fitted()
         return str(
@@ -232,6 +269,12 @@ class PiecewiseLinearSeasonalForecaster(NativeForecastWrapper):
                 _future_regressor_values_by_series(future_regressors_by_series)
                 if future_regressors_by_series is not None
                 else None,
+                _trend_adjustment_values(trend_adjustments)
+                if trend_adjustments is not None
+                else None,
+                _trend_adjustment_values_by_series(trend_adjustments_by_series)
+                if trend_adjustments_by_series is not None
+                else None,
             )
         )
 
@@ -242,6 +285,8 @@ class PiecewiseLinearSeasonalForecaster(NativeForecastWrapper):
         future_regressors: Mapping[str, Sequence[float]] | None = None,
         future_regressors_by_series: Mapping[str, Mapping[str, Sequence[float]]] | None = None,
         uncertainty_samples: int | None = None,
+        trend_adjustments: Mapping[int, float] | None = None,
+        trend_adjustments_by_series: Mapping[str, Mapping[int, float]] | None = None,
     ) -> dict[str, Any]:
         self._check_is_fitted()
         return dict(
@@ -255,6 +300,12 @@ class PiecewiseLinearSeasonalForecaster(NativeForecastWrapper):
                     if future_regressors_by_series is not None
                     else None,
                     None if uncertainty_samples is None else int(uncertainty_samples),
+                    _trend_adjustment_values(trend_adjustments)
+                    if trend_adjustments is not None
+                    else None,
+                    _trend_adjustment_values_by_series(trend_adjustments_by_series)
+                    if trend_adjustments_by_series is not None
+                    else None,
                 )
             )
         )
@@ -266,6 +317,8 @@ class PiecewiseLinearSeasonalForecaster(NativeForecastWrapper):
         future_regressors: Mapping[str, Sequence[float]] | None = None,
         future_regressors_by_series: Mapping[str, Mapping[str, Sequence[float]]] | None = None,
         uncertainty_samples: int | None = None,
+        trend_adjustments: Mapping[int, float] | None = None,
+        trend_adjustments_by_series: Mapping[str, Mapping[int, float]] | None = None,
     ) -> str:
         self._check_is_fitted()
         return str(
@@ -278,6 +331,12 @@ class PiecewiseLinearSeasonalForecaster(NativeForecastWrapper):
                 if future_regressors_by_series is not None
                 else None,
                 None if uncertainty_samples is None else int(uncertainty_samples),
+                _trend_adjustment_values(trend_adjustments)
+                if trend_adjustments is not None
+                else None,
+                _trend_adjustment_values_by_series(trend_adjustments_by_series)
+                if trend_adjustments_by_series is not None
+                else None,
             )
         )
 
@@ -289,6 +348,8 @@ class PiecewiseLinearSeasonalForecaster(NativeForecastWrapper):
         future_regressors: Mapping[str, Sequence[float]] | None = None,
         future_regressors_by_series: Mapping[str, Mapping[str, Sequence[float]]] | None = None,
         uncertainty_samples: int | None = None,
+        trend_adjustments: Mapping[int, float] | None = None,
+        trend_adjustments_by_series: Mapping[str, Mapping[int, float]] | None = None,
     ) -> dict[str, Any]:
         self._check_is_fitted()
         levels = None if quantile_levels is None else _prediction_interval_levels(quantile_levels)
@@ -304,6 +365,12 @@ class PiecewiseLinearSeasonalForecaster(NativeForecastWrapper):
                     if future_regressors_by_series is not None
                     else None,
                     None if uncertainty_samples is None else int(uncertainty_samples),
+                    _trend_adjustment_values(trend_adjustments)
+                    if trend_adjustments is not None
+                    else None,
+                    _trend_adjustment_values_by_series(trend_adjustments_by_series)
+                    if trend_adjustments_by_series is not None
+                    else None,
                 )
             )
         )
@@ -316,6 +383,8 @@ class PiecewiseLinearSeasonalForecaster(NativeForecastWrapper):
         future_regressors: Mapping[str, Sequence[float]] | None = None,
         future_regressors_by_series: Mapping[str, Mapping[str, Sequence[float]]] | None = None,
         uncertainty_samples: int | None = None,
+        trend_adjustments: Mapping[int, float] | None = None,
+        trend_adjustments_by_series: Mapping[str, Mapping[int, float]] | None = None,
     ) -> str:
         self._check_is_fitted()
         levels = None if quantile_levels is None else _prediction_interval_levels(quantile_levels)
@@ -330,6 +399,12 @@ class PiecewiseLinearSeasonalForecaster(NativeForecastWrapper):
                 if future_regressors_by_series is not None
                 else None,
                 None if uncertainty_samples is None else int(uncertainty_samples),
+                _trend_adjustment_values(trend_adjustments)
+                if trend_adjustments is not None
+                else None,
+                _trend_adjustment_values_by_series(trend_adjustments_by_series)
+                if trend_adjustments_by_series is not None
+                else None,
             )
         )
 
@@ -485,6 +560,28 @@ def _future_regressor_values_by_series(
     return {
         str(series_id): _future_regressor_values(values_by_name)
         for series_id, values_by_name in (future_regressors or {}).items()
+    }
+
+
+def _trend_adjustment_values(values: Mapping[int, float] | None) -> dict[int, float]:
+    normalized: dict[int, float] = {}
+    for horizon, multiplier in (values or {}).items():
+        horizon = int(horizon)
+        multiplier = float(multiplier)
+        if horizon <= 0:
+            raise ValueError("trend_adjustments horizon keys must be positive")
+        if multiplier <= 0.0:
+            raise ValueError("trend_adjustments multipliers must be positive")
+        normalized[horizon] = multiplier
+    return normalized
+
+
+def _trend_adjustment_values_by_series(
+    values: Mapping[str, Mapping[int, float]] | None,
+) -> dict[str, dict[int, float]]:
+    return {
+        str(series_id): _trend_adjustment_values(adjustments)
+        for series_id, adjustments in (values or {}).items()
     }
 
 

@@ -139,7 +139,9 @@ conformal residual helpers.
 
 Forecasting is Rust-native. Python classes validate data and delegate model
 training, prediction, rolling-origin backtesting, metrics, and artifact behavior
-to `cartoboost._native`.
+to `cartoboost._native`. The Prophet-style piecewise linear seasonal model also
+supports native external trend multipliers and recent residual shock
+propagation for market-belief adjustments.
 
 See [General Utilities](general_utilities.md), [Forecasting](forecasting.md),
 and the [forecasting model guides](user-guide/forecasting-models/index.md).

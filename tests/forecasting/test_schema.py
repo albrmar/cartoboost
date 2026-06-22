@@ -48,6 +48,7 @@ def test_forecast_frame_from_pandas_sorts_and_exports_metadata_for_single_series
         "known_future_covariates": ["day_of_week"],
         "historical_covariates": ["weather_code"],
         "allow_irregular": False,
+        "sample_weight_col": None,
     }
 
 
@@ -61,6 +62,61 @@ def test_forecast_frame_rejects_duplicate_timestamps_within_single_series():
 
     with pytest.raises(ValueError, match="duplicate timestamp"):
         ForecastFrame.from_pandas(raw, timestamp_col="pickup_hour", target_col="fare", freq="D")
+
+
+def test_forecast_frame_aggregates_duplicate_timestamps_with_sample_weights():
+    raw = pd.DataFrame(
+        {
+            "lane": ["A-B", "A-B", "A-B", "A-B"],
+            "pickup_hour": [
+                "2025-01-01 08:00",
+                "2025-01-01 08:00",
+                "2025-01-01 09:00",
+                "2025-01-01 09:00",
+            ],
+            "fare": [10.0, 20.0, 30.0, 40.0],
+            "trip_distance": [1.0, 3.0, 5.0, 7.0],
+            "trip_count": [1.0, 3.0, 2.0, 2.0],
+        }
+    )
+
+    frame = ForecastFrame.from_pandas(
+        raw,
+        timestamp_col="pickup_hour",
+        target_col="fare",
+        series_id_col="lane",
+        freq="h",
+        historical_covariates=["trip_distance"],
+        sample_weight_col="trip_count",
+    )
+
+    data = frame.to_pandas()
+    assert len(data) == 2
+    assert list(data["fare"]) == [17.5, 35.0]
+    assert list(data["trip_distance"]) == [2.5, 6.0]
+    assert list(data["trip_count"]) == [4.0, 4.0]
+    assert frame._native_frame.row_count() == 2
+    assert frame.historical_covariates == ("trip_distance", "trip_count")
+    assert frame.to_metadata()["sample_weight_col"] == "trip_count"
+
+
+def test_forecast_frame_rejects_invalid_sample_weights():
+    raw = pd.DataFrame(
+        {
+            "pickup_hour": ["2025-01-01", "2025-01-01"],
+            "fare": [10.0, 11.0],
+            "trip_count": [1.0, 0.0],
+        }
+    )
+
+    with pytest.raises(ValueError, match="positive finite"):
+        ForecastFrame.from_pandas(
+            raw,
+            timestamp_col="pickup_hour",
+            target_col="fare",
+            freq="D",
+            sample_weight_col="trip_count",
+        )
 
 
 def test_forecast_frame_rejects_unparseable_timestamps():

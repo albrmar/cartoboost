@@ -181,6 +181,31 @@ impl ForecastFrame {
         Self::with_metadata(parsed, frequency, metadata)
     }
 
+    pub fn from_string_rows_with_covariates_and_weights(
+        rows: Vec<(String, String, f64, BTreeMap<String, f64>)>,
+        sample_weights: Vec<f64>,
+        sample_weight_col: Option<String>,
+        frequency: ForecastFrequency,
+        metadata: ForecastFrameMetadata,
+    ) -> Result<Self> {
+        if rows.len() != sample_weights.len() {
+            return Err(CartoBoostError::InvalidInput(
+                "forecast sample weights length must match rows length".to_string(),
+            ));
+        }
+        let parsed = rows
+            .into_iter()
+            .map(|(series_id, timestamp, target, covariates)| {
+                ForecastRow::from_timestamp_str_with_covariates(
+                    series_id, &timestamp, target, covariates,
+                )
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let aggregated =
+            aggregate_weighted_forecast_rows(parsed, sample_weights, sample_weight_col.as_deref())?;
+        Self::with_metadata(aggregated, frequency, metadata)
+    }
+
     pub fn rows(&self) -> &[ForecastRow] {
         &self.rows
     }
@@ -236,6 +261,63 @@ impl ForecastFrame {
             .iter()
             .any(|series_id| series_id != SINGLE_SERIES_ID)
     }
+}
+
+#[derive(Debug, Default)]
+struct WeightedForecastRowAccumulator {
+    total_weight: f64,
+    weighted_target: f64,
+    weighted_covariates: BTreeMap<String, f64>,
+}
+
+fn aggregate_weighted_forecast_rows(
+    rows: Vec<ForecastRow>,
+    sample_weights: Vec<f64>,
+    sample_weight_col: Option<&str>,
+) -> Result<Vec<ForecastRow>> {
+    let mut groups: BTreeMap<(String, NaiveDateTime), WeightedForecastRowAccumulator> =
+        BTreeMap::new();
+    for (row, weight) in rows.into_iter().zip(sample_weights) {
+        if !weight.is_finite() || weight <= 0.0 {
+            return Err(CartoBoostError::InvalidInput(
+                "forecast sample weights must be positive finite values".to_string(),
+            ));
+        }
+        let key = (row.series_id.clone(), row.timestamp);
+        let entry = groups.entry(key).or_default();
+        entry.total_weight += weight;
+        entry.weighted_target += weight * row.target;
+        for (name, value) in row.covariates {
+            *entry.weighted_covariates.entry(name).or_insert(0.0) += weight * value;
+        }
+    }
+    groups
+        .into_iter()
+        .map(|((series_id, timestamp), accumulator)| {
+            if accumulator.total_weight <= 0.0 {
+                return Err(CartoBoostError::InvalidInput(
+                    "forecast sample weights must have positive grouped totals".to_string(),
+                ));
+            }
+            let covariates = accumulator
+                .weighted_covariates
+                .into_iter()
+                .map(|(name, value)| {
+                    if sample_weight_col == Some(name.as_str()) {
+                        (name, accumulator.total_weight)
+                    } else {
+                        (name, value / accumulator.total_weight)
+                    }
+                })
+                .collect();
+            Ok(ForecastRow::with_covariates(
+                series_id,
+                timestamp,
+                accumulator.weighted_target / accumulator.total_weight,
+                covariates,
+            ))
+        })
+        .collect()
 }
 
 fn validate_metadata(metadata: &ForecastFrameMetadata) -> Result<()> {
