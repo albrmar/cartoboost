@@ -647,6 +647,722 @@ def write_pydeck_route_map(
     return _write_pydeck_html(deck, output_html)
 
 
+def plot(
+    m: Any,
+    fcst: Any,
+    ax: Any | None = None,
+    uncertainty: bool = True,
+    plot_cap: bool = True,
+    xlabel: str = "ds",
+    ylabel: str = "y",
+    figsize: tuple[float, float] = (10, 6),
+    include_legend: bool = False,
+) -> Any:
+    """Plot a Prophet-shaped forecast with the same public signature as Prophet."""
+
+    pyplot = _require_pyplot()
+    _require_prophet_forecast_columns(fcst, ["ds", "yhat"])
+    user_provided_ax = ax is not None
+    if ax is None:
+        figure = pyplot.figure(facecolor="w", figsize=figsize)
+        ax = figure.add_subplot(111)
+    else:
+        figure = ax.get_figure()
+
+    history = m.history
+    ax.plot(history["ds"], history["y"], "k.", label="Observed data points")
+    ax.plot(fcst["ds"], fcst["yhat"], ls="-", c="#0072B2", label="Forecast")
+    if plot_cap and "cap" in fcst:
+        ax.plot(fcst["ds"], fcst["cap"], ls="--", c="k", label="Maximum capacity")
+    if plot_cap and getattr(m, "logistic_floor", False) and "floor" in fcst:
+        ax.plot(fcst["ds"], fcst["floor"], ls="--", c="k", label="Minimum capacity")
+    if uncertainty and getattr(m, "uncertainty_samples", 0):
+        ax.fill_between(
+            fcst["ds"],
+            fcst["yhat_lower"],
+            fcst["yhat_upper"],
+            color="#0072B2",
+            alpha=0.2,
+            label="Uncertainty interval",
+        )
+    _format_prophet_date_axis(ax)
+    ax.grid(True, which="major", c="gray", ls="-", lw=1, alpha=0.2)
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    if include_legend:
+        ax.legend()
+    if not user_provided_ax:
+        figure.tight_layout()
+    return figure
+
+
+def plot_components(
+    m: Any,
+    fcst: Any,
+    uncertainty: bool = True,
+    plot_cap: bool = True,
+    weekly_start: int = 0,
+    yearly_start: int = 0,
+    figsize: tuple[float, float] | None = None,
+) -> Any:
+    """Plot Prophet-style trend, holiday, seasonal, and regressor components."""
+
+    pyplot = _require_pyplot()
+    components = ["trend"]
+    if getattr(m, "train_holiday_names", None) is not None and "holidays" in fcst:
+        components.append("holidays")
+    seasonalities = getattr(m, "seasonalities", {})
+    if "weekly" in seasonalities and "weekly" in fcst:
+        components.append("weekly")
+    if "yearly" in seasonalities and "yearly" in fcst:
+        components.append("yearly")
+    components.extend(
+        name for name in sorted(seasonalities) if name in fcst and name not in {"weekly", "yearly"}
+    )
+    extra_regressors = getattr(m, "extra_regressors", {})
+    modes = {"additive": False, "multiplicative": False}
+    for props in extra_regressors.values():
+        modes[str(props.get("mode", "additive"))] = True
+    for mode in ["additive", "multiplicative"]:
+        column = f"extra_regressors_{mode}"
+        if modes[mode] and column in fcst:
+            components.append(column)
+
+    figure_size = figsize or (9, 3 * len(components))
+    figure, axes = pyplot.subplots(len(components), 1, facecolor="w", figsize=figure_size)
+    if len(components) == 1:
+        axes = [axes]
+
+    multiplicative_axes = []
+    pandas = _require_pandas()
+    history_ds = pandas.to_datetime(m.history["ds"])
+    diffs = history_ds.diff()
+    nonzero_diffs = diffs[diffs.to_numpy().nonzero()[0]]
+    min_dt = nonzero_diffs.min() if len(nonzero_diffs) else pandas.Timedelta(days=1)
+
+    for axis, name in zip(axes, components, strict=True):
+        if name == "trend":
+            plot_forecast_component(
+                m, fcst, "trend", ax=axis, uncertainty=uncertainty, plot_cap=plot_cap
+            )
+        elif name in seasonalities:
+            period = seasonalities[name].get("period")
+            if (name == "weekly" or period == 7) and min_dt == pandas.Timedelta(days=1):
+                plot_weekly(
+                    m, ax=axis, uncertainty=uncertainty, weekly_start=weekly_start, name=name
+                )
+            elif name == "yearly" or period == 365.25:
+                plot_yearly(
+                    m, ax=axis, uncertainty=uncertainty, yearly_start=yearly_start, name=name
+                )
+            else:
+                plot_seasonality(m, name, ax=axis, uncertainty=uncertainty)
+        else:
+            plot_forecast_component(m, fcst, name, ax=axis, uncertainty=uncertainty, plot_cap=False)
+        if name in getattr(m, "component_modes", {}).get("multiplicative", []):
+            multiplicative_axes.append(axis)
+
+    figure.tight_layout()
+    for axis in multiplicative_axes:
+        set_y_as_percent(axis)
+    return figure
+
+
+def plot_forecast_component(
+    m: Any,
+    fcst: Any,
+    name: str,
+    ax: Any | None = None,
+    uncertainty: bool = True,
+    plot_cap: bool = False,
+    figsize: tuple[float, float] = (10, 6),
+) -> list[Any]:
+    """Plot one Prophet-style forecast component and return Matplotlib artists."""
+
+    pyplot = _require_pyplot()
+    if ax is None:
+        figure = pyplot.figure(facecolor="w", figsize=figsize)
+        ax = figure.add_subplot(111)
+    _require_prophet_forecast_columns(fcst, ["ds", name])
+    artists = []
+    artists += ax.plot(fcst["ds"], fcst[name], ls="-", c="#0072B2")
+    if plot_cap and "cap" in fcst:
+        artists += ax.plot(fcst["ds"], fcst["cap"], ls="--", c="k")
+    if plot_cap and getattr(m, "logistic_floor", False) and "floor" in fcst:
+        artists += ax.plot(fcst["ds"], fcst["floor"], ls="--", c="k")
+    if uncertainty and getattr(m, "uncertainty_samples", 0):
+        artists.append(
+            ax.fill_between(
+                fcst["ds"], fcst[f"{name}_lower"], fcst[f"{name}_upper"], color="#0072B2", alpha=0.2
+            )
+        )
+    _format_prophet_date_axis(ax)
+    ax.grid(True, which="major", c="gray", ls="-", lw=1, alpha=0.2)
+    ax.set_xlabel("ds")
+    ax.set_ylabel(name)
+    if name in getattr(m, "component_modes", {}).get("multiplicative", []):
+        set_y_as_percent(ax)
+    return artists
+
+
+def seasonality_plot_df(m: Any, ds: Any) -> Any:
+    """Prepare the Prophet-shaped dataframe used for seasonality plots."""
+
+    pandas = _require_pandas()
+    data: dict[str, Any] = {"ds": ds, "cap": 1.0, "floor": 0.0}
+    for name in getattr(m, "extra_regressors", {}):
+        data[name] = 0.0
+    for props in getattr(m, "seasonalities", {}).values():
+        condition_name = props.get("condition_name")
+        if condition_name is not None:
+            data[condition_name] = True
+    frame = pandas.DataFrame(data)
+    return m.setup_dataframe(frame) if hasattr(m, "setup_dataframe") else frame
+
+
+def plot_weekly(
+    m: Any,
+    ax: Any | None = None,
+    uncertainty: bool = True,
+    weekly_start: int = 0,
+    figsize: tuple[float, float] = (10, 6),
+    name: str = "weekly",
+) -> list[Any]:
+    """Plot a weekly Prophet-style seasonal component."""
+
+    pyplot = _require_pyplot()
+    pandas = _require_pandas()
+    if ax is None:
+        figure = pyplot.figure(facecolor="w", figsize=figsize)
+        ax = figure.add_subplot(111)
+    days = pandas.date_range(start="2017-01-01", periods=7) + pandas.Timedelta(days=weekly_start)
+    seas = m.predict_seasonal_components(seasonality_plot_df(m, days))
+    labels = days.day_name()
+    artists = ax.plot(range(len(labels)), seas[name], ls="-", c="#0072B2")
+    if uncertainty and getattr(m, "uncertainty_samples", 0):
+        artists.append(
+            ax.fill_between(
+                range(len(labels)),
+                seas[f"{name}_lower"],
+                seas[f"{name}_upper"],
+                color="#0072B2",
+                alpha=0.2,
+            )
+        )
+    ax.grid(True, which="major", c="gray", ls="-", lw=1, alpha=0.2)
+    ax.set_xticks(range(len(labels)))
+    ax.set_xticklabels(labels)
+    ax.set_xlabel("Day of week")
+    ax.set_ylabel(name)
+    if getattr(m, "seasonalities", {}).get(name, {}).get("mode") == "multiplicative":
+        set_y_as_percent(ax)
+    return artists
+
+
+def plot_yearly(
+    m: Any,
+    ax: Any | None = None,
+    uncertainty: bool = True,
+    yearly_start: int = 0,
+    figsize: tuple[float, float] = (10, 6),
+    name: str = "yearly",
+) -> list[Any]:
+    """Plot a yearly Prophet-style seasonal component."""
+
+    pyplot = _require_pyplot()
+    pandas = _require_pandas()
+    if ax is None:
+        figure = pyplot.figure(facecolor="w", figsize=figsize)
+        ax = figure.add_subplot(111)
+    days = pandas.date_range(start="2017-01-01", periods=365) + pandas.Timedelta(days=yearly_start)
+    df_y = seasonality_plot_df(m, days)
+    seas = m.predict_seasonal_components(df_y)
+    artists = ax.plot(df_y["ds"], seas[name], ls="-", c="#0072B2")
+    if uncertainty and getattr(m, "uncertainty_samples", 0):
+        artists.append(
+            ax.fill_between(
+                df_y["ds"], seas[f"{name}_lower"], seas[f"{name}_upper"], color="#0072B2", alpha=0.2
+            )
+        )
+    ax.grid(True, which="major", c="gray", ls="-", lw=1, alpha=0.2)
+    _format_month_axis(ax)
+    ax.set_xlabel("Day of year")
+    ax.set_ylabel(name)
+    if getattr(m, "seasonalities", {}).get(name, {}).get("mode") == "multiplicative":
+        set_y_as_percent(ax)
+    return artists
+
+
+def plot_seasonality(
+    m: Any,
+    name: str,
+    ax: Any | None = None,
+    uncertainty: bool = True,
+    figsize: tuple[float, float] = (10, 6),
+) -> list[Any]:
+    """Plot a custom Prophet-style seasonal component."""
+
+    pyplot = _require_pyplot()
+    pandas = _require_pandas()
+    if ax is None:
+        figure = pyplot.figure(facecolor="w", figsize=figsize)
+        ax = figure.add_subplot(111)
+    start = pandas.to_datetime("2017-01-01 0000")
+    period = getattr(m, "seasonalities", {})[name]["period"]
+    end = start + pandas.Timedelta(days=period)
+    days = pandas.to_datetime(np.linspace(start.value, end.value, 200))
+    df_y = seasonality_plot_df(m, days)
+    seas = m.predict_seasonal_components(df_y)
+    artists = ax.plot(df_y["ds"], seas[name], ls="-", c="#0072B2")
+    if uncertainty and getattr(m, "uncertainty_samples", 0):
+        artists.append(
+            ax.fill_between(
+                df_y["ds"], seas[f"{name}_lower"], seas[f"{name}_upper"], color="#0072B2", alpha=0.2
+            )
+        )
+    ax.grid(True, which="major", c="gray", ls="-", lw=1, alpha=0.2)
+    _format_seasonality_axis(ax, name, period, start, end)
+    ax.set_ylabel(name)
+    if getattr(m, "seasonalities", {}).get(name, {}).get("mode") == "multiplicative":
+        set_y_as_percent(ax)
+    return artists
+
+
+def set_y_as_percent(ax: Any) -> Any:
+    """Format an axis as Prophet does for multiplicative components."""
+
+    ticks = ax.get_yticks()
+    ax.set_yticks(ticks.tolist())
+    ax.set_yticklabels([f"{100 * tick:.4g}%" for tick in ticks])
+    return ax
+
+
+def add_changepoints_to_plot(
+    ax: Any,
+    m: Any,
+    fcst: Any,
+    threshold: float = 0.01,
+    cp_color: str = "r",
+    cp_linestyle: str = "--",
+    trend: bool = True,
+) -> list[Any]:
+    """Add significant Prophet-style changepoint markers to an existing plot."""
+
+    artists = []
+    if trend:
+        artists.append(ax.plot(fcst["ds"], fcst["trend"], c=cp_color))
+    changepoints = getattr(m, "changepoints", [])
+    if len(changepoints) > 0:
+        deltas = np.nanmean(getattr(m, "params", {}).get("delta", []), axis=0)
+        significant = changepoints[np.abs(deltas) >= threshold]
+    else:
+        significant = []
+    for changepoint in significant:
+        artists.append(ax.axvline(x=changepoint, c=cp_color, ls=cp_linestyle))
+    return artists
+
+
+def plot_cross_validation_metric(
+    df_cv: Any,
+    metric: str,
+    rolling_window: float = 0.1,
+    ax: Any | None = None,
+    figsize: tuple[float, float] = (10, 6),
+    color: str = "b",
+    point_color: str = "gray",
+) -> Any:
+    """Plot a Prophet-style cross-validation metric against forecast horizon."""
+
+    pyplot = _require_pyplot()
+    metrics = _prophet_performance_metrics(df_cv, metric, rolling_window)
+    point_metrics = _prophet_performance_metrics(df_cv, metric, -1)
+    if ax is None:
+        figure = pyplot.figure(facecolor="w", figsize=figsize)
+        ax = figure.add_subplot(111)
+    else:
+        figure = ax.get_figure()
+    x_points, unit_name = _timedelta_plot_values(point_metrics["horizon"])
+    x_smooth, _ = _timedelta_plot_values(metrics["horizon"], unit_name=unit_name)
+    ax.plot(x_points, point_metrics[metric], ".", alpha=0.1, c=point_color)
+    ax.plot(x_smooth, metrics[metric], "-", c=color)
+    ax.grid(True)
+    ax.set_xlabel(f"Horizon ({unit_name})")
+    ax.set_ylabel(metric)
+    return figure
+
+
+def plot_plotly(
+    m: Any,
+    fcst: Any,
+    uncertainty: bool = True,
+    plot_cap: bool = True,
+    trend: bool = False,
+    changepoints: bool = False,
+    changepoints_threshold: float = 0.01,
+    xlabel: str = "ds",
+    ylabel: str = "y",
+    figsize: tuple[int, int] = (900, 600),
+) -> Any:
+    """Plot a Prophet-shaped forecast with Plotly using Prophet's public signature."""
+
+    go, _ = _require_plotly()
+    data = [
+        go.Scatter(
+            name="Actual",
+            x=m.history["ds"],
+            y=m.history["y"],
+            marker={"color": "black", "size": 4},
+            mode="markers",
+        )
+    ]
+    if uncertainty and getattr(m, "uncertainty_samples", 0):
+        data.append(
+            go.Scatter(
+                x=fcst["ds"],
+                y=fcst["yhat_lower"],
+                mode="lines",
+                line={"width": 0},
+                hoverinfo="skip",
+            )
+        )
+    data.append(
+        go.Scatter(
+            name="Predicted",
+            x=fcst["ds"],
+            y=fcst["yhat"],
+            mode="lines",
+            line={"color": "#0072B2", "width": 2},
+            fillcolor="rgba(0, 114, 178, 0.2)",
+            fill="tonexty" if uncertainty and getattr(m, "uncertainty_samples", 0) else "none",
+        )
+    )
+    if uncertainty and getattr(m, "uncertainty_samples", 0):
+        data.append(
+            go.Scatter(
+                x=fcst["ds"],
+                y=fcst["yhat_upper"],
+                mode="lines",
+                line={"width": 0},
+                fillcolor="rgba(0, 114, 178, 0.2)",
+                fill="tonexty",
+                hoverinfo="skip",
+            )
+        )
+    if plot_cap and "cap" in fcst:
+        data.append(
+            go.Scatter(
+                name="Cap",
+                x=fcst["ds"],
+                y=fcst["cap"],
+                mode="lines",
+                line={"color": "black", "dash": "dash", "width": 2},
+            )
+        )
+    if plot_cap and getattr(m, "logistic_floor", False) and "floor" in fcst:
+        data.append(
+            go.Scatter(
+                name="Floor",
+                x=fcst["ds"],
+                y=fcst["floor"],
+                mode="lines",
+                line={"color": "black", "dash": "dash", "width": 2},
+            )
+        )
+    if trend:
+        data.append(
+            go.Scatter(
+                name="Trend",
+                x=fcst["ds"],
+                y=fcst["trend"],
+                mode="lines",
+                line={"color": "#B23B00", "width": 2},
+            )
+        )
+    if changepoints and len(getattr(m, "changepoints", [])) > 0:
+        deltas = np.nanmean(getattr(m, "params", {}).get("delta", []), axis=0)
+        significant = m.changepoints[np.abs(deltas) >= changepoints_threshold]
+        data.append(
+            go.Scatter(
+                x=significant,
+                y=fcst.loc[fcst["ds"].isin(significant), "trend"],
+                marker={
+                    "size": 50,
+                    "symbol": "line-ns-open",
+                    "color": "#B23B00",
+                    "line": {"width": 2},
+                },
+                mode="markers",
+                hoverinfo="skip",
+            )
+        )
+    layout = {
+        "showlegend": False,
+        "width": figsize[0],
+        "height": figsize[1],
+        "yaxis": {"title": ylabel},
+        "xaxis": {
+            "title": xlabel,
+            "type": "date",
+            "rangeselector": {
+                "buttons": [
+                    {"count": 7, "label": "1w", "step": "day", "stepmode": "backward"},
+                    {"count": 1, "label": "1m", "step": "month", "stepmode": "backward"},
+                    {"count": 6, "label": "6m", "step": "month", "stepmode": "backward"},
+                    {"count": 1, "label": "1y", "step": "year", "stepmode": "backward"},
+                    {"step": "all"},
+                ]
+            },
+            "rangeslider": {"visible": True},
+        },
+    }
+    return go.Figure(data=data, layout=layout)
+
+
+def plot_components_plotly(
+    m: Any,
+    fcst: Any,
+    uncertainty: bool = True,
+    plot_cap: bool = True,
+    figsize: tuple[int, int] = (900, 200),
+) -> Any:
+    """Plot Prophet-style forecast components with Plotly."""
+
+    go, make_subplots = _require_plotly()
+    components: dict[str, Mapping[str, Any]] = {
+        "trend": get_forecast_component_plotly_props(m, fcst, "trend", uncertainty, plot_cap)
+    }
+    if getattr(m, "train_holiday_names", None) is not None and "holidays" in fcst:
+        components["holidays"] = get_forecast_component_plotly_props(
+            m, fcst, "holidays", uncertainty
+        )
+    modes = {"additive": False, "multiplicative": False}
+    for props in getattr(m, "extra_regressors", {}).values():
+        modes[str(props.get("mode", "additive"))] = True
+    for mode in ["additive", "multiplicative"]:
+        column = f"extra_regressors_{mode}"
+        if modes[mode] and column in fcst:
+            components[column] = get_forecast_component_plotly_props(m, fcst, column)
+    for name in getattr(m, "seasonalities", {}):
+        components[name] = get_seasonality_plotly_props(m, name)
+
+    figure = make_subplots(rows=len(components), cols=1, print_grid=False)
+    figure["layout"].update(
+        go.Layout(showlegend=False, width=figsize[0], height=figsize[1] * len(components))
+    )
+    for index, props in enumerate(components.values(), start=1):
+        xaxis = figure["layout"]["xaxis" if index == 1 else f"xaxis{index}"]
+        yaxis = figure["layout"]["yaxis" if index == 1 else f"yaxis{index}"]
+        xaxis.update(props["xaxis"])
+        yaxis.update(props["yaxis"])
+        for trace in props["traces"]:
+            figure.append_trace(trace, index, 1)
+    return figure
+
+
+def plot_forecast_component_plotly(
+    m: Any,
+    fcst: Any,
+    name: str,
+    uncertainty: bool = True,
+    plot_cap: bool = False,
+    figsize: tuple[int, int] = (900, 300),
+) -> Any:
+    """Plot one Prophet-style forecast component with Plotly."""
+
+    go, _ = _require_plotly()
+    props = get_forecast_component_plotly_props(m, fcst, name, uncertainty, plot_cap)
+    return go.Figure(
+        data=props["traces"],
+        layout=go.Layout(
+            width=figsize[0],
+            height=figsize[1],
+            showlegend=False,
+            xaxis=props["xaxis"],
+            yaxis=props["yaxis"],
+        ),
+    )
+
+
+def plot_seasonality_plotly(
+    m: Any,
+    name: str,
+    uncertainty: bool = True,
+    figsize: tuple[int, int] = (900, 300),
+) -> Any:
+    """Plot one Prophet-style seasonal component with Plotly."""
+
+    go, _ = _require_plotly()
+    props = get_seasonality_plotly_props(m, name, uncertainty)
+    return go.Figure(
+        data=props["traces"],
+        layout=go.Layout(
+            width=figsize[0],
+            height=figsize[1],
+            showlegend=False,
+            xaxis=props["xaxis"],
+            yaxis=props["yaxis"],
+        ),
+    )
+
+
+def get_forecast_component_plotly_props(
+    m: Any,
+    fcst: Any,
+    name: str,
+    uncertainty: bool = True,
+    plot_cap: bool = False,
+) -> dict[str, Any]:
+    """Prepare Plotly traces and axes for one Prophet-style forecast component."""
+
+    go, _ = _require_plotly()
+    pandas = _require_pandas()
+    range_margin = (
+        pandas.to_datetime(fcst["ds"]).max() - pandas.to_datetime(fcst["ds"]).min()
+    ) * 0.05
+    range_x = [
+        pandas.to_datetime(fcst["ds"]).min() - range_margin,
+        pandas.to_datetime(fcst["ds"]).max() + range_margin,
+    ]
+    traces = [
+        go.Scatter(
+            name=name,
+            x=fcst["ds"],
+            y=fcst[name],
+            mode="lines",
+            line=go.scatter.Line(color="#0072B2", width=2),
+        )
+    ]
+    if (
+        uncertainty
+        and getattr(m, "uncertainty_samples", 0)
+        and (fcst[f"{name}_upper"] != fcst[f"{name}_lower"]).any()
+    ):
+        traces.append(
+            go.Scatter(
+                name=f"{name}_upper",
+                x=fcst["ds"],
+                y=fcst[f"{name}_upper"],
+                mode="lines",
+                line=go.scatter.Line(width=0, color="rgba(0, 114, 178, 0.2)"),
+            )
+        )
+        traces.append(
+            go.Scatter(
+                name=f"{name}_lower",
+                x=fcst["ds"],
+                y=fcst[f"{name}_lower"],
+                mode="lines",
+                line=go.scatter.Line(width=0, color="rgba(0, 114, 178, 0.2)"),
+                fillcolor="rgba(0, 114, 178, 0.2)",
+                fill="tonexty",
+            )
+        )
+    if plot_cap and "cap" in fcst:
+        traces.append(
+            go.Scatter(
+                name="Cap",
+                x=fcst["ds"],
+                y=fcst["cap"],
+                mode="lines",
+                line=go.scatter.Line(color="black", dash="dash", width=2),
+            )
+        )
+    if plot_cap and getattr(m, "logistic_floor", False) and "floor" in fcst:
+        traces.append(
+            go.Scatter(
+                name="Floor",
+                x=fcst["ds"],
+                y=fcst["floor"],
+                mode="lines",
+                line=go.scatter.Line(color="black", dash="dash", width=2),
+            )
+        )
+    yaxis = go.layout.YAxis(
+        rangemode="normal" if name == "trend" else "tozero",
+        title=go.layout.yaxis.Title(text=name),
+        zerolinecolor="#AAA",
+    )
+    if name in getattr(m, "component_modes", {}).get("multiplicative", []):
+        yaxis.update(tickformat="%", hoverformat=".2%")
+    return {"traces": traces, "xaxis": go.layout.XAxis(type="date", range=range_x), "yaxis": yaxis}
+
+
+def get_seasonality_plotly_props(m: Any, name: str, uncertainty: bool = True) -> dict[str, Any]:
+    """Prepare Plotly traces and axes for one Prophet-style seasonality."""
+
+    go, _ = _require_plotly()
+    pandas = _require_pandas()
+    start = pandas.to_datetime("2017-01-01 0000")
+    period = getattr(m, "seasonalities", {})[name]["period"]
+    end = start + pandas.Timedelta(days=period)
+    history_ds = pandas.to_datetime(m.history["ds"])
+    if (history_ds.dt.hour == 0).all():
+        points = int(np.floor(period))
+    elif (history_ds.dt.minute == 0).all():
+        points = int(np.floor(period * 24))
+    else:
+        points = int(np.floor(period * 24 * 60))
+    points = max(points, 2)
+    days = pandas.to_datetime(np.linspace(start.value, end.value, points, endpoint=False))
+    df_y = seasonality_plot_df(m, days)
+    seas = m.predict_seasonal_components(df_y)
+    traces = [
+        go.Scatter(
+            name=name,
+            x=df_y["ds"],
+            y=seas[name],
+            mode="lines",
+            line=go.scatter.Line(color="#0072B2", width=2),
+        )
+    ]
+    if (
+        uncertainty
+        and getattr(m, "uncertainty_samples", 0)
+        and (seas[f"{name}_upper"] != seas[f"{name}_lower"]).any()
+    ):
+        traces.append(
+            go.Scatter(
+                name=f"{name}_upper",
+                x=df_y["ds"],
+                y=seas[f"{name}_upper"],
+                mode="lines",
+                line=go.scatter.Line(width=0, color="rgba(0, 114, 178, 0.2)"),
+            )
+        )
+        traces.append(
+            go.Scatter(
+                name=f"{name}_lower",
+                x=df_y["ds"],
+                y=seas[f"{name}_lower"],
+                mode="lines",
+                line=go.scatter.Line(width=0, color="rgba(0, 114, 178, 0.2)"),
+                fillcolor="rgba(0, 114, 178, 0.2)",
+                fill="tonexty",
+            )
+        )
+    if period <= 2:
+        tickformat = "%H:%M"
+    elif period < 7:
+        tickformat = "%A %H:%M"
+    elif period < 14:
+        tickformat = "%A"
+    else:
+        tickformat = "%B %e"
+    range_margin = (df_y["ds"].max() - df_y["ds"].min()) * 0.05
+    yaxis = go.layout.YAxis(title=go.layout.yaxis.Title(text=name), zerolinecolor="#AAA")
+    if getattr(m, "seasonalities", {}).get(name, {}).get("mode") == "multiplicative":
+        yaxis.update(tickformat="%", hoverformat=".2%")
+    return {
+        "traces": traces,
+        "xaxis": go.layout.XAxis(
+            tickformat=tickformat,
+            type="date",
+            range=[df_y["ds"].min() - range_margin, df_y["ds"].max() + range_margin],
+        ),
+        "yaxis": yaxis,
+    }
+
+
 def plot_forecast(
     forecast: Any,
     *,
@@ -889,6 +1605,30 @@ def _require_pyplot() -> Any:
     return pyplot
 
 
+def _require_pandas() -> Any:
+    try:
+        import pandas
+    except ImportError as exc:  # pragma: no cover - depends on optional dependency
+        raise ImportError(
+            "Prophet-compatible plotting requires pandas. Install it with "
+            "`uv sync --group dev`, the benchmark dependency group, or a "
+            "pandas-enabled environment."
+        ) from exc
+    return pandas
+
+
+def _require_plotly() -> tuple[Any, Any]:
+    try:
+        import plotly.graph_objs as go
+        from plotly.subplots import make_subplots
+    except ImportError as exc:  # pragma: no cover - depends on optional dependency
+        raise ImportError(
+            "Prophet-compatible interactive plotting requires plotly. Install plotly to use "
+            "`plot_plotly`, `plot_components_plotly`, and related helpers."
+        ) from exc
+    return go, make_subplots
+
+
 def _require_static_map_stack() -> tuple[Any, Any, Any]:
     try:
         import geopandas
@@ -916,6 +1656,60 @@ def _figure_axis(pyplot: Any, *, ax: Any | None, figsize: tuple[float, float]) -
     if ax is not None:
         return ax.figure, ax
     return pyplot.subplots(figsize=figsize)
+
+
+def _format_prophet_date_axis(ax: Any) -> None:
+    try:
+        from matplotlib.dates import AutoDateFormatter, AutoDateLocator
+    except ImportError:  # pragma: no cover - matplotlib already required by caller
+        return
+    locator = AutoDateLocator(interval_multiples=False)
+    formatter = AutoDateFormatter(locator)
+    ax.xaxis.set_major_locator(locator)
+    ax.xaxis.set_major_formatter(formatter)
+
+
+def _format_month_axis(ax: Any) -> None:
+    try:
+        from matplotlib.dates import MonthLocator, num2date
+        from matplotlib.ticker import FuncFormatter
+    except ImportError:  # pragma: no cover - matplotlib already required by caller
+        return
+    ax.xaxis.set_major_formatter(
+        FuncFormatter(lambda x, pos=None: f"{num2date(x):%B} {num2date(x).day}")
+    )
+    ax.xaxis.set_major_locator(MonthLocator(range(1, 13), bymonthday=1, interval=2))
+
+
+def _format_seasonality_axis(
+    ax: Any,
+    name: str,
+    period: float,
+    start: Any,
+    end: Any,
+) -> None:
+    pandas = _require_pandas()
+    try:
+        from matplotlib.dates import num2date
+        from matplotlib.ticker import FuncFormatter
+    except ImportError:  # pragma: no cover - matplotlib already required by caller
+        return
+    n_ticks = 8
+    ticks = pandas.to_datetime(np.linspace(start.value, end.value, n_ticks)).to_pydatetime()
+    ax.set_xticks(ticks)
+    if name == "yearly":
+        formatter = FuncFormatter(lambda x, pos=None: f"{num2date(x):%B} {num2date(x).day}")
+        ax.set_xlabel("Day of year")
+    elif name == "weekly":
+        formatter = FuncFormatter(lambda x, pos=None: f"{num2date(x):%A}")
+        ax.set_xlabel("Day of Week")
+    elif name == "daily" or period <= 2:
+        formatter = FuncFormatter(lambda x, pos=None: f"{num2date(x):%T}")
+        ax.set_xlabel("Hour of day" if name == "daily" else "Hours")
+    else:
+        formatter = FuncFormatter(lambda x, pos=None: f"{pos * period / (n_ticks - 1):.0f}")
+        ax.set_xlabel("Days")
+    ax.xaxis.set_major_formatter(formatter)
 
 
 def _tight_layout(figure: Any) -> None:
@@ -966,6 +1760,83 @@ def _rows_from_table(table: Any) -> list[dict[str, Any]]:
         length = len(table[keys[0]])
         return [{key: table[key][index] for key in keys} for index in range(length)]
     return [dict(row) for row in table]
+
+
+def _require_prophet_forecast_columns(frame: Any, columns: Sequence[str]) -> None:
+    missing = [column for column in columns if column not in frame]
+    if missing:
+        names = ", ".join(missing)
+        raise ValueError(f"forecast rows must contain Prophet column(s): {names}")
+
+
+def _prophet_performance_metrics(df_cv: Any, metric: str, rolling_window: float) -> Any:
+    pandas = _require_pandas()
+    valid = {"mse", "rmse", "mae", "mape", "mdape", "smape", "coverage"}
+    if metric not in valid:
+        raise ValueError(f"metric must be one of {sorted(valid)}")
+    frame = df_cv.copy() if hasattr(df_cv, "copy") else pandas.DataFrame(df_cv)
+    required = {"ds", "cutoff", "y", "yhat"}
+    missing = required.difference(frame.columns)
+    if missing:
+        names = ", ".join(sorted(missing))
+        raise ValueError(f"cross-validation rows must contain column(s): {names}")
+    frame["ds"] = pandas.to_datetime(frame["ds"])
+    frame["cutoff"] = pandas.to_datetime(frame["cutoff"])
+    frame["horizon"] = frame["ds"] - frame["cutoff"]
+    error = frame["y"] - frame["yhat"]
+    abs_error = error.abs()
+    squared_error = error**2
+    y_abs = frame["y"].abs().replace(0, np.nan)
+    values = {
+        "mse": squared_error,
+        "rmse": squared_error,
+        "mae": abs_error,
+        "mape": abs_error / y_abs,
+        "mdape": abs_error / y_abs,
+        "smape": 2 * abs_error / (frame["y"].abs() + frame["yhat"].abs()).replace(0, np.nan),
+        "coverage": (
+            (frame["y"] >= frame["yhat_lower"]) & (frame["y"] <= frame["yhat_upper"])
+            if {"yhat_lower", "yhat_upper"}.issubset(frame.columns)
+            else pandas.Series(np.nan, index=frame.index)
+        ),
+    }
+    frame[metric] = values[metric].astype(float)
+    frame = frame.sort_values("horizon")
+    if rolling_window < 0:
+        result = frame[["horizon", metric]].copy()
+    else:
+        window = max(1, int(np.ceil(len(frame) * rolling_window)))
+        result = frame[["horizon", metric]].copy()
+        if metric == "mdape":
+            result[metric] = result[metric].rolling(window=window, min_periods=1).median()
+        elif metric == "rmse":
+            result[metric] = np.sqrt(squared_error.rolling(window=window, min_periods=1).mean())
+        else:
+            result[metric] = result[metric].rolling(window=window, min_periods=1).mean()
+    return result.dropna(subset=[metric])
+
+
+def _timedelta_plot_values(values: Any, *, unit_name: str | None = None) -> tuple[np.ndarray, str]:
+    pandas = _require_pandas()
+    timedeltas = pandas.to_timedelta(values)
+    unit_names: list[tuple[str, float, str]] = [
+        ("days", 24 * 60 * 60 * 10**9, "D"),
+        ("hours", 60 * 60 * 10**9, "h"),
+        ("minutes", 60 * 10**9, "m"),
+        ("seconds", 10**9, "s"),
+        ("milliseconds", 10**6, "ms"),
+        ("microseconds", 10**3, "us"),
+        ("nanoseconds", 1.0, "ns"),
+    ]
+    if unit_name is None:
+        tick_width = float(max(timedeltas.astype("timedelta64[ns]").astype(np.int64))) / 10.0
+        unit_name = "nanoseconds"
+        for candidate, divisor, _unit in unit_names:
+            if divisor < tick_width:
+                unit_name = candidate
+                break
+    divisor = {name: divisor for name, divisor, _ in unit_names}[unit_name]
+    return timedeltas.astype("timedelta64[ns]").astype(np.int64) / float(divisor), unit_name
 
 
 def _infer_component_columns(rows: Sequence[Mapping[str, Any]], time_col: str) -> list[str]:
@@ -1069,20 +1940,36 @@ def _write_pydeck_html(deck: Any, output_html: str | Path) -> Path:
 
 __all__ = [
     "DEFAULT_PALETTE",
+    "add_changepoints_to_plot",
+    "get_forecast_component_plotly_props",
+    "get_seasonality_plotly_props",
+    "plot",
     "plot_backtest_metrics",
     "plot_changepoint_effects",
+    "plot_components",
+    "plot_components_plotly",
     "plot_cutoff_predictions",
     "plot_forecast",
+    "plot_forecast_component",
+    "plot_forecast_component_plotly",
     "plot_forecast_components",
     "plot_horizon_metrics",
     "plot_interval_calibration",
     "plot_metric_comparison",
+    "plot_plotly",
     "plot_predicted_actual",
     "plot_residual_diagnostics",
     "plot_route_segments",
+    "plot_seasonality",
+    "plot_seasonality_plotly",
     "plot_seasonality_curve",
     "plot_spatial_points",
+    "plot_cross_validation_metric",
+    "plot_weekly",
+    "plot_yearly",
     "save_figure",
+    "seasonality_plot_df",
+    "set_y_as_percent",
     "write_pydeck_point_map",
     "write_pydeck_route_map",
     "write_plot_report",

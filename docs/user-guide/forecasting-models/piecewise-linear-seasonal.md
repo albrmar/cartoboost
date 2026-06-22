@@ -88,6 +88,24 @@ component extraction, fitted artifact serialization, and forecast rows to the
 native binding. Python should not reimplement component math or fallback
 prediction behavior.
 
+## Prophet-Style Plotting
+
+The local plotting layer provides full public plotting-utility parity with the
+`prophet.plot` module from `prophet==1.2.2`, the package version resolved by
+CartoBoost's benchmark dependency range `prophet>=1.1,<1.3`. Use
+`cartoboost.plotting.plot`, `plot_components`, `plot_forecast_component`,
+`plot_weekly`, `plot_yearly`, `plot_seasonality`,
+`add_changepoints_to_plot`, `plot_cross_validation_metric`, the matching
+Plotly helpers, and the helper-prop functions when a report expects Prophet's
+plotting API names.
+
+The proof is maintained in [Plotting](../../plotting.md): it lists every public
+`prophet.plot` 1.2.2 utility beside the matching local implementation and
+points to the parity tests in `tests/python/test_plotting.py`. This parity is
+limited to plotting utilities over Prophet-shaped forecast/component data; the
+reusable model API remains `PiecewiseLinearSeasonalForecaster`, not a
+`prophet` alias.
+
 ## Trend Beliefs And Residual Shocks
 
 Use `trend_adjustments` when forecast-time market beliefs should move the local

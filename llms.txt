@@ -64,8 +64,10 @@ temporal, spatial, geotemporal, graph, and neural-embedding modeling.
 - `cartoboost.plotting`: optional visualization diagnostics for predictions,
   residuals, forecast artifacts, component rows, changepoints, horizon metrics,
   seasonality curves, cutoff predictions, backtest fold metrics, interval
-  calibration, static spatial plots, interactive PyDeck route maps, report
-  bundles, benchmark metric rows, and rendered taxi benchmark image examples.
+  calibration, Prophet-compatible plotting utilities matching the public
+  `prophet.plot` 1.2.2 surface, static spatial plots, interactive PyDeck route
+  maps, report bundles, benchmark metric rows, and rendered taxi benchmark
+  image examples.
 
 ## Optional Integrations
 

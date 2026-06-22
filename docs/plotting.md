@@ -21,11 +21,53 @@ diagnostics for CartoBoost benchmark evidence:
 | Model comparison | `plot_metric_comparison` |
 | Reusable plot bundle | `write_plot_report` |
 
+## Prophet plotting parity
+
+CartoBoost also exposes a local Prophet-compatible plotting surface for
+`PiecewiseLinearSeasonalForecaster` reports and other Prophet-shaped artifacts.
+The parity target is the public `prophet.plot` API from the package resolved by
+CartoBoost's benchmark dependency range `prophet>=1.1,<1.3`: `prophet==1.2.2`.
+That upstream module exposes these public plotting utilities, and CartoBoost
+implements the same names in `cartoboost.plotting`:
+
+| Upstream `prophet.plot` utility | Local `cartoboost.plotting` utility | Purpose |
+| --- | --- | --- |
+| `plot` | `plot` | Observed points, `yhat`, optional intervals, capacity, floor, and legend. |
+| `plot_components` | `plot_components` | Trend, holidays, seasonalities, and extra regressor panels. |
+| `plot_forecast_component` | `plot_forecast_component` | One forecast component with optional uncertainty and cap/floor overlays. |
+| `seasonality_plot_df` | `seasonality_plot_df` | Builds the temporary seasonality dataframe with neutral caps, floors, regressors, and active conditions. |
+| `plot_weekly` | `plot_weekly` | Sunday-start weekly seasonality curve with `weekly_start`. |
+| `plot_yearly` | `plot_yearly` | Jan. 1-start yearly seasonality curve with `yearly_start`. |
+| `plot_seasonality` | `plot_seasonality` | Generic periodic seasonality curve for daily, weekly, yearly, or custom periods. |
+| `set_y_as_percent` | `set_y_as_percent` | Percent-formats multiplicative component axes. |
+| `add_changepoints_to_plot` | `add_changepoints_to_plot` | Adds significant changepoint markers based on mean `delta` magnitude. |
+| `plot_cross_validation_metric` | `plot_cross_validation_metric` | Horizon metric scatter plus rolling aggregate for `mse`, `rmse`, `mae`, `mape`, `mdape`, `smape`, or `coverage`. |
+| `plot_plotly` | `plot_plotly` | Interactive forecast figure with optional trend and changepoints. |
+| `plot_components_plotly` | `plot_components_plotly` | Interactive component subplot figure. |
+| `plot_forecast_component_plotly` | `plot_forecast_component_plotly` | Interactive single-component figure. |
+| `plot_seasonality_plotly` | `plot_seasonality_plotly` | Interactive single-seasonality figure. |
+| `get_forecast_component_plotly_props` | `get_forecast_component_plotly_props` | Plotly trace and axis props for one forecast component. |
+| `get_seasonality_plotly_props` | `get_seasonality_plotly_props` | Plotly trace and axis props for one seasonality. |
+
+The compatibility tests in `tests/python/test_plotting.py` lock this list as
+`PROPHET_PLOT_122_PUBLIC_UTILITIES` and lock the exact parameter/default
+surface as `PROPHET_PLOT_122_SIGNATURES`. They also render representative
+Matplotlib and Plotly figures from a Prophet-shaped local model. Those tests
+prove the local module has the same public plotting utility names and call
+signatures as `prophet==1.2.2`, and that the helpers operate on the same
+forecast columns and model attributes (`history`, `seasonalities`,
+`extra_regressors`, `component_modes`, `changepoints`, `params["delta"]`, and
+`predict_seasonal_components`).
+
+This is plotting parity only. CartoBoost does not expose a reusable `prophet`
+model alias; the local interpretable component model remains
+`PiecewiseLinearSeasonalForecaster`.
+
 Install the optional visualization dependency when using these helpers outside
 the development environment:
 
 ```bash
-pip install "cartoboost[visualization]"
+uv add "cartoboost[visualization]"
 ```
 
 ## Regression diagnostics
@@ -441,7 +483,7 @@ If the optional packages are missing, map helpers raise an `ImportError` with
 the install command:
 
 ```bash
-pip install "cartoboost[visualization]"
+uv add "cartoboost[visualization]"
 ```
 
 ## Saving figures

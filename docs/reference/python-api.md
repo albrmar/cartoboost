@@ -138,20 +138,27 @@ Plotting:
 
 | Entry point | Notes |
 | --- | --- |
+| `cartoboost.plotting.plot` | Prophet-compatible forecast plot for `ds`/`yhat` forecast tables and Prophet-shaped local models. |
 | `cartoboost.plotting.plot_backtest_metrics` | Rolling-origin or blocked-fold metric trajectories by model. |
 | `cartoboost.plotting.plot_changepoint_effects` | Signed changepoint effect magnitudes. |
+| `cartoboost.plotting.plot_components` | Prophet-compatible trend, holiday, seasonality, and regressor component panels. |
+| `cartoboost.plotting.plot_cross_validation_metric` | Prophet-compatible horizon metric curve for cross-validation rows. |
 | `cartoboost.plotting.plot_cutoff_predictions` | Cross-validation predictions grouped by cutoff. |
 | `cartoboost.plotting.plot_predicted_actual` | Predicted-vs-actual scatter plot with a parity reference line. |
 | `cartoboost.plotting.plot_residual_diagnostics` | Residual-vs-prediction and residual distribution diagnostics. |
 | `cartoboost.plotting.plot_route_segments` | Static pickup/dropoff route segment map with optional metric coloring. |
 | `cartoboost.plotting.plot_metric_comparison` | Sorted bar chart for RMSE, MAE, WAPE, timing, or other metric rows. |
 | `cartoboost.plotting.plot_forecast` | History, forecast, optional holdout actuals, and optional interval bands. |
+| `cartoboost.plotting.plot_forecast_component` | Prophet-compatible single component plot. |
 | `cartoboost.plotting.plot_forecast_components` | Trend, seasonal, event, or other component panels with optional changepoints. |
 | `cartoboost.plotting.plot_horizon_metrics` | Forecast metric trajectories by horizon and model. |
 | `cartoboost.plotting.plot_interval_calibration` | Nominal-vs-observed interval coverage with optional mean interval width. |
+| `cartoboost.plotting.plot_plotly`, `plot_components_plotly`, `plot_forecast_component_plotly`, `plot_seasonality_plotly` | Prophet-compatible interactive Plotly utilities. |
+| `cartoboost.plotting.plot_seasonality`, `plot_weekly`, `plot_yearly` | Prophet-compatible seasonality curves. |
 | `cartoboost.plotting.plot_seasonality_curve` | Periodic component curve with optional uncertainty bands. |
 | `cartoboost.plotting.plot_spatial_points` | Static latitude/longitude point map with optional metric coloring. |
 | `cartoboost.plotting.save_figure` | Creates parent directories and writes a Matplotlib figure. |
+| `cartoboost.plotting.seasonality_plot_df`, `set_y_as_percent`, `add_changepoints_to_plot`, `get_forecast_component_plotly_props`, `get_seasonality_plotly_props` | Prophet-compatible plotting helper utilities matching `prophet.plot` 1.2.2 public names. |
 | `cartoboost.plotting.write_pydeck_point_map` | Interactive PyDeck point map written to HTML. |
 | `cartoboost.plotting.write_pydeck_route_map` | Interactive PyDeck route arc map written to HTML. |
 | `cartoboost.plotting.write_plot_report` | Writes a named bundle of provided diagnostics and returns output paths. |
