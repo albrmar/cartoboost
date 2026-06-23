@@ -215,18 +215,12 @@ def test_nyc_taxi_maintained_artifacts_are_complete():
 
     repeated = json.loads((artifact_dir / "repeated_results.json").read_text(encoding="utf-8"))
     assert repeated["seeds"] == [11, 29, 47]
-    assert (
-        repeated["output_artifacts"]["docs/assets/nyc_taxi_benchmarks/repeated_results.json"][
-            "size_bytes"
-        ]
-        == (artifact_dir / "repeated_results.json").stat().st_size
-    )
-    assert (
-        repeated["output_artifacts"]["docs/assets/nyc_taxi_benchmarks/repeated_results.md"][
-            "size_bytes"
-        ]
-        == (artifact_dir / "repeated_results.md").stat().st_size
-    )
+    assert repeated["output_artifacts"]["docs/assets/nyc_taxi_benchmarks/repeated_results.json"][
+        "size_bytes"
+    ] == len((artifact_dir / "repeated_results.json").read_bytes().replace(b"\r\n", b"\n"))
+    assert repeated["output_artifacts"]["docs/assets/nyc_taxi_benchmarks/repeated_results.md"][
+        "size_bytes"
+    ] == len((artifact_dir / "repeated_results.md").read_bytes().replace(b"\r\n", b"\n"))
     assert repeated["quality"]
 
 
