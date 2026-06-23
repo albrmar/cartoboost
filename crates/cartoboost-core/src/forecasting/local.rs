@@ -2037,9 +2037,27 @@ impl Forecaster for AutoARIMAForecaster {
         let max_p = self.max_p;
         let max_d = self.max_d;
         let max_q = self.max_q;
-        let mut scores = (0..=max_d)
+        let min_history_len = FittedLocalState::from_frame(frame)
+            .history_by_series
+            .values()
+            .map(Vec::len)
+            .min()
+            .unwrap_or(0);
+        let mut candidate_orders = BTreeSet::new();
+        for d in 0..=max_d {
+            for p in 0..=max_p {
+                for q in 0..=max_q {
+                    candidate_orders.insert(arima_order_supported_by_history(
+                        min_history_len,
+                        p,
+                        d,
+                        q,
+                    ));
+                }
+            }
+        }
+        let mut scores = candidate_orders
             .into_par_iter()
-            .flat_map_iter(|d| (0..=max_p).flat_map(move |p| (0..=max_q).map(move |q| (p, d, q))))
             .map(|(p, d, q)| {
                 let fitted = FittedArimaState::from_frame(frame, p, d, q)?;
                 let mse = fitted.mean_squared_residual();
@@ -4036,17 +4054,18 @@ impl FittedArimaSeries {
     fn fit(series_id: &str, history: &[ForecastRow], p: usize, d: usize, q: usize) -> Result<Self> {
         validate_arima_order(p, d, q)?;
         let values = history.iter().map(|row| row.target).collect::<Vec<_>>();
-        let differences = difference_series(&values, d)?;
-        let required_lags = p.max(q);
-        if differences.len() <= required_lags {
+        let (effective_p, effective_d, effective_q) =
+            arima_order_supported_by_history(values.len(), p, d, q);
+        let differences = difference_series(&values, effective_d)?;
+        let required_lags = effective_p.max(effective_q);
+        if differences.is_empty() {
             return Err(CartoBoostError::InvalidInput(format!(
-                "series {series_id} has {} differenced rows, but ARIMA({p},{d},{q}) requires more than {required_lags}",
-                differences.len(),
+                "series {series_id} has no differenced rows available for ARIMA fitting",
             )));
         }
         let (intercept, ar_coefficients, ma_coefficients, fitted_diff, residuals) =
-            fit_arima_components(&differences, p, q)?;
-        let fitted_values = undifference_fitted_values(&values, &fitted_diff, d);
+            fit_arima_components(&differences, effective_p, effective_q)?;
+        let fitted_values = undifference_fitted_values(&values, &fitted_diff, effective_d);
         Ok(Self {
             last_timestamp: history.last().expect("history length checked").timestamp,
             intercept,
@@ -4055,7 +4074,7 @@ impl FittedArimaSeries {
             score_start: required_lags,
             differenced_history: differences,
             residual_history: residuals.clone(),
-            last_differences: last_differences(&values, d)?,
+            last_differences: last_differences(&values, effective_d)?,
             fitted_values,
             residuals,
         })
@@ -5988,16 +6007,22 @@ fn score_kalman_params(
         .collect::<Vec<_>>()
         .into_par_iter()
         .map(|(series_id, history)| {
-            let window = validation_window.unwrap_or_else(|| {
+            if history.len() < 2 {
+                return Err(CartoBoostError::InvalidInput(format!(
+                    "series {series_id} has {} rows, but auto_kalman requires at least two rows",
+                    history.len()
+                )));
+            }
+            let requested_window = validation_window.unwrap_or_else(|| {
                 let suggested = history.len() / 5;
                 suggested.clamp(1, 12)
             });
-            if history.len() <= window + 1 {
-                return Err(CartoBoostError::InvalidInput(format!(
-                    "series {series_id} has {} rows, but auto_kalman requires at least {} rows for validation",
-                    history.len(),
-                    window + 2
-                )));
+            let window = requested_window.min(history.len().saturating_sub(2));
+            if window == 0 {
+                let values = history.iter().map(|row| row.target).collect::<Vec<_>>();
+                let result = fit_local_linear_kalman(&values, config)
+                    .map_err(|err| CartoBoostError::InvalidInput(format!("{series_id}: {err}")))?;
+                return Ok((no_holdout_validation_score(result.residual_summary.mse), 1));
             }
             let train_len = history.len() - window;
             let train = history[..train_len]
@@ -6024,8 +6049,11 @@ fn score_kalman_params(
             },
         )?;
     if count == 0 {
+        if sum_squared_error.is_finite() {
+            return Ok(sum_squared_error);
+        }
         return Err(CartoBoostError::InvalidInput(
-            "auto_kalman validation produced no scored observations".to_string(),
+            "auto_kalman validation score must be finite".to_string(),
         ));
     }
     let mse = sum_squared_error / count as f64;
@@ -6049,16 +6077,21 @@ fn score_local_level_kalman_params(
         .collect::<Vec<_>>()
         .into_par_iter()
         .map(|(series_id, history)| {
-            let window = validation_window.unwrap_or_else(|| {
+            if history.is_empty() {
+                return Err(CartoBoostError::InvalidInput(format!(
+                    "series {series_id} has no rows, but auto_local_level_kalman requires at least one row"
+                )));
+            }
+            let requested_window = validation_window.unwrap_or_else(|| {
                 let suggested = history.len() / 5;
                 suggested.clamp(1, 12)
             });
-            if history.len() <= window {
-                return Err(CartoBoostError::InvalidInput(format!(
-                    "series {series_id} has {} rows, but auto_local_level_kalman requires at least {} rows for validation",
-                    history.len(),
-                    window + 1
-                )));
+            let window = requested_window.min(history.len().saturating_sub(1));
+            if window == 0 {
+                let values = history.iter().map(|row| row.target).collect::<Vec<_>>();
+                let result = fit_local_level_kalman(&values, config)
+                    .map_err(|err| CartoBoostError::InvalidInput(format!("{series_id}: {err}")))?;
+                return Ok((no_holdout_validation_score(result.residual_summary.mse), 1));
             }
             let train_len = history.len() - window;
             let train = history[..train_len]
@@ -6083,8 +6116,11 @@ fn score_local_level_kalman_params(
             },
         )?;
     if count == 0 {
+        if sum_squared_error.is_finite() {
+            return Ok(sum_squared_error);
+        }
         return Err(CartoBoostError::InvalidInput(
-            "auto_local_level_kalman validation produced no scored observations".to_string(),
+            "auto_local_level_kalman validation score must be finite".to_string(),
         ));
     }
     let mse = sum_squared_error / count as f64;
@@ -6094,6 +6130,14 @@ fn score_local_level_kalman_params(
         ));
     }
     Ok(mse)
+}
+
+fn no_holdout_validation_score(in_sample_mse: f64) -> f64 {
+    if in_sample_mse.is_finite() {
+        in_sample_mse
+    } else {
+        0.0
+    }
 }
 
 fn validate_ets_params(
@@ -6164,6 +6208,18 @@ fn validate_arima_order(p: usize, d: usize, q: usize) -> Result<()> {
         ));
     }
     Ok(())
+}
+
+fn arima_order_supported_by_history(
+    history_len: usize,
+    p: usize,
+    d: usize,
+    q: usize,
+) -> (usize, usize, usize) {
+    let effective_d = d.min(2).min(history_len.saturating_sub(1));
+    let differenced_len = history_len.saturating_sub(effective_d);
+    let max_lag_order = differenced_len.saturating_sub(1).min(MAX_ARIMA_ORDER);
+    (p.min(max_lag_order), effective_d, q.min(max_lag_order))
 }
 
 fn initial_trend(values: &[f64], seasonals: Option<&[f64]>) -> f64 {
@@ -8740,7 +8796,7 @@ mod tests {
     }
 
     #[test]
-    fn auto_kalman_rejects_empty_grid_and_short_validation_history() {
+    fn auto_kalman_rejects_empty_grid_and_caps_short_validation_history() {
         assert!(
             AutoKalmanForecaster::with_grids(Vec::new(), vec![0.001], vec![1.0], Some(1),).is_err()
         );
@@ -8757,9 +8813,16 @@ mod tests {
             AutoKalmanForecaster::with_grids(vec![0.001], vec![0.0001], vec![1.0], Some(1))
                 .expect("valid grid");
 
-        let err = model.fit(&frame).expect_err("short history rejected");
+        model
+            .fit(&frame)
+            .expect("fit with capped validation window");
+        let forecast = model.predict(2).expect("forecast");
 
-        assert!(err.to_string().contains("auto_kalman requires"));
+        assert_eq!(forecast.predictions().len(), 2);
+        assert!(model
+            .validation_scores()
+            .iter()
+            .all(|score| score.mse.is_finite()));
     }
 
     #[test]
@@ -8805,6 +8868,26 @@ mod tests {
         assert!(model.selected_params().is_some());
         assert_eq!(model.validation_scores().len(), 4);
         assert_eq!(forecast.predictions()[0].model, "auto_local_level_kalman");
+    }
+
+    #[test]
+    fn auto_local_level_kalman_caps_short_validation_history() {
+        let frame = ForecastFrame::new(
+            vec![ForecastRow::single(ts(1), 10.0)],
+            ForecastFrequency::Daily,
+        )
+        .expect("valid frame");
+        let mut model = AutoLocalLevelKalmanForecaster::with_grids(vec![0.001], vec![0.1], Some(3))
+            .expect("valid auto kalman");
+
+        model.fit(&frame).expect("fit with no holdout");
+        let forecast = model.predict(2).expect("forecast");
+
+        assert_eq!(forecast.predictions().len(), 2);
+        assert!(model
+            .validation_scores()
+            .iter()
+            .all(|score| score.mse.is_finite()));
     }
 
     #[test]
@@ -8977,7 +9060,7 @@ mod tests {
     }
 
     #[test]
-    fn arima_rejects_invalid_order_and_insufficient_history() {
+    fn arima_rejects_invalid_order_and_prunes_unsupported_terms() {
         assert!(ArimaForecaster::new(9, 0, 0).is_err());
         assert!(ArimaForecaster::new(1, 0, 9).is_err());
 
@@ -8990,8 +9073,14 @@ mod tests {
         )
         .expect("valid frame");
         let mut model = ArimaForecaster::new(2, 0, 0).expect("valid arima");
-        let err = model.fit(&frame).expect_err("insufficient history");
-        assert!(err.to_string().contains("requires more than 2"));
+        model.fit(&frame).expect("fit pruned order");
+        let forecast = model.predict(2).expect("forecast");
+
+        assert_eq!(forecast.predictions().len(), 2);
+        assert!(forecast
+            .predictions()
+            .iter()
+            .all(|prediction| prediction.mean.is_finite()));
     }
 
     #[test]
@@ -9065,6 +9154,33 @@ mod tests {
         assert_eq!(forecast.predictions().len(), 2);
         assert_eq!(forecast.predictions()[0].model, "auto_arima");
         assert_eq!(forecast.predictions()[0].timestamp, ts(9));
+    }
+
+    #[test]
+    fn auto_arima_deduplicates_orders_after_short_history_pruning() {
+        let frame = ForecastFrame::new(
+            vec![
+                ForecastRow::single(ts(1), 10.0),
+                ForecastRow::single(ts(2), 12.0),
+            ],
+            ForecastFrequency::Daily,
+        )
+        .expect("valid frame");
+        let mut model = AutoARIMAForecaster::with_max_order(3, 1, 2).expect("valid auto arima");
+
+        model.fit(&frame).expect("fit");
+        let forecast = model.predict(2).expect("predict");
+
+        assert!(matches!(
+            model.selected_order(),
+            Some((0..=1, 0..=1, 0..=1))
+        ));
+        assert!(model.validation_scores().len() <= 8);
+        assert_eq!(forecast.predictions().len(), 2);
+        assert!(forecast
+            .predictions()
+            .iter()
+            .all(|prediction| prediction.model == "auto_arima" && prediction.mean.is_finite()));
     }
 
     #[test]

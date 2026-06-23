@@ -1,8 +1,9 @@
 use cartoboost_core::forecasting::{
     evaluate_m_competition_metrics, CandidateValidationCutoffSchedule, CrostonForecaster,
-    ForecastActual, ForecastFrame, ForecastFrameMetadata, ForecastFrequency, ForecastResult,
-    ForecastRow, ForecastWindow, Forecaster, NaiveForecaster, RollingOriginBacktester,
-    RollingOriginSplitter, SbaForecaster, SeasonalNaiveForecaster, TsbForecaster,
+    ForecastActual, ForecastFrame, ForecastFrameMetadata, ForecastFrequency, ForecastRegistry,
+    ForecastResult, ForecastRow, ForecastWindow, Forecaster, NaiveForecaster,
+    RollingOriginBacktester, RollingOriginSplitter, SbaForecaster, SeasonalNaiveForecaster,
+    TsbForecaster,
 };
 use chrono::{NaiveDate, NaiveDateTime};
 use std::collections::BTreeMap;
@@ -41,6 +42,83 @@ fn validates_and_sorts_panel_frame() {
         keys,
         vec![("A", ts(1)), ("A", ts(2)), ("B", ts(1)), ("B", ts(2))]
     );
+}
+
+#[test]
+fn default_registry_models_return_finite_forecasts_on_representative_panels() {
+    let panels = [
+        (
+            "short_route_panel",
+            ForecastFrame::new(
+                vec![
+                    ForecastRow::new("PULocationID=132|DOLocationID=237", ts(1), 8.492),
+                    ForecastRow::new("PULocationID=132|DOLocationID=237", ts(2), 9.108),
+                    ForecastRow::new("PULocationID=237|DOLocationID=236", ts(1), 8.377),
+                    ForecastRow::new("PULocationID=237|DOLocationID=236", ts(2), 8.941),
+                ],
+                ForecastFrequency::Daily,
+            )
+            .expect("valid short route panel"),
+        ),
+        (
+            "hourly_taxi_panel",
+            ForecastFrame::new(
+                (0..8)
+                    .flat_map(|hour_idx| {
+                        let hour = hour(1, hour_idx);
+                        [
+                            ForecastRow::new(
+                                "PULocationID=132|DOLocationID=237",
+                                hour,
+                                8.0 + f64::from(hour_idx) * 0.42,
+                            ),
+                            ForecastRow::new(
+                                "PULocationID=237|DOLocationID=236",
+                                hour,
+                                11.0 + f64::from(hour_idx % 3) * 0.31,
+                            ),
+                        ]
+                    })
+                    .collect(),
+                ForecastFrequency::Hourly,
+            )
+            .expect("valid hourly taxi panel"),
+        ),
+    ];
+    let registry = ForecastRegistry::with_defaults().expect("default registry");
+
+    for (panel_name, frame) in panels {
+        let series_count = frame
+            .rows()
+            .iter()
+            .map(|row| row.series_id.as_str())
+            .collect::<std::collections::BTreeSet<_>>()
+            .len();
+        for model_name in registry.names() {
+            let mut model = registry
+                .create(&model_name)
+                .unwrap_or_else(|err| panic!("{model_name} create failed: {err}"));
+            model
+                .fit(&frame)
+                .unwrap_or_else(|err| panic!("{model_name} fit failed on {panel_name}: {err}"));
+            let forecast = model
+                .predict(2)
+                .unwrap_or_else(|err| panic!("{model_name} predict failed on {panel_name}: {err}"));
+            assert_eq!(
+                forecast.predictions().len(),
+                series_count * 2,
+                "{model_name} returned wrong prediction count on {panel_name}",
+            );
+            assert!(
+                forecast.predictions().iter().all(|prediction| {
+                    !prediction.model.is_empty()
+                        && prediction.horizon > 0
+                        && prediction.mean.is_finite()
+                }),
+                "{model_name} returned an empty, invalid, or non-finite prediction on {panel_name}",
+            );
+        }
+    }
 }
 
 #[test]
