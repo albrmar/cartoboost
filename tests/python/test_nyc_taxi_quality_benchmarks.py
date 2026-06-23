@@ -201,9 +201,8 @@ def test_nyc_taxi_maintained_artifacts_are_complete():
         if line
     ]
     assert len(results["external_baseline_comparison"]) == 5
-    assert (
-        results["output_artifacts"]["results.jsonl"]["size_bytes"]
-        == (artifact_dir / "results.jsonl").stat().st_size
+    assert results["output_artifacts"]["results.jsonl"]["size_bytes"] == len(
+        (artifact_dir / "results.jsonl").read_bytes().replace(b"\r\n", b"\n")
     )
     assert {
         (row["track"], row["task_id"], row["split_id"], row["model_family"], row["metric"])
