@@ -28,7 +28,8 @@ class PiecewiseLinearSeasonalForecaster(NativeForecastWrapper):
         *,
         growth: str = "linear",
         component_mode: str = "additive",
-        changepoints: int = 12,
+        changepoints: int | Sequence[str] | None = 12,
+        n_changepoints: int | None = None,
         changepoint_range: float = 0.8,
         changepoint_timestamps: Sequence[str] = (),
         yearly_fourier_order: int = 0,
@@ -49,6 +50,8 @@ class PiecewiseLinearSeasonalForecaster(NativeForecastWrapper):
         event_l2_regularization_by_name: Mapping[str, float] | None = None,
         regressor_l2_regularization_by_name: Mapping[str, float] | None = None,
         events: Sequence[EventSpec] = (),
+        holidays: Any | None = None,
+        holidays_prior_scale: float | None = None,
         event_mode: str | None = None,
         extra_regressors: Sequence[str] = (),
         regressor_modes: Mapping[str, str] | None = None,
@@ -84,8 +87,9 @@ class PiecewiseLinearSeasonalForecaster(NativeForecastWrapper):
         regressor_standardization = _validate_choice(
             "regressor_standardization", regressor_standardization, {"auto", "none"}
         )
-        if int(changepoints) < 0:
-            raise ValueError("changepoints must be nonnegative")
+        changepoint_count, explicit_changepoints = _normalize_changepoints(
+            changepoints, n_changepoints, changepoint_timestamps
+        )
         changepoint_range = float(changepoint_range)
         if not 0.0 < changepoint_range <= 1.0:
             raise ValueError("changepoint_range must be in (0, 1]")
@@ -122,12 +126,23 @@ class PiecewiseLinearSeasonalForecaster(NativeForecastWrapper):
         residual_shock_decay = float(residual_shock_decay)
         if residual_shock_decay < 0.0 or residual_shock_decay > 1.0:
             raise ValueError("residual_shock_decay must be in [0, 1]")
+        holiday_events, holiday_l2_by_name = _holiday_event_tuples(holidays, holidays_prior_scale)
+        event_l2_by_name = {
+            **holiday_l2_by_name,
+            **_float_mapping(event_l2_regularization_by_name),
+        }
+        effective_event_l2 = (
+            _prior_scale_to_l2(holidays_prior_scale)
+            if holidays_prior_scale is not None
+            else float(event_l2_regularization)
+        )
+
         super().__init__(
             growth=growth,
             component_mode=component_mode,
-            changepoints=int(changepoints),
+            changepoints=changepoint_count,
             changepoint_range=changepoint_range,
-            changepoint_timestamps=[str(timestamp) for timestamp in changepoint_timestamps],
+            changepoint_timestamps=explicit_changepoints,
             yearly_fourier_order=int(yearly_fourier_order),
             weekly_fourier_order=int(weekly_fourier_order),
             daily_fourier_order=int(daily_fourier_order),
@@ -147,11 +162,11 @@ class PiecewiseLinearSeasonalForecaster(NativeForecastWrapper):
             daily_l2_regularization=None
             if daily_l2_regularization is None
             else float(daily_l2_regularization),
-            event_l2_regularization=float(event_l2_regularization),
+            event_l2_regularization=effective_event_l2,
             regressor_l2_regularization=float(regressor_l2_regularization),
-            event_l2_regularization_by_name=_float_mapping(event_l2_regularization_by_name),
+            event_l2_regularization_by_name=event_l2_by_name,
             regressor_l2_regularization_by_name=_float_mapping(regressor_l2_regularization_by_name),
-            events=_event_tuples(events),
+            events=_event_tuples(events) + holiday_events,
             event_mode=None
             if event_mode is None
             else _validate_choice("event_mode", event_mode, {"additive", "multiplicative"}),
@@ -438,6 +453,40 @@ def _validate_choice(name: str, value: str, choices: set[str]) -> str:
     return value
 
 
+def _normalize_changepoints(
+    changepoints: int | Sequence[str] | None,
+    n_changepoints: int | None,
+    changepoint_timestamps: Sequence[str],
+) -> tuple[int, list[str]]:
+    explicit = [str(timestamp) for timestamp in changepoint_timestamps]
+    if changepoints is not None and not isinstance(changepoints, (str, bytes)):
+        try:
+            if not isinstance(changepoints, int):
+                candidate = list(changepoints)
+                explicit_from_changepoints = [str(timestamp) for timestamp in candidate]
+                if explicit and explicit_from_changepoints:
+                    raise ValueError(
+                        "pass explicit changepoints through either changepoints or "
+                        "changepoint_timestamps, not both"
+                    )
+                explicit = explicit or explicit_from_changepoints
+                changepoints = 0
+        except TypeError:
+            pass
+    if changepoints is None:
+        changepoint_count = 0
+    else:
+        changepoint_count = int(changepoints)
+    if n_changepoints is not None:
+        if explicit:
+            changepoint_count = 0
+        else:
+            changepoint_count = int(n_changepoints)
+    if changepoint_count < 0:
+        raise ValueError("changepoints must be nonnegative")
+    return changepoint_count, explicit
+
+
 def _event_tuples(events: Sequence[EventSpec]) -> list[tuple[str, str, int | None, int | None]]:
     normalized: list[tuple[str, str, int | None, int | None]] = []
     for event in events:
@@ -466,6 +515,54 @@ def _event_tuples(events: Sequence[EventSpec]) -> list[tuple[str, str, int | Non
             )
         )
     return normalized
+
+
+def _holiday_event_tuples(
+    holidays: Any | None,
+    holidays_prior_scale: float | None,
+) -> tuple[list[tuple[str, str, int | None, int | None]], dict[str, float]]:
+    if holidays is None:
+        return [], {}
+    records = _holiday_records(holidays)
+    events: list[tuple[str, str, int | None, int | None]] = []
+    l2_by_name: dict[str, float] = {}
+    for record in records:
+        if not isinstance(record, Mapping):
+            raise ValueError("holidays must be a dataframe-like object or mappings")
+        name = record.get("holiday", record.get("name"))
+        timestamp = record.get("ds", record.get("timestamp"))
+        if name is None or timestamp is None:
+            raise ValueError("holidays require holiday/name and ds/timestamp columns")
+        lower_window = record.get("lower_window", record.get("lowerWindow", 0))
+        upper_window = record.get("upper_window", record.get("upperWindow", 0))
+        events.append(
+            (
+                str(name),
+                str(timestamp),
+                None if lower_window is None else int(lower_window),
+                None if upper_window is None else int(upper_window),
+            )
+        )
+        prior_scale = record.get("prior_scale", record.get("priorScale", holidays_prior_scale))
+        if prior_scale is not None:
+            l2_by_name[str(name)] = _prior_scale_to_l2(prior_scale)
+    return events, l2_by_name
+
+
+def _holiday_records(holidays: Any) -> list[Mapping[str, Any]]:
+    to_dict = getattr(holidays, "to_dict", None)
+    if callable(to_dict):
+        return list(to_dict("records"))
+    if isinstance(holidays, Mapping):
+        return [holidays]
+    return list(holidays)
+
+
+def _prior_scale_to_l2(prior_scale: Any) -> float:
+    scale = float(prior_scale)
+    if scale <= 0.0:
+        raise ValueError("holiday prior_scale values must be positive")
+    return 1.0 / (scale * scale)
 
 
 def _seasonality_tuples(
