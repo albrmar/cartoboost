@@ -119,6 +119,53 @@ fn rectified_recursive_forecaster_fits_horizon_specific_corrections() {
 }
 
 #[test]
+fn rectified_recursive_reuses_recursive_training_paths_for_long_horizons() {
+    let rows = (0..180)
+        .map(|hour| {
+            ForecastRow::new(
+                "PU132-DO236",
+                ts(1) + chrono::Duration::hours(hour),
+                30.0 + f64::from((hour % 24) as u32) * 0.35 + f64::from((hour / 24) as u32) * 0.2,
+            )
+        })
+        .collect();
+    let frame = ForecastFrame::new(rows, ForecastFrequency::Hourly).expect("valid hourly frame");
+    let config = LagFeatureConfig {
+        lags: vec![1, 24],
+        rolling_mean_windows: vec![24],
+        difference_lags: vec![1],
+        calendar_features: vec![
+            CalendarFeature::DayOfWeek,
+            CalendarFeature::ElapsedPhase(24),
+        ],
+        ..LagFeatureConfig::default()
+    };
+    let booster = BoosterConfig {
+        n_estimators: 2,
+        learning_rate: 0.2,
+        max_depth: 1,
+        min_samples_leaf: 8,
+        min_gain: 0.0,
+        ..BoosterConfig::default()
+    };
+    let mut forecaster =
+        RectifiedRecursiveForecaster::new(config, booster).expect("rectified forecaster");
+
+    forecaster.fit_horizon(&frame, 14).expect("fit");
+    let predictions = forecaster.predict(14).expect("predict");
+
+    assert_eq!(
+        forecaster.training_rows_by_horizon().expect("rows").len(),
+        14
+    );
+    assert_eq!(predictions.predictions().len(), 14);
+    assert!(predictions
+        .predictions()
+        .iter()
+        .all(|prediction| prediction.mean.is_finite()));
+}
+
+#[test]
 fn intermittent_experts_are_deterministic_and_validate_inputs() {
     let values = [0.0, 5.0, 0.0, 0.0, 7.0, 0.0, 9.0, 0.0];
 

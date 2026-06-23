@@ -370,45 +370,40 @@ fn recursive_training_predictions(
     let mut result = vec![Vec::new(); horizon];
     let training = build_direct_training(frame, lag_builder, 1)?;
     let one_step = Booster::new(booster_config.clone()).fit(&training.x, &training.y, None)?;
-    for step in 1..=horizon {
-        let mut values = Vec::new();
-        for (_series_id, history) in history_by_series(frame.rows()) {
-            for origin_idx in 0..history.len() {
-                if origin_idx + step >= history.len() {
-                    values.push(None);
+    for (_series_id, history) in history_by_series(frame.rows()) {
+        for origin_idx in 0..history.len() {
+            let mut recursive_history = history[..=origin_idx].to_vec();
+            let mut incomplete_history = false;
+            for step in 1..=horizon {
+                if origin_idx + step >= history.len() || incomplete_history {
+                    result[step - 1].push(None);
                     continue;
                 }
-                let mut recursive_history = history[..=origin_idx].to_vec();
-                let mut forecast = None;
-                let mut incomplete_history = false;
-                for recursive_step in 1..=step {
-                    let timestamp = frame
-                        .frequency()
-                        .advance(history[origin_idx].timestamp, recursive_step)?;
-                    let features = match lag_builder.transform_next_sorted_prior(
-                        &history[origin_idx].series_id,
-                        &recursive_history,
-                        timestamp,
-                    ) {
-                        Ok(features) => features,
-                        Err(err) if is_incomplete_lag_history(&err) => {
-                            incomplete_history = true;
-                            break;
-                        }
-                        Err(err) => return Err(err),
-                    };
-                    let mean = one_step.predict_one(&features);
-                    forecast = Some(mean);
-                    recursive_history.push(ForecastRow::new(
-                        history[origin_idx].series_id.clone(),
-                        timestamp,
-                        mean,
-                    ));
-                }
-                values.push(if incomplete_history { None } else { forecast });
+                let timestamp = frame
+                    .frequency()
+                    .advance(history[origin_idx].timestamp, step)?;
+                let features = match lag_builder.transform_next_sorted_prior(
+                    &history[origin_idx].series_id,
+                    &recursive_history,
+                    timestamp,
+                ) {
+                    Ok(features) => features,
+                    Err(err) if is_incomplete_lag_history(&err) => {
+                        incomplete_history = true;
+                        result[step - 1].push(None);
+                        continue;
+                    }
+                    Err(err) => return Err(err),
+                };
+                let mean = one_step.predict_one(&features);
+                result[step - 1].push(Some(mean));
+                recursive_history.push(ForecastRow::new(
+                    history[origin_idx].series_id.clone(),
+                    timestamp,
+                    mean,
+                ));
             }
         }
-        result[step - 1] = values;
     }
     Ok(result)
 }

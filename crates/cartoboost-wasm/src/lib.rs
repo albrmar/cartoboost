@@ -5009,6 +5009,19 @@ mod tests {
                 .and_then(Value::as_array)
                 .unwrap_or_else(|| panic!("{} returned no forecast records", model.name));
             assert_eq!(records.len(), 21, "{} record count", model.name);
+            assert!(
+                response.metadata.get("warning").is_none(),
+                "{} used fallback instead of fitting directly: {}",
+                model.name,
+                response.metadata
+            );
+            assert!(
+                records
+                    .iter()
+                    .all(|record| record["prediction"].as_f64().is_some_and(f64::is_finite)),
+                "{} returned a non-finite prediction",
+                model.name
+            );
         }
     }
 
