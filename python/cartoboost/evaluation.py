@@ -7,9 +7,12 @@ from collections.abc import Iterator
 import numpy as np
 
 __all__ = [
+    "environmental_blocked_cv",
     "grouped_blocked_cv",
     "out_of_time_split",
+    "spatial_buffered_cv",
     "spatial_blocked_cv",
+    "spatial_grouped_cv",
     "temporal_blocked_cv",
 ]
 
@@ -24,6 +27,11 @@ def spatial_blocked_cv(
 
     Coordinates can be one-dimensional or multi-dimensional. For dimensions
     beyond the first two, blocking uses the first two columns.
+
+    Example:
+        >>> folds = list(spatial_blocked_cv([[0.0], [1.0], [2.0], [3.0]], n_splits=2))
+        >>> len(folds)
+        2
     """
 
     coords = np.asarray(coordinates, dtype=float)
@@ -50,6 +58,126 @@ def spatial_blocked_cv(
     yield from grouped_blocked_cv(block_ids, n_splits=n_splits)
 
 
+def spatial_buffered_cv(
+    coordinates: object,
+    *,
+    n_splits: int = 5,
+    buffer_radius: float,
+    coordinate_cols: tuple[object, object] | list[object] | None = None,
+    grid_shape: tuple[int, int] | None = None,
+    random_state: int | None = None,
+    coordinate_units: str = "projected",
+    allow_degree_buffer: bool = False,
+) -> Iterator[tuple[np.ndarray, np.ndarray]]:
+    """Yield spatial blocked folds with a distance buffer around each test block.
+
+    ``buffer_radius`` is measured in the coordinate units. Use projected
+    coordinates such as meters or feet for meaningful buffers. Latitude and
+    longitude degree buffers raise unless ``allow_degree_buffer=True``.
+
+    Example:
+        >>> coords = [[0.0, 0.0], [10.0, 0.0]]
+        >>> folds = list(spatial_buffered_cv(coords, n_splits=2, buffer_radius=1.0))
+        >>> len(folds)
+        2
+    """
+
+    coords = _extract_coordinates(coordinates, coordinate_cols)
+    radius = _validate_projected_buffer(buffer_radius, coordinate_units, allow_degree_buffer)
+    block_splits = list(
+        spatial_blocked_cv(coords, n_splits=n_splits, grid_shape=grid_shape)
+    )
+    if random_state is not None:
+        rng = np.random.default_rng(int(random_state))
+        rng.shuffle(block_splits)
+
+    for train_idx, test_idx in block_splits:
+        yield _apply_spatial_buffer(coords, train_idx, test_idx, radius)
+
+
+def spatial_grouped_cv(
+    coordinates: object,
+    groups: object,
+    *,
+    n_splits: int = 5,
+    buffer_radius: float = 0.0,
+    coordinate_cols: tuple[object, object] | list[object] | None = None,
+    random_state: int | None = None,
+    coordinate_units: str = "projected",
+    allow_degree_buffer: bool = False,
+) -> Iterator[tuple[np.ndarray, np.ndarray]]:
+    """Yield grouped folds with optional spatial buffering around test rows.
+
+    Whole groups are held out together. When ``buffer_radius`` is positive,
+    train rows from non-test groups are also removed if they are too close to
+    any test coordinate.
+
+    Example:
+        >>> coords = [[0.0], [1.0], [10.0], [11.0]]
+        >>> folds = list(spatial_grouped_cv(coords, ["a", "a", "b", "b"], n_splits=2))
+        >>> len(folds)
+        2
+    """
+
+    coords = _extract_coordinates(coordinates, coordinate_cols)
+    group_values = _as_object_vector(groups, "groups")
+    if group_values.shape[0] != coords.shape[0]:
+        raise ValueError("groups must be one-dimensional and match coordinates rows")
+    radius = _validate_projected_buffer(buffer_radius, coordinate_units, allow_degree_buffer)
+    group_splits = list(grouped_blocked_cv(group_values, n_splits=n_splits))
+    if random_state is not None:
+        rng = np.random.default_rng(int(random_state))
+        rng.shuffle(group_splits)
+
+    for train_idx, test_idx in group_splits:
+        yield _apply_spatial_buffer(coords, train_idx, test_idx, radius)
+
+
+def environmental_blocked_cv(
+    environmental_features: object,
+    *,
+    n_splits: int = 5,
+    feature_cols: list[object] | tuple[object, ...] | None = None,
+    random_state: int | None = None,
+    use_sklearn: bool = True,
+) -> Iterator[tuple[np.ndarray, np.ndarray]]:
+    """Yield folds by clustering environmental covariates.
+
+    The helper uses sklearn KMeans when ``use_sklearn=True``. This keeps the
+    dependency optional and fails with a clear install hint when sklearn is not
+    available.
+
+    Example:
+        >>> features = [[0.0], [1.0], [10.0], [11.0]]
+        >>> folds = list(environmental_blocked_cv(features, n_splits=2, use_sklearn=False))
+        >>> len(folds)
+        2
+    """
+
+    features = _extract_feature_matrix(environmental_features, feature_cols)
+    _validate_n_splits(n_splits, features.shape[0])
+    if use_sklearn:
+        try:
+            from sklearn.cluster import KMeans
+        except ImportError as exc:  # pragma: no cover - depends on optional extra
+            raise ImportError(
+                "environmental_blocked_cv requires scikit-learn; install cartoboost with "
+                "the sklearn extra or pass use_sklearn=False"
+            ) from exc
+        labels = KMeans(
+            n_clusters=int(n_splits),
+            n_init=10,
+            random_state=random_state,
+        ).fit_predict(features)
+    else:
+        order_axis = int(np.argmax(np.ptp(features, axis=0)))
+        labels = np.empty(features.shape[0], dtype=int)
+        order = np.argsort(features[:, order_axis], kind="mergesort")
+        for fold_id, fold_indices in enumerate(np.array_split(order, n_splits)):
+            labels[fold_indices] = fold_id
+    yield from grouped_blocked_cv(labels, n_splits=n_splits)
+
+
 def temporal_blocked_cv(
     times: object,
     *,
@@ -60,6 +188,11 @@ def temporal_blocked_cv(
 
     ``gap`` removes that many neighboring sorted rows on each side of the test
     block from the corresponding training split.
+
+    Example:
+        >>> folds = list(temporal_blocked_cv([1, 2, 3, 4], n_splits=2, gap=0))
+        >>> folds[0][1].tolist()
+        [0, 1]
     """
 
     time_values = np.asarray(times)
@@ -96,6 +229,11 @@ def out_of_time_split(
     for a tail fraction, or ``cutoff`` to validate on rows strictly after a
     time boundary. ``gap`` removes that many sorted rows immediately before the
     validation window from training.
+
+    Example:
+        >>> train, valid = out_of_time_split([1, 2, 3, 4], validation_size=1)
+        >>> train.tolist(), valid.tolist()
+        ([0, 1, 2], [3])
     """
 
     time_values = np.asarray(times)
@@ -140,19 +278,19 @@ def grouped_blocked_cv(
     *,
     n_splits: int = 5,
 ) -> Iterator[tuple[np.ndarray, np.ndarray]]:
-    """Yield train/test indices with whole groups held out together."""
+    """Yield train/test indices with whole groups held out together.
 
-    group_values = np.asarray(groups)
-    if group_values.ndim != 1:
-        raise ValueError("groups must be one-dimensional")
+    Example:
+        >>> folds = list(grouped_blocked_cv(["a", "a", "b", "b"], n_splits=2))
+        >>> len(folds)
+        2
+    """
+
+    group_values = _as_object_vector(groups, "groups")
     _validate_n_splits(n_splits, group_values.shape[0])
 
-    unique_groups, inverse, counts = np.unique(
-        group_values,
-        return_inverse=True,
-        return_counts=True,
-    )
-    if unique_groups.size < n_splits:
+    inverse, counts = _group_inverse_and_counts(group_values)
+    if counts.size < n_splits:
         raise ValueError("n_splits cannot exceed the number of unique groups")
 
     fold_group_indices = _balanced_group_folds(counts, n_splits)
@@ -164,6 +302,36 @@ def grouped_blocked_cv(
         yield train_idx, test_idx
 
 
+def _as_object_vector(values: object, name: str) -> np.ndarray:
+    if isinstance(values, np.ndarray):
+        if values.ndim != 1:
+            raise ValueError(f"{name} must be one-dimensional")
+        items = values.tolist()
+    else:
+        items = list(values)  # type: ignore[arg-type]
+    result = np.empty(len(items), dtype=object)
+    result[:] = items
+    return result
+
+
+def _group_inverse_and_counts(group_values: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    group_to_index: dict[object, int] = {}
+    inverse = np.empty(group_values.shape[0], dtype=int)
+    counts: list[int] = []
+    for row, value in enumerate(group_values.tolist()):
+        try:
+            group_index = group_to_index.get(value)
+        except TypeError as exc:
+            raise ValueError("groups must contain hashable values") from exc
+        if group_index is None:
+            group_index = len(counts)
+            group_to_index[value] = group_index
+            counts.append(0)
+        inverse[row] = group_index
+        counts[group_index] += 1
+    return inverse, np.asarray(counts, dtype=int)
+
+
 def _validate_n_splits(n_splits: int, n_samples: int) -> None:
     if not isinstance(n_splits, int):
         raise ValueError("n_splits must be an integer")
@@ -171,6 +339,123 @@ def _validate_n_splits(n_splits: int, n_samples: int) -> None:
         raise ValueError("n_splits must be at least 2")
     if n_splits > n_samples:
         raise ValueError("n_splits cannot exceed the number of samples")
+
+
+def _extract_coordinates(
+    values: object,
+    coordinate_cols: tuple[object, object] | list[object] | None,
+) -> np.ndarray:
+    if coordinate_cols is None:
+        try:
+            coords = np.asarray(values, dtype=float)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                "coordinates must be numeric array-like, or pass coordinate_cols for "
+                "mapping/dataframe inputs"
+            ) from exc
+    else:
+        if len(coordinate_cols) != 2:
+            raise ValueError("coordinate_cols must contain exactly two column names")
+        coords = np.column_stack([_column_values(values, column) for column in coordinate_cols])
+        coords = np.asarray(coords, dtype=float)
+    if coords.ndim == 1:
+        coords = coords.reshape(-1, 1)
+    if coords.ndim != 2 or coords.shape[0] == 0 or coords.shape[1] == 0:
+        raise ValueError("coordinates must have shape (n_samples, n_dimensions)")
+    if not np.all(np.isfinite(coords)):
+        raise ValueError("coordinates must contain only finite values")
+    return coords
+
+
+def _extract_feature_matrix(
+    values: object,
+    feature_cols: list[object] | tuple[object, ...] | None,
+) -> np.ndarray:
+    if feature_cols is None:
+        try:
+            features = np.asarray(values, dtype=float)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                "environmental_features must be numeric array-like, or pass feature_cols for "
+                "mapping/dataframe inputs"
+            ) from exc
+    else:
+        if len(feature_cols) == 0:
+            raise ValueError("feature_cols must contain at least one column")
+        features = np.column_stack([_column_values(values, column) for column in feature_cols])
+        features = np.asarray(features, dtype=float)
+    if features.ndim == 1:
+        features = features.reshape(-1, 1)
+    if features.ndim != 2 or features.shape[0] == 0 or features.shape[1] == 0:
+        raise ValueError("environmental_features must have shape (n_samples, n_features)")
+    if not np.all(np.isfinite(features)):
+        raise ValueError("environmental_features must contain only finite values")
+    return features
+
+
+def _column_values(values: object, column: object) -> object:
+    if isinstance(values, dict):
+        if column not in values:
+            raise ValueError(f"column {column!r} is not present")
+        return values[column]
+    columns = getattr(values, "columns", None)
+    if columns is not None:
+        if column not in columns:
+            raise ValueError(f"column {column!r} is not present")
+        return values[column]
+    array = np.asarray(values)
+    if not isinstance(column, int):
+        raise ValueError("column selectors must be integer indices for array-like inputs")
+    if array.ndim != 2 or column < 0 or column >= array.shape[1]:
+        raise ValueError(f"column index {column!r} is out of range")
+    return array[:, column]
+
+
+def _validate_projected_buffer(
+    buffer_radius: float,
+    coordinate_units: str,
+    allow_degree_buffer: bool,
+) -> float:
+    radius = float(buffer_radius)
+    if not np.isfinite(radius) or radius < 0.0:
+        raise ValueError("buffer_radius must be a finite non-negative value")
+    units = str(coordinate_units).lower()
+    if units not in {"projected", "meters", "feet", "degrees"}:
+        raise ValueError("coordinate_units must be 'projected', 'meters', 'feet', or 'degrees'")
+    if radius > 0.0 and units == "degrees" and not allow_degree_buffer:
+        raise ValueError(
+            "buffer_radius with latitude/longitude degrees is ambiguous; project coordinates "
+            "to a linear CRS or pass allow_degree_buffer=True"
+        )
+    return radius
+
+
+def _apply_spatial_buffer(
+    coords: np.ndarray,
+    train_idx: np.ndarray,
+    test_idx: np.ndarray,
+    radius: float,
+) -> tuple[np.ndarray, np.ndarray]:
+    train_idx = np.asarray(train_idx, dtype=int)
+    test_idx = np.asarray(test_idx, dtype=int)
+    if np.intersect1d(train_idx, test_idx, assume_unique=False).size:
+        raise ValueError("spatial CV fold has overlapping train and test indices")
+    if radius == 0.0:
+        return train_idx, test_idx
+    all_indices = np.arange(coords.shape[0])
+    distances = _min_distances_to_test(coords, test_idx)
+    safe_train = all_indices[distances > radius]
+    safe_train = np.intersect1d(safe_train, train_idx, assume_unique=True)
+    if safe_train.size == 0:
+        raise ValueError("buffer_radius removes all training samples for at least one fold")
+    return safe_train, test_idx
+
+
+def _min_distances_to_test(coords: np.ndarray, test_idx: np.ndarray) -> np.ndarray:
+    test_coords = coords[np.asarray(test_idx, dtype=int)]
+    deltas = coords[:, None, :] - test_coords[None, :, :]
+    distances = np.sqrt(np.sum(deltas * deltas, axis=2))
+    return np.min(distances, axis=1)
 
 
 def _resolve_validation_count(

@@ -9,13 +9,13 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "0.1.112"
+version = "0.2.0"
 edition = "2021"
 rust-version = "1.85"
 license = "MIT"
 repository = "https://github.com/theculliganman/cartoboost"
 homepage = "https://github.com/theculliganman/cartoboost"
-description = "Clean-room CartoBoost-inspired regression package."
+description = "Rust-backed spatial boosting for tabular modeling and forecasting."
 readme = "README.md"
 authors = ["Ryan Culligan"]
 

@@ -21,6 +21,7 @@ baselines are lower on a task.
 
 | Report | Evidence type | What to inspect first |
 | --- | --- | --- |
+| [Benchmark Methodology](methodology.md) | Evidence contract and v0.2 acceptance gates. | Required fields, split rules, metric roster, and rerun rules. |
 | [NYC Taxi Benchmarks](nyc-taxi.md) | Real TLC fare, duration, and pickup-demand regression. | Current-code CartoBoost versus external baselines, RMSE/MAE/R2/WAPE tables, repeated-run confidence intervals, timing breakdown. |
 | [Forecasting Tool Benchmark](forecasting.md) | Real taxi lane demand, synthetic taxi-shaped forecasting, M4 sample, M5 full-roster sample, and M5/M6 full-run protocols. | RMSE/WAPE tables, M5/M6 model rosters, run commands, horizon plot, forecast-line plot. |
 | [Model Benchmark Suite](model-suite.md) | Public tabular regression and graph diagnostics. | CartoBoost versus external baselines, validation-search selections, full RMSE/MAE/R2/WAPE tables. |
@@ -52,6 +53,17 @@ baselines are lower on a task.
 | Model diagnostic suite aggregate JSON | `docs/assets/model_benchmarks_public/results_aggregate.json` |
 | Model diagnostic suite report | `docs/assets/model_benchmarks_public/results.md` |
 | Lane acceptance JSON | `docs/assets/lane_level_tests/acceptance_metrics.json` |
+
+## v0.2 Release Gate Harness
+
+The v0.2 modeling smoke benchmark runner is
+`scripts/run_v02_modeling_benchmarks.py`. It produces synthetic taxi-shaped
+checks for binary spatial classification, grouped ranking, native categorical
+versus one-hot preprocessing, random versus buffered spatial CV, regression
+fit-speed guardrails, and unsupported regressor/classifier/ranker export
+failure. See
+[Benchmark Methodology](methodology.md) for the exact command and artifact
+contract.
 
 ## Claim Rules
 

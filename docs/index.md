@@ -7,10 +7,12 @@
 [![Release](https://github.com/TheCulliganMan/CartoBoost/actions/workflows/release-version.yml/badge.svg)](https://github.com/TheCulliganMan/CartoBoost/actions/workflows/release-version.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/TheCulliganMan/CartoBoost/blob/main/LICENSE)
 
-CartoBoost is a Rust-backed Python modeling toolkit for regression problems
-where place and time are part of the signal, not just columns in a table. It is
-designed for temporal-spatial work such as NYC taxi trip duration, fare amount,
-pickup-zone demand, dropoff-zone demand, and pickup-to-dropoff lane forecasting.
+CartoBoost is a Rust-backed Python modeling toolkit for temporal-spatial
+regression, classification, ranking, and forecasting problems where place and
+time are part of the signal, not just columns in a table. It is designed for
+work such as NYC taxi trip duration, fare amount, pickup-zone classification,
+route ranking, pickup-zone demand, dropoff-zone demand, and
+pickup-to-dropoff lane forecasting.
 
 Use CartoBoost when your scientific question depends on structure that ordinary
 tabular models only see after extensive manual feature engineering:
@@ -102,6 +104,14 @@ be transformed trip duration, fare amount, or future pickup-zone demand.
 - [Choose A Model](user-guide/model-types.md): task-first router for the
   tabular regressor, local forecasting models, CartoBoost lag forecasting,
   kriging, neural embedding models, graph models, and utilities.
+- [Classification Quickstart](user-guide/classification-quickstart.md):
+  binary and multiclass logloss workflows with probability diagnostics.
+- [Ranking Quickstart](user-guide/ranking-quickstart.md): grouped
+  pairwise/LambdaRank workflows with NDCG, MAP, and MRR metrics.
+- [Categorical Features](user-guide/categorical-features.md): native
+  categorical and ordinal handling across regressor, classifier, and ranker.
+- [Spatial CV Best Practices](user-guide/spatial-cv-best-practices.md):
+  buffered, grouped, and environmental validation patterns.
 - [Spatial Modeling](spatial_modeling.md): coordinate features, taxi-zone
   sparse sets, fuzzy routing, and blocked evaluation.
 - [Forecasting](forecasting.md): `ForecastFrame`, rolling-origin backtests,
@@ -109,6 +119,9 @@ be transformed trip duration, fare amount, or future pickup-zone demand.
   individual forecasting model guides.
 - [Benchmarks](benchmarks/index.md): reproducible comparison reports,
   acceptance checks, and claim limits.
+- [Benchmark Methodology](benchmarks/methodology.md): evidence fields and v0.2
+  acceptance gates for classification, ranking, categorical, spatial leakage,
+  and regression-speed checks.
 
 ## Deeper References
 

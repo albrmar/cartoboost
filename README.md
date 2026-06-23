@@ -7,10 +7,12 @@
 [![Release](https://github.com/TheCulliganMan/CartoBoost/actions/workflows/release-version.yml/badge.svg)](https://github.com/TheCulliganMan/CartoBoost/actions/workflows/release-version.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-CartoBoost is a Rust-backed Python modeling toolkit for regression problems
-where place, time, and movement structure matter. It is aimed at scientific and
-applied modeling workflows such as NYC taxi trip duration, fare estimation,
-pickup-zone demand, dropoff-zone demand, and pickup-to-dropoff lane forecasting.
+CartoBoost is a Rust-backed Python spatial boosting toolkit for regression,
+classification, grouped ranking, and forecasting problems where place, time,
+and movement structure matter. It is aimed at scientific and applied modeling
+workflows such as NYC taxi trip duration, fare estimation, airport-trip
+classification, candidate route ranking, pickup-zone demand, dropoff-zone
+demand, and pickup-to-dropoff lane forecasting.
 
 Choose CartoBoost when a standard tabular booster is a serious baseline, but the
 study also needs model structure for:

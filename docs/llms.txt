@@ -1,6 +1,7 @@
 # CartoBoost Agent Operating Guide
 
-> CartoBoost is a temporal-spatial regression toolbox with a Python API, CLI tooling, and a benchmark-driven validation pipeline.
+> CartoBoost is a temporal-spatial boosting toolbox with a Python API, CLI
+> tooling, and a benchmark-driven validation pipeline.
 
 Use this guide as the first read before making changes. Start in the relevant code component, then update contracts, then run the validation commands defined in AGENTS.
 
@@ -34,7 +35,16 @@ Use this guide as the first read before making changes. Start in the relevant co
 - [Python API reference](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/reference/python-api.md): authoritative API contracts tied to scientific model choice.
 - [CLI reference](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/reference/cli.md): argument/flag behavior and output formats.
 - [Python estimator guide](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/user-guide/python-estimator.md): estimator usage and expected semantics.
-- [Choose a model guide](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/user-guide/model-types.md): task-first router for the tabular regressor, forecasting classes, CartoBoost lag forecasting, kriging, neural embedding models, graph models, and utilities.
+- [Choose a model guide](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/user-guide/model-types.md):
+  task-first router for the tabular regressor, classifier, ranker, forecasting
+  classes, CartoBoost lag forecasting, kriging, neural embedding models, graph
+  models, and utilities.
+- [Classification quickstart](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/user-guide/classification-quickstart.md),
+  [Ranking quickstart](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/user-guide/ranking-quickstart.md),
+  [Categorical features](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/user-guide/categorical-features.md),
+  and [Spatial CV best practices](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/user-guide/spatial-cv-best-practices.md):
+  v0.2 tabular modeling guides for classifier, ranker, categorical, and
+  leakage-aware spatial validation workflows.
 - [Forecasting model guides](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/user-guide/forecasting-models/index.md): model-specific examples for naive, seasonal naive, theta, ETS, ARIMA, AutoARIMA, Kalman, fixed intermittent-demand forecasters, piecewise linear seasonal forecasting with component decomposition, trend-belief adjustments, residual shock propagation, kriging, CartoBoost lag, N-BEATS/N-HiTS wrappers, and weighted ensembles; separate from the shared forecasting workflow docs.
 - [AutoForecaster guide](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/user-guide/forecasting-models/auto-forecaster.md): full Rust-native auto-selector lifecycle, candidate roster, validation, gating, prediction, metadata, and Mermaid diagrams.
 - [Naive and seasonal naive guide](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/user-guide/forecasting-models/naive-seasonal.md): baseline last-value and seasonal-repeat forecasting examples.
@@ -56,16 +66,42 @@ Use this guide as the first read before making changes. Start in the relevant co
 - [Graph features](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/graph-features.md): node2vec, GraphSAGE, HeteroGraphSAGE, HinSAGE, directionality, and metapath contracts.
 - [General utilities](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/general_utilities.md): reusable Rust-backed utilities independent of the regressor and forecasting frame APIs, including sequence reference continuation, reference-path inference, leakage-safe OOF row generation and checks, group summaries, and candidate blending.
 - [Plotting](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/plotting.md): optional visualization diagnostics for already-computed CartoBoost predictions, forecast artifacts, component rows, seasonality curves, changepoints, cutoff predictions, benchmark metric rows, validation folds, interval calibration, Prophet-compatible plotting utilities matching the public `prophet.plot` 1.2.2 surface, static spatial plots, interactive PyDeck maps, report bundles, browser-local Modeling Lab splitter visualization, and rendered taxi benchmark image examples.
-- [Benchmarks overview](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/benchmarks/index.md), [Forecasting benchmarks](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/benchmarks/forecasting.md), [NYC Taxi](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/benchmarks/nyc-taxi.md), [Model suite](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/benchmarks/model-suite.md), [Taxi zone acceptance](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/benchmarks/taxi-zone.md): expected evidence format, maintained NYC regression baseline artifacts with external baselines and repeated-run confidence intervals, maintained validation-search public tabular and graph diagnostic artifacts, maintained forecasting artifacts, CartoBoost piecewise local diagnostics, M4/M5/M6 committed samples, M5 full-roster sample, M5/M6 `official_metrics` artifact sections, M6 training-window RPS calibration, full-run protocols, and metric definitions.
+- [Benchmarks overview](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/benchmarks/index.md),
+  [Benchmark methodology](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/benchmarks/methodology.md),
+  [Forecasting benchmarks](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/benchmarks/forecasting.md),
+  [NYC Taxi](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/benchmarks/nyc-taxi.md),
+  [Model suite](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/benchmarks/model-suite.md),
+  [Taxi zone acceptance](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/benchmarks/taxi-zone.md):
+  expected evidence format, maintained NYC regression baseline artifacts with
+  external baselines and repeated-run confidence intervals, maintained
+  validation-search public tabular and graph diagnostic artifacts, maintained
+  forecasting artifacts, CartoBoost piecewise local diagnostics, M4/M5/M6
+  committed samples, M5 full-roster sample, M5/M6 `official_metrics` artifact
+  sections, M6 training-window RPS calibration, full-run protocols, and metric
+  definitions.
 
 ## Where to Edit by Change Type
-- For model behavior changes: update [feature schema](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/feature_schema.md) + [tests](https://github.com/TheCulliganMan/CartoBoost/blob/main/tests) as needed.
+- For model behavior changes: update [feature schema](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/feature_schema.md)
+  + [tests](https://github.com/TheCulliganMan/CartoBoost/blob/main/tests) as
+  needed. Native categorical handling is shared across regressor, classifier,
+  and ranker wrappers for pandas categorical/string/object columns or
+  `FeatureKind.CATEGORICAL` / `FeatureKind.ORDINAL` schema entries, with
+  stable one-hot, subset partition, ordinal, or smoothed target-stat mappings
+  persisted in artifacts. Spatial validation helpers include
+  `spatial_buffered_cv`, `spatial_grouped_cv`, and `environmental_blocked_cv`;
+  diagnostics include logloss, ROC-AUC, PR-AUC, Brier score, ECE, NDCG, MAP,
+  MRR, `residual_morans_i`, and `spatial_cv_gap`.
 - For forecasting model surface changes: update [Forecasting](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/forecasting.md), the relevant [model guide](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/user-guide/forecasting-models/index.md), [Feature catalog](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/feature_catalog.md), [Python API reference](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/reference/python-api.md), and this file.
 - For CLI behavior and I/O format changes: update [CLI guide](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/user-guide/cli.md), [CLI reference](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/reference/cli.md), and integration tests under `../tests/integration`.
 - For Python API changes: edit `python/cartoboost`, update [Python API reference](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/reference/python-api.md), and add/adjust tests under `../tests/python`.
 - For reusable utility changes such as sequence primitives, Kalman filters, kriging, or intermittent-demand helpers: update [General utilities](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/general_utilities.md), [Feature catalog](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/feature_catalog.md), and [Python API reference](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/reference/python-api.md).
 - For plotting API changes: update [Plotting](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/plotting.md), [Python API reference](https://github.com/TheCulliganMan/CartoBoost/blob/main/docs/reference/python-api.md), and tests under `../tests/python`.
 - For benchmark or acceptance behavior changes: edit `scripts`, benchmark sources in `benches`, and benchmark docs under `docs/benchmarks`.
+- The v0.2 modeling smoke benchmark runner is
+  `scripts/run_v02_modeling_benchmarks.py`; it writes JSON, JSONL, and
+  Markdown artifacts under `target/v02-benchmarks` by default and covers binary
+  spatial classification, grouped ranking, native categorical versus one-hot,
+  spatial leakage, regression speed, and unsupported export gates.
 
 ## Validation and Runtime Checks
 - Run `uv run --group dev pre-commit run --all-files` for lint and format checks after source edits.

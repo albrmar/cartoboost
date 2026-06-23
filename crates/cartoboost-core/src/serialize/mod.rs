@@ -1,5 +1,6 @@
 use crate::tree::Model;
 use crate::{CartoBoostError, Result};
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::{BufReader, BufWriter};
@@ -20,13 +21,13 @@ pub struct WeightsArtifact {
     pub model: Model,
 }
 
-pub fn save_json(model: &Model, path: impl AsRef<Path>) -> Result<()> {
+pub fn save_json<T: Serialize>(model: &T, path: impl AsRef<Path>) -> Result<()> {
     let writer = BufWriter::new(File::create(path)?);
     serde_json::to_writer_pretty(writer, model)?;
     Ok(())
 }
 
-pub fn load_json(path: impl AsRef<Path>) -> Result<Model> {
+pub fn load_json<T: DeserializeOwned>(path: impl AsRef<Path>) -> Result<T> {
     let reader = BufReader::new(File::open(path)?);
     Ok(serde_json::from_reader(reader)?)
 }

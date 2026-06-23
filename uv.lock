@@ -249,13 +249,11 @@ wheels = [
 
 [[package]]
 name = "cartoboost"
-version = "0.1.112"
+version = "0.2.0"
 source = { editable = "." }
 dependencies = [
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
-    { name = "scikit-learn", version = "1.7.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "scikit-learn", version = "1.9.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
 ]
 
 [package.optional-dependencies]
@@ -282,6 +280,10 @@ polars = [
 ]
 s2 = [
     { name = "s2sphere" },
+]
+sklearn = [
+    { name = "scikit-learn", version = "1.7.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "scikit-learn", version = "1.9.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
 ]
 visualization = [
     { name = "geopandas" },
@@ -331,11 +333,11 @@ requires-dist = [
     { name = "polars", marker = "extra == 'polars'", specifier = ">=1.0" },
     { name = "pydeck", marker = "extra == 'visualization'", specifier = ">=0.9" },
     { name = "s2sphere", marker = "extra == 's2'", specifier = ">=0.2" },
-    { name = "scikit-learn", specifier = ">=1.2" },
+    { name = "scikit-learn", marker = "extra == 'sklearn'", specifier = ">=1.2" },
     { name = "shap", marker = "extra == 'explain'", specifier = ">=0.49.1,<0.50" },
     { name = "shapely", marker = "extra == 'visualization'", specifier = ">=2.0" },
 ]
-provides-extras = ["duckdb", "explain", "h3", "holidays", "s2", "onnx", "optuna", "visualization", "polars"]
+provides-extras = ["sklearn", "duckdb", "explain", "h3", "holidays", "s2", "onnx", "optuna", "visualization", "polars"]
 
 [package.metadata.requires-dev]
 bench = [

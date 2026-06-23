@@ -1,13 +1,22 @@
 import numpy as np
 import pytest
 from cartoboost import (
+    brier_score,
     calibrated_intervals,
     conformal_residual_quantile,
+    ece_calibration_error,
     interval_coverage,
     jitter_volatility,
+    logloss,
+    mean_average_precision,
     mean_interval_width,
+    mean_reciprocal_rank,
+    ndcg_at_k,
     pinball_loss,
+    pr_auc,
     residual_morans_i,
+    roc_auc,
+    spatial_cv_gap,
 )
 
 
@@ -59,6 +68,130 @@ def test_jitter_volatility_uses_per_sample_instability():
     assert jitter_volatility(predictions, baseline=[12.0, 20.0]) == pytest.approx(
         np.mean([np.sqrt(8.0 / 3.0), np.sqrt(8.0 / 3.0)])
     )
+
+
+def test_classification_metrics_cover_probability_quality():
+    y_true = np.array([0, 0, 1, 1])
+    y_proba = np.array([0.1, 0.2, 0.8, 0.9])
+
+    assert logloss(y_true, y_proba) < 0.2
+    assert brier_score(y_true, y_proba) == pytest.approx(0.025)
+    assert roc_auc(y_true, y_proba) == pytest.approx(1.0)
+    assert pr_auc(y_true, y_proba) == pytest.approx(1.0)
+    assert ece_calibration_error(y_true, y_proba, n_bins=2) == pytest.approx(0.15)
+
+
+def test_classification_metrics_accept_mixed_hashable_labels():
+    y_true = np.array(["airport", "airport", 1, 1], dtype=object)
+    y_proba = np.array([0.1, 0.2, 0.8, 0.9])
+
+    assert logloss(y_true, y_proba) < 0.2
+    assert brier_score(y_true, y_proba) == pytest.approx(0.025)
+    assert roc_auc(y_true, y_proba) == pytest.approx(1.0)
+    assert pr_auc(y_true, y_proba) == pytest.approx(1.0)
+    assert ece_calibration_error(y_true, y_proba, n_bins=2) == pytest.approx(0.15)
+
+
+def test_classification_metrics_accept_tuple_labels():
+    y_true = [("zone", "airport"), ("zone", "airport"), ("zone", "midtown"), ("zone", "midtown")]
+    y_proba = np.array([0.1, 0.2, 0.8, 0.9])
+
+    assert logloss(y_true, y_proba) < 0.2
+    assert brier_score(y_true, y_proba) == pytest.approx(0.025)
+    assert roc_auc(y_true, y_proba) == pytest.approx(1.0)
+    assert pr_auc(y_true, y_proba) == pytest.approx(1.0)
+    assert ece_calibration_error(y_true, y_proba, n_bins=2) == pytest.approx(0.15)
+
+
+def test_multiclass_logloss_respects_explicit_label_order():
+    y_true = np.array(["airport", "street", "dispatch"], dtype=object)
+    y_proba = np.array(
+        [
+            [0.85, 0.10, 0.05],
+            [0.15, 0.80, 0.05],
+            [0.20, 0.10, 0.70],
+        ]
+    )
+
+    loss = logloss(
+        y_true,
+        y_proba,
+        labels=["airport", "street", "dispatch"],
+    )
+
+    assert loss == pytest.approx(-np.mean(np.log([0.85, 0.80, 0.70])))
+
+
+def test_grouped_ranking_metrics_cover_ndcg_map_mrr():
+    relevance = np.array([0.0, 1.0, 3.0, 0.0, 2.0, 4.0])
+    good_scores = np.array([0.0, 1.0, 3.0, 0.0, 2.0, 4.0])
+    bad_scores = -good_scores
+    groups = [3, 3]
+
+    assert ndcg_at_k(relevance, good_scores, groups=groups, k=3) == pytest.approx(1.0)
+    assert mean_average_precision(relevance, good_scores, groups=groups) == pytest.approx(1.0)
+    assert mean_reciprocal_rank(relevance, good_scores, groups=groups) == pytest.approx(1.0)
+    assert ndcg_at_k(relevance, good_scores, groups=groups) > ndcg_at_k(
+        relevance,
+        bad_scores,
+        groups=groups,
+    )
+
+
+def test_ranking_metrics_accept_contiguous_query_ids():
+    relevance = np.array([0.0, 1.0, 3.0, 0.0, 2.0, 4.0])
+    scores = np.array([0.0, 1.0, 3.0, 0.0, 2.0, 4.0])
+    query_ids = ["pickup-a", "pickup-a", "pickup-a", "pickup-b", "pickup-b", "pickup-b"]
+
+    assert ndcg_at_k(relevance, scores, groups=query_ids) == pytest.approx(1.0)
+    assert mean_average_precision(relevance, scores, groups=query_ids) == pytest.approx(1.0)
+    assert mean_reciprocal_rank(relevance, scores, groups=query_ids) == pytest.approx(1.0)
+
+
+def test_ranking_metrics_prefer_explicit_group_sizes_when_ambiguous():
+    relevance = [1.0, 0.0]
+    scores = [0.0, 1.0]
+
+    assert ndcg_at_k(relevance, scores, groups=[1, 1]) == pytest.approx(0.5)
+    assert mean_average_precision(relevance, scores, groups=[1, 1]) == pytest.approx(0.5)
+    assert mean_reciprocal_rank(relevance, scores, groups=[1, 1]) == pytest.approx(0.5)
+
+
+def test_ranking_metrics_accept_numeric_query_ids_when_not_size_vector():
+    relevance = np.array([0.0, 1.0, 3.0, 0.0, 2.0, 4.0])
+    scores = np.array([0.0, 1.0, 3.0, 0.0, 2.0, 4.0])
+    query_ids = [1, 1, 1, 2, 2, 2]
+
+    assert ndcg_at_k(relevance, scores, groups=query_ids) == pytest.approx(1.0)
+    assert mean_average_precision(relevance, scores, groups=query_ids) == pytest.approx(1.0)
+    assert mean_reciprocal_rank(relevance, scores, groups=query_ids) == pytest.approx(1.0)
+
+
+def test_ranking_metrics_accept_tuple_query_ids():
+    relevance = np.array([0.0, 1.0, 3.0, 0.0, 2.0, 4.0])
+    scores = np.array([0.0, 1.0, 3.0, 0.0, 2.0, 4.0])
+    query_ids = [
+        ("pickup", "a"),
+        ("pickup", "a"),
+        ("pickup", "a"),
+        ("pickup", "b"),
+        ("pickup", "b"),
+        ("pickup", "b"),
+    ]
+
+    assert ndcg_at_k(relevance, scores, groups=query_ids) == pytest.approx(1.0)
+    assert mean_average_precision(relevance, scores, groups=query_ids) == pytest.approx(1.0)
+    assert mean_reciprocal_rank(relevance, scores, groups=query_ids) == pytest.approx(1.0)
+
+
+def test_ranking_ndcg_uses_top_k_ideal_and_clamps_negative_relevance():
+    assert ndcg_at_k([0.0, 3.0, 2.0], [0.0, 3.0, 2.0], k=1) == pytest.approx(1.0)
+    assert ndcg_at_k([-2.0, 1.0], [0.0, 1.0], k=1) == pytest.approx(1.0)
+    assert ndcg_at_k([-2.0, 1.0], [1.0, 0.0], k=1) == pytest.approx(0.0)
+
+
+def test_spatial_cv_gap_is_random_minus_spatial_score():
+    assert spatial_cv_gap(0.91, 0.73) == pytest.approx(0.18)
 
 
 def test_residual_morans_i_supports_inverse_distance_and_radius_weights():

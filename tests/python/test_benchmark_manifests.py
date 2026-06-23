@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import importlib
 import json
 import re
@@ -33,6 +34,17 @@ def test_public_benchmark_manifests_are_valid() -> None:
     specs = load_all_tracks()
 
     assert {spec.name for spec in specs} == {"forecasting", "graph", "spatial", "tabular"}
+
+
+def test_sklearn_dependency_is_optional_extra() -> None:
+    text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    dependencies_block = re.search(r"dependencies = \[(.*?)\]", text, re.S)
+    assert dependencies_block is not None
+    assert "scikit-learn" not in dependencies_block.group(1)
+    assert re.search(
+        r"\[project\.optional-dependencies\]\s+sklearn = \[\s+\"scikit-learn>=1\.2\",\s+\]",
+        text,
+    )
 
 
 def test_non_forecast_required_baselines_are_concrete() -> None:
@@ -141,6 +153,74 @@ def test_benchmark_index_lists_maintained_regression_artifacts() -> None:
     for path in expected_paths:
         assert f"`{path}`" in text
         assert (ROOT / path).exists()
+
+
+def test_v02_modeling_benchmark_runner_is_documented() -> None:
+    script = ROOT / "scripts" / "run_v02_modeling_benchmarks.py"
+    methodology = (ROOT / "docs" / "benchmarks" / "methodology.md").read_text(
+        encoding="utf-8"
+    )
+    index = (ROOT / "docs" / "benchmarks" / "index.md").read_text(encoding="utf-8")
+    script_text = script.read_text(encoding="utf-8")
+
+    assert script.exists()
+    assert "scripts/run_v02_modeling_benchmarks.py" in methodology
+    assert "scripts/run_v02_modeling_benchmarks.py" in index
+    for gate in [
+        "binary_spatial_classification",
+        "grouped_ranking",
+        "categorical_native_vs_one_hot",
+        "spatial_leakage_random_vs_buffered",
+        "regression_speed_guard",
+        "unsupported_export_fails_loudly",
+    ]:
+        assert gate in script_text
+    assert "--regression-baseline-json" in script_text
+    assert "external_baseline_comparison" in script_text
+    assert "current_code_repeatability" in methodology
+    assert "cartoboost_pr_auc" in script_text
+    assert "cartoboost_ece" in script_text
+    assert "spatial_cv_gap(random_rmse, buffered_rmse)" in script_text
+    assert "rmse_gap_buffered_minus_random" in script_text
+    assert "category_count" in script_text
+    assert "encoding_strategy" in script_text
+    assert "unknown_category_rate" in script_text
+    assert script_text.count("roundtrip_max_abs_diff") >= 3
+    assert "save/load probability drift" in methodology
+    assert "save/load score drift" in methodology
+    assert "unknown-category rate" in methodology
+
+
+def test_v02_public_python_apis_have_docstring_examples() -> None:
+    public_modules = [
+        ROOT / "python" / "cartoboost" / "classifier.py",
+        ROOT / "python" / "cartoboost" / "ranker.py",
+        ROOT / "python" / "cartoboost" / "evaluation.py",
+        ROOT / "python" / "cartoboost" / "metrics.py",
+    ]
+    documented_classes = {"CartoBoostClassifier", "CartoBoostRanker"}
+    missing = []
+
+    for path in public_modules:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in tree.body:
+            if isinstance(node, ast.ClassDef) and node.name in documented_classes:
+                doc = ast.get_docstring(node) or ""
+                if "Example:" not in doc:
+                    missing.append(f"{path.relative_to(ROOT)}:{node.name}")
+                for item in node.body:
+                    if isinstance(item, ast.FunctionDef) and not item.name.startswith("_"):
+                        item_doc = ast.get_docstring(item) or ""
+                        if "Example:" not in item_doc:
+                            missing.append(
+                                f"{path.relative_to(ROOT)}:{node.name}.{item.name}"
+                            )
+            elif isinstance(node, ast.FunctionDef) and not node.name.startswith("_"):
+                doc = ast.get_docstring(node) or ""
+                if "Example:" not in doc:
+                    missing.append(f"{path.relative_to(ROOT)}:{node.name}")
+
+    assert missing == []
 
 
 def test_non_forecast_benchmark_docs_use_public_evidence_language() -> None:
@@ -265,7 +345,10 @@ def test_model_suite_validation_search_uses_inner_validation(tmp_path: Path) -> 
     assert payload["baseline_environment"]["sklearn"]["module_importable"] is True
     assert payload["output_artifacts"]["results.md"]["size_bytes"] > 0
     workload = payload["workloads"]["diabetes"]
-    assert workload["source"] == "sklearn.datasets.load_diabetes bundled public regression dataset."
+    assert (
+        workload["source"]
+        == "sklearn.datasets.load_diabetes bundled public regression dataset."
+    )
     assert len(workload["fingerprint_sha256"]) == 64
     assert len(workload["splits"]["random"]["train_index_sha256"]) == 64
     assert len(workload["splits"]["random"]["test_index_sha256"]) == 64

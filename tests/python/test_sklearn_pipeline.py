@@ -1,12 +1,20 @@
 from __future__ import annotations
 
 import numpy as np
-import optuna
+import pytest
 from cartoboost import CartoBoostRegressor
-from sklearn.base import clone
-from sklearn.model_selection import GridSearchCV, cross_val_score
-from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import StandardScaler
+
+optuna = pytest.importorskip("optuna")
+sklearn_base = pytest.importorskip("sklearn.base")
+sklearn_model_selection = pytest.importorskip("sklearn.model_selection")
+sklearn_pipeline = pytest.importorskip("sklearn.pipeline")
+sklearn_preprocessing = pytest.importorskip("sklearn.preprocessing")
+
+clone = sklearn_base.clone
+GridSearchCV = sklearn_model_selection.GridSearchCV
+cross_val_score = sklearn_model_selection.cross_val_score
+Pipeline = sklearn_pipeline.Pipeline
+StandardScaler = sklearn_preprocessing.StandardScaler
 
 
 def test_estimator_clones_and_exposes_fitted_metadata():

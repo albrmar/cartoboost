@@ -1,5 +1,6 @@
 use crate::data::{validate_weights, Dataset};
-use crate::loss::{HuberLoss, L1Loss, L2Loss, Loss, LossConfig, QuantileLoss};
+use crate::loss::LossConfig;
+use crate::objectives::{initial_margin_for_loss, pseudo_residual_for_loss};
 use crate::profile;
 use crate::tree::{
     FuzzyKernel, LeafPredictorKind, Model, PredictionTransform, SplitterKind,
@@ -103,16 +104,7 @@ impl Booster {
             _ => y,
         };
         let init_prediction =
-            match self.config.loss {
-                LossConfig::L2 | LossConfig::LogL2(_) => {
-                    L2Loss.initial_prediction(training_targets, Some(&weights))
-                }
-                LossConfig::L1 => L1Loss.initial_prediction(training_targets, Some(&weights)),
-                LossConfig::Huber(config) => HuberLoss::new(config.delta)
-                    .initial_prediction(training_targets, Some(&weights)),
-                LossConfig::Quantile(config) => QuantileLoss::new(config.alpha)
-                    .initial_prediction(training_targets, Some(&weights)),
-            };
+            initial_margin_for_loss(&self.config.loss, training_targets, Some(&weights))?;
         let prediction_transform = match self.config.loss {
             LossConfig::LogL2(_) => PredictionTransform::Expm1,
             _ => PredictionTransform::Identity,
@@ -144,14 +136,8 @@ impl Booster {
                     .zip(training_targets.par_iter())
                     .zip(pred.par_iter())
                     .for_each(|((residual, target), prediction)| {
-                        *residual = match self.config.loss {
-                            LossConfig::L2 | LossConfig::LogL2(_) => target - prediction,
-                            LossConfig::L1 => target - prediction,
-                            LossConfig::Huber(config) => {
-                                (target - prediction).clamp(-config.delta, config.delta)
-                            }
-                            LossConfig::Quantile(_) => target - prediction,
-                        };
+                        *residual =
+                            pseudo_residual_for_loss(&self.config.loss, *target, *prediction);
                     });
             });
             let use_leaf_updates = !self.config.fuzzy
@@ -338,7 +324,7 @@ fn should_use_histogram_auto(config: &BoosterConfig, x: &Dataset) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::loss::{LossConfig, QuantileLossConfig};
+    use crate::loss::{L2Loss, LossConfig, QuantileLossConfig};
     use crate::tree::{Split, MODEL_ARTIFACT_VERSION};
 
     #[test]

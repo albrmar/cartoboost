@@ -4,7 +4,6 @@ import time
 from typing import Any
 
 import numpy as np
-from sklearn.metrics import mean_absolute_error
 
 from ..regressor import CartoBoostRegressor, _rust_feature_schema_payload
 from .features import NeuralEmbeddingFeatures
@@ -218,7 +217,7 @@ class NeuralEmbeddingRegressor:
             fallback_ids=fallback_ids,
             neighbor_ids=neighbor_ids,
         )
-        return float(mean_absolute_error(y, predictions))
+        return _mean_absolute_error(y, predictions)
 
     def benchmark(
         self,
@@ -231,7 +230,7 @@ class NeuralEmbeddingRegressor:
     ) -> dict[str, float]:
         start = time.perf_counter()
         pred = self.predict(X, sparse_sets=sparse_sets, ids=ids, id_column=id_column)
-        mae = float(mean_absolute_error(y, pred))
+        mae = _mean_absolute_error(y, pred)
         return {"mae": mae, "predict_ms": _ms_since(start)}
 
     @property
@@ -461,7 +460,7 @@ def benchmark_neural_vs_cartoboost(
     start = time.perf_counter()
     cart_pred = cartooboost.predict(x_valid)
     carto_pred_ms = _ms_since(start)
-    carto_mae = float(mean_absolute_error(y_valid, cart_pred))
+    carto_mae = _mean_absolute_error(y_valid, cart_pred)
 
     hybrid = NeuralEmbeddingRegressor(
         dim=16,
@@ -475,7 +474,7 @@ def benchmark_neural_vs_cartoboost(
     start = time.perf_counter()
     hybrid_pred = hybrid.predict(x_valid, ids=id_valid)
     hybrid_pred_ms = _ms_since(start)
-    hybrid_mae = float(mean_absolute_error(y_valid, hybrid_pred))
+    hybrid_mae = _mean_absolute_error(y_valid, hybrid_pred)
 
     return {
         "n_rows": int(x_array.shape[0]),
@@ -662,6 +661,18 @@ def _build_neural_feature_names(
 
 def _ms_since(start_time: float) -> float:
     return float((time.perf_counter() - start_time) * 1000.0)
+
+
+def _mean_absolute_error(y_true: Any, y_pred: Any) -> float:
+    truth = np.asarray(y_true, dtype=float)
+    pred = np.asarray(y_pred, dtype=float)
+    if truth.shape != pred.shape:
+        raise ValueError("y_true and y_pred must have the same shape")
+    if truth.size == 0:
+        raise ValueError("mean absolute error requires at least one row")
+    if not np.all(np.isfinite(truth)) or not np.all(np.isfinite(pred)):
+        raise ValueError("y_true and y_pred must contain only finite values")
+    return float(np.mean(np.abs(truth - pred)))
 
 
 def _neural_feature_names(dim: int) -> list[str]:

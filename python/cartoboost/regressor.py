@@ -9,9 +9,21 @@ from pathlib import Path
 from typing import Any
 
 import numpy as np
-from sklearn.base import BaseEstimator, RegressorMixin
 
-from ._native import CartoBoostRegressor as _NativeRegressorModel
+try:  # pragma: no cover - exercised when the optional sklearn extra is installed.
+    from sklearn.base import BaseEstimator, RegressorMixin
+except ImportError:  # pragma: no cover - lightweight fallback for core installs.
+    class BaseEstimator:  # type: ignore[no-redef]
+        pass
+
+    class RegressorMixin:  # type: ignore[no-redef]
+        pass
+
+from ._native import (
+    CartoBoostRegressor as _NativeRegressorModel,
+    categorical_fit_transform as _native_categorical_fit_transform,
+    categorical_transform as _native_categorical_transform,
+)
 from .schema import FeatureKind, normalize_feature_kind
 
 _VALID_SPLITTERS = {
@@ -132,9 +144,13 @@ class CartoBoostRegressor(RegressorMixin, BaseEstimator):
         self._validate_params()
         if hasattr(self, "_constant_prediction_value_"):
             delattr(self, "_constant_prediction_value_")
-        feature_names = _feature_names(X)
-        dense_array = _as_2d_float_array(X, check_finite=False)
         targets_array = _as_1d_float_array(y)
+        dense_array, categorical_encoder, feature_names = _fit_transform_categorical_features(
+            X,
+            targets_array,
+            feature_schema,
+            sample_weight=sample_weight,
+        )
         if dense_array.shape[0] != targets_array.shape[0]:
             raise ValueError("X and y must contain the same number of rows")
         weights_array = _as_sample_weight_array(sample_weight, targets_array.shape[0])
@@ -147,20 +163,35 @@ class CartoBoostRegressor(RegressorMixin, BaseEstimator):
         )
         sparse_columns, sparse_names = _normalize_sparse_sets(sparse_sets, targets_array.shape[0])
         sparse_offsets, sparse_ids = _encode_sparse_columns(sparse_columns)
-        schema_json = _rust_feature_schema_json(feature_schema, dense_array.shape[1], sparse_names)
+        encoded_feature_schema = _encoded_feature_schema(
+            feature_schema,
+            categorical_encoder,
+            dense_array.shape[1],
+        )
+        schema_json = _rust_feature_schema_json(
+            encoded_feature_schema,
+            dense_array.shape[1],
+            sparse_names,
+        )
         schema_metadata = _feature_schema_metadata(feature_schema)
-        self.n_features_in_ = dense_array.shape[1]
+        self.n_features_in_ = (
+            int(categorical_encoder["original_feature_count"])
+            if categorical_encoder
+            else dense_array.shape[1]
+        )
+        self.encoded_n_features_in_ = dense_array.shape[1]
         if (
             self.monotonic_constraints is not None
-            and len(self.monotonic_constraints) != self.n_features_in_
+            and len(self.monotonic_constraints) != self.encoded_n_features_in_
         ):
             raise ValueError(
                 f"monotonic_constraints has length {len(self.monotonic_constraints)}, "
-                f"but X has {self.n_features_in_} features"
+                f"but encoded X has {self.encoded_n_features_in_} features"
             )
         self.n_sparse_sets_in_ = len(sparse_columns)
         self.sparse_set_names_ = sparse_names
         self.feature_schema_ = schema_metadata
+        self.categorical_encoder_ = categorical_encoder
         if feature_names is not None:
             self.feature_names_in_ = np.asarray(feature_names, dtype=object)
 
@@ -248,6 +279,7 @@ class CartoBoostRegressor(RegressorMixin, BaseEstimator):
         if self._model is None:
             raise RuntimeError("CartoBoostRegressor is not fitted")
         expected_sparse_count = getattr(self, "n_sparse_sets_in_", 0)
+        categorical_encoder = getattr(self, "categorical_encoder_", None)
         if hasattr(self, "_constant_prediction_value_") and not getattr(
             self, "requires_sparse_sets_", False
         ):
@@ -261,11 +293,12 @@ class CartoBoostRegressor(RegressorMixin, BaseEstimator):
                 np.asarray(self._constant_prediction_value_, dtype=float),
                 (rows,),
             )
-        dense_array = _as_2d_float_array(X, check_finite=False)
-        if hasattr(self, "n_features_in_") and dense_array.shape[1] != self.n_features_in_:
+        dense_array = _transform_categorical_features(X, categorical_encoder)
+        expected_dense = getattr(self, "encoded_n_features_in_", self.n_features_in_)
+        if hasattr(self, "encoded_n_features_in_") and dense_array.shape[1] != expected_dense:
             raise ValueError(
-                f"X has {dense_array.shape[1]} features, but CartoBoostRegressor was fitted with "
-                f"{self.n_features_in_} features"
+                f"encoded X has {dense_array.shape[1]} features, but CartoBoostRegressor was "
+                f"fitted with {expected_dense} encoded features"
             )
         if not getattr(self, "requires_sparse_sets_", False):
             sparse_columns: list[list[list[int]]] = []
@@ -340,11 +373,15 @@ class CartoBoostRegressor(RegressorMixin, BaseEstimator):
         sparse_sets: Any | None,
     ) -> tuple[np.ndarray, list[list[list[int]]], list[list[int]], list[list[int]]]:
         expected_sparse_count = getattr(self, "n_sparse_sets_in_", 0)
-        dense_array = _as_2d_float_array(X, check_finite=False)
-        if hasattr(self, "n_features_in_") and dense_array.shape[1] != self.n_features_in_:
+        dense_array = _transform_categorical_features(
+            X,
+            getattr(self, "categorical_encoder_", None),
+        )
+        expected_dense = getattr(self, "encoded_n_features_in_", self.n_features_in_)
+        if hasattr(self, "encoded_n_features_in_") and dense_array.shape[1] != expected_dense:
             raise ValueError(
-                f"X has {dense_array.shape[1]} features, but CartoBoostRegressor was fitted with "
-                f"{self.n_features_in_} features"
+                f"encoded X has {dense_array.shape[1]} features, but CartoBoostRegressor was "
+                f"fitted with {expected_dense} encoded features"
             )
         if not getattr(self, "requires_sparse_sets_", False):
             sparse_columns: list[list[list[int]]] = []
@@ -445,6 +482,19 @@ class CartoBoostRegressor(RegressorMixin, BaseEstimator):
             raise RuntimeError("CartoBoostRegressor is not fitted")
         path = Path(path)
         if hasattr(self._model, "save"):
+            if getattr(self, "categorical_encoder_", None):
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    native_path = Path(temp_dir) / "native-regressor.json"
+                    self._model.save(native_path)
+                    native_payload = json.loads(native_path.read_text(encoding="utf-8"))
+                payload = {
+                    "artifact_type": "cartoboost.regressor",
+                    "artifact_version": 1,
+                    "categorical_encoder": self.categorical_encoder_,
+                    "native_model": native_payload,
+                }
+                path.write_text(json.dumps(payload, sort_keys=True), encoding="utf-8")
+                return
             self._model.save(path)
             return
         raise NotImplementedError("native model does not support save")
@@ -460,6 +510,11 @@ class CartoBoostRegressor(RegressorMixin, BaseEstimator):
             raise RuntimeError("CartoBoostRegressor is not fitted")
         path = Path(path)
         resolved_format = _resolve_weights_format(path, format)
+        if getattr(self, "categorical_encoder_", None):
+            raise NotImplementedError(
+                "save_weights does not support models with native categorical encoders; "
+                "use save() to preserve category mappings"
+            )
         if resolved_format == "onnx":
             artifact = self._weights_artifact_payload()
             _save_weights_onnx(artifact, path)
@@ -475,6 +530,22 @@ class CartoBoostRegressor(RegressorMixin, BaseEstimator):
     @classmethod
     def load(cls, path: str | Path) -> CartoBoostRegressor:
         path = Path(path)
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if payload.get("artifact_type") == "cartoboost.regressor":
+            with tempfile.TemporaryDirectory() as temp_dir:
+                native_path = Path(temp_dir) / "native-regressor.json"
+                native_path.write_text(
+                    json.dumps(payload["native_model"], sort_keys=True),
+                    encoding="utf-8",
+                )
+                native_model = _NativeRegressorModel.load(native_path)
+            estimator = cls._from_native_model(native_model)
+            estimator.categorical_encoder_ = payload["categorical_encoder"]
+            estimator.n_features_in_ = int(
+                estimator.categorical_encoder_["original_feature_count"]
+            )
+            estimator.encoded_n_features_in_ = native_model.feature_count
+            return estimator
         native_model = _NativeRegressorModel.load(path)
         return cls._from_native_model(native_model)
 
@@ -513,6 +584,8 @@ class CartoBoostRegressor(RegressorMixin, BaseEstimator):
         estimator._model = native_model
         estimator._backend_used = "rust"
         estimator.n_features_in_ = native_model.feature_count
+        estimator.encoded_n_features_in_ = native_model.feature_count
+        estimator.categorical_encoder_ = None
         estimator.feature_schema_ = _json_attr(native_model, "feature_schema_json")
         estimator.sparse_set_names_ = _sparse_names_from_feature_schema(estimator.feature_schema_)
         estimator.n_sparse_sets_in_ = len(estimator.sparse_set_names_)
@@ -679,6 +752,318 @@ def _as_2d_float_array(values: Any, *, check_finite: bool = True) -> np.ndarray:
     if check_finite and not np.all(np.isfinite(array)):
         raise ValueError("X must contain only finite values")
     return np.ascontiguousarray(array, dtype=np.float64)
+
+
+def _fit_transform_categorical_features(
+    values: Any,
+    targets: Any,
+    feature_schema: Any | None,
+    *,
+    sample_weight: Any | None = None,
+    low_cardinality_threshold: int = 16,
+    smoothing: float = 10.0,
+) -> tuple[np.ndarray, dict[str, Any] | None, list[str] | None]:
+    feature_names = _feature_names(values)
+    raw = _as_2d_object_array(values)
+    dense_kinds = _dense_feature_kinds(feature_schema, raw.shape[1])
+    categorical_indices = _categorical_feature_indices(values, raw, dense_kinds)
+    if not categorical_indices:
+        return _as_2d_float_array(values, check_finite=False), None, feature_names
+
+    targets_array = np.asarray(targets, dtype=np.float64)
+    weights_array = None if sample_weight is None else _as_sample_weight_array(
+        sample_weight,
+        raw.shape[0],
+    )
+    name_lookup = feature_names or [f"feature_{idx}" for idx in range(raw.shape[1])]
+    categorical_set = set(categorical_indices)
+    native_rows = _native_categorical_rows(raw, categorical_set)
+    schema_json = json.dumps(
+        _native_categorical_input_schema(name_lookup, dense_kinds, categorical_set)
+    )
+    encoded_rows, encoder_json = _native_categorical_fit_transform(
+        native_rows,
+        targets_array.tolist(),
+        schema_json,
+        None if weights_array is None else weights_array.tolist(),
+        int(low_cardinality_threshold),
+        float(smoothing),
+    )
+    encoded = np.asarray(encoded_rows, dtype=np.float64)
+    encoder = json.loads(encoder_json)
+    return np.ascontiguousarray(encoded, dtype=np.float64), encoder, feature_names
+
+
+def _transform_categorical_features(
+    values: Any,
+    encoder: dict[str, Any] | None,
+) -> np.ndarray:
+    if not encoder:
+        return _as_2d_float_array(values, check_finite=False)
+    raw = _as_2d_object_array(values)
+    expected = int(encoder["original_feature_count"])
+    if raw.shape[1] != expected:
+        raise ValueError(
+            f"X has {raw.shape[1]} features, but the categorical encoder expects {expected}"
+        )
+    if _is_native_categorical_encoder(encoder):
+        column_indices = {int(column["index"]) for column in encoder.get("columns", [])}
+        native_rows = _native_categorical_rows(raw, column_indices)
+        encoded_rows = _native_categorical_transform(native_rows, json.dumps(encoder))
+        return np.ascontiguousarray(np.asarray(encoded_rows, dtype=np.float64))
+    column_encoders = {int(column["index"]): column for column in encoder["columns"]}
+    encoded_columns: list[np.ndarray] = []
+    for idx in range(raw.shape[1]):
+        column_encoder = column_encoders.get(idx)
+        column = raw[:, idx]
+        if column_encoder is None:
+            encoded_columns.append(_numeric_column(column, f"feature_{idx}"))
+            continue
+        tokens = [_category_token(value) for value in column.tolist()]
+        strategy = column_encoder["strategy"]
+        if strategy in {"Ordinal", "ordinal"}:
+            mapping = {
+                token: float(order)
+                for order, token in enumerate(column_encoder.get("categories", []))
+            }
+            encoded_columns.append(
+                np.asarray([mapping.get(token, -1.0) for token in tokens], dtype=float)
+            )
+        elif strategy in {"OneHot", "one_hot"}:
+            categories = list(column_encoder.get("categories", []))
+            for token in categories:
+                encoded_columns.append(
+                    np.asarray([1.0 if value == token else 0.0 for value in tokens], dtype=float)
+                )
+        elif strategy in {"Partition", "partition"}:
+            for partition in column_encoder.get("partitions", []):
+                members = set(partition)
+                encoded_columns.append(
+                    np.asarray([1.0 if value in members else 0.0 for value in tokens], dtype=float)
+                )
+        elif strategy in {"TargetMean", "target_mean"}:
+            mapping = {str(key): float(value) for key, value in column_encoder["mapping"].items()}
+            unknown = float(column_encoder["unknown_value"])
+            encoded_columns.append(
+                np.asarray([mapping.get(token, unknown) for token in tokens], dtype=float)
+            )
+        else:
+            raise ValueError(f"unknown categorical encoding strategy {strategy!r}")
+    return np.ascontiguousarray(np.column_stack(encoded_columns), dtype=np.float64)
+
+
+def _encoded_feature_schema(
+    feature_schema: Any | None,
+    categorical_encoder: dict[str, Any] | None,
+    dense_width: int,
+) -> Any | None:
+    if not categorical_encoder:
+        return feature_schema
+    original_width = int(categorical_encoder["original_feature_count"])
+    dense_kinds = _dense_feature_kinds(feature_schema, original_width)
+    column_encoders = {
+        int(column["index"]): column for column in categorical_encoder.get("columns", [])
+    }
+    encoded_kinds: list[Any] = []
+    for idx in range(original_width):
+        column_encoder = column_encoders.get(idx)
+        if column_encoder is None:
+            encoded_kinds.append(
+                dense_kinds[idx] if idx < len(dense_kinds) else FeatureKind.NUMERIC
+            )
+            continue
+        strategy = column_encoder.get("strategy")
+        if strategy in {"OneHot", "one_hot"}:
+            encoded_kinds.extend(
+                FeatureKind.NUMERIC for _ in column_encoder.get("categories", [])
+            )
+        elif strategy in {"Partition", "partition"}:
+            encoded_kinds.extend(
+                FeatureKind.NUMERIC for _ in column_encoder.get("partitions", [])
+            )
+        else:
+            encoded_kinds.append(FeatureKind.NUMERIC)
+    if len(encoded_kinds) != dense_width:
+        encoded_kinds = [FeatureKind.NUMERIC for _ in range(dense_width)]
+    return {
+        "names": list(categorical_encoder["encoded_feature_names"]),
+        "kinds": encoded_kinds,
+    }
+
+
+def _native_categorical_rows(raw: np.ndarray, categorical_indices: set[int]) -> list[list[str]]:
+    rows: list[list[str]] = []
+    for row in raw.tolist():
+        encoded_row = []
+        for idx, value in enumerate(row):
+            if idx in categorical_indices:
+                encoded_row.append(_category_token(value))
+            else:
+                if isinstance(value, np.generic):
+                    value = value.item()
+                encoded_row.append(str(value))
+        rows.append(encoded_row)
+    return rows
+
+
+def _native_categorical_input_schema(
+    feature_names: list[str],
+    dense_kinds: list[Any],
+    categorical_indices: set[int],
+) -> dict[str, Any]:
+    kinds = []
+    for idx, _name in enumerate(feature_names):
+        kind = dense_kinds[idx] if idx < len(dense_kinds) else FeatureKind.NUMERIC
+        if idx in categorical_indices:
+            kinds.append(FeatureKind.ORDINAL if _is_ordinal_kind(kind) else FeatureKind.CATEGORICAL)
+        else:
+            kinds.append(_rust_feature_kind(kind))
+    return {"names": [str(name) for name in feature_names], "kinds": kinds}
+
+
+def _is_native_categorical_encoder(encoder: dict[str, Any]) -> bool:
+    if encoder.get("artifact_type") != "cartoboost.categorical_encoder":
+        return False
+    return all(
+        column.get("strategy") in {"OneHot", "Partition", "Ordinal", "TargetMean"}
+        for column in encoder.get("columns", [])
+    )
+
+
+def _as_2d_object_array(values: Any) -> np.ndarray:
+    values = _to_numpy(values)
+    try:
+        array = np.asarray(values, dtype=object)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("X must be a rectangular 2D array") from exc
+    if array.ndim != 2:
+        raise ValueError("X must be a rectangular 2D array")
+    if array.shape[0] == 0:
+        raise ValueError("X must not be empty")
+    if array.shape[1] == 0:
+        raise ValueError("X rows must contain at least one feature")
+    return array
+
+
+def _categorical_feature_indices(
+    original_values: Any,
+    raw: np.ndarray,
+    dense_kinds: list[Any],
+) -> list[int]:
+    indices: list[int] = []
+    dtypes = _column_dtype_names(original_values)
+    for idx in range(raw.shape[1]):
+        kind = dense_kinds[idx] if idx < len(dense_kinds) else None
+        if _is_categorical_kind(kind) or _is_ordinal_kind(kind):
+            indices.append(idx)
+            continue
+        dtype_name = dtypes[idx] if idx < len(dtypes) else ""
+        if dtype_name == "category" or dtype_name.startswith("string"):
+            indices.append(idx)
+            continue
+        if not _column_is_numeric(raw[:, idx]):
+            indices.append(idx)
+    return indices
+
+
+def _dense_feature_kinds(feature_schema: Any | None, dense_width: int) -> list[Any]:
+    if feature_schema is None:
+        return [FeatureKind.NUMERIC for _ in range(dense_width)]
+    if hasattr(feature_schema, "to_rust_payload"):
+        try:
+            payload = feature_schema.to_rust_payload(dense_width, [])
+            return list(payload.get("kinds", []))[:dense_width]
+        except ValueError:
+            return [FeatureKind.NUMERIC for _ in range(dense_width)]
+    if isinstance(feature_schema, dict) and "names" in feature_schema and "kinds" in feature_schema:
+        return [_rust_feature_kind(kind) for kind in feature_schema["kinds"][:dense_width]]
+    if isinstance(feature_schema, dict) and "dense" in feature_schema:
+        return [
+            _schema_entry_kind(entry, FeatureKind.NUMERIC)
+            for entry in list(feature_schema.get("dense", []))[:dense_width]
+        ]
+    if isinstance(feature_schema, dict):
+        return [FeatureKind.NUMERIC for _ in range(dense_width)]
+    return [FeatureKind.NUMERIC for _ in range(dense_width)]
+
+
+def _column_dtype_names(values: Any) -> list[str]:
+    columns = getattr(values, "columns", None)
+    dtypes = getattr(values, "dtypes", None)
+    if columns is not None and dtypes is not None:
+        return [str(dtypes[column]) for column in columns]
+    array = np.asarray(_to_numpy(values))
+    return [str(array[:, idx].dtype) for idx in range(array.shape[1])]
+
+
+def _is_categorical_kind(kind: Any) -> bool:
+    return kind is FeatureKind.CATEGORICAL or kind == FeatureKind.CATEGORICAL
+
+
+def _is_ordinal_kind(kind: Any) -> bool:
+    return kind is FeatureKind.ORDINAL or kind == FeatureKind.ORDINAL
+
+
+def _column_is_numeric(column: np.ndarray) -> bool:
+    try:
+        numeric = np.asarray(column, dtype=np.float64)
+    except (TypeError, ValueError):
+        return False
+    return bool(np.all(np.isfinite(numeric)))
+
+
+def _numeric_column(column: np.ndarray, name: str) -> np.ndarray:
+    try:
+        numeric = np.asarray(column, dtype=np.float64)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"feature {name!r} must be numeric or marked categorical") from exc
+    if not np.all(np.isfinite(numeric)):
+        raise ValueError(f"feature {name!r} contains non-finite values")
+    return numeric
+
+
+def _category_token(value: Any) -> str:
+    if isinstance(value, np.generic):
+        value = value.item()
+    if value is None:
+        return "<missing>"
+    if type(value).__name__ in {"NAType", "NaTType"}:
+        return "<missing>"
+    try:
+        if value != value:
+            return "<missing>"
+    except TypeError:
+        pass
+    return f"{type(value).__name__}:{value}"
+
+
+def _weighted_mean(values: np.ndarray, weights: np.ndarray | None) -> float:
+    if weights is None:
+        return float(np.mean(values))
+    total = float(np.sum(weights))
+    if total <= 0.0:
+        return float(np.mean(values))
+    return float(np.dot(values, weights) / total)
+
+
+def _target_mean_mapping(
+    tokens: list[str],
+    targets: np.ndarray,
+    weights: np.ndarray | None,
+    global_mean: float,
+    smoothing: float,
+) -> dict[str, float]:
+    sums: dict[str, float] = {}
+    counts: dict[str, float] = {}
+    for idx, token in enumerate(tokens):
+        weight = 1.0 if weights is None else float(weights[idx])
+        sums[token] = sums.get(token, 0.0) + float(targets[idx]) * weight
+        counts[token] = counts.get(token, 0.0) + weight
+    mapping = {}
+    for token in sorted(sums):
+        count = counts[token]
+        mapping[token] = (sums[token] + smoothing * global_mean) / (count + smoothing)
+    return mapping
 
 
 def _feature_names(values: Any) -> list[str] | None:

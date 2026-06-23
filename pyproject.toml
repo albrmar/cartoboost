@@ -4,8 +4,8 @@ build-backend = "maturin"
 
 [project]
 name = "cartoboost"
-version = "0.1.112"
-description = "Clean-room CartoBoost-inspired regression package."
+version = "0.2.0"
+description = "Rust-backed spatial boosting for tabular modeling and forecasting."
 readme = "README.md"
 requires-python = ">=3.10"
 license = { file = "LICENSE" }
@@ -28,10 +28,12 @@ classifiers = [
 keywords = ["boosting", "gradient-boosting", "machine-learning", "python", "rust"]
 dependencies = [
     "numpy>=1.23",
-    "scikit-learn>=1.2",
 ]
 
 [project.optional-dependencies]
+sklearn = [
+    "scikit-learn>=1.2",
+]
 duckdb = [
     "duckdb>=1.0",
 ]

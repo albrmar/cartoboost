@@ -174,8 +174,8 @@ Weights affect split scoring and leaf values during training.
 ## Optuna Tuning
 
 Optuna tuning works through the same estimator contract. Install the optional
-dependency with `uv add "cartoboost[optuna]"`, then optimize an objective
-that constructs a fresh `CartoBoostRegressor` for each trial.
+dependencies with `uv add "cartoboost[optuna,sklearn]"`, then optimize an
+objective that constructs a fresh `CartoBoostRegressor` for each trial.
 
 ```python
 import optuna

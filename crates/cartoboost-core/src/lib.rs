@@ -14,8 +14,14 @@ pub mod splitters;
 pub mod tree;
 pub mod utilities;
 
-pub use booster::{Booster, BoosterConfig};
-pub use data::{Dataset, FeatureSchema};
+pub use booster::{
+    Booster, BoosterConfig, ClassificationObjective, Classifier, ClassifierConfig, ClassifierModel,
+    Ranker, RankerConfig, RankerModel, RankingObjective,
+};
+pub use data::{
+    CategoricalColumnEncoder, CategoricalEncoder, CategoricalEncodingConfig,
+    CategoricalEncodingStrategy, Dataset, FeatureKind, FeatureSchema,
+};
 pub use tree::{Model, Tree};
 
 #[derive(Debug, thiserror::Error)]

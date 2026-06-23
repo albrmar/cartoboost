@@ -43,6 +43,42 @@ See [Python API Reference](reference/python-api.md),
 [Parameters](user-guide/parameters.md), [Objectives](objectives.md),
 [Constraints](constraints.md), and [Model Artifacts](model_artifact.md).
 
+## Classification And Ranking Estimators
+
+`cartoboost.CartoBoostClassifier` and `cartoboost.CartoBoostRanker` extend the
+same Rust-backed tree construction to discrete labels and grouped relevance
+labels.
+
+| Feature | Public surface | Modeling use |
+| --- | --- | --- |
+| Binary classification | `CartoBoostClassifier(objective="binary_logloss")` | Airport-trip flags, high-delay labels, or route-risk labels. |
+| Multiclass classification | `CartoBoostClassifier(objective="multiclass_logloss")` | Multi-bucket demand, delay, or service class labels. |
+| Class weights | `class_weight="balanced"` or label-weight dict | Reweight rare classes in native gradient updates. |
+| Probability outputs | `predict_proba`, `decision_function` | Calibration, threshold-free metrics, and ranking by class risk. |
+| Grouped ranking | `CartoBoostRanker(objective="lambdarank")` | Candidate dropoff zones, route alternatives, or service actions within a query. |
+| Pairwise ranking | `objective="pairwise_logit"` | Pairwise relevance optimization without NDCG weighting. |
+| Ranking metrics | `score_groups`, `ndcg_at_k`, `mean_average_precision`, `mean_reciprocal_rank` | Query-group evaluation with NDCG, MAP, and MRR. |
+
+See [Classification Quickstart](user-guide/classification-quickstart.md),
+[Ranking Quickstart](user-guide/ranking-quickstart.md), and
+[Python API Reference](reference/python-api.md).
+
+## Native Categorical Features
+
+Regressor, classifier, and ranker wrappers can encode categorical columns while
+preserving the mapping in saved artifacts.
+
+| Feature | Public surface | Modeling use |
+| --- | --- | --- |
+| Nominal categorical columns | pandas category/string/object or `FeatureKind.CATEGORICAL` | Pickup/dropoff zones, boroughs, service tiers, or route labels. |
+| Ordinal categorical columns | `FeatureKind.ORDINAL` | Ordered service classes or ranked operational bins. |
+| Low-cardinality encoding | Stable one-hot or subset partition indicators | Transparent treatment of small category sets. |
+| High-cardinality encoding | Smoothed target-statistic column | Compact repeated-ID signal with an unknown-category value. |
+| Artifact persistence | `save` / `load` wrapper artifacts | Prediction-time category mappings remain stable after loading. |
+
+See [Categorical Features](user-guide/categorical-features.md) and
+[Feature Schema](feature_schema.md).
+
 ## Splitters And Feature Semantics
 
 Splitters tell the model what geometry or data shape is meaningful.
@@ -58,8 +94,9 @@ Splitters tell the model what geometry or data shape is meaningful.
 | Sparse set | `sparse_set`, `sparse` | List-valued zone, route, grid, H3, or S2 memberships. |
 | Fuzzy routing | `fuzzy=True`, `fuzzy_bandwidth=...`, `fuzzy_kernel=...` | Fractional routing near split boundaries. |
 
-`FeatureSchema` records dense numeric, periodic, sparse-set, H3 sparse-set, and
-S2 sparse-set roles so saved artifacts and prediction inputs can be validated.
+`FeatureSchema` records dense numeric, categorical, ordinal, periodic,
+sparse-set, H3 sparse-set, and S2 sparse-set roles so saved artifacts and
+prediction inputs can be validated.
 
 See [Feature Schema](feature_schema.md), [Sparse Features](sparse_features.md),
 and [Spatial Modeling](spatial_modeling.md).
@@ -132,10 +169,12 @@ kriging. Kalman support includes frame-based local-level, local-linear, and
 self-tuning forecasters plus diagnostic filter utilities. Sequence utilities
 cover known-prefix continuation, reference-axis path inference, group-level OOF
 candidate row generation, OOF leakage checks, per-group error summaries, and
-aligned candidate blending. Evaluation helpers include
-out-of-time, temporal blocked, spatial blocked, and grouped blocked splits;
-pinball loss; interval diagnostics; residual Moran's I; jitter volatility; and
-conformal residual helpers.
+aligned candidate blending. Evaluation helpers include out-of-time, temporal
+blocked, spatial blocked, spatial buffered, environmental blocked, spatial
+grouped, and grouped blocked splits; pinball loss; logloss; ROC-AUC; PR-AUC;
+Brier score; ECE calibration error; NDCG; MAP; MRR; interval diagnostics;
+residual Moran's I; spatial CV gap; jitter volatility; and conformal residual
+helpers.
 
 Forecasting is Rust-native. Python classes validate data and delegate model
 training, prediction, rolling-origin backtesting, metrics, and artifact behavior

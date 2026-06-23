@@ -9,6 +9,8 @@ evidence about which feature semantics were intended.
 Use a schema when:
 
 - hour, weekday, or season should wrap around rather than behave like a line;
+- pickup/dropoff zone IDs, vendor codes, service tiers, or other dense labels
+  should be treated as categorical or ordinal values;
 - pickup/dropoff zones, H3 cells, S2 cells, ZIPs, or route memberships are
   supplied as sparse lists;
 - you need saved artifacts to validate feature roles at prediction time;
@@ -24,6 +26,8 @@ schema = {
     "dense": [
         {"name": "pickup_x", "kind": "numeric"},
         {"name": "pickup_y", "kind": "numeric"},
+        {"name": "PULocationID", "kind": "categorical"},
+        {"name": "service_tier", "kind": "ordinal"},
         {"name": "distance_m", "kind": "numeric"},
         {"name": "hour_of_day", "kind": "periodic", "period": 24},
     ],
@@ -57,6 +61,13 @@ scientific groups at once, such as pickup zone, dropoff zone, parent borough,
 grid cell, or route corridor. The model checks membership in the sparse row
 instead of treating those IDs as continuous quantities.
 
+Categorical declarations keep dense labels out of numeric split semantics.
+Low-cardinality categorical columns use stable one-hot or subset partition
+indicators, ordinal columns use stable ordered codes with unknowns below seen
+categories, and high-cardinality categorical columns use smoothed target-stat
+encodings. The saved model artifact records the encoder mapping so prediction
+applies the same contract.
+
 Numeric dense columns remain eligible for numeric and spatial split candidates.
 The current schema does not express named latitude/longitude pairs or richer
 spatial roles; diagonal and Gaussian splitters still work from dense numeric
@@ -68,16 +79,32 @@ CartoBoost stores supported schema dictionaries in a compact artifact payload:
 
 ```json
 {
-  "names": ["pickup_x", "pickup_y", "distance_m", "hour_of_day", "taxi_zones"],
-  "kinds": ["Numeric", "Numeric", "Numeric", {"Periodic": {"period": 24}}, "SparseSet"]
+  "names": [
+    "pickup_x",
+    "pickup_y",
+    "PULocationID",
+    "distance_m",
+    "hour_of_day",
+    "taxi_zones"
+  ],
+  "kinds": [
+    "Numeric",
+    "Numeric",
+    "Categorical",
+    "Numeric",
+    {"Periodic": {"period": 24}},
+    "SparseSet"
+  ]
 }
 ```
 
 ## Validation Rules
 
 - Schema length must equal dense feature count plus sparse-set column count.
-- `kind` must be numeric, periodic, or sparse-set.
+- `kind` must be numeric, categorical, ordinal, periodic, or sparse-set.
 - Periodic entries require a positive period.
+- Categorical and ordinal entries must correspond to dense columns, not
+  sparse-set columns.
 - Sparse-set entries correspond to sparse columns supplied through
   `sparse_sets=`.
 - Geographic sparse identifiers can be declared with `zip_sparse_set`,
@@ -92,6 +119,8 @@ When a schema is present:
 
 - periodic splitters use declared periods and do not rely on observed values
   covering a full cycle;
+- categorical encoders preserve category mappings across prediction and
+  save/load;
 - sparse splitters prefer schema-declared sparse-set columns;
 - numeric dense columns remain eligible for numeric and spatial split
   candidates.

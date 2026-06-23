@@ -1,11 +1,15 @@
-"""Python interface for the clean-room CartoBoost-inspired regressor."""
+"""Python interface for Rust-backed CartoBoost spatial modeling tools."""
 
 from . import graph, plotting
 from ._native import GraphSageEncoder, HeteroGraphSageEncoder, HinSageEncoder, Node2VecEncoder
+from .classifier import CartoBoostClassifier
 from .evaluation import (
+    environmental_blocked_cv,
     grouped_blocked_cv,
     out_of_time_split,
+    spatial_buffered_cv,
     spatial_blocked_cv,
+    spatial_grouped_cv,
     temporal_blocked_cv,
 )
 from .explain import explain_shap, make_shap_explainer
@@ -23,13 +27,22 @@ from .h3 import (
     normalize_h3_id,
 )
 from .metrics import (
+    brier_score,
     calibrated_intervals,
     conformal_residual_quantile,
+    ece_calibration_error,
     interval_coverage,
     jitter_volatility,
+    logloss,
+    mean_average_precision,
     mean_interval_width,
+    mean_reciprocal_rank,
+    ndcg_at_k,
     pinball_loss,
+    pr_auc,
     residual_morans_i,
+    roc_auc,
+    spatial_cv_gap,
 )
 from .neural import (
     ArtifactFallback,
@@ -73,6 +86,7 @@ from .plotting import (
     write_pydeck_point_map,
     write_pydeck_route_map,
 )
+from .ranker import CartoBoostRanker
 from .regressor import CartoBoostRegressor
 from .s2 import (
     build_s2_sparse_sets,
@@ -117,7 +131,7 @@ from .utilities import (
     tsb_forecast,
 )
 
-__version__ = "0.1.112"
+__version__ = "0.2.0"
 
 __all__ = [
     "ArtifactFallback",
@@ -142,10 +156,15 @@ __all__ = [
     "benchmark_neural_vs_cartoboost",
     "FeatureKind",
     "CartoBoostRegressor",
+    "CartoBoostClassifier",
+    "CartoBoostRanker",
     "OverlayConfig",
     "__version__",
+    "brier_score",
     "calibrated_intervals",
     "conformal_residual_quantile",
+    "ece_calibration_error",
+    "environmental_blocked_cv",
     "explain_shap",
     "grouped_blocked_cv",
     "interval_coverage",
@@ -159,8 +178,12 @@ __all__ = [
     "local_level_kalman_forecast",
     "local_level_kalman_filter",
     "local_linear_trend_kalman_forecast",
+    "logloss",
     "make_shap_explainer",
+    "mean_average_precision",
     "mean_interval_width",
+    "mean_reciprocal_rank",
+    "ndcg_at_k",
     "build_geo_sparse_sets",
     "build_h3_sparse_sets",
     "build_s2_sparse_sets",
@@ -207,7 +230,9 @@ __all__ = [
     "plot_weekly",
     "plot_yearly",
     "pinball_loss",
+    "pr_auc",
     "residual_morans_i",
+    "roc_auc",
     "s2_parent_id",
     "save_figure",
     "seasonality_plot_df",
@@ -216,6 +241,9 @@ __all__ = [
     "sba_forecast",
     "series_forecast",
     "spatial_blocked_cv",
+    "spatial_buffered_cv",
+    "spatial_cv_gap",
+    "spatial_grouped_cv",
     "temporal_blocked_cv",
     "theta_forecast",
     "tsb_forecast",

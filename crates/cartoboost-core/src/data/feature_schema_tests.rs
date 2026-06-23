@@ -60,3 +60,13 @@ fn schema_validation_accepts_spatial_features() {
 
     assert!(schema.validate().is_ok());
 }
+
+#[test]
+fn schema_validation_accepts_categorical_and_ordinal_features() {
+    let schema = FeatureSchema {
+        names: vec!["borough".to_string(), "service_tier".to_string()],
+        kinds: vec![FeatureKind::Categorical, FeatureKind::Ordinal],
+    };
+
+    assert!(schema.validate().is_ok());
+}

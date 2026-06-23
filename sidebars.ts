@@ -20,9 +20,13 @@ const sidebars: SidebarsConfig = {
       items: [
         {
           type: 'category',
-          label: 'Tabular Regression',
+          label: 'Tabular Modeling',
           items: [
             'user-guide/python-estimator',
+            'user-guide/classification-quickstart',
+            'user-guide/ranking-quickstart',
+            'user-guide/categorical-features',
+            'user-guide/spatial-cv-best-practices',
             'user-guide/parameters',
             'objectives',
             'constraints',
@@ -72,6 +76,7 @@ const sidebars: SidebarsConfig = {
       items: [
         'benchmarks/index',
         'benchmarks/model-suite',
+        'benchmarks/methodology',
         'benchmarks/nyc-taxi',
         'benchmarks/forecasting',
         'benchmarks/taxi-zone',

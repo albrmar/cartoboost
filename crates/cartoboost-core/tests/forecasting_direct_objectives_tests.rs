@@ -4,14 +4,10 @@ use cartoboost_core::forecasting::{
     CartoBoostDirectForecaster, ForecastFrame, ForecastFrequency, ForecastOutput, ForecastRequest,
     ForecastRow, Forecaster, LagFeatureConfig, RectifiedRecursiveForecaster,
 };
-use cartoboost_core::{CartoBoostError, Result};
+use cartoboost_core::objectives::{
+    CountObjective, HurdleObjective, NegativeBinomialObjective, PoissonObjective, TweedieObjective,
+};
 use chrono::{NaiveDate, NaiveDateTime};
-
-#[allow(dead_code, unused_imports)]
-#[path = "../src/objectives/mod.rs"]
-mod objectives;
-
-use objectives::{HurdleObjective, NegativeBinomialObjective, PoissonObjective, TweedieObjective};
 
 fn ts(day: u32) -> NaiveDateTime {
     NaiveDate::from_ymd_opt(2026, 1, day)
@@ -227,7 +223,7 @@ fn hurdle_objective_separates_zero_gate_from_positive_count_loss() {
 
 fn assert_derivatives<T>(objective: T, target: f64, raw_prediction: f64)
 where
-    T: objectives::CountObjective,
+    T: CountObjective,
 {
     let analytic = objective
         .value_gradient_hessian(target, raw_prediction)

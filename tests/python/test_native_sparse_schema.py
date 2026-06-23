@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 from cartoboost import CartoBoostRegressor, FeatureKind
+from cartoboost.regressor import _transform_categorical_features
 
 
 def _fit_or_skip(model, *args, **kwargs):
@@ -92,6 +93,139 @@ def test_python_schema_periodic_feature_used_without_full_period_coverage():
 
     assert model.predict(x) == pytest.approx(y)
     assert model.feature_schema_["names"] == ["hour"]
+
+
+def test_python_schema_categorical_feature_roundtrip(tmp_path: Path):
+    x = [["airport"], ["airport"], ["midtown"], ["midtown"]]
+    y = [12.0, 12.0, 3.0, 3.0]
+    schema = {"dense": [{"name": "pickup_zone", "kind": FeatureKind.CATEGORICAL}]}
+    model = CartoBoostRegressor(
+        n_estimators=1,
+        learning_rate=1.0,
+        max_depth=1,
+        min_samples_leaf=1,
+        min_gain=0.0,
+        splitters=["axis"],
+    )
+    _fit_or_skip(model, x, y, feature_schema=schema)
+    path = tmp_path / "categorical-regressor.json"
+    before = model.predict(x)
+
+    model.save(path)
+    loaded = CartoBoostRegressor.load(path)
+
+    assert loaded.n_features_in_ == 1
+    assert loaded.categorical_encoder_["columns"][0]["strategy"] == "OneHot"
+    assert loaded.predict(x) == pytest.approx(before)
+    assert loaded.predict([["unknown"]]).shape == (1,)
+    with pytest.raises(NotImplementedError, match="category mappings"):
+        loaded.save_weights(tmp_path / "categorical-weights.json")
+
+
+def test_python_schema_pandas_categorical_missing_values_roundtrip():
+    pd = pytest.importorskip("pandas")
+    x = pd.DataFrame(
+        {
+            "pickup_zone": pd.Series(
+                ["airport", "airport", pd.NA, "midtown", pd.NA],
+                dtype="category",
+            ),
+            "trip_distance": [8.0, 7.5, 3.0, 2.0, 3.5],
+        }
+    )
+    y = [12.0, 12.0, 5.0, 3.0, 5.0]
+    schema = {"dense": [{"name": "pickup_zone", "kind": FeatureKind.CATEGORICAL}]}
+    model = CartoBoostRegressor(
+        n_estimators=1,
+        learning_rate=1.0,
+        max_depth=1,
+        min_samples_leaf=1,
+        min_gain=0.0,
+        splitters=["axis"],
+    )
+
+    _fit_or_skip(model, x, y, feature_schema=schema)
+
+    categories = model.categorical_encoder_["columns"][0]["categories"]
+    assert "<missing>" in categories
+    assert model.predict(x).shape == (5,)
+
+
+def test_python_schema_preserves_periodic_role_after_categorical_encoding():
+    x = [
+        ["airport", 23.0],
+        ["airport", 0.0],
+        ["midtown", 11.0],
+        ["midtown", 12.0],
+    ]
+    y = [5.0, 5.0, -1.0, -1.0]
+    schema = {
+        "dense": [
+            {"name": "pickup_zone", "kind": FeatureKind.CATEGORICAL},
+            {"name": "pickup_hour", "kind": FeatureKind.PERIODIC, "period": 24},
+        ]
+    }
+    model = CartoBoostRegressor(
+        n_estimators=1,
+        learning_rate=1.0,
+        max_depth=1,
+        min_samples_leaf=1,
+        min_gain=0.0,
+        splitters=["axis"],
+    )
+
+    _fit_or_skip(model, x, y, feature_schema=schema)
+
+    assert model.feature_schema_["names"] == [
+        "pickup_zone=str:airport",
+        "pickup_zone=str:midtown",
+        "pickup_hour",
+    ]
+    assert model.feature_schema_["kinds"] == [
+        "Numeric",
+        "Numeric",
+        {"Periodic": {"period": 24}},
+    ]
+
+
+def test_python_schema_low_cardinality_categorical_uses_partition_artifact():
+    x = [["airport"], ["midtown"], ["uptown"], ["downtown"]]
+    y = [10.0, 3.0, 5.0, 7.0]
+    schema = {"dense": [{"name": "pickup_zone", "kind": FeatureKind.CATEGORICAL}]}
+    model = CartoBoostRegressor(
+        n_estimators=1,
+        learning_rate=1.0,
+        max_depth=1,
+        min_samples_leaf=1,
+        min_gain=0.0,
+        splitters=["axis"],
+    )
+
+    _fit_or_skip(model, x, y, feature_schema=schema)
+
+    assert model.categorical_encoder_["columns"][0]["strategy"] == "Partition"
+    assert len(model.categorical_encoder_["columns"][0]["partitions"]) == 7
+    assert model.encoded_n_features_in_ == 7
+
+
+def test_python_schema_partition_fallback_transform_accepts_enum_strategy():
+    encoder = {
+        "original_feature_count": 1,
+        "columns": [
+            {
+                "index": 0,
+                "strategy": "Partition",
+                "partitions": [["str:airport"], ["str:midtown", "str:uptown"]],
+            }
+        ],
+    }
+
+    transformed = _transform_categorical_features(
+        [["airport"], ["midtown"], ["downtown"]],
+        encoder,
+    )
+
+    assert transformed.tolist() == [[1.0, 0.0], [0.0, 1.0], [0.0, 0.0]]
 
 
 def test_python_schema_rejects_length_mismatch():

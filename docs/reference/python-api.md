@@ -1,8 +1,8 @@
 # Python API Reference
 
 This page lists the public Python entry points used to fit, evaluate, explain,
-and save CartoBoost regression, forecasting, standalone graph, and standalone
-neural models.
+and save CartoBoost regression, classification, ranking, forecasting,
+standalone graph, and standalone neural models.
 
 The API is organized around scientific model choice: fit the same train split
 as the baselines, predict the same validation rows, compute the same metrics,
@@ -13,6 +13,8 @@ and keep artifacts that make the comparison reproducible.
 | Need | Primary entry points | Evidence to collect |
 | --- | --- | --- |
 | Taxi fare or duration regression | `CartoBoostRegressor`, `FeatureSchema`, sparse zone sets | RMSE, MAE, R2 on random and spatial pickup-zone holdouts. |
+| Taxi trip, route, or zone classification | `CartoBoostClassifier`, sparse zone sets | Logloss, ROC-AUC or PR-AUC, Brier score, and calibration checks on the same split as baselines. |
+| Grouped route, customer, or zone ranking | `CartoBoostRanker`, grouped relevance labels | NDCG, MAP, MRR, and baseline ranking comparison by query group. |
 | Pickup/dropoff demand forecasting | `ForecastFrame`, `CartoBoostLagForecaster`, splitters, backtester | Rolling-origin or out-of-time RMSE, MAE, WAPE, horizon metrics. |
 | Repeated-ID residual signal | `NeuralEmbeddingRegressor`, `benchmark_neural_vs_cartoboost` | Repeated-ID and cold-ID splits, with out-of-fold embeddings when possible. |
 | Pickup/dropoff topology | `cartoboost.graph`, standalone graph regressors, graph feature transformers | Same train-side graph construction for all rows, plus grouped or cold-source validation. |
@@ -66,11 +68,121 @@ CartoBoostRegressor(
 dataframe-style objects. Install `cartoboost[duckdb]` to pass DuckDB relations
 directly, or `cartoboost[polars]` for Polars inputs.
 
+Dense inputs may include native categorical columns. Pandas categorical,
+string, or object columns are encoded during fit, and columns can be marked
+explicitly with `FeatureKind.CATEGORICAL` or `FeatureKind.ORDINAL` in
+`feature_schema`. The fitted artifact stores the category mapping so
+`predict` and `load` use the same one-hot, subset partition, ordinal, or
+smoothed target-stat encoding.
+
 For benchmark comparisons, call `fit` only on the training indices from the
 chosen split and call `predict` only on the matching validation indices. If
 CartoBoost receives pickup/dropoff zone, hour, distance, or target-mean
 features, provide comparable encoded columns to LightGBM, XGBoost, or other
 baselines before interpreting a quality delta.
+
+## `cartoboost.CartoBoostClassifier`
+
+```python
+CartoBoostClassifier(
+    n_estimators=100,
+    learning_rate=0.05,
+    max_depth=4,
+    min_samples_leaf=20,
+    min_gain=1e-8,
+    objective="auto",
+    class_weight=None,
+    splitters=None,
+    leaf_predictor="constant",
+    linear_leaf_features=None,
+    fuzzy=False,
+    fuzzy_bandwidth=0.0,
+    fuzzy_kernel="linear",
+    l2_regularization=1.0,
+    constant_l2_regularization=0.0,
+    random_state=None,
+    n_threads=None,
+)
+```
+
+`objective="auto"` selects binary logloss for two labels and multiclass
+logloss for three or more labels. Python accepts arbitrary JSON-serializable
+class labels, preserves their first-seen order in `classes_`, maps them to
+native class ids for Rust training, and restores labels on `predict`. Use
+`class_weight="balanced"` or a label-to-weight dict to weight native gradients.
+
+### Methods
+
+| Method | Returns | Notes |
+| --- | --- | --- |
+| `fit(X, y, sample_weight=None, feature_schema=None, sparse_sets=None)` | `self` | Fits native Rust binary or multiclass logloss. |
+| `predict(X, sparse_sets=None)` | `numpy.ndarray` | Returns original class labels. |
+| `predict_proba(X, sparse_sets=None)` | `numpy.ndarray` | Columns follow `classes_`. |
+| `decision_function(X, sparse_sets=None)` | `numpy.ndarray` | Binary returns one raw margin per row; multiclass returns class margins. |
+| `save(path)` | `None` | Writes native classifier artifact plus Python class-label metadata. |
+| `save_weights(path, format="auto")` | raises `NotImplementedError` | Classifier portable weights and ONNX export are intentionally unsupported. |
+| `CartoBoostClassifier.load(path)` | estimator | Loads classifier artifacts. |
+| `get_params(deep=True)` | `dict` | sklearn-compatible parameter inspection. |
+| `set_params(**params)` | `self` | Validates known parameter names. |
+
+Use the same feature columns and split definitions as the baseline classifier.
+For taxi classification, common labels include airport-trip flag, high-delay
+bucket, cancellation risk class, or pickup-demand surge class.
+Categorical columns follow the same mapping behavior as the regressor and are
+saved with classifier class-label metadata.
+
+## `cartoboost.CartoBoostRanker`
+
+```python
+CartoBoostRanker(
+    n_estimators=100,
+    learning_rate=0.05,
+    max_depth=4,
+    min_samples_leaf=20,
+    min_gain=1e-8,
+    objective="lambdarank",
+    group_col=None,
+    splitters=None,
+    leaf_predictor="constant",
+    linear_leaf_features=None,
+    fuzzy=False,
+    fuzzy_bandwidth=0.0,
+    fuzzy_kernel="linear",
+    l2_regularization=1.0,
+    constant_l2_regularization=0.0,
+    random_state=None,
+    n_threads=None,
+)
+```
+
+The ranker trains native Rust pairwise objectives over contiguous query groups.
+Use `objective="pairwise_logit"` for unweighted pairwise logistic gradients or
+`objective="lambdarank"` for NDCG-delta weighted gradients. Pass `groups` to
+`fit` as group sizes whose positive entries sum to the row count, or as one
+contiguous query id per row when the values do not form a valid size vector.
+Set `group_col` to remove a query-id column from `X` and use those row-level
+values for grouping. When `group_col` is used, the matching dense
+`feature_schema` entry is removed before categorical encoding and native
+training.
+
+### Methods
+
+| Method | Returns | Notes |
+| --- | --- | --- |
+| `fit(X, y, groups=None, group_col=None, sample_weight=None, feature_schema=None, sparse_sets=None)` | `self` | Requires group sizes, row-level query ids, or `group_col`. |
+| `predict(X, sparse_sets=None)` | `numpy.ndarray` | Returns one relevance score per row; accepts full frames with `group_col` or already-dropped feature matrices. |
+| `score_groups(X, y, groups=None, group_col=None, sparse_sets=None)` | `dict` | Returns `ndcg`, `map`, and `mrr`. |
+| `save(path)` | `None` | Writes native ranker state plus Python grouping and categorical metadata. |
+| `save_weights(path, format="auto")` | raises `NotImplementedError` | Ranker portable weights and ONNX export are intentionally unsupported. |
+| `CartoBoostRanker.load(path)` | estimator | Loads ranker artifacts. |
+| `get_params(deep=True)` | `dict` | sklearn-compatible parameter inspection. |
+| `set_params(**params)` | `self` | Validates known parameter names. |
+
+Ranking labels are relevance scores within a group, not global regression
+targets. For taxi workflows, examples include ranking candidate dropoff zones,
+route alternatives, or service actions within one pickup/customer context.
+Categorical ranker columns use train-side relevance labels for smoothed
+target-stat encoding and persist their mappings in ranker artifacts.
 
 ## `cartoboost.forecasting`
 
@@ -403,6 +515,9 @@ These functions are also available as estimator methods. See
 ```python
 cartoboost.out_of_time_split(times, validation_fraction=0.2, gap=0)
 cartoboost.spatial_blocked_cv(coordinates, n_splits=5)
+cartoboost.spatial_buffered_cv(coordinates, n_splits=5, buffer_radius=...)
+cartoboost.spatial_grouped_cv(coordinates, groups, n_splits=5, buffer_radius=0.0)
+cartoboost.environmental_blocked_cv(environmental_features, n_splits=5)
 cartoboost.temporal_blocked_cv(times, n_splits=5, gap=0)
 cartoboost.grouped_blocked_cv(groups, n_splits=5)
 ```
@@ -416,9 +531,38 @@ Use these helpers to evaluate temporal-spatial generalization: future periods,
 withheld locations, or held-out route groups often reveal failure modes that a
 random split hides.
 
+`spatial_buffered_cv` removes training rows within `buffer_radius` of each test
+block. Use projected coordinates for positive buffers; latitude/longitude
+degree buffers raise unless explicitly allowed. `spatial_grouped_cv` keeps
+whole groups together and can add the same spatial buffer. `environmental_blocked_cv`
+clusters environmental covariates with optional sklearn KMeans, or uses a
+deterministic ordered fallback with `use_sklearn=False`.
+
 Use the returned indices for every model in the comparison. The split is part
 of the experiment definition and should be stored with benchmark artifacts or
 reconstructed from a named command and seed.
+
+## Metric And Diagnostic Helpers
+
+```python
+cartoboost.logloss(y_true, y_proba)
+cartoboost.roc_auc(y_true, y_score)
+cartoboost.pr_auc(y_true, y_score)
+cartoboost.brier_score(y_true, y_proba)
+cartoboost.ece_calibration_error(y_true, y_proba, n_bins=10)
+cartoboost.ndcg_at_k(relevance, scores, groups=None, k=None)
+cartoboost.mean_average_precision(relevance, scores, groups=None, k=None)
+cartoboost.mean_reciprocal_rank(relevance, scores, groups=None, k=None)
+cartoboost.residual_morans_i(coordinates, residuals)
+cartoboost.spatial_cv_gap(random_cv_score, spatial_cv_score)
+```
+
+Classification metrics are deterministic NumPy implementations for binary or
+multiclass probability checks where applicable. Ranking metrics accept either
+one global ranking, positive group sizes that sum to the row count, or
+contiguous query ids when the values do not form a valid size vector.
+`residual_morans_i` uses dense pairwise spatial weights and is intended for
+validation samples.
 
 ## I/O Helpers
 

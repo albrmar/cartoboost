@@ -607,7 +607,7 @@ impl Model {
     }
 
     pub fn load(path: impl AsRef<Path>) -> Result<Self> {
-        let model = crate::serialize::load_json(path)?;
+        let model: Model = crate::serialize::load_json(path)?;
         if model.artifact_version != MODEL_ARTIFACT_VERSION {
             return Err(crate::CartoBoostError::InvalidInput(format!(
                 "unsupported model artifact version {}",

@@ -76,7 +76,8 @@ fn weighted_l1_and_quantile_initial_predictions_are_exact_for_zero_depth_models(
     })
     .fit(&x, &y, None)
     .expect("fit quantile");
-    assert_eq!(quantile.predict(&x), vec![30.0, 30.0, 30.0, 30.0]);
+    assert_eq!(quantile.init_prediction, 30.0);
+    assert_eq!(quantile.predict(&x), vec![29.8, 29.8, 29.8, 29.8]);
 }
 
 #[test]

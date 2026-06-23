@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 pub enum FeatureKind {
     Numeric,
     Spatial,
+    Categorical,
+    Ordinal,
     Periodic { period: u32 },
     SparseSet,
 }

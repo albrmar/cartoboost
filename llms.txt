@@ -1,7 +1,8 @@
 # CartoBoost
 
-CartoBoost is a Python regression toolkit with Rust native bindings for
-temporal, spatial, geotemporal, graph, and neural-embedding modeling.
+CartoBoost is a Python spatial boosting toolkit with Rust native bindings for
+regression, classification, ranking, forecasting, graph, and neural-embedding
+modeling.
 
 ## Primary Docs
 
@@ -51,6 +52,28 @@ temporal, spatial, geotemporal, graph, and neural-embedding modeling.
 ## Public Python Entry Points
 
 - `cartoboost.CartoBoostRegressor`: sklearn-style tabular regressor.
+- `cartoboost.CartoBoostClassifier`: sklearn-style Rust-backed classifier with
+  binary and multiclass logloss, `predict_proba`, `decision_function`, and
+  class-weight support.
+- `cartoboost.CartoBoostRanker`: sklearn-style Rust-backed grouped ranker with
+  pairwise logistic and LambdaRank objectives plus NDCG/MAP/MRR metrics.
+- Native categorical handling is shared across regressor, classifier, and
+  ranker wrappers for pandas categorical/string/object columns or
+  `FeatureKind.CATEGORICAL` / `FeatureKind.ORDINAL` schema entries. Artifacts
+  persist stable category mappings for one-hot, subset partition, ordinal, or
+  smoothed target statistic encodings.
+- Spatial validation helpers include `spatial_buffered_cv`,
+  `spatial_grouped_cv`, and `environmental_blocked_cv`; diagnostics include
+  logloss, ROC-AUC, PR-AUC, Brier score, ECE, NDCG, MAP, MRR,
+  `residual_morans_i`, and `spatial_cv_gap`.
+- User-facing v0.2 guides live at `docs/user-guide/classification-quickstart.md`,
+  `docs/user-guide/ranking-quickstart.md`,
+  `docs/user-guide/categorical-features.md`,
+  `docs/user-guide/spatial-cv-best-practices.md`, and
+  `docs/benchmarks/methodology.md`.
+- The v0.2 modeling smoke benchmark runner is
+  `scripts/run_v02_modeling_benchmarks.py`; it writes JSON, JSONL, and
+  Markdown artifacts under `target/v02-benchmarks` by default.
 - `cartoboost.NeuralEmbeddingStandaloneRegressor`: direct supervised ID
   embedding regressor.
 - `cartoboost.NeuralEmbeddingRegressor`: optional neural feature-generation

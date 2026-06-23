@@ -78,7 +78,11 @@ use cartoboost_core::utilities::{
     IntermittentDemandMethod, KrigingDrift, KrigingObservation, KrigingVariogramModel,
     LocalLevelKalmanConfig, LocalLinearKalmanConfig, OrdinaryKrigingConfig,
 };
-use cartoboost_core::{Booster, BoosterConfig, CartoBoostError, Dataset, Model};
+use cartoboost_core::{
+    Booster, BoosterConfig, CartoBoostError, CategoricalEncoder, CategoricalEncodingConfig,
+    ClassificationObjective, Classifier, ClassifierConfig, ClassifierModel, Dataset, Model,
+    Ranker, RankerConfig, RankerModel, RankingObjective,
+};
 use cartoboost_neural::{
     build_embedding_table_artifact, compute_directional_features, fit_embedding_table_with_options,
     materialize_source_target_pair_nodes, validate_directed_metapath,
@@ -3967,6 +3971,1031 @@ impl NativeCartoBoostRegressor {
     }
 }
 
+#[pyclass(name = "CartoBoostClassifier")]
+#[derive(Clone, Debug)]
+struct NativeCartoBoostClassifier {
+    n_estimators: usize,
+    learning_rate: f64,
+    max_depth: usize,
+    min_samples_leaf: usize,
+    min_gain: f64,
+    objective: String,
+    class_count: usize,
+    class_weights: Vec<f64>,
+    splitters: Vec<String>,
+    leaf_predictor: String,
+    linear_leaf_features: Vec<usize>,
+    l2_regularization: f64,
+    constant_l2_regularization: f64,
+    fuzzy: bool,
+    fuzzy_bandwidth: f64,
+    fuzzy_kernel: String,
+    n_threads: Option<usize>,
+    model: Option<ClassifierModel>,
+}
+
+#[pymethods]
+impl NativeCartoBoostClassifier {
+    #[new]
+    #[pyo3(signature = (
+        n_estimators=100,
+        learning_rate=0.05,
+        max_depth=4,
+        min_samples_leaf=20,
+        min_gain=1e-8,
+        objective="auto",
+        class_count=2,
+        class_weights=None,
+        splitters=None,
+        leaf_predictor="constant",
+        linear_leaf_features=None,
+        l2_regularization=1.0,
+        constant_l2_regularization=0.0,
+        fuzzy=false,
+        fuzzy_bandwidth=0.0,
+        fuzzy_kernel="linear",
+        n_threads=None
+    ))]
+    #[allow(clippy::too_many_arguments)]
+    fn new(
+        n_estimators: usize,
+        learning_rate: f64,
+        max_depth: usize,
+        min_samples_leaf: usize,
+        min_gain: f64,
+        objective: &str,
+        class_count: usize,
+        class_weights: Option<Vec<f64>>,
+        splitters: Option<Vec<String>>,
+        leaf_predictor: &str,
+        linear_leaf_features: Option<Vec<usize>>,
+        l2_regularization: f64,
+        constant_l2_regularization: f64,
+        fuzzy: bool,
+        fuzzy_bandwidth: f64,
+        fuzzy_kernel: &str,
+        n_threads: Option<usize>,
+    ) -> PyResult<Self> {
+        validate_n_threads(n_threads)?;
+        validate_params(
+            n_estimators,
+            learning_rate,
+            max_depth,
+            min_samples_leaf,
+            min_gain,
+            l2_regularization,
+            constant_l2_regularization,
+            fuzzy_bandwidth,
+            0.5,
+            1.0,
+            1.0,
+        )?;
+        if class_count < 2 {
+            return Err(PyValueError::new_err("class_count must be at least 2"));
+        }
+        parse_classification_objective(objective, class_count)?;
+        let class_weights = class_weights.unwrap_or_default();
+        if !class_weights.is_empty() && class_weights.len() != class_count {
+            return Err(PyValueError::new_err(format!(
+                "class_weights has length {}, but class_count is {class_count}",
+                class_weights.len()
+            )));
+        }
+        if class_weights
+            .iter()
+            .any(|weight| !weight.is_finite() || *weight < 0.0)
+        {
+            return Err(PyValueError::new_err(
+                "class_weights must be finite and non-negative",
+            ));
+        }
+        let splitters = splitters.unwrap_or_else(|| vec!["auto".to_string()]);
+        parse_splitters(&splitters)?;
+        parse_leaf_predictor(leaf_predictor)?;
+        parse_fuzzy_kernel(fuzzy_kernel)?;
+
+        Ok(Self {
+            n_estimators,
+            learning_rate,
+            max_depth,
+            min_samples_leaf,
+            min_gain,
+            objective: objective.to_string(),
+            class_count,
+            class_weights,
+            splitters,
+            leaf_predictor: leaf_predictor.to_string(),
+            linear_leaf_features: linear_leaf_features.unwrap_or_default(),
+            l2_regularization,
+            constant_l2_regularization,
+            fuzzy,
+            fuzzy_bandwidth,
+            fuzzy_kernel: fuzzy_kernel.to_string(),
+            n_threads,
+            model: None,
+        })
+    }
+
+    #[pyo3(signature = (x, y, sample_weight=None, sparse_sets=None, feature_schema_json=None))]
+    fn fit(
+        &mut self,
+        py: Python<'_>,
+        x: Vec<Vec<f64>>,
+        y: Vec<f64>,
+        sample_weight: Option<Vec<f64>>,
+        sparse_sets: Option<Vec<Vec<Vec<u64>>>>,
+        feature_schema_json: Option<String>,
+    ) -> PyResult<()> {
+        let dataset = dataset_from_parts(x, sparse_sets, feature_schema_json)?;
+        let config = self.classifier_config()?;
+        let n_threads = self.n_threads;
+        let model = py
+            .allow_threads(move || {
+                run_with_optional_threads(n_threads, || {
+                    Classifier::new(config).fit(&dataset, &y, sample_weight.as_deref())
+                })
+            })
+            .map_err(to_py_value_error)?;
+        self.model = Some(model);
+        Ok(())
+    }
+
+    #[pyo3(signature = (
+        x,
+        y,
+        sample_weight=None,
+        sparse_offsets=None,
+        sparse_ids=None,
+        feature_schema_json=None
+    ))]
+    #[allow(clippy::too_many_arguments)]
+    fn fit_arrays(
+        &mut self,
+        py: Python<'_>,
+        x: PyReadonlyArray2<'_, f64>,
+        y: PyReadonlyArray1<'_, f64>,
+        sample_weight: Option<PyReadonlyArray1<'_, f64>>,
+        sparse_offsets: Option<Vec<Vec<usize>>>,
+        sparse_ids: Option<Vec<Vec<u64>>>,
+        feature_schema_json: Option<String>,
+    ) -> PyResult<()> {
+        let dataset = dataset_from_arrays(x, sparse_offsets, sparse_ids, feature_schema_json)?;
+        let targets = y.as_slice()?.to_vec();
+        let weights = sample_weight
+            .map(|array| array.as_slice().map(|slice| slice.to_vec()))
+            .transpose()?;
+        let config = self.classifier_config()?;
+        let n_threads = self.n_threads;
+        let model = py
+            .allow_threads(move || {
+                run_with_optional_threads(n_threads, || {
+                    Classifier::new(config).fit(&dataset, &targets, weights.as_deref())
+                })
+            })
+            .map_err(to_py_value_error)?;
+        self.model = Some(model);
+        Ok(())
+    }
+
+    #[pyo3(signature = (x, sparse_sets=None))]
+    fn predict(
+        &self,
+        py: Python<'_>,
+        x: Vec<Vec<f64>>,
+        sparse_sets: Option<Vec<Vec<Vec<u64>>>>,
+    ) -> PyResult<Vec<f64>> {
+        let model = self
+            .model
+            .as_ref()
+            .ok_or_else(|| PyRuntimeError::new_err("CartoBoostClassifier is not fitted"))?;
+        let dataset = dataset_from_parts(x, sparse_sets, None)?;
+        let n_threads = self.n_threads;
+        py.allow_threads(|| run_with_optional_threads(n_threads, || model.predict(&dataset)))
+            .map_err(to_py_value_error)
+    }
+
+    #[pyo3(signature = (x, sparse_offsets=None, sparse_ids=None))]
+    fn predict_arrays(
+        &self,
+        py: Python<'_>,
+        x: PyReadonlyArray2<'_, f64>,
+        sparse_offsets: Option<Vec<Vec<usize>>>,
+        sparse_ids: Option<Vec<Vec<u64>>>,
+    ) -> PyResult<Vec<f64>> {
+        let model = self
+            .model
+            .as_ref()
+            .ok_or_else(|| PyRuntimeError::new_err("CartoBoostClassifier is not fitted"))?;
+        let dataset = dataset_from_arrays(x, sparse_offsets, sparse_ids, None)?;
+        let n_threads = self.n_threads;
+        py.allow_threads(|| run_with_optional_threads(n_threads, || model.predict(&dataset)))
+            .map_err(to_py_value_error)
+    }
+
+    #[pyo3(signature = (x, sparse_sets=None))]
+    fn predict_proba(
+        &self,
+        py: Python<'_>,
+        x: Vec<Vec<f64>>,
+        sparse_sets: Option<Vec<Vec<Vec<u64>>>>,
+    ) -> PyResult<Vec<Vec<f64>>> {
+        let model = self
+            .model
+            .as_ref()
+            .ok_or_else(|| PyRuntimeError::new_err("CartoBoostClassifier is not fitted"))?;
+        let dataset = dataset_from_parts(x, sparse_sets, None)?;
+        let n_threads = self.n_threads;
+        py.allow_threads(|| run_with_optional_threads(n_threads, || model.predict_proba(&dataset)))
+            .map_err(to_py_value_error)
+    }
+
+    #[pyo3(signature = (x, sparse_offsets=None, sparse_ids=None))]
+    fn predict_proba_arrays(
+        &self,
+        py: Python<'_>,
+        x: PyReadonlyArray2<'_, f64>,
+        sparse_offsets: Option<Vec<Vec<usize>>>,
+        sparse_ids: Option<Vec<Vec<u64>>>,
+    ) -> PyResult<Vec<Vec<f64>>> {
+        let model = self
+            .model
+            .as_ref()
+            .ok_or_else(|| PyRuntimeError::new_err("CartoBoostClassifier is not fitted"))?;
+        let dataset = dataset_from_arrays(x, sparse_offsets, sparse_ids, None)?;
+        let n_threads = self.n_threads;
+        py.allow_threads(|| run_with_optional_threads(n_threads, || model.predict_proba(&dataset)))
+            .map_err(to_py_value_error)
+    }
+
+    #[pyo3(signature = (x, sparse_sets=None))]
+    fn decision_function(
+        &self,
+        py: Python<'_>,
+        x: Vec<Vec<f64>>,
+        sparse_sets: Option<Vec<Vec<Vec<u64>>>>,
+    ) -> PyResult<Vec<Vec<f64>>> {
+        let model = self
+            .model
+            .as_ref()
+            .ok_or_else(|| PyRuntimeError::new_err("CartoBoostClassifier is not fitted"))?;
+        let dataset = dataset_from_parts(x, sparse_sets, None)?;
+        let n_threads = self.n_threads;
+        py.allow_threads(|| {
+            run_with_optional_threads(n_threads, || model.decision_function(&dataset))
+        })
+        .map_err(to_py_value_error)
+    }
+
+    fn save(&self, py: Python<'_>, path: PathBuf) -> PyResult<()> {
+        let model = self
+            .model
+            .as_ref()
+            .ok_or_else(|| PyRuntimeError::new_err("CartoBoostClassifier is not fitted"))?;
+        py.allow_threads(|| model.save(path)).map_err(to_py_error)
+    }
+
+    #[staticmethod]
+    fn load(py: Python<'_>, path: PathBuf) -> PyResult<Self> {
+        let model = py
+            .allow_threads(|| ClassifierModel::load(path))
+            .map_err(to_py_error)?;
+        Self::from_model(model)
+    }
+
+    #[getter]
+    fn n_estimators(&self) -> usize {
+        self.n_estimators
+    }
+
+    #[getter]
+    fn learning_rate(&self) -> f64 {
+        self.learning_rate
+    }
+
+    #[getter]
+    fn max_depth(&self) -> usize {
+        self.max_depth
+    }
+
+    #[getter]
+    fn min_samples_leaf(&self) -> usize {
+        self.min_samples_leaf
+    }
+
+    #[getter]
+    fn min_gain(&self) -> f64 {
+        self.min_gain
+    }
+
+    #[getter]
+    fn objective(&self) -> String {
+        self.objective.clone()
+    }
+
+    #[getter]
+    fn class_count(&self) -> usize {
+        self.class_count
+    }
+
+    #[getter]
+    fn class_weights(&self) -> Vec<f64> {
+        self.class_weights.clone()
+    }
+
+    #[getter]
+    fn splitters(&self) -> Vec<String> {
+        self.splitters.clone()
+    }
+
+    #[getter]
+    fn feature_count(&self) -> usize {
+        self.model
+            .as_ref()
+            .map(|model| model.feature_count)
+            .unwrap_or(0)
+    }
+
+    #[getter]
+    fn requires_sparse_sets(&self) -> bool {
+        self.model
+            .as_ref()
+            .map(ClassifierModel::requires_sparse_sets)
+            .unwrap_or(false)
+    }
+
+    #[getter]
+    fn class_values(&self) -> Vec<f64> {
+        self.model
+            .as_ref()
+            .map(|model| model.class_values.clone())
+            .unwrap_or_default()
+    }
+
+    #[getter]
+    fn feature_schema_json(&self) -> PyResult<Option<String>> {
+        self.model
+            .as_ref()
+            .and_then(|model| model.feature_schema.as_ref())
+            .map(serde_json::to_string)
+            .transpose()
+            .map_err(|err| PyValueError::new_err(err.to_string()))
+    }
+
+    #[getter]
+    fn metadata_json(&self) -> PyResult<Option<String>> {
+        self.model
+            .as_ref()
+            .and_then(|model| model.metadata.as_ref())
+            .map(serde_json::to_string)
+            .transpose()
+            .map_err(|err| PyValueError::new_err(err.to_string()))
+    }
+
+    #[getter]
+    fn training_config_json(&self) -> PyResult<Option<String>> {
+        self.model
+            .as_ref()
+            .and_then(|model| model.training_config.as_ref())
+            .map(serde_json::to_string)
+            .transpose()
+            .map_err(|err| PyValueError::new_err(err.to_string()))
+    }
+}
+
+impl NativeCartoBoostClassifier {
+    fn classifier_config(&self) -> PyResult<ClassifierConfig> {
+        Ok(ClassifierConfig {
+            n_estimators: self.n_estimators,
+            learning_rate: self.learning_rate,
+            max_depth: self.max_depth,
+            min_samples_leaf: self.min_samples_leaf,
+            min_gain: self.min_gain,
+            splitters: parse_splitters(&self.splitters)?,
+            leaf_predictor: parse_leaf_predictor(&self.leaf_predictor)?,
+            linear_leaf_features: self.linear_leaf_features.clone(),
+            linear_lambda_l2: self.l2_regularization,
+            constant_lambda_l2: self.constant_l2_regularization,
+            fuzzy: self.fuzzy,
+            fuzzy_bandwidth: self.fuzzy_bandwidth,
+            fuzzy_kernel: parse_fuzzy_kernel(&self.fuzzy_kernel)?,
+            objective: parse_classification_objective(&self.objective, self.class_count)?,
+            class_count: self.class_count,
+            class_weights: self.class_weights.clone(),
+        })
+    }
+
+    fn from_model(model: ClassifierModel) -> PyResult<Self> {
+        let training_config = model.training_config.clone();
+        let (
+            max_depth,
+            min_samples_leaf,
+            min_gain,
+            splitters,
+            leaf_predictor,
+            linear_leaf_features,
+            l2_regularization,
+            constant_l2_regularization,
+            fuzzy,
+            fuzzy_bandwidth,
+            fuzzy_kernel,
+            class_weights,
+        ) = if let Some(config) = training_config {
+            (
+                config.max_depth,
+                config.min_samples_leaf,
+                config.min_gain,
+                splitter_names(&config.splitters),
+                leaf_predictor_name(&config.leaf_predictor).to_string(),
+                config.linear_leaf_features,
+                config.linear_lambda_l2,
+                config.constant_lambda_l2,
+                config.fuzzy,
+                config.fuzzy_bandwidth,
+                fuzzy_kernel_name(config.fuzzy_kernel).to_string(),
+                config.class_weights,
+            )
+        } else {
+            (
+                1,
+                1,
+                0.0,
+                vec!["axis".to_string()],
+                "constant".to_string(),
+                Vec::new(),
+                1.0,
+                0.0,
+                false,
+                0.0,
+                "linear".to_string(),
+                Vec::new(),
+            )
+        };
+        Ok(Self {
+            n_estimators: model.trees.len(),
+            learning_rate: model.learning_rate,
+            max_depth,
+            min_samples_leaf,
+            min_gain,
+            objective: classification_objective_name(model.objective).to_string(),
+            class_count: model.class_values.len(),
+            class_weights,
+            splitters,
+            leaf_predictor,
+            linear_leaf_features,
+            l2_regularization,
+            constant_l2_regularization,
+            fuzzy,
+            fuzzy_bandwidth,
+            fuzzy_kernel,
+            n_threads: None,
+            model: Some(model),
+        })
+    }
+}
+
+#[pyclass(name = "CartoBoostRanker")]
+#[derive(Clone, Debug)]
+struct NativeCartoBoostRanker {
+    n_estimators: usize,
+    learning_rate: f64,
+    max_depth: usize,
+    min_samples_leaf: usize,
+    min_gain: f64,
+    objective: String,
+    splitters: Vec<String>,
+    leaf_predictor: String,
+    linear_leaf_features: Vec<usize>,
+    l2_regularization: f64,
+    constant_l2_regularization: f64,
+    fuzzy: bool,
+    fuzzy_bandwidth: f64,
+    fuzzy_kernel: String,
+    n_threads: Option<usize>,
+    model: Option<RankerModel>,
+}
+
+#[pymethods]
+impl NativeCartoBoostRanker {
+    #[new]
+    #[pyo3(signature = (
+        n_estimators=100,
+        learning_rate=0.05,
+        max_depth=4,
+        min_samples_leaf=20,
+        min_gain=1e-8,
+        objective="lambdarank",
+        splitters=None,
+        leaf_predictor="constant",
+        linear_leaf_features=None,
+        l2_regularization=1.0,
+        constant_l2_regularization=0.0,
+        fuzzy=false,
+        fuzzy_bandwidth=0.0,
+        fuzzy_kernel="linear",
+        n_threads=None
+    ))]
+    #[allow(clippy::too_many_arguments)]
+    fn new(
+        n_estimators: usize,
+        learning_rate: f64,
+        max_depth: usize,
+        min_samples_leaf: usize,
+        min_gain: f64,
+        objective: &str,
+        splitters: Option<Vec<String>>,
+        leaf_predictor: &str,
+        linear_leaf_features: Option<Vec<usize>>,
+        l2_regularization: f64,
+        constant_l2_regularization: f64,
+        fuzzy: bool,
+        fuzzy_bandwidth: f64,
+        fuzzy_kernel: &str,
+        n_threads: Option<usize>,
+    ) -> PyResult<Self> {
+        validate_n_threads(n_threads)?;
+        validate_params(
+            n_estimators,
+            learning_rate,
+            max_depth,
+            min_samples_leaf,
+            min_gain,
+            l2_regularization,
+            constant_l2_regularization,
+            fuzzy_bandwidth,
+            0.5,
+            1.0,
+            1.0,
+        )?;
+        parse_ranking_objective(objective)?;
+        let splitters = splitters.unwrap_or_else(|| vec!["auto".to_string()]);
+        parse_splitters(&splitters)?;
+        parse_leaf_predictor(leaf_predictor)?;
+        parse_fuzzy_kernel(fuzzy_kernel)?;
+
+        Ok(Self {
+            n_estimators,
+            learning_rate,
+            max_depth,
+            min_samples_leaf,
+            min_gain,
+            objective: objective.to_string(),
+            splitters,
+            leaf_predictor: leaf_predictor.to_string(),
+            linear_leaf_features: linear_leaf_features.unwrap_or_default(),
+            l2_regularization,
+            constant_l2_regularization,
+            fuzzy,
+            fuzzy_bandwidth,
+            fuzzy_kernel: fuzzy_kernel.to_string(),
+            n_threads,
+            model: None,
+        })
+    }
+
+    #[pyo3(signature = (
+        x,
+        y,
+        groups,
+        sample_weight=None,
+        sparse_sets=None,
+        feature_schema_json=None
+    ))]
+    fn fit(
+        &mut self,
+        py: Python<'_>,
+        x: Vec<Vec<f64>>,
+        y: Vec<f64>,
+        groups: Vec<usize>,
+        sample_weight: Option<Vec<f64>>,
+        sparse_sets: Option<Vec<Vec<Vec<u64>>>>,
+        feature_schema_json: Option<String>,
+    ) -> PyResult<()> {
+        let dataset = dataset_from_parts(x, sparse_sets, feature_schema_json)?;
+        let config = self.ranker_config()?;
+        let n_threads = self.n_threads;
+        let model = py
+            .allow_threads(move || {
+                run_with_optional_threads(n_threads, || {
+                    Ranker::new(config).fit(&dataset, &y, &groups, sample_weight.as_deref())
+                })
+            })
+            .map_err(to_py_value_error)?;
+        self.model = Some(model);
+        Ok(())
+    }
+
+    #[pyo3(signature = (
+        x,
+        y,
+        groups,
+        sample_weight=None,
+        sparse_offsets=None,
+        sparse_ids=None,
+        feature_schema_json=None
+    ))]
+    #[allow(clippy::too_many_arguments)]
+    fn fit_arrays(
+        &mut self,
+        py: Python<'_>,
+        x: PyReadonlyArray2<'_, f64>,
+        y: PyReadonlyArray1<'_, f64>,
+        groups: Vec<usize>,
+        sample_weight: Option<PyReadonlyArray1<'_, f64>>,
+        sparse_offsets: Option<Vec<Vec<usize>>>,
+        sparse_ids: Option<Vec<Vec<u64>>>,
+        feature_schema_json: Option<String>,
+    ) -> PyResult<()> {
+        let dataset = dataset_from_arrays(x, sparse_offsets, sparse_ids, feature_schema_json)?;
+        let targets = y.as_slice()?.to_vec();
+        let weights = sample_weight
+            .map(|array| array.as_slice().map(|slice| slice.to_vec()))
+            .transpose()?;
+        let config = self.ranker_config()?;
+        let n_threads = self.n_threads;
+        let model = py
+            .allow_threads(move || {
+                run_with_optional_threads(n_threads, || {
+                    Ranker::new(config).fit(&dataset, &targets, &groups, weights.as_deref())
+                })
+            })
+            .map_err(to_py_value_error)?;
+        self.model = Some(model);
+        Ok(())
+    }
+
+    #[pyo3(signature = (x, sparse_sets=None))]
+    fn predict(
+        &self,
+        py: Python<'_>,
+        x: Vec<Vec<f64>>,
+        sparse_sets: Option<Vec<Vec<Vec<u64>>>>,
+    ) -> PyResult<Vec<f64>> {
+        let model = self
+            .model
+            .as_ref()
+            .ok_or_else(|| PyRuntimeError::new_err("CartoBoostRanker is not fitted"))?;
+        let dataset = dataset_from_parts(x, sparse_sets, None)?;
+        let n_threads = self.n_threads;
+        py.allow_threads(|| run_with_optional_threads(n_threads, || model.predict(&dataset)))
+            .map_err(to_py_value_error)
+    }
+
+    #[pyo3(signature = (x, sparse_offsets=None, sparse_ids=None))]
+    fn predict_arrays(
+        &self,
+        py: Python<'_>,
+        x: PyReadonlyArray2<'_, f64>,
+        sparse_offsets: Option<Vec<Vec<usize>>>,
+        sparse_ids: Option<Vec<Vec<u64>>>,
+    ) -> PyResult<Vec<f64>> {
+        let model = self
+            .model
+            .as_ref()
+            .ok_or_else(|| PyRuntimeError::new_err("CartoBoostRanker is not fitted"))?;
+        let dataset = dataset_from_arrays(x, sparse_offsets, sparse_ids, None)?;
+        let n_threads = self.n_threads;
+        py.allow_threads(|| run_with_optional_threads(n_threads, || model.predict(&dataset)))
+            .map_err(to_py_value_error)
+    }
+
+    #[pyo3(signature = (x, y, groups, sparse_sets=None))]
+    fn metrics(
+        &self,
+        py: Python<'_>,
+        x: Vec<Vec<f64>>,
+        y: Vec<f64>,
+        groups: Vec<usize>,
+        sparse_sets: Option<Vec<Vec<Vec<u64>>>>,
+    ) -> PyResult<BTreeMap<String, f64>> {
+        let model = self
+            .model
+            .as_ref()
+            .ok_or_else(|| PyRuntimeError::new_err("CartoBoostRanker is not fitted"))?;
+        let dataset = dataset_from_parts(x, sparse_sets, None)?;
+        let n_threads = self.n_threads;
+        let metrics = py
+            .allow_threads(|| {
+                run_with_optional_threads(n_threads, || model.metrics(&dataset, &y, &groups))
+            })
+            .map_err(to_py_value_error)?;
+        Ok(BTreeMap::from([
+            ("ndcg".to_string(), metrics.ndcg),
+            ("map".to_string(), metrics.map),
+            ("mrr".to_string(), metrics.mrr),
+        ]))
+    }
+
+    #[pyo3(signature = (x, y, groups, sparse_offsets=None, sparse_ids=None))]
+    fn metrics_arrays(
+        &self,
+        py: Python<'_>,
+        x: PyReadonlyArray2<'_, f64>,
+        y: PyReadonlyArray1<'_, f64>,
+        groups: Vec<usize>,
+        sparse_offsets: Option<Vec<Vec<usize>>>,
+        sparse_ids: Option<Vec<Vec<u64>>>,
+    ) -> PyResult<BTreeMap<String, f64>> {
+        let model = self
+            .model
+            .as_ref()
+            .ok_or_else(|| PyRuntimeError::new_err("CartoBoostRanker is not fitted"))?;
+        let dataset = dataset_from_arrays(x, sparse_offsets, sparse_ids, None)?;
+        let targets = y.as_slice()?.to_vec();
+        let n_threads = self.n_threads;
+        let metrics = py
+            .allow_threads(|| {
+                run_with_optional_threads(n_threads, || model.metrics(&dataset, &targets, &groups))
+            })
+            .map_err(to_py_value_error)?;
+        Ok(BTreeMap::from([
+            ("ndcg".to_string(), metrics.ndcg),
+            ("map".to_string(), metrics.map),
+            ("mrr".to_string(), metrics.mrr),
+        ]))
+    }
+
+    fn save(&self, py: Python<'_>, path: PathBuf) -> PyResult<()> {
+        let model = self
+            .model
+            .as_ref()
+            .ok_or_else(|| PyRuntimeError::new_err("CartoBoostRanker is not fitted"))?;
+        py.allow_threads(|| model.save(path)).map_err(to_py_error)
+    }
+
+    #[staticmethod]
+    fn load(py: Python<'_>, path: PathBuf) -> PyResult<Self> {
+        let model = py
+            .allow_threads(|| RankerModel::load(path))
+            .map_err(to_py_error)?;
+        Self::from_model(model)
+    }
+
+    #[getter]
+    fn n_estimators(&self) -> usize {
+        self.n_estimators
+    }
+
+    #[getter]
+    fn learning_rate(&self) -> f64 {
+        self.learning_rate
+    }
+
+    #[getter]
+    fn max_depth(&self) -> usize {
+        self.max_depth
+    }
+
+    #[getter]
+    fn min_samples_leaf(&self) -> usize {
+        self.min_samples_leaf
+    }
+
+    #[getter]
+    fn min_gain(&self) -> f64 {
+        self.min_gain
+    }
+
+    #[getter]
+    fn objective(&self) -> String {
+        self.objective.clone()
+    }
+
+    #[getter]
+    fn splitters(&self) -> Vec<String> {
+        self.splitters.clone()
+    }
+
+    #[getter]
+    fn feature_count(&self) -> usize {
+        self.model
+            .as_ref()
+            .map(|model| model.feature_count)
+            .unwrap_or(0)
+    }
+
+    #[getter]
+    fn requires_sparse_sets(&self) -> bool {
+        self.model
+            .as_ref()
+            .map(RankerModel::requires_sparse_sets)
+            .unwrap_or(false)
+    }
+
+    #[getter]
+    fn feature_schema_json(&self) -> PyResult<Option<String>> {
+        self.model
+            .as_ref()
+            .and_then(|model| model.feature_schema.as_ref())
+            .map(serde_json::to_string)
+            .transpose()
+            .map_err(|err| PyValueError::new_err(err.to_string()))
+    }
+
+    #[getter]
+    fn metadata_json(&self) -> PyResult<Option<String>> {
+        self.model
+            .as_ref()
+            .and_then(|model| model.metadata.as_ref())
+            .map(serde_json::to_string)
+            .transpose()
+            .map_err(|err| PyValueError::new_err(err.to_string()))
+    }
+
+    #[getter]
+    fn training_config_json(&self) -> PyResult<Option<String>> {
+        self.model
+            .as_ref()
+            .and_then(|model| model.training_config.as_ref())
+            .map(serde_json::to_string)
+            .transpose()
+            .map_err(|err| PyValueError::new_err(err.to_string()))
+    }
+}
+
+impl NativeCartoBoostRanker {
+    fn ranker_config(&self) -> PyResult<RankerConfig> {
+        Ok(RankerConfig {
+            n_estimators: self.n_estimators,
+            learning_rate: self.learning_rate,
+            max_depth: self.max_depth,
+            min_samples_leaf: self.min_samples_leaf,
+            min_gain: self.min_gain,
+            splitters: parse_splitters(&self.splitters)?,
+            leaf_predictor: parse_leaf_predictor(&self.leaf_predictor)?,
+            linear_leaf_features: self.linear_leaf_features.clone(),
+            linear_lambda_l2: self.l2_regularization,
+            constant_lambda_l2: self.constant_l2_regularization,
+            fuzzy: self.fuzzy,
+            fuzzy_bandwidth: self.fuzzy_bandwidth,
+            fuzzy_kernel: parse_fuzzy_kernel(&self.fuzzy_kernel)?,
+            objective: parse_ranking_objective(&self.objective)?,
+        })
+    }
+
+    fn from_model(model: RankerModel) -> PyResult<Self> {
+        let training_config = model.training_config.clone();
+        let (
+            max_depth,
+            min_samples_leaf,
+            min_gain,
+            splitters,
+            leaf_predictor,
+            linear_leaf_features,
+            l2_regularization,
+            constant_l2_regularization,
+            fuzzy,
+            fuzzy_bandwidth,
+            fuzzy_kernel,
+            objective,
+        ) = if let Some(config) = training_config {
+            (
+                config.max_depth,
+                config.min_samples_leaf,
+                config.min_gain,
+                splitter_names(&config.splitters),
+                leaf_predictor_name(&config.leaf_predictor).to_string(),
+                config.linear_leaf_features,
+                config.linear_lambda_l2,
+                config.constant_lambda_l2,
+                config.fuzzy,
+                config.fuzzy_bandwidth,
+                fuzzy_kernel_name(config.fuzzy_kernel).to_string(),
+                ranking_objective_name(config.objective).to_string(),
+            )
+        } else {
+            (
+                1,
+                1,
+                0.0,
+                vec!["axis".to_string()],
+                "constant".to_string(),
+                Vec::new(),
+                1.0,
+                0.0,
+                false,
+                0.0,
+                "linear".to_string(),
+                ranking_objective_name(model.objective).to_string(),
+            )
+        };
+        Ok(Self {
+            n_estimators: model.trees.len(),
+            learning_rate: model.learning_rate,
+            max_depth,
+            min_samples_leaf,
+            min_gain,
+            objective,
+            splitters,
+            leaf_predictor,
+            linear_leaf_features,
+            l2_regularization,
+            constant_l2_regularization,
+            fuzzy,
+            fuzzy_bandwidth,
+            fuzzy_kernel,
+            n_threads: None,
+            model: Some(model),
+        })
+    }
+}
+
+fn parse_classification_objective(
+    name: &str,
+    class_count: usize,
+) -> PyResult<ClassificationObjective> {
+    match name {
+        "auto" if class_count == 2 => Ok(ClassificationObjective::BinaryLogLoss),
+        "auto" => Ok(ClassificationObjective::MulticlassLogLoss),
+        "binary_logloss" | "logloss" | "binary" => Ok(ClassificationObjective::BinaryLogLoss),
+        "multiclass_logloss" | "multi_logloss" | "multiclass" => {
+            Ok(ClassificationObjective::MulticlassLogLoss)
+        }
+        _ => Err(PyValueError::new_err(format!(
+            "unknown classification objective {name:?}; expected 'auto', 'binary_logloss', \
+             or 'multiclass_logloss'"
+        ))),
+    }
+}
+
+fn classification_objective_name(objective: ClassificationObjective) -> &'static str {
+    match objective {
+        ClassificationObjective::BinaryLogLoss => "binary_logloss",
+        ClassificationObjective::MulticlassLogLoss => "multiclass_logloss",
+    }
+}
+
+fn parse_ranking_objective(name: &str) -> PyResult<RankingObjective> {
+    match name {
+        "pairwise_logit" | "pairwise" => Ok(RankingObjective::PairwiseLogit),
+        "lambdarank" | "lambda_rank" => Ok(RankingObjective::LambdaRank),
+        _ => Err(PyValueError::new_err(format!(
+            "unknown ranking objective {name:?}; expected 'pairwise_logit' or 'lambdarank'"
+        ))),
+    }
+}
+
+fn ranking_objective_name(objective: RankingObjective) -> &'static str {
+    match objective {
+        RankingObjective::PairwiseLogit => "pairwise_logit",
+        RankingObjective::LambdaRank => "lambdarank",
+    }
+}
+
+#[pyfunction]
+#[pyo3(signature = (
+    rows,
+    targets,
+    feature_schema_json=None,
+    sample_weight=None,
+    low_cardinality_threshold=16,
+    smoothing=10.0
+))]
+fn categorical_fit_transform(
+    rows: Vec<Vec<String>>,
+    targets: Vec<f64>,
+    feature_schema_json: Option<String>,
+    sample_weight: Option<Vec<f64>>,
+    low_cardinality_threshold: usize,
+    smoothing: f64,
+) -> PyResult<(Vec<Vec<f64>>, String)> {
+    let schema = feature_schema_json
+        .map(|payload| serde_json::from_str::<FeatureSchema>(&payload))
+        .transpose()
+        .map_err(|err| PyValueError::new_err(format!("invalid feature_schema: {err}")))?;
+    let (dataset, encoder) = CategoricalEncoder::fit_transform_rows(
+        &rows,
+        &targets,
+        schema.as_ref(),
+        sample_weight.as_deref(),
+        CategoricalEncodingConfig {
+            low_cardinality_threshold,
+            smoothing,
+        },
+    )
+    .map_err(to_py_value_error)?;
+    let encoder_json =
+        serde_json::to_string(&encoder).map_err(|err| PyValueError::new_err(err.to_string()))?;
+    Ok((dataset_to_rows(&dataset), encoder_json))
+}
+
+#[pyfunction]
+fn categorical_transform(rows: Vec<Vec<String>>, encoder_json: String) -> PyResult<Vec<Vec<f64>>> {
+    let encoder: CategoricalEncoder = serde_json::from_str(&encoder_json)
+        .map_err(|err| PyValueError::new_err(format!("invalid categorical encoder: {err}")))?;
+    let dataset = encoder.transform_rows(&rows).map_err(to_py_value_error)?;
+    Ok(dataset_to_rows(&dataset))
+}
+
+fn dataset_to_rows(dataset: &Dataset) -> Vec<Vec<f64>> {
+    (0..dataset.n_rows())
+        .map(|row| {
+            (0..dataset.n_cols())
+                .map(|col| dataset.get(row, col))
+                .collect()
+        })
+        .collect()
+}
+
 fn parse_splitters(names: &[String]) -> PyResult<Vec<SplitterKind>> {
     let mut splitters = Vec::with_capacity(names.len());
     for name in names {
@@ -7652,6 +8681,10 @@ fn to_py_neural_error(err: cartoboost_neural::NeuralError) -> PyErr {
 #[pymodule]
 fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<NativeCartoBoostRegressor>()?;
+    m.add_class::<NativeCartoBoostClassifier>()?;
+    m.add_class::<NativeCartoBoostRanker>()?;
+    m.add_function(wrap_pyfunction!(categorical_fit_transform, m)?)?;
+    m.add_function(wrap_pyfunction!(categorical_transform, m)?)?;
     m.add_class::<NativeForecastFrame>()?;
     m.add_class::<NativeForecastResult>()?;
     m.add_class::<NativeForecastFold>()?;

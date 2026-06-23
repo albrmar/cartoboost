@@ -14,6 +14,8 @@ appropriate, and artifact helpers.
 | Question | Use | Primary guide |
 | --- | --- | --- |
 | Does each row describe one taxi trip, route observation, zone-hour aggregate, or residual to regress? | `cartoboost.CartoBoostRegressor` | [Python API Reference](../reference/python-api.md) |
+| Is the target a class label such as airport-trip flag, high-delay bucket, or route-risk class? | `cartoboost.CartoBoostClassifier` | [Python API Reference](../reference/python-api.md) |
+| Are rows grouped by search, customer, pickup zone, lane, or route request and need within-group ordering? | `cartoboost.CartoBoostRanker` | [Python API Reference](../reference/python-api.md) |
 | Are you choosing how place, time, sparse memberships, losses, fuzzy routing, or local residual trends enter that row-level model? | `CartoBoostRegressor` parameters | [Parameters](parameters.md) |
 | Is the target one regular pickup-zone or lane series with its own history? | Local forecasters such as `SeasonalNaiveForecaster`, `ThetaForecaster`, `ETSForecaster`, `AutoARIMAForecaster`, or `KalmanForecaster` | [Forecasting Model Guides](forecasting-models/index.md) |
 | Are many related pickup zones, dropoff zones, or route panels forecast from shared lag features? | `CartoBoostLagForecaster` | [CartoBoost Lag](forecasting-models/cartoboost-lag.md) |
@@ -83,6 +85,7 @@ Choose controls from the structure you want to test:
 | Spatial boundaries in coordinates | `["axis", "diagonal_2d", "gaussian_2d"]` |
 | Wraparound time effects | `["axis", "periodic:24"]` or another `periodic:<period>` |
 | Sparse pickup/dropoff zones, routes, cells, or areas | `["axis", "sparse_set"]` plus `sparse_sets=` |
+| Native categorical pickup/dropoff labels or service tiers | `FeatureKind.CATEGORICAL` or `FeatureKind.ORDINAL` in `feature_schema=` |
 | Smooth changes near boundaries | `fuzzy=True`, `fuzzy_bandwidth=...`, `fuzzy_kernel=...` |
 | Outlier-resistant regression | `loss="mae"`, `loss="huber"`, or `loss="log_l2"` |
 | Conditional intervals or asymmetric service targets | `loss="quantile"`, `quantile_alpha=...` |
@@ -92,6 +95,115 @@ Choose controls from the structure you want to test:
 See [Python API Reference](../reference/python-api.md), [Parameters](parameters.md),
 [Feature Schema](../feature_schema.md), [Sparse Features](../sparse_features.md),
 and [Temporal-Spatial Modeling](../spatial_modeling.md).
+
+## Categorical Features
+
+Regressor, classifier, and ranker inputs may include pandas categorical,
+string, or object columns, or columns explicitly marked with
+`FeatureKind.CATEGORICAL` or `FeatureKind.ORDINAL`. CartoBoost records a stable
+category mapping in saved artifacts. Low-cardinality nominal columns become
+numeric indicator columns, including deterministic subset partition indicators
+where feasible; ordinal columns use a deterministic ordered mapping, and
+high-cardinality nominal columns use smoothed target statistics with an explicit
+unknown-category value.
+
+```python
+from cartoboost import CartoBoostRegressor, FeatureKind
+
+schema = {"dense": [{"name": "PULocationID", "kind": FeatureKind.CATEGORICAL}]}
+model = CartoBoostRegressor(splitters=["axis"])
+model.fit(zone_features, fare, feature_schema=schema)
+pred = model.predict(zone_features_holdout)
+```
+
+Keep categorical preprocessing inside the fitted CartoBoost artifact when
+comparing against baselines: give the baseline an equivalent train-only
+encoding and evaluate on the same split.
+
+## Tabular And Spatial Classification
+
+Use `CartoBoostClassifier` when each row has a discrete taxi-domain label and
+the decision boundary may depend on pickup/dropoff coordinates, hour, route
+memberships, or sparse zone signals. The native Rust objective layer fits
+binary logistic loss for two classes and multiclass logistic loss for three or
+more classes. Python keeps sklearn-style label handling, `predict`,
+`predict_proba`, `decision_function`, `class_weight`, and save/load label
+metadata.
+
+```python
+from cartoboost import CartoBoostClassifier
+
+clf = CartoBoostClassifier(
+    n_estimators=200,
+    learning_rate=0.04,
+    max_depth=4,
+    min_samples_leaf=20,
+    splitters=["axis", "diagonal_2d", "gaussian_2d", "periodic:24"],
+    class_weight="balanced",
+)
+clf.fit(X_train, airport_trip_flag)
+prob_airport = clf.predict_proba(X_test)[:, list(clf.classes_).index(1)]
+```
+
+Report classifier quality with logloss plus threshold-free metrics such as
+ROC-AUC or PR-AUC when the positive class is rare. Compare against dummy and
+standard tabular baselines on the same train/test split before interpreting a
+CartoBoost gain.
+
+## Grouped Ranking
+
+Use `CartoBoostRanker` when rows are only comparable within a query group:
+candidate dropoff zones for one pickup, route alternatives for one shipment,
+or ranked taxi-zone actions for one planning context. The native Rust trainer
+uses pairwise logistic or LambdaRank objectives and reports NDCG, MAP, and MRR
+from grouped predictions.
+
+```python
+from cartoboost import CartoBoostRanker
+
+ranker = CartoBoostRanker(
+    n_estimators=200,
+    learning_rate=0.04,
+    max_depth=4,
+    splitters=["axis", "diagonal_2d", "gaussian_2d"],
+    objective="lambdarank",
+)
+ranker.fit(X_train, relevance_train, groups=query_sizes_train)
+scores = ranker.predict(X_test)
+metrics = ranker.score_groups(X_test, relevance_test, groups=query_sizes_test)
+```
+
+Rows for each query must be contiguous. Pass `groups` as group sizes or
+contiguous query ids, or set `group_col` when the query id is a column in `X`.
+
+## Spatial Validation And Diagnostics
+
+Use spatial validation when the claim is about generalizing to withheld zones,
+route corridors, or environmental regimes rather than interpolating among
+nearby training rows. `spatial_buffered_cv` holds out spatial blocks and removes
+nearby training rows inside a buffer. `spatial_grouped_cv` combines whole-group
+holdout with the same optional buffer, which is useful for pickup zones,
+customer groups, or lane ids. `environmental_blocked_cv` clusters covariates
+such as weather, demand regimes, or operational conditions.
+
+```python
+from cartoboost import residual_morans_i, spatial_buffered_cv, spatial_cv_gap
+
+folds = list(
+    spatial_buffered_cv(
+        projected_pickup_xy,
+        n_splits=5,
+        buffer_radius=500.0,
+        coordinate_units="meters",
+    )
+)
+gap = spatial_cv_gap(random_cv_rmse, buffered_cv_rmse)
+residual_i = residual_morans_i(projected_pickup_xy, y_test - pred_test)
+```
+
+Positive spatial buffers should use projected linear units. Latitude/longitude
+degree buffers fail clearly unless the caller explicitly allows degree
+distances.
 
 ## Browser Splitter Visualizer
 
