@@ -466,6 +466,57 @@ fn lag_plus_forecaster_calibrates_residual_corrections() {
 }
 
 #[test]
+fn lag_plus_disables_calibration_when_short_panel_only_supports_base_fit() {
+    let frame = ForecastFrame::new(
+        vec![
+            ForecastRow::new("PU1", ts(1), 20.0),
+            ForecastRow::new("PU1", ts(2), 22.0),
+            ForecastRow::new("PU9", ts(1), 100.0),
+            ForecastRow::new("PU9", ts(2), 103.0),
+        ],
+        ForecastFrequency::Daily,
+    )
+    .expect("valid short panel");
+    let mut forecaster = LagPlusForecaster::new(LagPlusConfig {
+        lag_config: LagFeatureConfig {
+            lags: vec![1, 7],
+            rolling_mean_windows: vec![3],
+            partial_rolling_mean_windows: Vec::new(),
+            rolling_std_windows: Vec::new(),
+            rolling_min_windows: Vec::new(),
+            rolling_max_windows: Vec::new(),
+            ewm_alpha_percents: Vec::new(),
+            difference_lags: vec![7],
+            rolling_trend_windows: vec![3],
+            covariate_features: Vec::new(),
+            covariate_indicator_values: Default::default(),
+            covariate_calendar_interactions: false,
+            calendar_features: Vec::new(),
+        },
+        booster_config: small_booster_config(),
+        target_mode: GlobalForecastTargetMode::Level,
+        validation_window: None,
+        objective: ForecastObjective::Wape,
+        shrinkage_strength: 2.0,
+        seasonal_bucket_period: Some(7),
+    })
+    .expect("forecaster");
+
+    forecaster.fit(&frame).expect("fit");
+    let forecast = forecaster.predict(2).expect("predict");
+    let metadata = forecaster.metadata();
+
+    assert_eq!(forecast.predictions().len(), 4);
+    assert_eq!(metadata["validation_window"], serde_json::json!(0));
+    assert_eq!(metadata["enabled"], serde_json::json!(false));
+    assert_eq!(metadata["corrections"], serde_json::json!({}));
+    assert!(forecast
+        .predictions()
+        .iter()
+        .all(|prediction| prediction.model == "lag_plus" && prediction.mean.is_finite()));
+}
+
+#[test]
 fn local_standard_scaled_forecaster_inverts_predictions_to_original_scale() {
     let frame = ForecastFrame::new(
         vec![
