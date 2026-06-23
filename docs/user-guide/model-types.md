@@ -97,9 +97,8 @@ and [Temporal-Spatial Modeling](../spatial_modeling.md).
 
 Use the [Modeling Lab](../../modeling-lab) when you want to inspect a fitted
 CartoBoost model in the browser before moving to a Python or CLI workflow. The
-lab runs the Rust WebAssembly core locally, loads either the bundled January
-2024 yellow taxi week sample or an 8,000-row route-hour sample spread across
-the full January 2024 yellow taxi month, and renders the fitted tree structure
+lab runs the Rust WebAssembly core locally, loads the bundled 5,000-row
+single-lane yellow taxi demand sample, and renders the fitted tree structure
 without sending data to a server.
 
 The visualizer is opt-in metadata on the WebAssembly regression and neural

@@ -30,10 +30,10 @@ browser, then asks for opt-in model-structure metadata from that same fit. The
 visualizer renders a splitter atlas, boosted-tree blueprints, split-kind mix,
 top splitter rules, depth profile, and largest holdout residuals.
 
-Use the built-in taxi buttons to load either the January 2024 yellow taxi week
-sample or the 8,000-row route-hour sample spanning the full January 2024 yellow
-taxi month. The month sample is derived from the TLC public yellow taxi parquet
-source and kept small enough for browser documentation use.
+Use the built-in taxi button to load the bundled 5,000-row single-lane yellow
+taxi demand sample. The sample is shaped for browser forecasting demos: one
+pickup/dropoff lane, one continuous hourly series, and enough history for
+roster comparisons without changing the forecast task into a panel problem.
 
 Visualization metadata is requested only by the Modeling Lab. Main WebAssembly
 forecasting, regression, and neural prediction calls continue without tree

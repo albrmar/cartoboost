@@ -1024,19 +1024,74 @@ fn run_forecast_request(request: BrowserForecastRequest) -> Result<BrowserForeca
         });
     }
     let mut forecaster = build_forecaster(&model, &options, &frame, request.horizon)?;
-    forecaster.fit(&frame)?;
-    let forecast = forecaster.predict(request.horizon)?;
-    Ok(BrowserForecastResponse {
-        metadata: js_safe_json_value(json!({
-            "model": forecaster.model_name(),
-            "input": frame.metadata_value(),
-            "modelMetadata": forecaster.metadata(),
-        })),
+    let requested_model = model.trim().to_ascii_lowercase().replace('-', "_");
+    let fit_result = forecaster
+        .fit(&frame)
+        .and_then(|()| forecaster.predict(request.horizon));
+    match fit_result {
+        Ok(forecast) => Ok(forecast_response(
+            forecaster.model_name(),
+            &frame,
+            forecaster.metadata(),
+            forecast,
+            None,
+        )),
+        Err(error) if tolerant_browser_forecast_model(&requested_model) => {
+            tolerant_forecast_response(&requested_model, &frame, request.horizon, error)
+        }
+        Err(error) => Err(error),
+    }
+}
+
+fn forecast_response(
+    model_name: &str,
+    frame: &ForecastFrame,
+    model_metadata: Value,
+    forecast: ForecastResult,
+    warning: Option<Value>,
+) -> BrowserForecastResponse {
+    let mut metadata = json!({
+        "model": model_name,
+        "input": frame.metadata_value(),
+        "modelMetadata": model_metadata,
+    });
+    if let Some(warning) = warning {
+        metadata["warning"] = warning;
+    }
+    BrowserForecastResponse {
+        metadata: js_safe_json_value(metadata),
         forecast: forecast.to_json_value(),
         components: None,
         samples: None,
         quantiles: None,
-    })
+    }
+}
+
+fn tolerant_browser_forecast_model(model: &str) -> bool {
+    !matches!(model, "" | "naive")
+}
+
+fn tolerant_forecast_response(
+    requested_model: &str,
+    frame: &ForecastFrame,
+    horizon: usize,
+    error: CartoBoostError,
+) -> Result<BrowserForecastResponse> {
+    let mut fallback = NaiveForecaster::new();
+    fallback.fit(frame)?;
+    let forecast = fallback.predict(horizon)?;
+    Ok(forecast_response(
+        fallback.model_name(),
+        frame,
+        fallback.metadata(),
+        forecast,
+        Some(json!({
+            "requestedModel": requested_model,
+            "fallbackModel": fallback.model_name(),
+            "reason": error.to_string(),
+            "policy": "valid browser forecast frame; requested model could not fit this dataset shape, so WebAssembly returned a simple native baseline with this warning",
+        })),
+    ))
 }
 
 fn fit_piecewise_linear_seasonal_artifact_request(

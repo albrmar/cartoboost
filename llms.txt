@@ -12,8 +12,7 @@ temporal, spatial, geotemporal, graph, and neural-embedding modeling.
 - Docs homepage component: ./src/pages/index.tsx
 - Modeling Lab page: ./src/pages/modeling-lab.tsx
 - Modeling Lab client: ./src/components/ModelingLabClient/index.tsx
-- Modeling Lab samples: ./static/samples/yellow_tripdata_2024-01-week1.parquet
-  and ./static/samples/yellow_tripdata_2024-01-month-route-hour-sample.parquet
+- Modeling Lab sample: ./static/samples/yellow_taxi_2024-01-single-lane-5000.parquet
 - Docs theme stylesheet: ./src/css/custom.css
 - Installation: ./docs/installation.md
 - Getting started: ./docs/getting-started.md
@@ -90,8 +89,8 @@ temporal, spatial, geotemporal, graph, and neural-embedding modeling.
   trip distance, fare, duration, and demand.
 - Use the Modeling Lab for browser-local WebAssembly forecasting, regression,
   graph/neural modeling smoke tests, taxi-style target diagnostics, and
-  opt-in boosted-tree splitter visualization with week and month January 2024
-  yellow taxi samples. The model visualizer shows tree structure, split kind
+  opt-in boosted-tree splitter visualization with the 5,000-row single-lane
+  yellow taxi sample. The model visualizer shows tree structure, split kind
   mix, splitter rules, depth profiles, and holdout residuals without slowing
   normal prediction calls.
 - Treat graph and neural standalone models as first-class direct APIs. Do not

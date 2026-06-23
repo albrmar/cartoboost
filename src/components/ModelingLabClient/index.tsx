@@ -59,6 +59,12 @@ type ParquetWasmModule = {
 type ForecastResponse = {
   metadata: {
     model: string;
+    warning?: {
+      requestedModel?: string;
+      fallbackModel?: string;
+      reason?: string;
+      policy?: string;
+    };
     input: {
       n_rows: number;
       is_panel: boolean;
@@ -273,10 +279,8 @@ const neuralPipelineLabels: Record<string, string> = {
 
 const graphNeuralPipelines = new Set(['node2vec', 'graphsage', 'hetero_graphsage', 'hinsage']);
 type ActiveModelingSurface = 'forecast' | 'model' | 'neural';
-const TAXI_WEEK_SAMPLE_ROWS = 2500;
-const TAXI_MONTH_SAMPLE_ROWS = 8000;
+const TAXI_LANE_SAMPLE_ROWS = 5000;
 const VISUALIZED_MODEL_MAX_ROWS = 800;
-const JANUARY_2024_YELLOW_TAXI_MONTH_SOURCE_URL = 'https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_2024-01.parquet';
 const TAXI_ZONE_CENTROIDS: Record<string, {lat: number; lon: number}> = {
   4: {lat: 40.723752, lon: -73.976968},
   7: {lat: 40.761493, lon: -73.919694},
@@ -342,8 +346,7 @@ const TAXI_ZONE_CENTROIDS: Record<string, {lat: number; lon: number}> = {
 export default function ModelingLabClient(): React.ReactElement {
   const wasmJsUrl = useBaseUrl('/wasm/cartoboost/cartoboost_wasm.js');
   const wasmBinaryUrl = useBaseUrl('/wasm/cartoboost/cartoboost_wasm_bg.wasm');
-  const januaryTaxiParquetUrl = useBaseUrl('/samples/yellow_tripdata_2024-01-week1.parquet');
-  const januaryTaxiMonthSampleUrl = useBaseUrl('/samples/yellow_tripdata_2024-01-month-route-hour-sample.parquet');
+  const taxiLaneSampleUrl = useBaseUrl('/samples/yellow_taxi_2024-01-single-lane-5000.parquet');
   const [table, setTable] = useState<ParsedTable | null>(null);
   const [timestampCol, setTimestampCol] = useState('timestamp');
   const [targetCol, setTargetCol] = useState('target');
@@ -369,15 +372,14 @@ export default function ModelingLabClient(): React.ReactElement {
   const [graphWeightCol, setGraphWeightCol] = useState('');
   const [status, setStatus] = useState('Drop a CSV, TSV, or Parquet file to start.');
   const [isRunning, setIsRunning] = useState(false);
-  const [isLoadingTaxiWeek, setIsLoadingTaxiWeek] = useState(false);
-  const [isLoadingTaxiMonth, setIsLoadingTaxiMonth] = useState(false);
+  const [isLoadingTaxiLane, setIsLoadingTaxiLane] = useState(false);
   const [runProgress, setRunProgress] = useState<RunProgress | null>(null);
   const [runLog, setRunLog] = useState<RunLogEntry[]>([]);
   const [modelOptions, setModelOptions] = useState<ModelOption[]>(fallbackModelOptions);
 
   const previewRows = table?.rows.slice(0, 6) ?? [];
   const selectedForecastModel = modelOptions.find((option) => option.value === model) ?? modelOptions[0];
-  const isLoadingTaxiSample = isLoadingTaxiWeek || isLoadingTaxiMonth;
+  const isLoadingTaxiSample = isLoadingTaxiLane;
   const selectedColumnsReady =
     table !== null && timestampCol !== '' && targetCol !== '' && table.columns.includes(timestampCol) && table.columns.includes(targetCol);
 
@@ -490,60 +492,31 @@ export default function ModelingLabClient(): React.ReactElement {
     setStatus(message);
   }, []);
 
-  const loadJanuaryTaxiParquet = useCallback(async () => {
-    setIsLoadingTaxiWeek(true);
-    setStatus('Loading real January 2024 yellow taxi Parquet week.');
+  const loadTaxiLaneSample = useCallback(async () => {
+    setIsLoadingTaxiLane(true);
+    setStatus('Loading the 5,000-row single-lane taxi demand sample.');
     try {
       await waitForBrowserPaint();
-      const response = await fetch(januaryTaxiParquetUrl);
+      const response = await fetch(taxiLaneSampleUrl);
       if (!response.ok) {
-        throw new Error(`Unable to load January taxi Parquet (${response.status}).`);
+        throw new Error(`Unable to load taxi lane sample (${response.status}).`);
       }
-      setStatus('Parsing January 2024 yellow taxi week sample.');
+      setStatus('Parsing single-lane taxi demand sample.');
       await waitForBrowserPaint();
       const parsed = buildTaxiRouteHourSampleTable(
         await parseParquetBuffer(
           await response.arrayBuffer(),
-          'yellow_tripdata_2024-01-week1.parquet',
+          'yellow_taxi_2024-01-single-lane-5000.parquet',
         ),
-        TAXI_WEEK_SAMPLE_ROWS,
+        TAXI_LANE_SAMPLE_ROWS,
       );
-      applyTaxiTable(parsed, `Loaded ${parsed.rows.length.toLocaleString()} sampled route-hour demand rows from January 2024 yellow taxi week 1.`);
+      applyTaxiTable(parsed, `Loaded ${parsed.rows.length.toLocaleString()} hourly rows for taxi lane PU132-DO236.`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : String(error));
     } finally {
-      setIsLoadingTaxiWeek(false);
+      setIsLoadingTaxiLane(false);
     }
-  }, [applyTaxiTable, januaryTaxiParquetUrl]);
-
-  const loadJanuaryTaxiMonth = useCallback(async () => {
-    setIsLoadingTaxiMonth(true);
-    setStatus('Loading sampled route-hour rows from the January 2024 yellow taxi month.');
-    try {
-      await waitForBrowserPaint();
-      const response = await fetch(januaryTaxiMonthSampleUrl);
-      if (!response.ok) {
-        throw new Error(`Unable to load January taxi month sample (${response.status}).`);
-      }
-      setStatus('Parsing January 2024 yellow taxi month sample.');
-      await waitForBrowserPaint();
-      const parsed = buildTaxiRouteHourSampleTable(
-        await parseParquetBuffer(
-          await response.arrayBuffer(),
-          'yellow_tripdata_2024-01-month-route-hour-sample.parquet',
-        ),
-        TAXI_MONTH_SAMPLE_ROWS,
-      );
-      applyTaxiTable(
-        parsed,
-        `Loaded ${parsed.rows.length.toLocaleString()} route-hour demand rows sampled across the January 2024 yellow taxi month. Source: ${JANUARY_2024_YELLOW_TAXI_MONTH_SOURCE_URL}`,
-      );
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : String(error));
-    } finally {
-      setIsLoadingTaxiMonth(false);
-    }
-  }, [applyTaxiTable, januaryTaxiMonthSampleUrl]);
+  }, [applyTaxiTable, taxiLaneSampleUrl]);
 
   const onDrop = useCallback(
     async (event: React.DragEvent<HTMLLabelElement>) => {
@@ -941,14 +914,11 @@ export default function ModelingLabClient(): React.ReactElement {
           </p>
         </div>
         <div className={styles.headerActions}>
-          <button className={styles.secondaryButton} type="button" disabled={isLoadingTaxiSample || isRunning} onClick={() => void loadJanuaryTaxiParquet()}>
-            {isLoadingTaxiWeek ? 'Loading taxi week' : 'Load taxi week'}
-          </button>
-          <button className={styles.secondaryButton} type="button" disabled={isLoadingTaxiSample || isRunning} onClick={() => void loadJanuaryTaxiMonth()}>
-            {isLoadingTaxiMonth ? 'Loading taxi month' : 'Load taxi month'}
+          <button className={styles.secondaryButton} type="button" disabled={isLoadingTaxiSample || isRunning} onClick={() => void loadTaxiLaneSample()}>
+            {isLoadingTaxiLane ? 'Loading taxi lane' : 'Load taxi lane'}
           </button>
           {isLoadingTaxiSample && (
-            <div className={styles.loadingBar} role="progressbar" aria-label={isLoadingTaxiMonth ? 'Loading taxi month' : 'Loading taxi week'}>
+            <div className={styles.loadingBar} role="progressbar" aria-label="Loading taxi lane">
               <span />
             </div>
           )}
@@ -1177,7 +1147,7 @@ export default function ModelingLabClient(): React.ReactElement {
             </div>
           </div>
           {(runProgress || isLoadingTaxiSample) && (
-            <ProgressBar progress={runProgress} label={isLoadingTaxiMonth ? 'Loading taxi month' : isLoadingTaxiWeek ? 'Loading taxi week' : undefined} />
+            <ProgressBar progress={runProgress} label={isLoadingTaxiLane ? 'Loading taxi lane' : undefined} />
           )}
           {runLog.length > 0 && (
             <div className={styles.runLog} aria-live="polite" aria-label="Run activity">
@@ -3140,6 +3110,16 @@ function ForecastTable({records}: {records: ForecastRecord[]}) {
   );
 }
 
+function forecastWarningLabel(response?: ForecastResponse) {
+  const warning = response?.metadata.warning;
+  if (!warning) {
+    return null;
+  }
+  const fallback = warning.fallbackModel ?? response?.metadata.model ?? 'fallback';
+  const reason = warning.reason ? `: ${warning.reason}` : '';
+  return `fallback to ${fallback}${reason}`;
+}
+
 function ComparisonTable({results}: {results: ComparisonResult[]}) {
   return (
     <div className={styles.tableScroller}>
@@ -3162,7 +3142,7 @@ function ComparisonTable({results}: {results: ComparisonResult[]}) {
                 <td>{result.pipeline}</td>
                 <td>{result.response ? result.response.forecast.records.length.toLocaleString() : '-'}</td>
                 <td>{first ? formatMetric(first.prediction) : '-'}</td>
-                <td>{result.error ?? 'ok'}</td>
+                <td>{result.error ?? forecastWarningLabel(result.response) ?? 'ok'}</td>
               </tr>
             );
           })}
@@ -3221,7 +3201,7 @@ function BacktestTable({results}: {results: BacktestResult[]}) {
               <td>{formatMetric(result.mae)}</td>
               <td>{result.wape === undefined ? '-' : formatPercent(result.wape, 2).replace(/^\+/, '')}</td>
               <td>{result.comparedRows?.toLocaleString() ?? '-'}</td>
-              <td>{result.error ?? 'ok'}</td>
+                <td>{result.error ?? forecastWarningLabel(result.response) ?? 'ok'}</td>
             </tr>
           ))}
         </tbody>
@@ -5174,7 +5154,7 @@ function buildTaxiRouteHourSampleTable(table: ParsedTable, maxRows: number): Par
       'avg_duration_minutes',
     ],
     rows,
-    fileName: 'yellow_tripdata_2024-01-week1-route-hour-demand.parquet',
+    fileName: 'yellow_taxi_2024-01-single-lane-5000.parquet',
   }), maxRows);
 }
 
