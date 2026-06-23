@@ -104,11 +104,17 @@ html {
   border-radius: 8px;
 }
 
-.zoomable-image {
+.zoomable-image,
+.zoomable-diagram,
+main .docusaurus-mermaid-container svg,
+main .mermaid svg {
   cursor: zoom-in;
 }
 
-.zoomable-image:focus-visible {
+.zoomable-image:focus-visible,
+.zoomable-diagram:focus-visible,
+main .docusaurus-mermaid-container svg:focus-visible,
+main .mermaid svg:focus-visible {
   outline: 3px solid var(--cb-primary);
   outline-offset: 3px;
 }
@@ -124,44 +130,47 @@ html {
 }
 
 .image-zoom-backdrop {
-  align-items: center;
   background: rgba(7, 16, 30, 0.86);
-  display: flex;
   inset: 0;
-  justify-content: center;
-  padding: 1.5rem;
   position: fixed;
   z-index: 9999;
 }
 
 .image-zoom-frame {
-  align-items: center;
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  max-height: 94vh;
-  max-width: min(96vw, 1400px);
-  position: relative;
+  inset: 0;
+  position: absolute;
 }
 
-.image-zoom-frame img {
-  background: var(--ifm-background-color);
+.image-zoom-toolbar {
+  align-items: center;
+  background: rgba(11, 18, 32, 0.94);
   border: 1px solid var(--cb-border);
   border-radius: 8px;
-  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.42);
-  max-height: 86vh;
-  max-width: 100%;
-  object-fit: contain;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.28);
+  display: flex;
+  gap: 0.5rem;
+  left: 50%;
+  max-width: min(94vw, 900px);
+  padding: 0.45rem;
+  position: absolute;
+  top: 1rem;
+  transform: translateX(-50%);
+  z-index: 1;
 }
 
-.image-zoom-frame p {
+.image-zoom-toolbar p {
   color: var(--cb-text);
   font-size: 0.9rem;
+  font-weight: 700;
   margin: 0;
-  text-align: center;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0 0.4rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.image-zoom-close {
+.image-zoom-toolbar button {
   background: var(--cb-primary);
   border: 1px solid var(--cb-primary);
   border-radius: 8px;
@@ -170,16 +179,77 @@ html {
   font: inherit;
   font-size: 0.88rem;
   font-weight: 800;
-  min-height: 2.35rem;
+  min-height: 2.2rem;
+  min-width: 2.2rem;
   padding: 0.4rem 0.8rem;
-  position: absolute;
-  right: 0;
-  top: -3rem;
 }
 
-.image-zoom-close:focus-visible {
+.image-zoom-toolbar button:focus-visible {
   outline: 3px solid var(--cb-secondary);
   outline-offset: 3px;
+}
+
+.image-zoom-viewport {
+  align-items: center;
+  cursor: grab;
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  overflow: hidden;
+  padding: 5.25rem 1rem 1rem;
+  position: absolute;
+  touch-action: none;
+  user-select: none;
+}
+
+.image-zoom-viewport:active {
+  cursor: grabbing;
+}
+
+.image-zoom-canvas {
+  align-items: center;
+  display: flex;
+  justify-content: center;
+  transform-origin: center center;
+  will-change: transform;
+}
+
+.image-zoom-canvas img,
+.image-zoom-canvas svg {
+  background: var(--ifm-background-color);
+  border: 1px solid var(--cb-border);
+  border-radius: 8px;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.42);
+  max-height: calc(100vh - 7rem);
+  max-width: min(94vw, 1500px);
+  object-fit: contain;
+}
+
+.image-zoom-canvas svg {
+  background: #ffffff;
+  color: #122033;
+  height: auto;
+  min-height: 240px;
+}
+
+.image-zoom-svg {
+  display: flex;
+}
+
+@media (max-width: 720px) {
+  .image-zoom-toolbar {
+    left: 0.75rem;
+    max-width: calc(100vw - 1.5rem);
+    transform: none;
+  }
+
+  .image-zoom-toolbar p {
+    display: none;
+  }
+
+  .image-zoom-viewport {
+    padding-top: 4.8rem;
+  }
 }
 
 .agent-copy-controls {
