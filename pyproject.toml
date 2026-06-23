@@ -41,6 +41,9 @@ explain = [
 h3 = [
     "h3>=4.0",
 ]
+holidays = [
+    "holidays>=0.50,<0.99",
+]
 s2 = [
     "s2sphere>=0.2",
 ]
@@ -64,6 +67,7 @@ polars = [
 bench = [
     "datasetsforecast>=1.0",
     "functime>=0.9",
+    "holidays>=0.50,<0.99",
     "lightgbm>=4.0",
     "prophet>=1.1,<1.3",
     "pyarrow>=14.0",

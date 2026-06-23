@@ -22,7 +22,10 @@ temporal, spatial, geotemporal, graph, and neural-embedding modeling.
 - Piecewise linear seasonal forecasting is exposed through
   `cartoboost.forecasting.PiecewiseLinearSeasonalForecaster` and the WASM
   `piecewise_linear_seasonal` forecast model, including fitted artifact
-  prediction and component decomposition payloads. Use `trend_adjustments` /
+  prediction, automatic or explicit changepoints, Prophet-shaped holiday
+  tables, optional country holiday calendars via `cartoboost[holidays]`, prior
+  scale aliases normalized into native penalties, and component decomposition
+  payloads. Use `trend_adjustments` /
   `trend_adjustments_by_series` for external market-belief trend multipliers
   and `residual_shock_window`, `residual_shock_scale`, and
   `residual_shock_decay` for opt-in recent residual shock propagation.
@@ -74,6 +77,8 @@ temporal, spatial, geotemporal, graph, and neural-embedding modeling.
 
 - `cartoboost[h3]`: H3 latitude/longitude encoding helpers; deterministic
   validation and sparse-row assembly are Rust-backed.
+- `cartoboost[holidays]`: country holiday calendar expansion for the
+  Rust-native piecewise linear seasonal forecaster.
 - `cartoboost[s2]`: S2 latitude/longitude encoding helpers; deterministic
   validation and sparse-row assembly are Rust-backed.
 - `cartoboost[duckdb]`: DuckDB relation inputs.

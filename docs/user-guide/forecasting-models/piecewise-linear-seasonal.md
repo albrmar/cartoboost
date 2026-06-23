@@ -83,6 +83,23 @@ forecast = model.fit(frame).predict(24)
 components = model.components(24)
 ```
 
+Prophet-shaped holiday and changepoint inputs are accepted as configuration
+ergonomics over the same Rust-native model. Use `n_changepoints` for automatic
+changepoint placement, pass explicit dates through `changepoints=[...]` or
+`changepoint_timestamps=[...]`, and pass a Prophet-style `holidays` table with
+`holiday`, `ds`, optional `lower_window`, `upper_window`, and `prior_scale`
+columns. Holidays are normalized into native event windows, and prior scales
+are translated into per-event L2 penalties before fitting. Prophet-style
+`changepoint_prior_scale`, `seasonality_prior_scale`, `seasonality_mode`, and
+`holidays_mode` aliases map to the native changepoint penalty, seasonality
+penalty, component mode, and event mode fields.
+
+Built-in country holiday calendars are available before fitting through
+`model.add_country_holidays("US")` or the constructor argument
+`country_holidays="US"`. This path requires the optional `holidays` package:
+install `cartoboost[holidays]` when country calendars are needed. Explicit
+`holidays` dataframes do not require that extra.
+
 The Python class validates configuration and delegates fitting, prediction,
 component extraction, fitted artifact serialization, and forecast rows to the
 native binding. Python should not reimplement component math or fallback

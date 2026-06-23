@@ -476,6 +476,17 @@ export default function ModelingLabClient(): React.ReactElement {
     const nextTimestampCol = guessColumn(parsed.columns, ['timestamp', 'tpep_pickup_datetime', 'pickup_datetime', 'date', 'ds', 'time']) ?? parsed.columns[0] ?? '';
     const nextTargetCol = guessColumn(parsed.columns, ['target', 'total_amount', 'fare_amount', 'trip_distance', 'y', 'demand', 'trips', 'count', 'fare', 'duration']) ?? parsed.columns[1] ?? '';
     const nextSeriesCol = guessColumn(parsed.columns, ['series_id', 'unique_id', 'PULocationID', 'DOLocationID', 'zone', 'route']) ?? '';
+    const nextFeatureCols = defaultFeatureColumns(parsed, nextTargetCol, nextTimestampCol, nextSeriesCol);
+    const nextSparseFeatureCols = defaultSparseFeatureColumns(parsed, nextTargetCol, nextTimestampCol, nextSeriesCol);
+    const profile = buildTargetingProfile(
+      parsed,
+      nextTargetCol,
+      nextTimestampCol,
+      nextSeriesCol,
+      nextFeatureCols,
+      nextSparseFeatureCols,
+      modelOptions,
+    );
     setTable(parsed);
     setResult(null);
     setComparisonResults([]);
@@ -487,14 +498,18 @@ export default function ModelingLabClient(): React.ReactElement {
     setSeriesCol(nextSeriesCol);
     setFrequency('hourly');
     setSeasonLength(24);
-    setFeatureCols(defaultFeatureColumns(parsed, nextTargetCol, nextTimestampCol, nextSeriesCol));
-    setSparseFeatureCols(defaultSparseFeatureColumns(parsed, nextTargetCol, nextTimestampCol, nextSeriesCol));
-    setNeuralIdCol(guessColumn(parsed.columns, ['pickup_zone_id', 'PULocationID', 'zone_id', 'id']) ?? '');
-    setGraphSourceCol(guessColumn(parsed.columns, ['pickup_zone_id', 'PULocationID', 'source', 'source_id']) ?? '');
-    setGraphTargetCol(guessColumn(parsed.columns, ['dropoff_zone_id', 'DOLocationID', 'target_node', 'target_id', 'destination']) ?? '');
-    setGraphWeightCol(guessColumn(parsed.columns, ['edge_weight', 'weight', 'trip_count']) ?? '');
-    setStatus(message);
-  }, []);
+    setModel(profile.forecastModelValue);
+    setModelingMode(profile.splitterModeValue);
+    setModelingLoss(profile.lossValue);
+    setFeatureCols(profile.featureCols);
+    setSparseFeatureCols(profile.sparseFeatureCols);
+    setNeuralPipeline(profile.neuralPipeline);
+    setNeuralIdCol(profile.neuralIdCol || (guessColumn(parsed.columns, ['pickup_zone_id', 'PULocationID', 'zone_id', 'id']) ?? ''));
+    setGraphSourceCol(profile.graphSourceCol || (guessColumn(parsed.columns, ['pickup_zone_id', 'PULocationID', 'source', 'source_id']) ?? ''));
+    setGraphTargetCol(profile.graphTargetCol || (guessColumn(parsed.columns, ['dropoff_zone_id', 'DOLocationID', 'target_node', 'target_id', 'destination']) ?? ''));
+    setGraphWeightCol(profile.graphWeightCol || (guessColumn(parsed.columns, ['edge_weight', 'weight', 'trip_count']) ?? ''));
+    setStatus(`${message} Recommended ${profile.forecastModel} is selected.`);
+  }, [modelOptions]);
 
   const loadTaxiLaneSample = useCallback(async () => {
     setIsLoadingTaxiLane(true);
@@ -1706,8 +1721,9 @@ function ForecastChart({
   if (rows.length === 0 && actualRows.length === 0) {
     return null;
   }
+  const visibleActualRows = recentActualRowsForForecastChart(actualRows, rows.length);
   const quantileSeries = quantileForecastSeries(quantiles);
-  const series = buildLineSeries(actualRows, [
+  const series = buildLineSeries(visibleActualRows, [
     {label: rows[0]?.model ?? 'forecast', records: rows},
     ...quantileSeries,
   ]);
@@ -2085,13 +2101,13 @@ function SplitterGlyph({kind}: {kind: string}) {
 }
 
 function TreeForestSvg({trees}: {trees: TreeBlueprint[]}) {
-  const plottedTrees = trees.slice(0, 6);
+  const plottedTrees = trees.slice(0, 4);
   if (plottedTrees.length === 0) {
     return null;
   }
-  const width = 900;
-  const height = 360;
-  const gutter = 18;
+  const width = 940;
+  const height = 410;
+  const gutter = 24;
   const treeWidth = (width - gutter * (plottedTrees.length + 1)) / plottedTrees.length;
   const nodes = plottedTrees.flatMap((tree, treeOffset) =>
     layoutTreeNodes(tree.root, gutter + treeOffset * (treeWidth + gutter), treeWidth, tree.treeIndex),
@@ -2100,6 +2116,13 @@ function TreeForestSvg({trees}: {trees: TreeBlueprint[]}) {
   return (
     <figure className={styles.treeForest}>
       <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Boosted tree structure">
+        <defs>
+          <pattern id="tree-grid" width="28" height="28" patternUnits="userSpaceOnUse">
+            <path className={styles.treeGridPath} d="M 28 0 L 0 0 0 28" />
+          </pattern>
+        </defs>
+        <rect className={styles.treeForestBackdrop} x="0" y="0" width={width} height={height} rx="10" />
+        <rect className={styles.treeForestGrid} x="0" y="0" width={width} height={height} rx="10" />
         {plottedTrees.map((tree, index) => (
           <g className={styles.treeMiniSummary} transform={`translate(${gutter + index * (treeWidth + gutter)}, 16)`} key={tree.treeIndex}>
             <text x="0" y="0">{`Tree ${tree.treeIndex + 1}`}</text>
@@ -2126,19 +2149,19 @@ function TreeForestSvg({trees}: {trees: TreeBlueprint[]}) {
           <g className={`${styles.treeNode} ${node.kind.includes('leaf') ? styles.treeLeaf : styles.treeBranch}`} transform={`translate(${node.x}, ${node.y})`} key={node.key}>
             <title>{node.tooltip}</title>
             <rect
-              x="-44"
-              y="-17"
-              width="88"
-              height="34"
-              rx="7"
+              x="-52"
+              y="-18"
+              width="104"
+              height="36"
+              rx="8"
               style={node.kind.includes('leaf') ? undefined : {fill: splitKindFill(node.kind), stroke: splitKindColor(node.kind)}}
             />
-            <text x="0" y="-2">{truncateLabel(node.label, 18)}</text>
+            <text x="0" y="-2">{truncateLabel(node.label, 20)}</text>
             <text x="0" y="12">{node.detail}</text>
           </g>
         ))}
       </svg>
-      <figcaption>First {plottedTrees.length.toLocaleString()} trees, expanded to three split levels from native wasm tree metadata</figcaption>
+      <figcaption>First {plottedTrees.length.toLocaleString()} trees, expanded from native wasm tree metadata</figcaption>
     </figure>
   );
 }
@@ -2164,7 +2187,7 @@ function layoutTreeNodes(
   const visit = (node: TreeNodeBlueprint, depth: number, slot: number, slots: number, parentKey?: string) => {
     const key = `${treeIndex}-${node.id}`;
     const x = xOffset + ((slot + 0.5) / slots) * treeWidth;
-    const y = 64 + depth * 72;
+    const y = 78 + depth * 78;
     positioned.push({
       key,
       parentKey,
@@ -2300,21 +2323,49 @@ function ComparisonChart({actualRows, results}: {actualRows: ActualRecord[]; res
       label: result.label,
       records: firstSeriesForecastRows(result.response as ForecastResponse),
     }));
-  const series = buildLineSeries(actualRows, forecastSeries);
+  const maxForecastLength = Math.max(0, ...forecastSeries.map((series) => series.records.length));
+  const series = buildLineSeries(recentActualRowsForForecastChart(actualRows, maxForecastLength), forecastSeries);
   return <LineChart caption="First series comparison" series={series} />;
 }
 
+type ActiveChartPoint = {
+  series: string;
+  index: number;
+  value: number;
+  x: number;
+  y: number;
+};
+
 function LineChart({caption, series}: {caption: string; series: ChartSeries[]}) {
-  const [activePoint, setActivePoint] = useState<{series: string; index: number; value: number; x: number; y: number} | null>(null);
+  const [hoverPoint, setHoverPoint] = useState<ActiveChartPoint | null>(null);
+  const [pinnedPoint, setPinnedPoint] = useState<ActiveChartPoint | null>(null);
+  const [zoom, setZoom] = useState(1);
   const drawable = series.filter((item) => item.points.length > 0);
   if (drawable.length === 0) {
     return null;
   }
-  const width = 820;
-  const height = 300;
-  const padding = 38;
+  const width = 900;
+  const height = 340;
+  const leftPadding = 58;
+  const rightPadding = 22;
+  const topPadding = 24;
+  const bottomPadding = 46;
+  const plotWidth = width - leftPadding - rightPadding;
+  const plotHeight = height - topPadding - bottomPadding;
+  const indexes = drawable.flatMap((item) => item.points.map((point) => point.index));
+  const minIndex = Math.min(...indexes, 0);
+  const maxIndex = Math.max(...indexes, minIndex + 1);
+  const indexSpan = maxIndex - minIndex || 1;
+  const visibleSpan = indexSpan / zoom;
+  const visibleMinIndex = zoom === 1 ? minIndex : Math.max(minIndex, maxIndex - visibleSpan);
+  const visibleMaxIndex = maxIndex;
+  const visibleIndexSpan = visibleMaxIndex - visibleMinIndex || 1;
   const values = drawable
-    .flatMap((item) => item.points.map((point) => coerceFiniteNumber(point.value)))
+    .flatMap((item) =>
+      item.points
+        .filter((point) => point.index >= visibleMinIndex && point.index <= visibleMaxIndex)
+        .map((point) => coerceFiniteNumber(point.value)),
+    )
     .filter((value): value is number => value !== null);
   if (values.length === 0) {
     return null;
@@ -2322,7 +2373,8 @@ function LineChart({caption, series}: {caption: string; series: ChartSeries[]}) 
   const min = Math.min(...values);
   const max = Math.max(...values);
   const span = max - min || 1;
-  const maxIndex = Math.max(...drawable.flatMap((item) => item.points.map((point) => point.index)), 1);
+  const actualSeries = drawable[0]?.points ?? [];
+  const actualMaxIndex = actualSeries.length === 0 ? null : Math.max(...actualSeries.map((point) => point.index));
   const plotSeries = drawable.map((item, seriesIndex) => ({
     ...item,
     color: chartColor(seriesIndex),
@@ -2335,30 +2387,110 @@ function LineChart({caption, series}: {caption: string; series: ChartSeries[]}) 
         return {
           ...point,
           value,
-          x: padding + (point.index / maxIndex) * (width - padding * 2),
-          y: height - padding - ((value - min) / span) * (height - padding * 2),
+          x: leftPadding + ((point.index - visibleMinIndex) / visibleIndexSpan) * plotWidth,
+          y: topPadding + plotHeight - ((value - min) / span) * plotHeight,
         };
       })
-      .filter((point): point is {index: number; value: number; x: number; y: number} => point !== null),
+      .filter((point): point is {index: number; value: number; x: number; y: number} =>
+        point !== null && point.index >= visibleMinIndex && point.index <= visibleMaxIndex,
+      ),
   }));
   const ticks = [0, 0.25, 0.5, 0.75, 1].map((ratio) => ({
     value: min + span * ratio,
-    y: height - padding - ratio * (height - padding * 2),
+    y: topPadding + plotHeight - ratio * plotHeight,
   }));
+  const xTicks = [0, 0.25, 0.5, 0.75, 1].map((ratio) => {
+    const index = visibleMinIndex + visibleIndexSpan * ratio;
+    return {
+      index,
+      x: leftPadding + ratio * plotWidth,
+    };
+  });
+  const forecastBoundaryX = actualMaxIndex === null
+    ? null
+    : leftPadding + ((actualMaxIndex - visibleMinIndex) / visibleIndexSpan) * plotWidth;
+  const markerStrideFor = (seriesIndex: number, pointCount: number) => {
+    if (seriesIndex > 0) {
+      return 1;
+    }
+    if (zoom >= 8) {
+      return 1;
+    }
+    if (zoom >= 4) {
+      return Math.max(1, Math.ceil(pointCount / 42));
+    }
+    if (zoom >= 2) {
+      return Math.max(1, Math.ceil(pointCount / 28));
+    }
+    return Math.max(1, Math.ceil(pointCount / 18));
+  };
+  const shouldShowPoint = (seriesIndex: number, index: number, pointCount: number) =>
+    index % markerStrideFor(seriesIndex, pointCount) === 0 || index === pointCount - 1;
+  const outcomeRows = plotSeries
+    .filter((item) => item.points.length > 0)
+    .map((item) => {
+      const first = item.points[0];
+      const last = item.points[item.points.length - 1];
+      const change = first.value === 0 ? null : (last.value - first.value) / Math.abs(first.value);
+      return {label: item.label, color: item.color, first: first.value, last: last.value, change};
+    });
+  const zoomOptions = [1, 2, 4, 8];
+  const activePoint = pinnedPoint ?? hoverPoint;
 
   return (
     <figure className={styles.chart}>
+      <div className={styles.chartToolbar}>
+        <div>
+          <strong>{caption}</strong>
+          <span>{zoom === 1 ? 'Full range' : `Last ${formatFixed(100 / zoom, 0)}% of steps`}</span>
+        </div>
+        <div className={styles.chartZoomControls} aria-label="Chart zoom">
+          {zoomOptions.map((option) => (
+            <button
+              className={zoom === option ? styles.chartZoomActive : undefined}
+              type="button"
+              onClick={() => {
+                setHoverPoint(null);
+                setPinnedPoint(null);
+                setZoom(option);
+              }}
+              key={option}
+            >
+              {option === 1 ? 'Fit' : `${option}x`}
+            </button>
+          ))}
+        </div>
+      </div>
       <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={caption}>
+        <defs>
+          <linearGradient id="chart-surface" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stopColor="var(--lab-panel-soft)" />
+            <stop offset="100%" stopColor="var(--lab-panel)" />
+          </linearGradient>
+        </defs>
+        <rect className={styles.chartPlotArea} x={leftPadding} y={topPadding} width={plotWidth} height={plotHeight} rx="8" />
         {ticks.map((tick) => (
           <g className={styles.chartGridline} key={tick.y}>
-            <line x1={padding} y1={tick.y} x2={width - padding} y2={tick.y} />
-            <text x={padding - 8} y={tick.y + 4}>
+            <line x1={leftPadding} y1={tick.y} x2={width - rightPadding} y2={tick.y} />
+            <text x={leftPadding - 10} y={tick.y + 4}>
               {formatCompact(tick.value)}
             </text>
           </g>
         ))}
-        <line x1={padding} y1={height - padding} x2={width - padding} y2={height - padding} />
-        <line x1={padding} y1={padding} x2={padding} y2={height - padding} />
+        {xTicks.map((tick) => (
+          <g className={styles.chartXTick} key={tick.x}>
+            <line x1={tick.x} y1={topPadding + plotHeight} x2={tick.x} y2={topPadding + plotHeight + 5} />
+            <text x={tick.x} y={height - 18}>{Math.round(tick.index).toLocaleString()}</text>
+          </g>
+        ))}
+        <line className={styles.chartAxis} x1={leftPadding} y1={topPadding + plotHeight} x2={width - rightPadding} y2={topPadding + plotHeight} />
+        <line className={styles.chartAxis} x1={leftPadding} y1={topPadding} x2={leftPadding} y2={topPadding + plotHeight} />
+        {forecastBoundaryX !== null && forecastBoundaryX > leftPadding && forecastBoundaryX < width - rightPadding && (
+          <g className={styles.forecastBoundary}>
+            <line x1={forecastBoundaryX} y1={topPadding + 8} x2={forecastBoundaryX} y2={topPadding + plotHeight} />
+            <text x={Math.min(forecastBoundaryX + 8, width - 112)} y={topPadding + 18}>forecast</text>
+          </g>
+        )}
         {plotSeries.map((item, seriesIndex) => {
           const points = item.points
             .map((point) => `${point.x},${point.y}`)
@@ -2372,32 +2504,53 @@ function LineChart({caption, series}: {caption: string; series: ChartSeries[]}) 
             />
           );
         })}
-        {plotSeries.flatMap((item) =>
-          item.points.map((point) => (
+        {plotSeries.flatMap((item, seriesIndex) =>
+          item.points.filter((point, index, points) => shouldShowPoint(seriesIndex, index, points.length)).map((point, index) => (
+            <circle
+              className={seriesIndex === 0 ? styles.actualPointMarker : styles.forecastPointMarker}
+              cx={point.x}
+              cy={point.y}
+              r={seriesIndex === 0 ? 2.8 : 4.2}
+              style={{stroke: item.color}}
+              key={`marker-${item.label}-${point.index}-${index}`}
+            />
+          )),
+        )}
+        {plotSeries.flatMap((item, seriesIndex) =>
+          item.points.filter((point, index, points) => shouldShowPoint(seriesIndex, index, points.length)).map((point) => (
             <circle
               className={styles.interactivePoint}
               cx={point.x}
               cy={point.y}
-              r="3"
+              r="9"
               tabIndex={0}
               role="button"
               aria-label={`${item.label} step ${point.index}: ${formatMetric(point.value)}`}
-              onBlur={() => setActivePoint(null)}
-              onFocus={() => setActivePoint({series: item.label, index: point.index, value: point.value, x: point.x, y: point.y})}
-              onMouseEnter={() => setActivePoint({series: item.label, index: point.index, value: point.value, x: point.x, y: point.y})}
-              onMouseLeave={() => setActivePoint(null)}
+              onBlur={() => setHoverPoint(null)}
+              onClick={() => setPinnedPoint({series: item.label, index: point.index, value: point.value, x: point.x, y: point.y})}
+              onFocus={() => setHoverPoint({series: item.label, index: point.index, value: point.value, x: point.x, y: point.y})}
+              onMouseEnter={() => setHoverPoint({series: item.label, index: point.index, value: point.value, x: point.x, y: point.y})}
+              onMouseLeave={() => setHoverPoint(null)}
+              onPointerDown={() => setPinnedPoint({series: item.label, index: point.index, value: point.value, x: point.x, y: point.y})}
               style={{stroke: item.color}}
               key={`${item.label}-${point.index}-${point.value}`}
             />
           )),
         )}
         {activePoint && (
-          <g className={styles.chartTooltip} transform={`translate(${Math.min(activePoint.x + 12, width - 210)}, ${Math.max(activePoint.y - 44, 14)})`}>
+          <g className={styles.chartActivePoint}>
+            <line x1={activePoint.x} y1={topPadding} x2={activePoint.x} y2={topPadding + plotHeight} />
+            <circle cx={activePoint.x} cy={activePoint.y} r="4.5" />
+          </g>
+        )}
+        {activePoint && (
+          <g className={styles.chartTooltip} transform={`translate(${Math.min(activePoint.x + 12, width - 214)}, ${Math.max(activePoint.y - 50, 14)})`}>
             <rect width="196" height="54" rx="6" />
             <text x="10" y="20">{activePoint.series}</text>
             <text x="10" y="40">{`step ${activePoint.index}: ${formatMetric(activePoint.value)}`}</text>
           </g>
         )}
+        <text className={styles.chartAxisLabel} x={leftPadding + plotWidth / 2} y={height - 4}>Step</text>
       </svg>
       <figcaption>{caption}</figcaption>
       <div className={styles.legend}>
@@ -2406,6 +2559,16 @@ function LineChart({caption, series}: {caption: string; series: ChartSeries[]}) 
             <i style={{background: item.color}} />
             {item.label}
           </span>
+        ))}
+      </div>
+      <div className={styles.outcomeStrip}>
+        {outcomeRows.map((row) => (
+          <p key={row.label}>
+            <i style={{background: row.color}} />
+            <span>{row.label}</span>
+            <strong>{formatMetric(row.last)}</strong>
+            <em>{row.change === null ? 'flat' : `${formatPercent(row.change)} visible change`}</em>
+          </p>
         ))}
       </div>
     </figure>
@@ -3379,9 +3542,12 @@ function buildTargetingProfile(
   const hasGraph = graphColumnReadiness(table.columns);
   const intermittent = summary ? summary.zeroShare > 0.18 : false;
   const skewed = summary ? summary.p90 > summary.median * 1.65 : false;
+  const hasPiecewiseSeasonal = modelOptions.some((option) => option.value === 'piecewise_linear_seasonal');
   const forecastModelValue =
     intermittent && modelOptions.some((option) => option.value === 'intermittent_demand')
       ? 'intermittent_demand'
+      : hasPeriodic && hasPiecewiseSeasonal
+        ? 'piecewise_linear_seasonal'
       : modelOptions.some((option) => option.value === 'auto_forecast')
         ? 'auto_forecast'
         : modelOptions[0]?.value ?? 'auto_forecast';
@@ -4311,8 +4477,11 @@ function buildSuggestedConfig({
   const targetingProfile = buildTargetingProfile(table, targetCol, timestampCol, seriesCol, featureCols, sparseFeatureCols, modelOptions);
   const rankedFeatures = rankFeatureRoles(table, targetCol, timestampCol, seriesCol, featureCols, sparseFeatureCols).slice(0, 20);
   const opportunityTargets = rankTargetOpportunities(table, targetCol, timestampCol, seriesCol, 20);
-  const covariateColumns = numericCovariateColumns(table, [timestampCol, targetCol, seriesCol]);
-  const piecewiseOptions = piecewiseForecastOptions(table, targetCol, seriesCol, covariateColumns, horizon);
+  const modelSpecificOptions = isPiecewiseForecastModel(model)
+    ? piecewiseForecastOptions(table, targetCol, seriesCol, [], horizon)
+    : isThetaForecastModel(model)
+      ? {thetaSeasonality: 'additive'}
+      : {};
   return {
     cartoboostConfigVersion: 1,
     source: {
@@ -4375,7 +4544,7 @@ function buildSuggestedConfig({
       options: {
         seasonLength,
         seasonality: seasonalityLabel(frequency, seasonLength),
-        ...(isPiecewiseForecastModel(model) ? piecewiseOptions : {}),
+        ...modelSpecificOptions,
       },
       roster: modelOptions.map((option) => ({
         model: option.value,
@@ -4467,6 +4636,26 @@ function numericCovariates(row: Record<string, string>, excludedColumns: string[
 
 function isPiecewiseForecastModel(model: string) {
   return model.trim().toLowerCase().replace(/-/g, '_') === 'piecewise_linear_seasonal';
+}
+
+function isThetaForecastModel(model: string) {
+  return ['theta', 'optimized_theta'].includes(model.trim().toLowerCase().replace(/-/g, '_'));
+}
+
+function browserForecastModelOptions(
+  model: string,
+  table: ParsedTable,
+  targetCol: string,
+  seriesCol: string,
+  horizon: number,
+) {
+  if (isPiecewiseForecastModel(model)) {
+    return piecewiseForecastOptions(table, targetCol, seriesCol, [], horizon);
+  }
+  if (isThetaForecastModel(model)) {
+    return {thetaSeasonality: 'additive'};
+  }
+  return {};
 }
 
 function piecewiseForecastOptions(
@@ -4716,10 +4905,11 @@ async function runBrowserForecast({
   model: string;
   seasonLength: number;
 }) {
-  const covariateColumns = numericCovariateColumns(table, [timestampCol, targetCol, seriesCol]);
-  const piecewiseOptions = isPiecewiseForecastModel(model)
-    ? piecewiseForecastOptions(table, targetCol, seriesCol, covariateColumns, horizon)
-    : {};
+  const modelSpecificOptions = isPiecewiseForecastModel(model)
+    ? piecewiseForecastOptions(table, targetCol, seriesCol, [], horizon)
+    : isThetaForecastModel(model)
+      ? {thetaSeasonality: 'additive'}
+      : {};
   const browserAutoOptions = model === 'auto_forecast' ? {maxAutoCandidateCount: 4} : {};
   const request = {
     rows: table.rows.map((row) => ({
@@ -4735,7 +4925,7 @@ async function runBrowserForecast({
       seasonLength,
       includeComponents: true,
       ...browserAutoOptions,
-      ...piecewiseOptions,
+      ...modelSpecificOptions,
     },
     metadata: {
       timestampCol,
@@ -5141,6 +5331,7 @@ function buildLineSeries(
   forecastSeries: {label: string; records: ForecastRecord[]}[],
 ): ChartSeries[] {
   const actualLength = actualRows.length;
+  const lastActual = actualRows[actualRows.length - 1];
   return [
     {
       label: 'Actual',
@@ -5148,12 +5339,24 @@ function buildLineSeries(
     },
     ...forecastSeries.map((series) => ({
       label: series.label,
-      points: series.records.map((row) => ({
-        index: actualLength + row.horizon - 1,
-        value: row.prediction,
-      })),
+      points: [
+        ...(lastActual ? [{index: actualLength - 1, value: lastActual.value}] : []),
+        ...series.records.map((row) => ({
+          index: actualLength + row.horizon - 1,
+          value: row.prediction,
+        })),
+      ],
     })),
   ];
+}
+
+function recentActualRowsForForecastChart(actualRows: ActualRecord[], forecastLength: number): ActualRecord[] {
+  const windowSize = Math.min(
+    actualRows.length,
+    Math.max(72, forecastLength * 6),
+  );
+  const offset = Math.max(0, actualRows.length - windowSize);
+  return actualRows.slice(offset).map((row, index) => ({...row, index}));
 }
 
 function chartColor(index: number) {

@@ -154,6 +154,64 @@ def test_piecewise_linear_seasonal_python_wrapper_uses_native_features():
         PiecewiseLinearSeasonalForecaster(trend_uncertainty_policy="student_t")
 
 
+def test_piecewise_linear_seasonal_python_wrapper_supports_prophet_holidays_and_changepoints():
+    pd = pytest.importorskip("pandas")
+    try:
+        from cartoboost import _native  # noqa: F401
+    except ImportError as exc:
+        pytest.skip(str(exc))
+
+    frame = pd.DataFrame(
+        {
+            "series_id": ["pickup_zone_1"] * 30,
+            "timestamp": pd.date_range("2026-01-01", periods=30, freq="D"),
+            "fare": [50.0 + day + (30.0 if day == 15 else 0.0) for day in range(1, 31)],
+        }
+    )
+    holidays = pd.DataFrame(
+        {
+            "holiday": ["airport_queue_surge", "airport_queue_surge"],
+            "ds": [pd.Timestamp("2026-01-15"), pd.Timestamp("2026-01-31")],
+            "lower_window": [0, 0],
+            "upper_window": [0, 0],
+            "prior_scale": [100.0, 100.0],
+        }
+    )
+    forecast_frame = ForecastFrame.from_pandas(
+        frame,
+        timestamp_col="timestamp",
+        target_col="fare",
+        series_id_col="series_id",
+        freq="D",
+    )
+    model = PiecewiseLinearSeasonalForecaster(
+        changepoints=[pd.Timestamp("2026-01-10")],
+        n_changepoints=4,
+        changepoint_l2_regularization=0.001,
+        changepoint_prior_scale=0.5,
+        weekly_fourier_order=0,
+        auto_weekly_seasonality=False,
+        holidays=holidays,
+        holidays_prior_scale=100.0,
+    ).fit(forecast_frame)
+
+    components = model.components(2)
+    first_components = components["records"][0]["components"]
+
+    assert model.metadata_["changepoints"] == 0
+    assert model.metadata_["changepoint_timestamps"] == ["2026-01-10T00:00:00"]
+    assert model.metadata_["changepoint_l1_regularization"] == pytest.approx(2.0)
+    assert model.metadata_["event_l2_regularization"] == pytest.approx(0.0001)
+    assert model.metadata_["event_l2_regularization_by_name"] == {
+        "airport_queue_surge": pytest.approx(0.0001)
+    }
+    assert model.metadata_["events"][0]["name"] == "airport_queue_surge"
+    assert first_components["events"]["airport_queue_surge"] > 10.0
+    assert first_components["event_window_offsets"]["airport_queue_surge[+0]"] == pytest.approx(
+        first_components["events"]["airport_queue_surge"]
+    )
+
+
 def test_piecewise_linear_seasonal_python_wrapper_accepts_flat_growth():
     pd = pytest.importorskip("pandas")
     try:

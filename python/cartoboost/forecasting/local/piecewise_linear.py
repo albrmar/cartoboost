@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping, Sequence
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -28,6 +29,8 @@ class PiecewiseLinearSeasonalForecaster(NativeForecastWrapper):
         *,
         growth: str = "linear",
         component_mode: str = "additive",
+        seasonality_mode: str | None = None,
+        holidays_mode: str | None = None,
         changepoints: int | Sequence[str] | None = 12,
         n_changepoints: int | None = None,
         changepoint_range: float = 0.8,
@@ -41,7 +44,9 @@ class PiecewiseLinearSeasonalForecaster(NativeForecastWrapper):
         custom_seasonalities: Sequence[SeasonalitySpec] = (),
         changepoint_l2_regularization: float = 0.05,
         changepoint_l1_regularization: float = 0.0,
+        changepoint_prior_scale: float | None = None,
         seasonality_l2_regularization: float = 0.01,
+        seasonality_prior_scale: float | None = None,
         yearly_l2_regularization: float | None = None,
         weekly_l2_regularization: float | None = None,
         daily_l2_regularization: float | None = None,
@@ -52,6 +57,9 @@ class PiecewiseLinearSeasonalForecaster(NativeForecastWrapper):
         events: Sequence[EventSpec] = (),
         holidays: Any | None = None,
         holidays_prior_scale: float | None = None,
+        country_holidays: str | None = None,
+        country_holiday_years: Sequence[int] | None = None,
+        country_holiday_subdivision: str | None = None,
         event_mode: str | None = None,
         extra_regressors: Sequence[str] = (),
         regressor_modes: Mapping[str, str] | None = None,
@@ -80,9 +88,23 @@ class PiecewiseLinearSeasonalForecaster(NativeForecastWrapper):
         irls_iterations: int = 5,
     ) -> None:
         growth = _validate_choice("growth", growth, {"linear", "flat", "logistic"})
+        if seasonality_mode is not None:
+            seasonality_mode = _validate_choice(
+                "seasonality_mode", seasonality_mode, {"additive", "multiplicative"}
+            )
+            component_mode = seasonality_mode
         component_mode = _validate_choice(
             "component_mode", component_mode, {"additive", "multiplicative"}
         )
+        if holidays_mode is not None:
+            holidays_mode = _validate_choice(
+                "holidays_mode", holidays_mode, {"additive", "multiplicative"}
+            )
+            if event_mode is not None and _validate_choice(
+                "event_mode", event_mode, {"additive", "multiplicative"}
+            ) != holidays_mode:
+                raise ValueError("event_mode and holidays_mode must agree when both are set")
+            event_mode = holidays_mode
         fit_loss = _validate_choice("fit_loss", fit_loss, {"squared", "huber"})
         regressor_standardization = _validate_choice(
             "regressor_standardization", regressor_standardization, {"auto", "none"}
@@ -90,9 +112,13 @@ class PiecewiseLinearSeasonalForecaster(NativeForecastWrapper):
         changepoint_count, explicit_changepoints = _normalize_changepoints(
             changepoints, n_changepoints, changepoint_timestamps
         )
+        if changepoint_prior_scale is not None:
+            changepoint_l1_regularization = _prior_scale_to_l1(changepoint_prior_scale)
         changepoint_range = float(changepoint_range)
         if not 0.0 < changepoint_range <= 1.0:
             raise ValueError("changepoint_range must be in (0, 1]")
+        if seasonality_prior_scale is not None:
+            seasonality_l2_regularization = _prior_scale_to_l2(seasonality_prior_scale)
         orders = {
             "yearly_fourier_order": yearly_fourier_order,
             "weekly_fourier_order": weekly_fourier_order,
@@ -202,6 +228,53 @@ class PiecewiseLinearSeasonalForecaster(NativeForecastWrapper):
             huber_delta=huber_delta,
             irls_iterations=int(irls_iterations),
         )
+        self._country_holidays: str | None = None
+        self._country_holiday_years: tuple[int, ...] = _country_holiday_years(
+            country_holiday_years
+        )
+        self._country_holiday_subdivision = (
+            None if country_holiday_subdivision is None else str(country_holiday_subdivision)
+        )
+        if country_holidays is not None:
+            self.add_country_holidays(
+                country_holidays,
+                years=country_holiday_years,
+                subdivision=country_holiday_subdivision,
+            )
+
+    def add_country_holidays(
+        self,
+        country_name: str,
+        *,
+        years: Sequence[int] | None = None,
+        subdivision: str | None = None,
+    ) -> PiecewiseLinearSeasonalForecaster:
+        """Add Prophet-style built-in country holidays before fitting."""
+        if self.is_fitted_:
+            raise RuntimeError("country holidays must be added before fitting")
+        self._country_holidays = str(country_name)
+        if years is not None:
+            self._country_holiday_years = _country_holiday_years(years)
+        if subdivision is not None:
+            self._country_holiday_subdivision = str(subdivision)
+        return self
+
+    def _new_native_model(self) -> Any:
+        if self._country_holidays is None:
+            return super()._new_native_model()
+        native_class = _native_class(self.native_class_name)
+        if native_class is None:
+            raise NotImplementedError(
+                f"Rust binding for {self.__class__.__name__} is not available: "
+                f"cartoboost._native.{self.native_class_name} is missing."
+            )
+        params = dict(self._params)
+        params["events"] = list(params["events"]) + _country_holiday_event_tuples(
+            self._country_holidays,
+            self._country_holiday_years,
+            self._country_holiday_subdivision,
+        )
+        return native_class(**params)
 
     def to_json(self) -> str:
         self._check_is_fitted()
@@ -561,8 +634,77 @@ def _holiday_records(holidays: Any) -> list[Mapping[str, Any]]:
 def _prior_scale_to_l2(prior_scale: Any) -> float:
     scale = float(prior_scale)
     if scale <= 0.0:
-        raise ValueError("holiday prior_scale values must be positive")
+        raise ValueError("prior_scale values must be positive")
     return 1.0 / (scale * scale)
+
+
+def _prior_scale_to_l1(prior_scale: Any) -> float:
+    scale = float(prior_scale)
+    if scale <= 0.0:
+        raise ValueError("prior_scale values must be positive")
+    return 1.0 / scale
+
+
+def _country_holiday_years(years: Sequence[int] | None) -> tuple[int, ...]:
+    if years is None:
+        return tuple(range(1995, 2045))
+    normalized = tuple(sorted({int(year) for year in years}))
+    if not normalized:
+        raise ValueError("country_holiday_years must contain at least one year")
+    return normalized
+
+
+def _country_holiday_event_tuples(
+    country_name: str,
+    years: Sequence[int],
+    subdivision: str | None,
+) -> list[tuple[str, str, int | None, int | None]]:
+    try:
+        import holidays as holidays_package
+    except Exception as exc:  # pragma: no cover - exercised with broken optional installs.
+        raise ImportError(
+            "country holidays require the optional 'holidays' package. "
+            "Install CartoBoost with the holidays extra or install a compatible "
+            "holidays release."
+        ) from exc
+
+    substitutions = {"TU": "TR"}
+    country_name = substitutions.get(country_name, country_name)
+    country_cls = getattr(holidays_package, country_name, None)
+    if country_cls is None:
+        raise ValueError(f"country holidays are not supported for {country_name!r}")
+    try:
+        calendar = country_cls(
+            expand=False,
+            language="en_US",
+            subdiv=subdivision,
+            years=list(years),
+        )
+    except TypeError:
+        calendar = country_cls(expand=False, years=list(years))
+    events: list[tuple[str, str, int | None, int | None]] = []
+    for holiday_date in sorted(calendar):
+        names = _holiday_calendar_names(calendar, holiday_date)
+        for name in names:
+            events.append((str(name), _iso_date_midnight(holiday_date), 0, 0))
+    return events
+
+
+def _holiday_calendar_names(calendar: Any, holiday_date: Any) -> list[str]:
+    get_list = getattr(calendar, "get_list", None)
+    if callable(get_list):
+        names = get_list(holiday_date)
+    else:
+        names = calendar[holiday_date]
+    if isinstance(names, str):
+        return [name.strip() for name in names.split(",") if name.strip()]
+    return [str(name) for name in names]
+
+
+def _iso_date_midnight(value: Any) -> str:
+    if isinstance(value, date):
+        return f"{value.isoformat()}T00:00:00"
+    return str(value)
 
 
 def _seasonality_tuples(

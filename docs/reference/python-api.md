@@ -113,7 +113,7 @@ Forecasters:
 | `SbaForecaster` | Rust-native fixed SBA intermittent-demand forecaster with Croston bias adjustment. |
 | `TsbForecaster` | Rust-native fixed TSB intermittent-demand forecaster with separate demand and occurrence smoothing. |
 | `KrigingForecaster` | Coordinate-aware Rust-native panel forecaster using stable series coordinates and variogram controls. |
-| `PiecewiseLinearSeasonalForecaster` | Rust-native piecewise linear seasonal local model with linear, flat, or logistic growth, changepoints, Fourier seasonalities, conditional custom seasonalities, events, automatic extra-regressor standardization, per-component regularization, residual intervals, deterministic sampled trend uncertainty, external trend adjustments, residual shock propagation, fitted JSON round-trips, and `components()` / `components_json()` trend-seasonality-event-regressor decomposition; browser/WASM exposes matching fitted artifact prediction and component helpers. |
+| `PiecewiseLinearSeasonalForecaster` | Rust-native piecewise linear seasonal local model with linear, flat, or logistic growth, automatic or explicit changepoints, Prophet-shaped holiday tables and optional country holiday calendars normalized into native event windows, Fourier seasonalities, conditional custom seasonalities, events, automatic extra-regressor standardization, per-component regularization, residual intervals, deterministic sampled trend uncertainty, external trend adjustments, residual shock propagation, fitted JSON round-trips, and `components()` / `components_json()` trend-seasonality-event-regressor decomposition; browser/WASM exposes matching fitted artifact prediction and component helpers. |
 | `CartoBoostLagForecaster` | Global recursive forecaster using leakage-safe lag, rolling, calendar, static, and known-future features with `CartoBoostRegressor`. |
 | `AutoForecaster` | Guarded Rust-native model selector over reusable internal forecasting candidates with validation metadata and fitted artifacts. |
 | `NBeatsForecaster` | Rust-native deterministic N-BEATS style forecasting expert for regular forecast windows. |
@@ -122,8 +122,11 @@ Forecasters:
 | `BacktestWeightedEnsembleForecaster` | Reserved; raises clearly until Rust backtest-weight learning is implemented. |
 
 `PiecewiseLinearSeasonalForecaster` accepts `growth`, `component_mode`,
-changepoint controls, yearly/weekly/daily Fourier orders, custom conditional
-seasonalities, event windows, additive or multiplicative regressor modes,
+changepoint controls including `n_changepoints`, `changepoint_prior_scale`,
+and explicit `changepoints` date lists, yearly/weekly/daily Fourier orders,
+custom conditional seasonalities, event windows, Prophet-shaped `holidays`
+tables, optional `add_country_holidays()` calendars via `cartoboost[holidays]`,
+additive or multiplicative regressor modes,
 dynamic cap/floor regressors, prediction interval levels, quantile levels,
 trend/coefficient uncertainty controls, `trend_adjustments`,
 `trend_adjustments_by_series`, `residual_shock_window`,

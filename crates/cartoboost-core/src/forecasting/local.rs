@@ -452,6 +452,7 @@ pub struct ArimaValidationScore {
     pub d: usize,
     pub q: usize,
     pub mse: f64,
+    pub stable: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -2061,12 +2062,20 @@ impl Forecaster for AutoARIMAForecaster {
             .map(|(p, d, q)| {
                 let fitted = FittedArimaState::from_frame(frame, p, d, q)?;
                 let mse = fitted.mean_squared_residual();
-                Ok(ArimaValidationScore { p, d, q, mse })
+                let stable = fitted.has_stable_ar_recursions();
+                Ok(ArimaValidationScore {
+                    p,
+                    d,
+                    q,
+                    mse,
+                    stable,
+                })
             })
             .collect::<Result<Vec<_>>>()?;
         scores.sort_by_key(|score| (score.d, score.p, score.q));
         let best = scores
             .iter()
+            .filter(|score| score.stable)
             .map(|score| (OrderedF64(score.mse), score.p, score.d, score.q))
             .min();
         let (_, p, d, q) = best.ok_or_else(|| {
@@ -2097,7 +2106,7 @@ impl Forecaster for AutoARIMAForecaster {
             "max_q": self.max_q,
             "selected_order": self.selected_order.map(|(p, d, q)| json!({"p": p, "d": d, "q": q})),
             "validation_scores": self.validation_scores.iter().map(|score| {
-                json!({"p": score.p, "d": score.d, "q": score.q, "mse": score.mse})
+                json!({"p": score.p, "d": score.d, "q": score.q, "mse": score.mse, "stable": score.stable})
             }).collect::<Vec<_>>(),
         })
     }
@@ -2878,6 +2887,12 @@ impl FittedArimaState {
         } else {
             sum / count as f64
         }
+    }
+
+    fn has_stable_ar_recursions(&self) -> bool {
+        self.series
+            .values()
+            .all(|series| ar_recursion_is_stable(&series.ar_coefficients))
     }
 }
 
@@ -6521,6 +6536,31 @@ fn forecast_arima_next(
     forecast
 }
 
+fn ar_recursion_is_stable(ar_coefficients: &[f64]) -> bool {
+    let p = ar_coefficients.len();
+    if p == 0 {
+        return true;
+    }
+    for basis_idx in 0..p {
+        let mut state = vec![0.0; p];
+        state[basis_idx] = 1.0;
+        let mut max_abs = 1.0;
+        for _ in 0..128 {
+            let next = ar_coefficients
+                .iter()
+                .enumerate()
+                .map(|(idx, coef)| coef * state[p - idx - 1])
+                .sum::<f64>();
+            if !next.is_finite() || next.abs() > 16.0 || next.abs() > max_abs * 4.0 {
+                return false;
+            }
+            max_abs = max_abs.max(next.abs());
+            push_tail(&mut state, p, next);
+        }
+    }
+    true
+}
+
 fn undifference_fitted_values(values: &[f64], fitted_diff: &[f64], d: usize) -> Vec<f64> {
     match d {
         0 => fitted_diff.to_vec(),
@@ -9209,6 +9249,47 @@ mod tests {
 
         assert_eq!(series.score_start, 2);
         assert!((state.mean_squared_residual() - expected).abs() < 1.0e-12);
+    }
+
+    #[test]
+    fn auto_arima_rejects_unstable_ar_recursions() {
+        let values = [
+            36.893, 37.770, 38.912, 33.241, 32.972, 34.398, 35.728, 36.870, 37.747, 45.299, 45.490,
+            41.305, 40.759, 39.888, 35.752, 34.428, 33.008, 31.587, 30.264, 29.127, 31.256, 30.710,
+            30.526, 27.716, 35.268, 36.145, 37.288, 31.617, 33.044, 34.470, 35.800, 36.942, 37.819,
+            45.371, 45.562, 41.377, 40.831, 39.960, 35.824, 34.500, 33.080, 31.659, 30.336, 29.199,
+            31.328, 30.782, 30.598, 27.788, 35.340, 36.217, 37.360, 31.689, 32.812, 34.238, 35.568,
+            36.710, 37.587, 45.139, 45.330, 41.145, 40.599, 39.728, 35.592, 34.268, 32.848, 31.427,
+            30.104, 28.968, 31.097, 30.550, 30.366, 27.556, 35.109, 35.986, 37.128, 31.457, 34.999,
+            36.425, 37.755, 38.897, 39.774, 47.326, 47.517, 43.332, 42.786, 41.915, 37.779, 36.455,
+            35.035, 33.614, 32.291, 31.155, 33.284, 32.737, 32.553, 29.743,
+        ];
+        let start = ts(1);
+        let frame = ForecastFrame::new(
+            values
+                .iter()
+                .enumerate()
+                .map(|(idx, value)| {
+                    ForecastRow::single(start + Duration::hours(idx as i64), *value)
+                })
+                .collect(),
+            ForecastFrequency::Hourly,
+        )
+        .expect("valid frame");
+        let mut model = AutoARIMAForecaster::with_max_order(2, 1, 1).expect("valid auto arima");
+
+        model.fit(&frame).expect("fit");
+        let forecast = model.predict(14).expect("predict");
+        let means = forecast
+            .predictions()
+            .iter()
+            .map(|prediction| prediction.mean)
+            .collect::<Vec<_>>();
+
+        assert_eq!(model.selected_order(), Some((1, 0, 1)));
+        assert!(model.validation_scores().iter().any(|score| !score.stable));
+        assert!(means.iter().all(|mean| mean.is_finite() && *mean < 60.0));
+        assert!(means.iter().all(|mean| *mean > 0.0));
     }
 
     #[test]

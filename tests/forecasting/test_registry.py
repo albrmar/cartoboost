@@ -1,4 +1,7 @@
 import importlib.util
+import sys
+import types
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -421,3 +424,74 @@ def test_piecewise_linear_seasonal_wrapper_normalizes_native_overrides(install_f
     assert native.calls[-3][0] == "to_json"
     assert native.calls[-2][0] == "from_json"
     assert native.calls[-1][0] == "init"
+
+
+def test_piecewise_linear_seasonal_wrapper_accepts_prophet_holiday_and_changepoint_aliases(
+    install_fake_native,
+):
+    native = install_fake_native("PiecewiseLinearSeasonalForecaster")
+    PiecewiseLinearSeasonalForecaster(
+        n_changepoints=4,
+        changepoints=("2026-01-10T00:00:00", "2026-01-20T00:00:00"),
+        holidays=[
+            {
+                "holiday": "airport_queue_surge",
+                "ds": "2026-02-01T00:00:00",
+                "lower_window": -1,
+                "upper_window": 2,
+                "prior_scale": 5.0,
+            }
+        ],
+        holidays_prior_scale=10.0,
+    ).fit({"PULocationID=132": [10.0, 12.0, 14.0]})
+
+    init_params = native.calls[0][1]
+    assert init_params["changepoints"] == 0
+    assert init_params["changepoint_timestamps"] == [
+        "2026-01-10T00:00:00",
+        "2026-01-20T00:00:00",
+    ]
+    assert init_params["events"] == [("airport_queue_surge", "2026-02-01T00:00:00", -1, 2)]
+    assert init_params["event_l2_regularization"] == pytest.approx(0.01)
+    assert init_params["event_l2_regularization_by_name"] == {
+        "airport_queue_surge": pytest.approx(0.04)
+    }
+
+
+def test_piecewise_linear_seasonal_wrapper_accepts_prophet_country_holiday_and_prior_aliases(
+    install_fake_native,
+    monkeypatch,
+):
+    class FakeUSCalendar:
+        def __init__(self, *, years, **_kwargs):
+            self._holidays = {
+                date(2026, 1, 1): ["New Year's Day"],
+                date(2026, 7, 4): ["Independence Day"],
+            }
+            assert years == [2026]
+
+        def __iter__(self):
+            return iter(self._holidays)
+
+        def get_list(self, holiday_date):
+            return self._holidays[holiday_date]
+
+    fake_holidays = types.SimpleNamespace(US=FakeUSCalendar)
+    monkeypatch.setitem(sys.modules, "holidays", fake_holidays)
+    native = install_fake_native("PiecewiseLinearSeasonalForecaster")
+    PiecewiseLinearSeasonalForecaster(
+        seasonality_mode="multiplicative",
+        holidays_mode="additive",
+        country_holidays="US",
+        country_holiday_years=[2026],
+        changepoint_prior_scale=0.2,
+        seasonality_prior_scale=5.0,
+    ).fit({"PULocationID=132": [10.0, 12.0, 14.0]})
+
+    init_params = native.calls[0][1]
+    assert init_params["component_mode"] == "multiplicative"
+    assert init_params["event_mode"] == "additive"
+    assert init_params["changepoint_l1_regularization"] == pytest.approx(5.0)
+    assert init_params["seasonality_l2_regularization"] == pytest.approx(0.04)
+    assert ("New Year's Day", "2026-01-01T00:00:00", 0, 0) in init_params["events"]
+    assert ("Independence Day", "2026-07-04T00:00:00", 0, 0) in init_params["events"]

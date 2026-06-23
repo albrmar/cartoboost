@@ -30,6 +30,7 @@ Install optional integrations only when the scientific workflow needs them:
 ```sh
 uv add "cartoboost[explain]"
 uv add "cartoboost[h3]"
+uv add "cartoboost[holidays]"
 uv add "cartoboost[s2]"
 uv add "cartoboost[duckdb]"
 uv add "cartoboost[optuna]"
@@ -42,6 +43,7 @@ uv add "cartoboost[visualization]"
 | --- | --- | --- |
 | `explain` | SHAP explanations. | You need feature-attribution diagnostics for a fitted regressor. |
 | `h3` | Optional H3 latitude/longitude encoder. | Spatial cells are part of the tested feature design. |
+| `holidays` | Country holiday calendar expansion for the Rust-native piecewise linear seasonal forecaster. | You need Prophet-style `add_country_holidays` behavior. |
 | `s2` | Optional S2 latitude/longitude encoder. | S2 cells match the existing geography pipeline. |
 | `duckdb` | DuckDB relation/query-result input support. | Taxi training data already lives in DuckDB queries. |
 | `optuna` | Hyperparameter tuning examples and workflows. | You are tuning under a fixed validation protocol. |
