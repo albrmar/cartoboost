@@ -57,6 +57,7 @@ jobs:
 
           toml_version_re = re.compile(r'(?m)^(?P<prefix>[ \t]*version[ \t]*=[ \t]*)"(?P<version>\d+\.\d+\.\d+)"')
           py_version_re = re.compile(r'(?m)^(?P<prefix>__version__[ \t]*=[ \t]*)"(?P<version>\d+\.\d+\.\d+)"')
+          lock_version_re = r'"\d+\.\d+\.\d+"'
 
           def extract_version(path: str) -> str:
               text = Path(path).read_text(encoding="utf-8")
@@ -112,6 +113,40 @@ jobs:
                   raise SystemExit(f"Could not replace version in {path}")
               Path(path).write_text(replaced, encoding="utf-8")
 
+          cargo_lock_path = Path("Cargo.lock")
+          cargo_lock_text = cargo_lock_path.read_text(encoding="utf-8")
+          for package in [
+              "cartoboost-cli",
+              "cartoboost-core",
+              "cartoboost-neural",
+              "cartoboost-py",
+          ]:
+              pattern = re.compile(
+                  rf'(?ms)(\[\[package\]\]\nname = "{re.escape(package)}"\nversion = ){lock_version_re}'
+              )
+              cargo_lock_text, count = pattern.subn(
+                  lambda match: f'{match.group(1)}"{next_version}"',
+                  cargo_lock_text,
+                  count=1,
+              )
+              if count != 1:
+                  raise SystemExit(f"Could not replace lock version for {package}")
+          cargo_lock_path.write_text(cargo_lock_text, encoding="utf-8")
+
+          uv_lock_path = Path("uv.lock")
+          uv_lock_text = uv_lock_path.read_text(encoding="utf-8")
+          uv_pattern = re.compile(
+              rf'(?ms)(\[\[package\]\]\nname = "cartoboost"\nversion = ){lock_version_re}'
+          )
+          uv_lock_text, count = uv_pattern.subn(
+              lambda match: f'{match.group(1)}"{next_version}"',
+              uv_lock_text,
+              count=1,
+          )
+          if count != 1:
+              raise SystemExit("Could not replace lock version for cartoboost")
+          uv_lock_path.write_text(uv_lock_text, encoding="utf-8")
+
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
               out.write(f"version={next_version}\n")
               out.write(f"tag={next_tag}\n")
@@ -135,6 +170,8 @@ jobs:
           git add crates/cartoboost-py/pyproject.toml
           git add pyproject.toml
           git add python/cartoboost/__init__.py
+          git add Cargo.lock
+          git add uv.lock
 
           if git diff --cached --quiet; then
             echo "No version changes detected."
