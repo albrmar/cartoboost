@@ -956,7 +956,7 @@ fn auto_forecast_model_skips_series_weights_when_validation_support_is_thin() {
 }
 
 #[test]
-fn auto_forecast_model_falls_back_when_lag_cannot_validate() {
+fn auto_forecast_model_prunes_unsupported_lag_before_validation() {
     let frame = ForecastFrame::new(
         (1..=8)
             .map(|day| ForecastRow::single(ts(day), 10.0 + f64::from(day)))
@@ -990,9 +990,20 @@ fn auto_forecast_model_falls_back_when_lag_cannot_validate() {
     let metadata = model.metadata();
 
     let weights = metadata["weights"].as_object().expect("weights");
-    assert_eq!(weights.len(), 1);
-    assert!(weights.contains_key("classical_expert_bank"));
-    assert_eq!(model.predict(1).expect("forecast").predictions().len(), 1);
+    assert!(!weights.is_empty());
+    let effective_lags = metadata["effective_lag_config"]["lags"]
+        .as_array()
+        .expect("effective lags");
+    assert!(effective_lags.contains(&serde_json::json!(1)));
+    assert!(!effective_lags.contains(&serde_json::json!(28)));
+    assert!(metadata["validation_scores"]
+        .as_array()
+        .expect("validation scores")
+        .iter()
+        .any(|score| score["expert"] == "cartoboost_lag"));
+    let forecast = model.predict(1).expect("forecast");
+    assert_eq!(forecast.predictions().len(), 1);
+    assert!(forecast.predictions()[0].mean.is_finite());
 }
 
 fn taxi_panel_frame() -> ForecastFrame {

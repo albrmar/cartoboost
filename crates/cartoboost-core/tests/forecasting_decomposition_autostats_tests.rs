@@ -95,7 +95,7 @@ fn mstl_hybrid_accepts_short_deterministic_history() {
 }
 
 #[test]
-fn classical_bank_falls_back_on_short_history() {
+fn classical_bank_uses_short_history_robust_seasonal_expert() {
     let frame = taxi_hourly_frame(&[9.0, 10.0, 11.0]);
     let mut bank = ClassicalExpertBank::new(vec![
         ClassicalExpert::SeasonalNaive { season_length: 24 },
@@ -104,9 +104,16 @@ fn classical_bank_falls_back_on_short_history() {
     .expect("valid bank");
 
     bank.fit(&frame).expect("fit bank");
-    assert_eq!(bank.selected_expert(), Some(&ClassicalExpert::Naive));
+    assert_eq!(
+        bank.selected_expert(),
+        Some(&ClassicalExpert::SeasonalNaive { season_length: 24 })
+    );
     let forecast = bank.predict(2).expect("forecast");
     assert_eq!(forecast.predictions().len(), 2);
+    assert!(forecast
+        .predictions()
+        .iter()
+        .all(|prediction| prediction.mean.is_finite()));
 }
 
 #[test]

@@ -318,7 +318,7 @@ fn seasonal_naive_repeats_last_season() {
 }
 
 #[test]
-fn seasonal_naive_rejects_insufficient_history() {
+fn seasonal_naive_cycles_available_short_history() {
     let frame = ForecastFrame::new(
         vec![
             ForecastRow::single(ts(1), 1.0),
@@ -328,8 +328,14 @@ fn seasonal_naive_rejects_insufficient_history() {
     )
     .expect("valid frame");
     let mut model = SeasonalNaiveForecaster::new(7).expect("valid season");
-    let err = model.fit(&frame).expect_err("insufficient history");
-    assert!(err.to_string().contains("requires at least 7"));
+    model.fit(&frame).expect("fit short history");
+    let forecast = model.predict(3).expect("forecast");
+    let means = forecast
+        .predictions()
+        .iter()
+        .map(|row| row.mean)
+        .collect::<Vec<_>>();
+    assert_eq!(means, vec![1.0, 2.0, 1.0]);
 }
 
 #[test]
