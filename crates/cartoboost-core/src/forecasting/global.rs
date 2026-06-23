@@ -1,6 +1,8 @@
 use crate::booster::{Booster, BoosterConfig};
 use crate::data::{Dataset, FeatureKind, FeatureSchema};
-use crate::forecasting::lag_features::{history_by_series, LagFeatureBuilder, LagFeatureConfig};
+use crate::forecasting::lag_features::{
+    history_by_series, lag_config_supported_by_history, LagFeatureBuilder, LagFeatureConfig,
+};
 use crate::forecasting::{
     ForecastFrame, ForecastPrediction, ForecastResult, ForecastRow, Forecaster,
 };
@@ -189,6 +191,9 @@ impl CartoBoostLagForecaster {
 
 impl Forecaster for CartoBoostLagForecaster {
     fn fit(&mut self, frame: &ForecastFrame) -> Result<()> {
+        let effective_lag_config =
+            lag_config_supported_by_history(self.lag_builder.config(), frame);
+        self.lag_builder = LagFeatureBuilder::new(effective_lag_config)?;
         let feature_rows = self.lag_builder.transform_frame(frame)?;
         if feature_rows.is_empty() {
             return Err(CartoBoostError::InvalidInput(
@@ -578,5 +583,63 @@ mod tests {
         );
         assert!(bounds.upper < 100.0);
         assert!(bounds.lower < 10.0);
+    }
+
+    #[test]
+    fn lag_forecaster_prunes_unsupported_lag_features_for_short_panels() {
+        let frame = ForecastFrame::new(
+            ["PU1->DO2", "PU9->DO8"]
+                .into_iter()
+                .flat_map(|series_id| {
+                    (1..=8).map(move |day| {
+                        ForecastRow::new(
+                            series_id,
+                            ts(day),
+                            f64::from(day) + f64::from(series_id.len() as u32),
+                        )
+                    })
+                })
+                .collect(),
+            crate::forecasting::ForecastFrequency::Daily,
+        )
+        .expect("valid short panel");
+        let mut model = CartoBoostLagForecaster::new(
+            LagFeatureConfig {
+                lags: vec![1, 24],
+                rolling_mean_windows: vec![24],
+                partial_rolling_mean_windows: Vec::new(),
+                rolling_std_windows: vec![24],
+                rolling_min_windows: vec![24],
+                rolling_max_windows: vec![24],
+                ewm_alpha_percents: Vec::new(),
+                calendar_features: Vec::new(),
+                difference_lags: vec![24],
+                rolling_trend_windows: vec![24],
+                covariate_features: Vec::new(),
+                covariate_indicator_values: Default::default(),
+                covariate_calendar_interactions: false,
+            },
+            BoosterConfig {
+                n_estimators: 3,
+                max_depth: 2,
+                min_samples_leaf: 1,
+                ..BoosterConfig::default()
+            },
+        )
+        .expect("model");
+
+        model.fit(&frame).expect("fit lag model");
+        let metadata = model.metadata();
+        assert_eq!(metadata["lag_config"]["lags"], serde_json::json!([1]));
+        assert_eq!(
+            metadata["lag_config"]["rolling_mean_windows"],
+            serde_json::json!([])
+        );
+        let forecast = model.predict(3).expect("forecast");
+        assert_eq!(forecast.predictions().len(), 6);
+        assert!(forecast
+            .predictions()
+            .iter()
+            .all(|row| row.mean.is_finite()));
     }
 }

@@ -1530,17 +1530,7 @@ impl Forecaster for NaiveForecaster {
 
 impl Forecaster for SeasonalNaiveForecaster {
     fn fit(&mut self, frame: &ForecastFrame) -> Result<()> {
-        let fitted = FittedLocalState::from_frame(frame);
-        for (series_id, history) in &fitted.history_by_series {
-            if history.len() < self.season_length {
-                return Err(CartoBoostError::InvalidInput(format!(
-                    "series {series_id} has {} rows, but seasonal naive requires at least {}",
-                    history.len(),
-                    self.season_length
-                )));
-            }
-        }
-        self.fitted = Some(fitted);
+        self.fitted = Some(FittedLocalState::from_frame(frame));
         Ok(())
     }
 
@@ -1556,11 +1546,12 @@ impl Forecaster for SeasonalNaiveForecaster {
                 let last = history.last().ok_or_else(|| {
                     CartoBoostError::InvalidInput("empty series history".to_string())
                 })?;
-                let base = history.len() - self.season_length;
+                let effective_season_length = self.season_length.min(history.len()).max(1);
+                let base = history.len() - effective_season_length;
                 let model = self.model_name().to_string();
                 let mut predictions = Vec::with_capacity(horizon);
                 for step in 1..=horizon {
-                    let seasonal_index = base + ((step - 1) % self.season_length);
+                    let seasonal_index = base + ((step - 1) % effective_season_length);
                     predictions.push(ForecastPrediction {
                         series_id: series_id.clone(),
                         timestamp: fitted.frame.frequency().advance(last.timestamp, step)?,
@@ -1591,17 +1582,7 @@ impl Forecaster for SeasonalNaiveForecaster {
 
 impl Forecaster for WindowAverageForecaster {
     fn fit(&mut self, frame: &ForecastFrame) -> Result<()> {
-        let fitted = FittedLocalState::from_frame(frame);
-        for (series_id, history) in &fitted.history_by_series {
-            if history.len() < self.window_size {
-                return Err(CartoBoostError::InvalidInput(format!(
-                    "series {series_id} has {} rows, but window average requires at least {}",
-                    history.len(),
-                    self.window_size
-                )));
-            }
-        }
-        self.fitted = Some(fitted);
+        self.fitted = Some(FittedLocalState::from_frame(frame));
         Ok(())
     }
 
@@ -1617,9 +1598,10 @@ impl Forecaster for WindowAverageForecaster {
                 let last = history.last().ok_or_else(|| {
                     CartoBoostError::InvalidInput("empty series history".to_string())
                 })?;
-                let start = history.len() - self.window_size;
+                let effective_window_size = self.window_size.min(history.len()).max(1);
+                let start = history.len() - effective_window_size;
                 let mean = history[start..].iter().map(|row| row.target).sum::<f64>()
-                    / self.window_size as f64;
+                    / effective_window_size as f64;
                 let model = self.model_name().to_string();
                 let mut predictions = Vec::with_capacity(horizon);
                 for step in 1..=horizon {
@@ -1656,18 +1638,7 @@ impl Forecaster for WindowAverageForecaster {
 
 impl Forecaster for SeasonalWindowAverageForecaster {
     fn fit(&mut self, frame: &ForecastFrame) -> Result<()> {
-        let fitted = FittedLocalState::from_frame(frame);
-        let min_required = self.season_length.saturating_mul(self.window_count);
-        for (series_id, history) in &fitted.history_by_series {
-            if history.len() < min_required {
-                return Err(CartoBoostError::InvalidInput(format!(
-                    "series {series_id} has {} rows, but seasonal window average requires at least {}",
-                    history.len(),
-                    min_required
-                )));
-            }
-        }
-        self.fitted = Some(fitted);
+        self.fitted = Some(FittedLocalState::from_frame(frame));
         Ok(())
     }
 
@@ -1684,12 +1655,17 @@ impl Forecaster for SeasonalWindowAverageForecaster {
                     CartoBoostError::InvalidInput("empty series history".to_string())
                 })?;
                 let model = self.model_name().to_string();
+                let effective_season_length = self.season_length.min(history.len()).max(1);
+                let effective_window_count = self
+                    .window_count
+                    .min(history.len() / effective_season_length)
+                    .max(1);
                 let mut predictions = Vec::with_capacity(horizon);
                 for step in 1..=horizon {
-                    let phase_offset = (step - 1) % self.season_length;
+                    let phase_offset = (step - 1) % effective_season_length;
                     let mut sum = 0.0;
-                    for window in 0..self.window_count {
-                        let base = history.len() - self.season_length * (window + 1);
+                    for window in 0..effective_window_count {
+                        let base = history.len() - effective_season_length * (window + 1);
                         sum += history[base + phase_offset].target;
                     }
                     predictions.push(ForecastPrediction {
@@ -1697,7 +1673,7 @@ impl Forecaster for SeasonalWindowAverageForecaster {
                         timestamp: fitted.frame.frequency().advance(last.timestamp, step)?,
                         horizon: step,
                         model: model.clone(),
-                        mean: sum / self.window_count as f64,
+                        mean: sum / effective_window_count as f64,
                     });
                 }
                 Ok(predictions)
@@ -2687,10 +2663,12 @@ impl ThetaForecaster {
                 (1..=horizon)
                     .map(|step| {
                         let adjusted = forecast_theta_component(&series.component, step);
+                        let fitted_seasonality =
+                            series.seasonal_pattern.as_ref().and(self.seasonality);
                         let mean = reseasonalize_value(
                             adjusted,
                             series.n_obs + step - 1,
-                            self.seasonality,
+                            fitted_seasonality,
                             series.seasonal_pattern.as_deref(),
                         )?;
                         Ok(ForecastPrediction {
@@ -2781,6 +2759,9 @@ impl FittedETSState {
         damping_phi: f64,
     ) -> Result<Self> {
         let local = FittedLocalState::from_frame(frame);
+        let effective_season_length =
+            effective_full_cycle_season_length(&local.history_by_series, season_length);
+        let effective_gamma = gamma.filter(|_| effective_season_length.is_some());
         let series = local
             .history_by_series
             .iter()
@@ -2794,8 +2775,8 @@ impl FittedETSState {
                         history,
                         alpha,
                         beta,
-                        gamma,
-                        season_length,
+                        effective_gamma,
+                        effective_season_length,
                         damping_phi,
                     )?,
                 ))
@@ -4116,6 +4097,8 @@ impl FittedThetaState {
         seasonality: Option<ThetaSeasonality>,
     ) -> Result<Self> {
         let local = FittedLocalState::from_frame(frame);
+        let effective_seasonality =
+            effective_theta_seasonality(&local.history_by_series, seasonality);
         let series = local
             .history_by_series
             .iter()
@@ -4124,7 +4107,13 @@ impl FittedThetaState {
             .map(|(series_id, history)| {
                 Ok((
                     series_id.clone(),
-                    FittedThetaSeries::fit(series_id, history, theta, alpha, seasonality)?,
+                    FittedThetaSeries::fit(
+                        series_id,
+                        history,
+                        theta,
+                        alpha,
+                        effective_seasonality,
+                    )?,
                 ))
             })
             .collect::<Result<BTreeMap<_, _>>>()?;
@@ -6582,6 +6571,32 @@ fn deseasonalize(
     }
 }
 
+fn effective_theta_seasonality(
+    history_by_series: &BTreeMap<String, Vec<ForecastRow>>,
+    seasonality: Option<ThetaSeasonality>,
+) -> Option<ThetaSeasonality> {
+    seasonality.filter(|seasonality| {
+        history_by_series
+            .values()
+            .all(|history| supports_full_season_cycles(history.len(), seasonality.season_length))
+    })
+}
+
+fn effective_full_cycle_season_length(
+    history_by_series: &BTreeMap<String, Vec<ForecastRow>>,
+    season_length: Option<usize>,
+) -> Option<usize> {
+    season_length.filter(|season_length| {
+        history_by_series
+            .values()
+            .all(|history| supports_full_season_cycles(history.len(), *season_length))
+    })
+}
+
+fn supports_full_season_cycles(history_len: usize, season_length: usize) -> bool {
+    season_length > 1 && history_len >= season_length.saturating_mul(2)
+}
+
 fn fit_theta_component(values: &[f64], theta: f64, alpha: f64) -> ThetaComponent {
     let slope = linear_slope(values);
     let levels = ses_one_step_levels(values, alpha);
@@ -8875,7 +8890,7 @@ mod tests {
     }
 
     #[test]
-    fn ets_rejects_invalid_params_and_short_seasonal_history() {
+    fn ets_rejects_invalid_params_and_degrades_short_seasonal_history() {
         assert!(ETSForecaster::new(0.0, 0.2).is_err());
         assert!(ETSForecaster::with_additive_seasonality(0.5, 0.2, Some(0.5), None).is_err());
 
@@ -8890,8 +8905,15 @@ mod tests {
         .expect("valid frame");
         let mut model = ETSForecaster::with_additive_seasonality(0.5, 0.2, Some(0.5), Some(2))
             .expect("valid seasonal ets");
-        let err = model.fit(&frame).expect_err("short seasonal history");
-        assert!(err.to_string().contains("two full seasonal cycles"));
+        model
+            .fit(&frame)
+            .expect("short seasonal history fits non-seasonally");
+        let forecast = model.predict(2).expect("forecast");
+        assert_eq!(forecast.predictions().len(), 2);
+        assert!(forecast
+            .predictions()
+            .iter()
+            .all(|prediction| prediction.mean.is_finite()));
     }
 
     #[test]
@@ -9043,5 +9065,85 @@ mod tests {
         assert_eq!(forecast.predictions().len(), 2);
         assert_eq!(forecast.predictions()[0].model, "auto_arima");
         assert_eq!(forecast.predictions()[0].timestamp, ts(9));
+    }
+
+    #[test]
+    fn local_seasonal_and_window_models_use_available_short_history() {
+        let frame = ForecastFrame::new(
+            vec![
+                ForecastRow::new("PU1->DO2", ts(1), 10.0),
+                ForecastRow::new("PU1->DO2", ts(2), 20.0),
+                ForecastRow::new("PU1->DO2", ts(3), 30.0),
+                ForecastRow::new("PU9->DO8", ts(1), 4.0),
+                ForecastRow::new("PU9->DO8", ts(2), 6.0),
+                ForecastRow::new("PU9->DO8", ts(3), 8.0),
+            ],
+            ForecastFrequency::Daily,
+        )
+        .expect("valid frame");
+
+        let mut seasonal_naive = SeasonalNaiveForecaster::new(24).expect("seasonal naive");
+        seasonal_naive.fit(&frame).expect("fit seasonal naive");
+        let seasonal = seasonal_naive.predict(4).expect("predict seasonal naive");
+        let pu1 = seasonal
+            .predictions()
+            .iter()
+            .filter(|row| row.series_id == "PU1->DO2")
+            .map(|row| row.mean)
+            .collect::<Vec<_>>();
+        assert_eq!(pu1, vec![10.0, 20.0, 30.0, 10.0]);
+
+        let mut window = WindowAverageForecaster::new(24).expect("window average");
+        window.fit(&frame).expect("fit window average");
+        let averaged = window.predict(2).expect("predict window average");
+        assert_eq!(averaged.predictions().len(), 4);
+        assert!(averaged
+            .predictions()
+            .iter()
+            .all(|row| row.mean.is_finite()));
+        assert_eq!(averaged.predictions()[0].mean, 20.0);
+
+        let mut seasonal_window =
+            SeasonalWindowAverageForecaster::new(24, 3).expect("seasonal window average");
+        seasonal_window.fit(&frame).expect("fit seasonal window");
+        let seasonal_averaged = seasonal_window
+            .predict(4)
+            .expect("predict seasonal window average");
+        let pu9 = seasonal_averaged
+            .predictions()
+            .iter()
+            .filter(|row| row.series_id == "PU9->DO8")
+            .map(|row| row.mean)
+            .collect::<Vec<_>>();
+        assert_eq!(pu9, vec![4.0, 6.0, 8.0, 4.0]);
+    }
+
+    #[test]
+    fn theta_degrades_unsupported_seasonality_to_nonseasonal_fit() {
+        let frame = ForecastFrame::new(
+            vec![
+                ForecastRow::new("PU1->DO2", ts(1), 10.0),
+                ForecastRow::new("PU1->DO2", ts(2), 11.0),
+                ForecastRow::new("PU1->DO2", ts(3), 12.0),
+                ForecastRow::new("PU9->DO8", ts(1), 30.0),
+                ForecastRow::new("PU9->DO8", ts(2), 29.0),
+                ForecastRow::new("PU9->DO8", ts(3), 28.0),
+            ],
+            ForecastFrequency::Daily,
+        )
+        .expect("valid frame");
+        let seasonality = ThetaSeasonality::additive(24).expect("seasonality");
+        let mut model =
+            ThetaForecaster::with_seasonality(2.0, 0.3, Some(seasonality)).expect("theta");
+
+        model
+            .fit(&frame)
+            .expect("fit theta without supported seasonality");
+        let forecast = model.predict(2).expect("forecast");
+        assert_eq!(forecast.predictions().len(), 4);
+        assert!(forecast
+            .predictions()
+            .iter()
+            .all(|prediction| prediction.mean.is_finite()));
     }
 }

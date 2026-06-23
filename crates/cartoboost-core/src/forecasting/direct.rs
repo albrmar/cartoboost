@@ -1,7 +1,9 @@
 use crate::booster::{Booster, BoosterConfig};
 use crate::data::{Dataset, FeatureKind, FeatureSchema};
 use crate::forecasting::horizon::validate_horizon;
-use crate::forecasting::lag_features::{history_by_series, LagFeatureBuilder, LagFeatureConfig};
+use crate::forecasting::lag_features::{
+    history_by_series, lag_config_supported_by_history, LagFeatureBuilder, LagFeatureConfig,
+};
 use crate::forecasting::{
     CartoBoostLagForecaster, ForecastFrame, ForecastPrediction, ForecastResult, ForecastRow,
     Forecaster, GlobalForecastTargetMode,
@@ -80,6 +82,9 @@ impl CartoBoostDirectForecaster {
 
     pub fn fit_horizon(&mut self, frame: &ForecastFrame, horizon: usize) -> Result<()> {
         validate_horizon(horizon)?;
+        let effective_lag_config =
+            lag_config_supported_by_history(self.lag_builder.config(), frame);
+        self.lag_builder = LagFeatureBuilder::new(effective_lag_config)?;
         let mut models = Vec::with_capacity(horizon);
         let mut training_rows_by_horizon = Vec::with_capacity(horizon);
         for step in 1..=horizon {
@@ -182,6 +187,14 @@ impl RectifiedRecursiveForecaster {
 
     pub fn fit_horizon(&mut self, frame: &ForecastFrame, horizon: usize) -> Result<()> {
         validate_horizon(horizon)?;
+        let effective_lag_config =
+            lag_config_supported_by_history(self.lag_builder.config(), frame);
+        self.lag_builder = LagFeatureBuilder::new(effective_lag_config.clone())?;
+        self.recursive = CartoBoostLagForecaster::new_with_target_mode(
+            effective_lag_config,
+            self.booster_config.clone(),
+            GlobalForecastTargetMode::Level,
+        )?;
         self.recursive.fit(frame)?;
         let recursive_baselines = recursive_training_predictions(
             frame,
@@ -432,4 +445,101 @@ fn is_incomplete_lag_history(err: &CartoBoostError) -> bool {
 
 fn not_fitted() -> CartoBoostError {
     CartoBoostError::InvalidInput("forecaster must be fitted before predict".to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::forecasting::ForecastFrequency;
+    use chrono::{NaiveDate, NaiveDateTime};
+
+    fn ts(day: u32) -> NaiveDateTime {
+        NaiveDate::from_ymd_opt(2026, 1, day)
+            .and_then(|date| date.and_hms_opt(0, 0, 0))
+            .expect("valid timestamp")
+    }
+
+    fn short_panel_frame() -> ForecastFrame {
+        ForecastFrame::new(
+            ["PU1->DO2", "PU9->DO8"]
+                .into_iter()
+                .flat_map(|series_id| {
+                    (1..=8).map(move |day| {
+                        ForecastRow::new(
+                            series_id,
+                            ts(day),
+                            f64::from(day) + f64::from(series_id.len() as u32),
+                        )
+                    })
+                })
+                .collect(),
+            ForecastFrequency::Daily,
+        )
+        .expect("valid short panel")
+    }
+
+    fn oversized_lag_config() -> LagFeatureConfig {
+        LagFeatureConfig {
+            lags: vec![1, 24],
+            rolling_mean_windows: vec![24],
+            partial_rolling_mean_windows: Vec::new(),
+            rolling_std_windows: vec![24],
+            rolling_min_windows: vec![24],
+            rolling_max_windows: vec![24],
+            ewm_alpha_percents: Vec::new(),
+            calendar_features: Vec::new(),
+            difference_lags: vec![24],
+            rolling_trend_windows: vec![24],
+            covariate_features: Vec::new(),
+            covariate_indicator_values: Default::default(),
+            covariate_calendar_interactions: false,
+        }
+    }
+
+    #[test]
+    fn direct_models_prune_unsupported_lag_features_for_short_panels() {
+        let frame = short_panel_frame();
+        let booster = BoosterConfig {
+            n_estimators: 3,
+            max_depth: 2,
+            min_samples_leaf: 1,
+            ..BoosterConfig::default()
+        };
+
+        let mut direct = CartoBoostDirectForecaster::new(oversized_lag_config(), booster.clone())
+            .expect("direct");
+        direct.fit_horizon(&frame, 3).expect("fit direct");
+        let direct_metadata = direct.metadata();
+        assert_eq!(
+            direct_metadata["lag_config"]["lags"],
+            serde_json::json!([1])
+        );
+        assert_eq!(
+            direct_metadata["lag_config"]["rolling_mean_windows"],
+            serde_json::json!([])
+        );
+        let direct_forecast = direct.predict(3).expect("direct forecast");
+        assert_eq!(direct_forecast.predictions().len(), 6);
+        assert!(direct_forecast
+            .predictions()
+            .iter()
+            .all(|row| row.mean.is_finite()));
+
+        let mut rectified =
+            RectifiedRecursiveForecaster::new(oversized_lag_config(), booster).expect("rectified");
+        rectified
+            .fit_horizon(&frame, 3)
+            .expect("fit rectified recursive");
+        let rectified_metadata = rectified.metadata();
+        assert_eq!(
+            rectified_metadata["lag_config"]["lags"],
+            serde_json::json!([1])
+        );
+        let rectified_forecast = rectified.predict(3).expect("rectified forecast");
+        assert_eq!(rectified_forecast.predictions().len(), 6);
+        assert!(rectified_forecast
+            .predictions()
+            .iter()
+            .all(|row| row.mean.is_finite()));
+    }
 }

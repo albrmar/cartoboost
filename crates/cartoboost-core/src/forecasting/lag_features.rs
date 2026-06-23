@@ -774,6 +774,93 @@ impl LagFeatureBuilder {
     }
 }
 
+pub fn lag_config_supported_by_history(
+    config: &LagFeatureConfig,
+    frame: &ForecastFrame,
+) -> LagFeatureConfig {
+    let min_history_len = history_by_series(frame.rows())
+        .values()
+        .map(Vec::len)
+        .min()
+        .unwrap_or(0);
+    lag_config_supported_by_prior(config, min_history_len.saturating_sub(1))
+}
+
+pub(crate) fn lag_config_supported_by_prior(
+    config: &LagFeatureConfig,
+    max_prior_len: usize,
+) -> LagFeatureConfig {
+    let mut supported = config.clone();
+    supported
+        .lags
+        .retain(|window| *window > 0 && *window <= max_prior_len);
+    supported
+        .rolling_mean_windows
+        .retain(|window| *window > 0 && *window <= max_prior_len);
+    supported
+        .partial_rolling_mean_windows
+        .retain(|window| *window > 0 && max_prior_len > 0);
+    supported
+        .rolling_std_windows
+        .retain(|window| *window > 1 && *window <= max_prior_len);
+    supported
+        .rolling_min_windows
+        .retain(|window| *window > 0 && *window <= max_prior_len);
+    supported
+        .rolling_max_windows
+        .retain(|window| *window > 0 && *window <= max_prior_len);
+    supported
+        .difference_lags
+        .retain(|window| *window > 0 && *window < max_prior_len);
+    supported
+        .rolling_trend_windows
+        .retain(|window| *window > 1 && *window <= max_prior_len);
+    if lacks_target_history_feature(&supported)
+        && supported.calendar_features.is_empty()
+        && supported.covariate_features.is_empty()
+        && supported.covariate_indicator_values.is_empty()
+        && max_prior_len >= 1
+    {
+        supported.lags.push(1);
+    }
+    sort_dedup_lag_config(&mut supported);
+    supported
+}
+
+fn lacks_target_history_feature(config: &LagFeatureConfig) -> bool {
+    config.lags.is_empty()
+        && config.rolling_mean_windows.is_empty()
+        && config.partial_rolling_mean_windows.is_empty()
+        && config.rolling_std_windows.is_empty()
+        && config.rolling_min_windows.is_empty()
+        && config.rolling_max_windows.is_empty()
+        && config.ewm_alpha_percents.is_empty()
+        && config.difference_lags.is_empty()
+        && config.rolling_trend_windows.is_empty()
+}
+
+fn sort_dedup_lag_config(config: &mut LagFeatureConfig) {
+    sort_dedup(&mut config.lags);
+    sort_dedup(&mut config.rolling_mean_windows);
+    sort_dedup(&mut config.partial_rolling_mean_windows);
+    sort_dedup(&mut config.rolling_std_windows);
+    sort_dedup(&mut config.rolling_min_windows);
+    sort_dedup(&mut config.rolling_max_windows);
+    sort_dedup_u8(&mut config.ewm_alpha_percents);
+    sort_dedup(&mut config.difference_lags);
+    sort_dedup(&mut config.rolling_trend_windows);
+}
+
+fn sort_dedup(values: &mut Vec<usize>) {
+    values.sort_unstable();
+    values.dedup();
+}
+
+fn sort_dedup_u8(values: &mut Vec<u8>) {
+    values.sort_unstable();
+    values.dedup();
+}
+
 struct SeriesFeatureCache {
     targets: Vec<f64>,
     prefix_sum: Vec<f64>,

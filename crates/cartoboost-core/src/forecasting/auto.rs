@@ -1,5 +1,5 @@
 use crate::booster::BoosterConfig;
-use crate::forecasting::lag_features::history_by_series;
+use crate::forecasting::lag_features::{history_by_series, lag_config_supported_by_prior};
 use crate::forecasting::{
     CalendarFeature, ClassicalExpertBank, ExpertScore, ForecastActual, ForecastFrame,
     ForecastObjective, ForecastPrediction, ForecastResult, ForecastRow, Forecaster,
@@ -999,7 +999,7 @@ fn expand_lag_config_for_season(
     season_length: usize,
     max_supported_window: usize,
 ) {
-    prune_lag_config_to_supported_history(lag_config, max_supported_window);
+    *lag_config = lag_config_supported_by_prior(lag_config, max_supported_window);
     if season_length <= 1 || max_supported_window < season_length {
         sort_dedup_lag_config(lag_config);
         return;
@@ -1022,36 +1022,6 @@ fn expand_lag_config_for_season(
         }
     }
     sort_dedup_lag_config(lag_config);
-}
-
-fn prune_lag_config_to_supported_history(
-    lag_config: &mut LagFeatureConfig,
-    max_supported_window: usize,
-) {
-    lag_config
-        .lags
-        .retain(|window| *window > 0 && *window <= max_supported_window);
-    lag_config
-        .rolling_mean_windows
-        .retain(|window| *window > 1 && *window <= max_supported_window);
-    lag_config
-        .rolling_std_windows
-        .retain(|window| *window > 1 && *window <= max_supported_window);
-    lag_config
-        .rolling_min_windows
-        .retain(|window| *window > 1 && *window <= max_supported_window);
-    lag_config
-        .rolling_max_windows
-        .retain(|window| *window > 1 && *window <= max_supported_window);
-    lag_config
-        .difference_lags
-        .retain(|window| *window > 1 && *window <= max_supported_window);
-    lag_config
-        .rolling_trend_windows
-        .retain(|window| *window > 1 && *window <= max_supported_window);
-    if lag_config.lags.is_empty() && max_supported_window >= 1 {
-        lag_config.lags.push(1);
-    }
 }
 
 fn sort_dedup_lag_config(lag_config: &mut LagFeatureConfig) {
