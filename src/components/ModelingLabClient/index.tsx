@@ -280,6 +280,7 @@ const neuralPipelineLabels: Record<string, string> = {
 const graphNeuralPipelines = new Set(['node2vec', 'graphsage', 'hetero_graphsage', 'hinsage']);
 type ActiveModelingSurface = 'forecast' | 'model' | 'neural';
 const TAXI_LANE_SAMPLE_ROWS = 5000;
+const TAXI_VARIED_ROUTE_SAMPLE_ROWS = 2500;
 const VISUALIZED_MODEL_MAX_ROWS = 800;
 const TAXI_ZONE_CENTROIDS: Record<string, {lat: number; lon: number}> = {
   4: {lat: 40.723752, lon: -73.976968},
@@ -347,6 +348,7 @@ export default function ModelingLabClient(): React.ReactElement {
   const wasmJsUrl = useBaseUrl('/wasm/cartoboost/cartoboost_wasm.js');
   const wasmBinaryUrl = useBaseUrl('/wasm/cartoboost/cartoboost_wasm_bg.wasm');
   const taxiLaneSampleUrl = useBaseUrl('/samples/yellow_taxi_2024-01-single-lane-5000.parquet');
+  const taxiVariedRouteSampleUrl = useBaseUrl('/samples/yellow_taxi_2024-01-varied-routes-2500.parquet');
   const [table, setTable] = useState<ParsedTable | null>(null);
   const [timestampCol, setTimestampCol] = useState('timestamp');
   const [targetCol, setTargetCol] = useState('target');
@@ -373,13 +375,14 @@ export default function ModelingLabClient(): React.ReactElement {
   const [status, setStatus] = useState('Drop a CSV, TSV, or Parquet file to start.');
   const [isRunning, setIsRunning] = useState(false);
   const [isLoadingTaxiLane, setIsLoadingTaxiLane] = useState(false);
+  const [isLoadingTaxiVariedRoutes, setIsLoadingTaxiVariedRoutes] = useState(false);
   const [runProgress, setRunProgress] = useState<RunProgress | null>(null);
   const [runLog, setRunLog] = useState<RunLogEntry[]>([]);
   const [modelOptions, setModelOptions] = useState<ModelOption[]>(fallbackModelOptions);
 
   const previewRows = table?.rows.slice(0, 6) ?? [];
   const selectedForecastModel = modelOptions.find((option) => option.value === model) ?? modelOptions[0];
-  const isLoadingTaxiSample = isLoadingTaxiLane;
+  const isLoadingTaxiSample = isLoadingTaxiLane || isLoadingTaxiVariedRoutes;
   const selectedColumnsReady =
     table !== null && timestampCol !== '' && targetCol !== '' && table.columns.includes(timestampCol) && table.columns.includes(targetCol);
 
@@ -517,6 +520,32 @@ export default function ModelingLabClient(): React.ReactElement {
       setIsLoadingTaxiLane(false);
     }
   }, [applyTaxiTable, taxiLaneSampleUrl]);
+
+  const loadTaxiVariedRouteSample = useCallback(async () => {
+    setIsLoadingTaxiVariedRoutes(true);
+    setStatus('Loading the varied-route taxi geography sample.');
+    try {
+      await waitForBrowserPaint();
+      const response = await fetch(taxiVariedRouteSampleUrl);
+      if (!response.ok) {
+        throw new Error(`Unable to load varied-route taxi sample (${response.status}).`);
+      }
+      setStatus('Parsing varied-route taxi geography sample.');
+      await waitForBrowserPaint();
+      const parsed = buildTaxiRouteHourSampleTable(
+        await parseParquetBuffer(
+          await response.arrayBuffer(),
+          'yellow_taxi_2024-01-varied-routes-2500.parquet',
+        ),
+        TAXI_VARIED_ROUTE_SAMPLE_ROWS,
+      );
+      applyTaxiTable(parsed, `Loaded ${parsed.rows.length.toLocaleString()} route-hour rows across varied pickup/dropoff coordinates.`);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : String(error));
+    } finally {
+      setIsLoadingTaxiVariedRoutes(false);
+    }
+  }, [applyTaxiTable, taxiVariedRouteSampleUrl]);
 
   const onDrop = useCallback(
     async (event: React.DragEvent<HTMLLabelElement>) => {
@@ -917,8 +946,11 @@ export default function ModelingLabClient(): React.ReactElement {
           <button className={styles.secondaryButton} type="button" disabled={isLoadingTaxiSample || isRunning} onClick={() => void loadTaxiLaneSample()}>
             {isLoadingTaxiLane ? 'Loading taxi lane' : 'Load taxi lane'}
           </button>
+          <button className={styles.secondaryButton} type="button" disabled={isLoadingTaxiSample || isRunning} onClick={() => void loadTaxiVariedRouteSample()}>
+            {isLoadingTaxiVariedRoutes ? 'Loading varied routes' : 'Load varied routes'}
+          </button>
           {isLoadingTaxiSample && (
-            <div className={styles.loadingBar} role="progressbar" aria-label="Loading taxi lane">
+            <div className={styles.loadingBar} role="progressbar" aria-label={isLoadingTaxiVariedRoutes ? 'Loading varied routes' : 'Loading taxi lane'}>
               <span />
             </div>
           )}
@@ -1147,7 +1179,7 @@ export default function ModelingLabClient(): React.ReactElement {
             </div>
           </div>
           {(runProgress || isLoadingTaxiSample) && (
-            <ProgressBar progress={runProgress} label={isLoadingTaxiLane ? 'Loading taxi lane' : undefined} />
+            <ProgressBar progress={runProgress} label={isLoadingTaxiVariedRoutes ? 'Loading varied routes' : isLoadingTaxiLane ? 'Loading taxi lane' : undefined} />
           )}
           {runLog.length > 0 && (
             <div className={styles.runLog} aria-live="polite" aria-label="Run activity">
@@ -4495,6 +4527,14 @@ let initializedWasmModule:
       promise: Promise<WasmModule>;
     }
   | null = null;
+let forecastWorkerClient: ForecastWorkerClient | null = null;
+
+type ForecastWorkerClient = {
+  key: string;
+  worker: Worker;
+  nextId: number;
+  pending: Map<number, {resolve: (value: ForecastResponse) => void; reject: (error: Error) => void}>;
+};
 
 async function getInitializedWasmModule(wasmJsUrl: string, wasmBinaryUrl: string) {
   const key = `${wasmJsUrl}\u0000${wasmBinaryUrl}`;
@@ -4553,12 +4593,12 @@ async function runBrowserForecast({
   model: string;
   seasonLength: number;
 }) {
-  const wasmModule = await getInitializedWasmModule(wasmJsUrl, wasmBinaryUrl);
   const covariateColumns = numericCovariateColumns(table, [timestampCol, targetCol, seriesCol]);
   const piecewiseOptions = isPiecewiseForecastModel(model)
     ? piecewiseForecastOptions(table, targetCol, seriesCol, covariateColumns, horizon)
     : {};
-  const response = wasmModule.runForecast({
+  const browserAutoOptions = model === 'auto_forecast' ? {maxAutoCandidateCount: 4} : {};
+  const request = {
     rows: table.rows.map((row) => ({
       timestamp: row[timestampCol],
       target: Number(row[targetCol]),
@@ -4571,6 +4611,7 @@ async function runBrowserForecast({
     options: {
       seasonLength,
       includeComponents: true,
+      ...browserAutoOptions,
       ...piecewiseOptions,
     },
     metadata: {
@@ -4578,10 +4619,89 @@ async function runBrowserForecast({
       targetCol,
       seriesIdCol: seriesCol || undefined,
     },
-  });
+  };
+  const response =
+    typeof Worker === 'undefined'
+      ? (await getInitializedWasmModule(wasmJsUrl, wasmBinaryUrl)).runForecast(request)
+      : await runForecastRequestInWorker(wasmJsUrl, wasmBinaryUrl, request);
   assertForecastResponseRecords(response, model);
   return response;
 }
+
+function runForecastRequestInWorker(wasmJsUrl: string, wasmBinaryUrl: string, request: unknown): Promise<ForecastResponse> {
+  const client = getForecastWorkerClient(wasmJsUrl, wasmBinaryUrl);
+  const id = client.nextId;
+  client.nextId += 1;
+  return new Promise((resolve, reject) => {
+    client.pending.set(id, {resolve, reject});
+    client.worker.postMessage({id, wasmJsUrl, wasmBinaryUrl, request});
+  });
+}
+
+function getForecastWorkerClient(wasmJsUrl: string, wasmBinaryUrl: string): ForecastWorkerClient {
+  const key = `${wasmJsUrl}\u0000${wasmBinaryUrl}`;
+  if (forecastWorkerClient?.key === key) {
+    return forecastWorkerClient;
+  }
+  forecastWorkerClient?.worker.terminate();
+  const worker = new Worker(URL.createObjectURL(new Blob([forecastWorkerSource], {type: 'text/javascript'})), {type: 'module'});
+  const pending: ForecastWorkerClient['pending'] = new Map();
+  worker.onmessage = (event: MessageEvent<{id: number; response?: ForecastResponse; error?: string}>) => {
+    const {id, response, error} = event.data;
+    const callbacks = pending.get(id);
+    if (!callbacks) {
+      return;
+    }
+    pending.delete(id);
+    if (error) {
+      callbacks.reject(new Error(error));
+      return;
+    }
+    if (!response) {
+      callbacks.reject(new Error('forecast worker returned an empty response'));
+      return;
+    }
+    callbacks.resolve(response);
+  };
+  worker.onerror = (event) => {
+    const message = event.message || 'forecast worker failed';
+    for (const callbacks of pending.values()) {
+      callbacks.reject(new Error(message));
+    }
+    pending.clear();
+  };
+  forecastWorkerClient = {key, worker, nextId: 1, pending};
+  return forecastWorkerClient;
+}
+
+const forecastWorkerSource = `
+let wasmKey = '';
+let wasmPromise = null;
+
+async function getWasmModule(wasmJsUrl, wasmBinaryUrl) {
+  const key = wasmJsUrl + '\\0' + wasmBinaryUrl;
+  if (wasmPromise && wasmKey === key) {
+    return wasmPromise;
+  }
+  wasmKey = key;
+  wasmPromise = (async () => {
+    const wasmModule = await import(wasmJsUrl);
+    await wasmModule.default({module_or_path: wasmBinaryUrl});
+    return wasmModule;
+  })();
+  return wasmPromise;
+}
+
+self.onmessage = async (event) => {
+  const {id, wasmJsUrl, wasmBinaryUrl, request} = event.data;
+  try {
+    const wasmModule = await getWasmModule(wasmJsUrl, wasmBinaryUrl);
+    self.postMessage({id, response: wasmModule.runForecast(request)});
+  } catch (error) {
+    self.postMessage({id, error: error instanceof Error ? error.message : String(error)});
+  }
+};
+`;
 
 async function runBrowserRegression({
   wasmJsUrl,

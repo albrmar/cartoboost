@@ -62,6 +62,7 @@ def test_auto_forecaster_delegates_to_native_auto_model(install_fake_native):
             "min_blend_weight": 0.2,
             "max_blend_weight": 0.8,
             "max_direct_horizon": 14,
+            "max_candidate_count": None,
             "n_estimators": 16,
         },
     )
@@ -107,6 +108,11 @@ def test_auto_forecaster_rejects_invalid_partial_rolling_mean_windows():
 def test_auto_forecaster_rejects_invalid_validation_origin_count():
     with pytest.raises(ValueError, match="validation_origin_count"):
         AutoForecaster(validation_origin_count=0)
+
+
+def test_auto_forecaster_rejects_invalid_max_candidate_count():
+    with pytest.raises(ValueError, match="max_candidate_count"):
+        AutoForecaster(max_candidate_count=0)
 
 
 def test_auto_forecaster_can_opt_into_ewm_alpha_percents(install_fake_native):

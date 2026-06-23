@@ -27,6 +27,7 @@ class AutoForecasterConfig:
     min_blend_weight: float = 0.15
     max_blend_weight: float = 0.85
     max_direct_horizon: int = 28
+    max_candidate_count: int | None = None
     covariate_features: tuple[str, ...] | None = None
     covariate_calendar_interactions: bool = False
     rich_calendar_features: bool = False
@@ -59,6 +60,7 @@ class AutoForecaster(BaseForecaster):
         min_blend_weight: float = 0.15,
         max_blend_weight: float = 0.85,
         max_direct_horizon: int = 28,
+        max_candidate_count: int | None = None,
         covariate_features: Sequence[str] | None = None,
         covariate_calendar_interactions: bool = False,
         rich_calendar_features: bool = False,
@@ -81,6 +83,7 @@ class AutoForecaster(BaseForecaster):
             min_blend_weight=float(min_blend_weight),
             max_blend_weight=float(max_blend_weight),
             max_direct_horizon=int(max_direct_horizon),
+            max_candidate_count=None if max_candidate_count is None else int(max_candidate_count),
             covariate_features=_normalize_optional_feature_names(
                 covariate_features,
                 name="covariate_features",
@@ -99,6 +102,8 @@ class AutoForecaster(BaseForecaster):
         )
         if self.config.validation_origin_count <= 0:
             raise ValueError("validation_origin_count must be positive")
+        if self.config.max_candidate_count is not None and self.config.max_candidate_count <= 0:
+            raise ValueError("max_candidate_count must be positive when provided")
         self.cartoboost_params = dict(cartoboost_params)
         self._model: Any | None = None
         self._effective_covariate_features: list[str] | None = None
@@ -133,6 +138,7 @@ class AutoForecaster(BaseForecaster):
             "min_blend_weight": self.config.min_blend_weight,
             "max_blend_weight": self.config.max_blend_weight,
             "max_direct_horizon": self.config.max_direct_horizon,
+            "max_candidate_count": self.config.max_candidate_count,
             **self.cartoboost_params,
         }
         model = native_class(**params)
@@ -160,6 +166,7 @@ class AutoForecaster(BaseForecaster):
             "validation_window": self.config.validation_window,
             "validation_origin_count": self.config.validation_origin_count,
             "max_direct_horizon": self.config.max_direct_horizon,
+            "max_candidate_count": self.config.max_candidate_count,
             "covariate_features": (
                 None
                 if self.config.covariate_features is None

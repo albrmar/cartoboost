@@ -80,6 +80,7 @@ struct BrowserForecastOptions {
     window_count: Option<usize>,
     validation_window: Option<usize>,
     max_direct_horizon: Option<usize>,
+    max_auto_candidate_count: Option<usize>,
     include_components: Option<bool>,
     include_samples: Option<bool>,
     include_quantiles: Option<bool>,
@@ -3010,6 +3011,7 @@ fn build_forecaster(
             if let Some(validation_window) = options.validation_window {
                 config.validation_window = Some(validation_window);
             }
+            config.max_candidate_count = options.max_auto_candidate_count;
             config.max_direct_horizon = options.max_direct_horizon.unwrap_or(horizon);
             Ok(Box::new(AutoForecastModel::new(config)?))
         }

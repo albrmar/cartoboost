@@ -30,10 +30,12 @@ browser, then asks for opt-in model-structure metadata from that same fit. The
 visualizer renders a splitter atlas, boosted-tree blueprints, split-kind mix,
 top splitter rules, depth profile, and largest holdout residuals.
 
-Use the built-in taxi button to load the bundled 5,000-row single-lane yellow
-taxi demand sample. The sample is shaped for browser forecasting demos: one
-pickup/dropoff lane, one continuous hourly series, and enough history for
-roster comparisons without changing the forecast task into a panel problem.
+Use the built-in taxi buttons to load either bundled browser sample. The
+5,000-row single-lane yellow taxi demand sample is shaped for forecasting demos:
+one pickup/dropoff lane, one continuous hourly series, and enough history for
+roster comparisons without changing the forecast task into a panel problem. The
+2,500-row varied-route sample keeps many pickup/dropoff coordinates for spatial,
+graph, neural, and splitter-visualization checks.
 
 Visualization metadata is requested only by the Modeling Lab. Main WebAssembly
 forecasting, regression, and neural prediction calls continue without tree

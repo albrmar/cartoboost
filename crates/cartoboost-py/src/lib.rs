@@ -2606,7 +2606,7 @@ struct NativeAutoForecastModel {
 #[pymethods]
 impl NativeAutoForecastModel {
     #[new]
-    #[pyo3(signature = (lags=None, rolling_windows=None, partial_rolling_mean_windows=None, rolling_std_windows=None, rolling_min_windows=None, rolling_max_windows=None, ewm_alpha_percents=None, difference_lags=None, rolling_trend_windows=None, covariate_features=None, covariate_indicator_values=None, covariate_calendar_interactions=false, calendar_features=true, rich_calendar_features=false, elapsed_calendar_features=false, elapsed_calendar_periods=None, season_length=7, validation_window=None, validation_origin_count=2, objective="rmse_wape", baseline_displacement_gain=0.03, hard_winner_relative_gain=0.05, min_blend_weight=0.15, max_blend_weight=0.85, max_direct_horizon=28, recursive=true, n_estimators=None, learning_rate=None, max_depth=None, min_samples_leaf=None, min_gain=None, splitters=None, trend_features=true, target_mode="level"))]
+    #[pyo3(signature = (lags=None, rolling_windows=None, partial_rolling_mean_windows=None, rolling_std_windows=None, rolling_min_windows=None, rolling_max_windows=None, ewm_alpha_percents=None, difference_lags=None, rolling_trend_windows=None, covariate_features=None, covariate_indicator_values=None, covariate_calendar_interactions=false, calendar_features=true, rich_calendar_features=false, elapsed_calendar_features=false, elapsed_calendar_periods=None, season_length=7, validation_window=None, validation_origin_count=2, objective="rmse_wape", baseline_displacement_gain=0.03, hard_winner_relative_gain=0.05, min_blend_weight=0.15, max_blend_weight=0.85, max_direct_horizon=28, max_candidate_count=None, recursive=true, n_estimators=None, learning_rate=None, max_depth=None, min_samples_leaf=None, min_gain=None, splitters=None, trend_features=true, target_mode="level"))]
     #[allow(clippy::too_many_arguments)]
     fn new(
         lags: Option<Vec<usize>>,
@@ -2634,6 +2634,7 @@ impl NativeAutoForecastModel {
         min_blend_weight: f64,
         max_blend_weight: f64,
         max_direct_horizon: usize,
+        max_candidate_count: Option<usize>,
         recursive: bool,
         n_estimators: Option<usize>,
         learning_rate: Option<f64>,
@@ -2736,6 +2737,7 @@ impl NativeAutoForecastModel {
                 min_blend_weight,
                 max_blend_weight,
                 max_direct_horizon,
+                max_candidate_count,
             })
             .map_err(to_py_value_error)?,
         })

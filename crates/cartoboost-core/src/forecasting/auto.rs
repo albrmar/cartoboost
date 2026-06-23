@@ -31,6 +31,7 @@ const LOG1P_SCALED_LAG_EXPERT: &str = "log1p_scaled_lag";
 const LAG_PLUS_EXPERT: &str = "lag_plus";
 const INTERMITTENT_DEMAND_EXPERT: &str = "intermittent_demand";
 const CLASSICAL_EXPERT: &str = "classical_expert_bank";
+const MIN_AUTO_TRAIN_HISTORY: usize = 4;
 const MIN_SERIES_WEIGHT_VALIDATION_POINTS: usize = 4;
 const AUTO_CANDIDATES: [&str; 14] = [
     LAG_EXPERT,
@@ -65,6 +66,7 @@ pub struct AutoForecastConfig {
     pub min_blend_weight: f64,
     pub max_blend_weight: f64,
     pub max_direct_horizon: usize,
+    pub max_candidate_count: Option<usize>,
 }
 
 impl Default for AutoForecastConfig {
@@ -100,6 +102,7 @@ impl Default for AutoForecastConfig {
             min_blend_weight: 0.15,
             max_blend_weight: 0.85,
             max_direct_horizon: 28,
+            max_candidate_count: None,
         }
     }
 }
@@ -700,7 +703,7 @@ fn score_auto_candidates(
     splits: &[ValidationSplit],
     nonnegative_output: bool,
 ) -> Vec<ExpertScore> {
-    let mut scored = AUTO_CANDIDATES
+    let mut scored = auto_candidate_roster(config)
         .par_iter()
         .enumerate()
         .filter_map(|(index, name)| {
@@ -714,6 +717,14 @@ fn score_auto_candidates(
         .collect::<Vec<_>>();
     scored.sort_by_key(|(index, _)| *index);
     scored.into_iter().flat_map(|(_, scores)| scores).collect()
+}
+
+fn auto_candidate_roster(config: &AutoForecastConfig) -> Vec<&'static str> {
+    let max_candidate_count = config
+        .max_candidate_count
+        .unwrap_or(AUTO_CANDIDATES.len())
+        .min(AUTO_CANDIDATES.len());
+    AUTO_CANDIDATES[..max_candidate_count].to_vec()
 }
 
 fn score_candidate_across_splits(
@@ -933,15 +944,17 @@ fn validation_horizon(validation: &[ForecastRow]) -> usize {
 }
 
 fn effective_validation_window(frame: &ForecastFrame, configured: Option<usize>) -> usize {
-    if let Some(window) = configured {
-        return window;
-    }
     let min_history = history_by_series(frame.rows())
         .values()
         .map(Vec::len)
         .min()
         .unwrap_or(0);
-    (min_history / 5).clamp(1, 8)
+    let automatic = (min_history / 5).clamp(1, 8);
+    let max_feasible = min_history.saturating_sub(MIN_AUTO_TRAIN_HISTORY).max(1);
+    match configured {
+        Some(window) if window <= max_feasible => window.max(1),
+        Some(_) | None => automatic.min(max_feasible).max(1),
+    }
 }
 
 fn effective_validation_origin_count(
@@ -986,6 +999,7 @@ fn expand_lag_config_for_season(
     season_length: usize,
     max_supported_window: usize,
 ) {
+    prune_lag_config_to_supported_history(lag_config, max_supported_window);
     if season_length <= 1 || max_supported_window < season_length {
         sort_dedup_lag_config(lag_config);
         return;
@@ -1008,6 +1022,36 @@ fn expand_lag_config_for_season(
         }
     }
     sort_dedup_lag_config(lag_config);
+}
+
+fn prune_lag_config_to_supported_history(
+    lag_config: &mut LagFeatureConfig,
+    max_supported_window: usize,
+) {
+    lag_config
+        .lags
+        .retain(|window| *window > 0 && *window <= max_supported_window);
+    lag_config
+        .rolling_mean_windows
+        .retain(|window| *window > 1 && *window <= max_supported_window);
+    lag_config
+        .rolling_std_windows
+        .retain(|window| *window > 1 && *window <= max_supported_window);
+    lag_config
+        .rolling_min_windows
+        .retain(|window| *window > 1 && *window <= max_supported_window);
+    lag_config
+        .rolling_max_windows
+        .retain(|window| *window > 1 && *window <= max_supported_window);
+    lag_config
+        .difference_lags
+        .retain(|window| *window > 1 && *window <= max_supported_window);
+    lag_config
+        .rolling_trend_windows
+        .retain(|window| *window > 1 && *window <= max_supported_window);
+    if lag_config.lags.is_empty() && max_supported_window >= 1 {
+        lag_config.lags.push(1);
+    }
 }
 
 fn sort_dedup_lag_config(lag_config: &mut LagFeatureConfig) {
@@ -1086,6 +1130,11 @@ fn validate_config(config: &AutoForecastConfig) -> Result<()> {
     {
         return Err(CartoBoostError::InvalidInput(
             "auto forecast blend weights must satisfy 0 <= min <= max <= 1".to_string(),
+        ));
+    }
+    if matches!(config.max_candidate_count, Some(0)) {
+        return Err(CartoBoostError::InvalidInput(
+            "auto forecast max_candidate_count must be positive".to_string(),
         ));
     }
     Ok(())
@@ -1260,6 +1309,18 @@ mod tests {
     }
 
     #[test]
+    fn auto_candidate_scoring_respects_candidate_budget() {
+        let config = AutoForecastConfig {
+            max_candidate_count: Some(2),
+            ..AutoForecastConfig::default()
+        };
+        assert_eq!(
+            auto_candidate_roster(&config),
+            vec![LAG_EXPERT, RECENCY_WEIGHTED_LAG_EXPERT],
+        );
+    }
+
+    #[test]
     fn auto_validation_origin_count_is_capped_by_available_history() {
         let short_frame = ForecastFrame::new(
             (1..=5)
@@ -1278,6 +1339,63 @@ mod tests {
 
         assert_eq!(effective_validation_origin_count(&short_frame, 3, 4), 1);
         assert_eq!(effective_validation_origin_count(&long_frame, 3, 4), 3);
+    }
+
+    #[test]
+    fn auto_forecast_caps_oversized_validation_window_for_short_panel_series() {
+        let frame = ForecastFrame::new(
+            ["PU4-DO7", "PU24-DO48", "PU132-DO236"]
+                .into_iter()
+                .flat_map(|series_id| {
+                    (1..=20).map(move |day| {
+                        ForecastRow::new(
+                            series_id,
+                            ts(day),
+                            10.0 + f64::from(day % 7) + f64::from(series_id.len() as u32),
+                        )
+                    })
+                })
+                .collect(),
+            crate::forecasting::ForecastFrequency::Daily,
+        )
+        .expect("frame");
+        let mut model = AutoForecastModel::new(AutoForecastConfig {
+            lag_config: LagFeatureConfig {
+                lags: vec![1, 24],
+                rolling_mean_windows: vec![24],
+                partial_rolling_mean_windows: Vec::new(),
+                rolling_std_windows: Vec::new(),
+                rolling_min_windows: Vec::new(),
+                rolling_max_windows: Vec::new(),
+                ewm_alpha_percents: Vec::new(),
+                calendar_features: Vec::new(),
+                difference_lags: Vec::new(),
+                rolling_trend_windows: Vec::new(),
+                covariate_features: Vec::new(),
+                covariate_indicator_values: Default::default(),
+                covariate_calendar_interactions: false,
+            },
+            validation_window: Some(24),
+            validation_origin_count: 2,
+            objective: ForecastObjective::RmseWape,
+            season_length: 24,
+            max_direct_horizon: 14,
+            ..AutoForecastConfig::default()
+        })
+        .expect("model");
+
+        model
+            .fit(&frame)
+            .expect("fit with capped validation window");
+        let metadata = model.metadata();
+        assert_eq!(metadata["validation_window"], serde_json::json!(4));
+
+        let forecast = model.predict(3).expect("forecast");
+        assert_eq!(forecast.predictions().len(), 9);
+        assert!(forecast
+            .predictions()
+            .iter()
+            .all(|prediction| prediction.mean.is_finite()));
     }
 
     #[test]
