@@ -971,6 +971,7 @@ fn run_forecast_request(request: BrowserForecastRequest) -> Result<BrowserForeca
         ));
     }
     let model = request.model;
+    let requested_model = model.trim().to_ascii_lowercase().replace('-', "_");
     let options = request.options;
     let frame =
         forecast_frame_from_browser_request(request.rows, request.frequency, request.metadata)?;
@@ -1023,8 +1024,13 @@ fn run_forecast_request(request: BrowserForecastRequest) -> Result<BrowserForeca
             quantiles,
         });
     }
-    let mut forecaster = build_forecaster(&model, &options, &frame, request.horizon)?;
-    let requested_model = model.trim().to_ascii_lowercase().replace('-', "_");
+    let mut forecaster = match build_forecaster(&model, &options, &frame, request.horizon) {
+        Ok(forecaster) => forecaster,
+        Err(error) if tolerant_browser_forecast_model(&requested_model) => {
+            return tolerant_forecast_response(&requested_model, &frame, request.horizon, error);
+        }
+        Err(error) => return Err(error),
+    };
     let fit_result = forecaster
         .fit(&frame)
         .and_then(|()| forecaster.predict(request.horizon));

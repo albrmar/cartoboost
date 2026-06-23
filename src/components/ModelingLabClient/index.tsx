@@ -3,7 +3,7 @@ import useBaseUrl from '@docusaurus/useBaseUrl';
 import {contourDensity, geoGraticule, geoMercator, geoPath, interpolateTurbo, scaleSequential} from 'd3';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
-import {coerceFiniteNumber, formatFixed, formatPercent} from './numberFormat';
+import {assertForecastResponseRecords, coerceFiniteNumber, formatFixed, formatPercent} from './numberFormat';
 import styles from './styles.module.css';
 
 type ParsedTable = {
@@ -4558,7 +4558,7 @@ async function runBrowserForecast({
   const piecewiseOptions = isPiecewiseForecastModel(model)
     ? piecewiseForecastOptions(table, targetCol, seriesCol, covariateColumns, horizon)
     : {};
-  return wasmModule.runForecast({
+  const response = wasmModule.runForecast({
     rows: table.rows.map((row) => ({
       timestamp: row[timestampCol],
       target: Number(row[targetCol]),
@@ -4579,6 +4579,8 @@ async function runBrowserForecast({
       seriesIdCol: seriesCol || undefined,
     },
   });
+  assertForecastResponseRecords(response, model);
+  return response;
 }
 
 async function runBrowserRegression({
