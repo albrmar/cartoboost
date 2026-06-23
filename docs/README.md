@@ -15,7 +15,7 @@ neural-embedding workflows.
 - [Parameters](user-guide/parameters.md)
 - [Forecasting](forecasting.md)
 - [Forecasting Model Guides](user-guide/forecasting-models/index.md)
-- [Prophet-Compatible Forecast Plot](user-guide/forecasting-models/prophet.md)
+- [Plotting](plotting.md)
 - [Objectives](objectives.md)
 - [Constraints](constraints.md)
 - [Spatial Modeling](spatial_modeling.md)

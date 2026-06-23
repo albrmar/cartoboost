@@ -71,6 +71,31 @@ struct FittedIntermittentSeries {
     zero_fraction: f64,
 }
 
+#[derive(Debug, Clone)]
+struct FittedFixedIntermittentDemand {
+    frame: ForecastFrame,
+    levels: BTreeMap<String, f64>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CrostonForecaster {
+    alpha: f64,
+    fitted: Option<FittedFixedIntermittentDemand>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SbaForecaster {
+    alpha: f64,
+    fitted: Option<FittedFixedIntermittentDemand>,
+}
+
+#[derive(Debug, Clone)]
+pub struct TsbForecaster {
+    alpha: f64,
+    beta: f64,
+    fitted: Option<FittedFixedIntermittentDemand>,
+}
+
 impl IntermittentDemandForecaster {
     pub fn new(config: IntermittentDemandConfig) -> Result<Self> {
         validate_config(&config)?;
@@ -91,6 +116,56 @@ impl IntermittentDemandForecaster {
                     .collect()
             })
             .unwrap_or_default()
+    }
+}
+
+impl CrostonForecaster {
+    pub fn new(alpha: f64) -> Result<Self> {
+        validate_unit_interval("alpha", alpha)?;
+        Ok(Self {
+            alpha,
+            fitted: None,
+        })
+    }
+}
+
+impl Default for CrostonForecaster {
+    fn default() -> Self {
+        Self::new(0.2).expect("default alpha is valid")
+    }
+}
+
+impl SbaForecaster {
+    pub fn new(alpha: f64) -> Result<Self> {
+        validate_unit_interval("alpha", alpha)?;
+        Ok(Self {
+            alpha,
+            fitted: None,
+        })
+    }
+}
+
+impl Default for SbaForecaster {
+    fn default() -> Self {
+        Self::new(0.2).expect("default alpha is valid")
+    }
+}
+
+impl TsbForecaster {
+    pub fn new(alpha: f64, beta: f64) -> Result<Self> {
+        validate_unit_interval("alpha", alpha)?;
+        validate_unit_interval("beta", beta)?;
+        Ok(Self {
+            alpha,
+            beta,
+            fitted: None,
+        })
+    }
+}
+
+impl Default for TsbForecaster {
+    fn default() -> Self {
+        Self::new(0.2, 0.2).expect("default smoothing parameters are valid")
     }
 }
 
@@ -184,6 +259,91 @@ impl Forecaster for IntermittentDemandForecaster {
                     })
                 }).collect::<Vec<_>>()
             }),
+        })
+    }
+}
+
+impl Forecaster for CrostonForecaster {
+    fn fit(&mut self, frame: &ForecastFrame) -> Result<()> {
+        self.fitted = Some(fit_fixed_intermittent(
+            frame,
+            IntermittentDemandMethod::Croston,
+            self.alpha,
+            None,
+        )?);
+        Ok(())
+    }
+
+    fn predict(&self, horizon: usize) -> Result<ForecastResult> {
+        predict_fixed_intermittent(self.model_name(), self.fitted.as_ref(), horizon)
+    }
+
+    fn model_name(&self) -> &'static str {
+        "croston"
+    }
+
+    fn metadata(&self) -> Value {
+        json!({
+            "model": self.model_name(),
+            "alpha": self.alpha,
+            "series_count": self.fitted.as_ref().map(|state| state.levels.len()),
+        })
+    }
+}
+
+impl Forecaster for SbaForecaster {
+    fn fit(&mut self, frame: &ForecastFrame) -> Result<()> {
+        self.fitted = Some(fit_fixed_intermittent(
+            frame,
+            IntermittentDemandMethod::Sba,
+            self.alpha,
+            None,
+        )?);
+        Ok(())
+    }
+
+    fn predict(&self, horizon: usize) -> Result<ForecastResult> {
+        predict_fixed_intermittent(self.model_name(), self.fitted.as_ref(), horizon)
+    }
+
+    fn model_name(&self) -> &'static str {
+        "sba"
+    }
+
+    fn metadata(&self) -> Value {
+        json!({
+            "model": self.model_name(),
+            "alpha": self.alpha,
+            "series_count": self.fitted.as_ref().map(|state| state.levels.len()),
+        })
+    }
+}
+
+impl Forecaster for TsbForecaster {
+    fn fit(&mut self, frame: &ForecastFrame) -> Result<()> {
+        self.fitted = Some(fit_fixed_intermittent(
+            frame,
+            IntermittentDemandMethod::Tsb,
+            self.alpha,
+            Some(self.beta),
+        )?);
+        Ok(())
+    }
+
+    fn predict(&self, horizon: usize) -> Result<ForecastResult> {
+        predict_fixed_intermittent(self.model_name(), self.fitted.as_ref(), horizon)
+    }
+
+    fn model_name(&self) -> &'static str {
+        "tsb"
+    }
+
+    fn metadata(&self) -> Value {
+        json!({
+            "model": self.model_name(),
+            "alpha": self.alpha,
+            "beta": self.beta,
+            "series_count": self.fitted.as_ref().map(|state| state.levels.len()),
         })
     }
 }
@@ -297,6 +457,71 @@ fn method_forecast(
             adida_forecast(values, horizon, config.adida_bucket_size, config.alpha)
         }
     }
+}
+
+fn fit_fixed_intermittent(
+    frame: &ForecastFrame,
+    method: IntermittentDemandMethod,
+    alpha: f64,
+    beta: Option<f64>,
+) -> Result<FittedFixedIntermittentDemand> {
+    validate_nonnegative_frame(frame)?;
+    let config = IntermittentDemandConfig {
+        alpha,
+        beta: beta.unwrap_or(alpha),
+        ..IntermittentDemandConfig::default()
+    };
+    let mut levels = BTreeMap::new();
+    for (series_id, rows) in history_by_series(frame.rows()) {
+        let values = rows.iter().map(|row| row.target).collect::<Vec<_>>();
+        let level = method_forecast(method, &values, 1, &config)?
+            .into_iter()
+            .next()
+            .unwrap_or(0.0)
+            .max(0.0);
+        levels.insert(series_id, level);
+    }
+    Ok(FittedFixedIntermittentDemand {
+        frame: frame.clone(),
+        levels,
+    })
+}
+
+fn predict_fixed_intermittent(
+    model_name: &'static str,
+    fitted: Option<&FittedFixedIntermittentDemand>,
+    horizon: usize,
+) -> Result<ForecastResult> {
+    if horizon == 0 {
+        return Err(CartoBoostError::InvalidInput(
+            "forecast horizon must be positive".to_string(),
+        ));
+    }
+    let fitted = fitted.ok_or_else(|| {
+        CartoBoostError::InvalidInput(format!("{model_name} forecaster must be fitted"))
+    })?;
+    let histories = history_by_series(fitted.frame.rows());
+    let mut predictions = Vec::with_capacity(histories.len().saturating_mul(horizon));
+    for (series_id, history) in histories {
+        let last = history
+            .last()
+            .ok_or_else(|| CartoBoostError::InvalidInput("empty series history".to_string()))?;
+        let level = *fitted.levels.get(&series_id).ok_or_else(|| {
+            CartoBoostError::InvalidInput(format!(
+                "missing intermittent fitted level for series {series_id}"
+            ))
+        })?;
+        for step in 1..=horizon {
+            predictions.push(ForecastPrediction {
+                series_id: series_id.clone(),
+                timestamp: fitted.frame.frequency().advance(last.timestamp, step)?,
+                horizon: step,
+                model: model_name.to_string(),
+                mean: level,
+            });
+        }
+    }
+    ForecastResult::new(predictions)
 }
 
 fn objective_loss(

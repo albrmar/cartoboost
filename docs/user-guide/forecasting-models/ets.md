@@ -111,7 +111,6 @@ forecast = model.predict(24)
 | `trend` | `None`, `"add"`, or `"additive"`. Additive trend lets the baseline drift each step. |
 | `seasonal` | `None`, `"add"`, or `"additive"`. Additive seasonality adds a fixed-cycle adjustment. |
 | `seasonal_periods` | Required and greater than `1` when `seasonal` is set. Use `24` for hourly daily seasonality and `168` for hourly weekly seasonality when enough history is available. |
-| `damped_trend` | Must be `False`; damped ETS is not currently supported. |
 | `alpha` | Level smoothing in `(0, 1]`. Larger values adapt the baseline faster. |
 | `beta` | Trend smoothing in `[0, 1]`. Larger values let drift change faster. |
 | `gamma` | Seasonal smoothing in `[0, 1]`; requires additive seasonality. Larger values update the seasonal pattern faster. |
@@ -253,13 +252,6 @@ print(sorted(scores, key=lambda item: item[0])[0])
 Prefer the simplest setting selected by validation. If ETS and seasonal naive
 are close, keep the seasonal naive baseline in reporting; it is a useful guard
 against overclaiming smoothing behavior on strongly repeating taxi series.
-
-## Unsupported Modes
-
-The current Rust binding rejects damped trends, multiplicative trend, and
-multiplicative seasonality. Treat those explicit failures as a signal to choose
-another model or add Rust-core support; do not add Python fallback behavior for
-model semantics.
 
 ## Validation Notes
 

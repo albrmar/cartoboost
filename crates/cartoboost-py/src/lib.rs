@@ -29,11 +29,12 @@ use cartoboost_core::forecasting::{
     CandidateSelectionPolicy as CoreCandidateSelectionPolicy,
     CandidateValidationCutoffSchedule as CoreCandidateValidationCutoffSchedule,
     CartoBoostLagForecaster as CoreCartoBoostLagForecaster, ClassicalExpertValidationObjective,
-    ETSForecaster as CoreETSForecaster, ForecastActual, ForecastFold as CoreForecastFold,
-    ForecastFrame as CoreForecastFrame, ForecastFrameMetadata, ForecastFrequency,
-    ForecastMetricSet as CoreForecastMetricSet, ForecastObjective as CoreForecastObjective,
-    ForecastPrediction, ForecastResult as CoreForecastResult, ForecastRow as CoreForecastRow,
-    ForecastWindow, Forecaster, GlobalForecastTargetMode, KalmanForecaster as CoreKalmanForecaster,
+    CrostonForecaster as CoreCrostonForecaster, ETSForecaster as CoreETSForecaster, ForecastActual,
+    ForecastFold as CoreForecastFold, ForecastFrame as CoreForecastFrame, ForecastFrameMetadata,
+    ForecastFrequency, ForecastMetricSet as CoreForecastMetricSet,
+    ForecastObjective as CoreForecastObjective, ForecastPrediction,
+    ForecastResult as CoreForecastResult, ForecastRow as CoreForecastRow, ForecastWindow,
+    Forecaster, GlobalForecastTargetMode, KalmanForecaster as CoreKalmanForecaster,
     KrigingForecaster as CoreKrigingForecaster, LagFeatureConfig,
     LocalLevelKalmanForecaster as CoreLocalLevelKalmanForecaster,
     NaiveForecaster as CoreNaiveForecaster,
@@ -44,11 +45,11 @@ use cartoboost_core::forecasting::{
     PiecewiseLinearSeasonalForecaster as CorePiecewiseLinearSeasonalForecaster,
     PiecewiseLinearSeasonality, PiecewiseLinearTrendUncertaintyPolicy, ReferencePathConfig,
     ReferenceSignal, RollingOriginBacktester as CoreRollingOriginBacktester,
-    RollingOriginSplitter as CoreRollingOriginSplitter,
+    RollingOriginSplitter as CoreRollingOriginSplitter, SbaForecaster as CoreSbaForecaster,
     SeasonalNaiveForecaster as CoreSeasonalNaiveForecaster, SequenceCandidate,
     SequenceCandidateEnsemble, SequenceCandidatePrediction, SequenceFrame, SequenceGroupPrediction,
     SequenceOofCandidateRow, SequenceOofFold, SequenceSeries, SequenceStateSpaceConfig,
-    ThetaForecaster as CoreThetaForecaster, ThetaSeasonality,
+    ThetaForecaster as CoreThetaForecaster, ThetaSeasonality, TsbForecaster as CoreTsbForecaster,
     WeightedEnsembleForecaster as CoreWeightedEnsembleForecaster,
 };
 use cartoboost_core::geo::{
@@ -88,6 +89,10 @@ use cartoboost_neural::{
     HinSageLinkPredictor, HinSageRegressor, HomogeneousGraph,
     NeuralEmbeddingRegressor as StandaloneNeuralEmbeddingRegressor, Node2VecConfig,
     Node2VecEncoder, Node2VecLinkPredictor, Node2VecRegressor, StandaloneBoosterConfig,
+};
+use cartoboost_neural::{
+    NBeatsConfig as CoreNBeatsConfig, NBeatsForecaster as CoreNBeatsForecaster,
+    NHiTSConfig as CoreNHiTSConfig, NHiTSForecaster as CoreNHiTSForecaster,
 };
 use numpy::{IntoPyArray, PyArray1, PyReadonlyArray1, PyReadonlyArray2, PyUntypedArrayMethods};
 use pyo3::exceptions::{PyIOError, PyRuntimeError, PyValueError};
@@ -2119,28 +2124,8 @@ struct NativeAutoARIMAForecaster {
 #[pymethods]
 impl NativeAutoARIMAForecaster {
     #[new]
-    #[pyo3(signature = (seasonal=false, m=1, error_policy="raise", max_p=3, max_d=1, max_q=2))]
-    fn new(
-        seasonal: bool,
-        m: usize,
-        error_policy: &str,
-        max_p: usize,
-        max_d: usize,
-        max_q: usize,
-    ) -> PyResult<Self> {
-        if seasonal {
-            return Err(PyValueError::new_err(
-                "AutoARIMAForecaster Rust binding currently supports seasonal=false",
-            ));
-        }
-        if m == 0 {
-            return Err(PyValueError::new_err("m must be a positive integer"));
-        }
-        if error_policy != "raise" {
-            return Err(PyValueError::new_err(
-                "AutoARIMAForecaster Rust binding supports error_policy='raise' only",
-            ));
-        }
+    #[pyo3(signature = (max_p=3, max_d=1, max_q=2))]
+    fn new(max_p: usize, max_d: usize, max_q: usize) -> PyResult<Self> {
         Ok(Self {
             model: CoreAutoARIMAForecaster::with_max_order(max_p, max_d, max_q)
                 .map_err(to_py_value_error)?,
@@ -2184,6 +2169,96 @@ impl NativeAutoStatsBank {
                 validation_objective,
             )
             .map_err(to_py_value_error)?,
+        })
+    }
+
+    fn fit(&mut self, py: Python<'_>, frame: &NativeForecastFrame) -> PyResult<()> {
+        fit_forecaster_py(py, &mut self.model, frame)
+    }
+
+    fn predict(&self, py: Python<'_>, horizon: usize) -> PyResult<NativeForecastResult> {
+        predict_forecaster_py(py, &self.model, horizon)
+    }
+
+    fn metadata_json(&self) -> PyResult<String> {
+        serde_json::to_string(&self.model.metadata())
+            .map_err(|err| PyRuntimeError::new_err(err.to_string()))
+    }
+}
+
+#[pyclass(name = "CrostonForecaster")]
+#[derive(Clone, Debug)]
+struct NativeCrostonForecaster {
+    model: CoreCrostonForecaster,
+}
+
+#[pymethods]
+impl NativeCrostonForecaster {
+    #[new]
+    #[pyo3(signature = (alpha=0.2))]
+    fn new(alpha: f64) -> PyResult<Self> {
+        Ok(Self {
+            model: CoreCrostonForecaster::new(alpha).map_err(to_py_value_error)?,
+        })
+    }
+
+    fn fit(&mut self, py: Python<'_>, frame: &NativeForecastFrame) -> PyResult<()> {
+        fit_forecaster_py(py, &mut self.model, frame)
+    }
+
+    fn predict(&self, py: Python<'_>, horizon: usize) -> PyResult<NativeForecastResult> {
+        predict_forecaster_py(py, &self.model, horizon)
+    }
+
+    fn metadata_json(&self) -> PyResult<String> {
+        serde_json::to_string(&self.model.metadata())
+            .map_err(|err| PyRuntimeError::new_err(err.to_string()))
+    }
+}
+
+#[pyclass(name = "SbaForecaster")]
+#[derive(Clone, Debug)]
+struct NativeSbaForecaster {
+    model: CoreSbaForecaster,
+}
+
+#[pymethods]
+impl NativeSbaForecaster {
+    #[new]
+    #[pyo3(signature = (alpha=0.2))]
+    fn new(alpha: f64) -> PyResult<Self> {
+        Ok(Self {
+            model: CoreSbaForecaster::new(alpha).map_err(to_py_value_error)?,
+        })
+    }
+
+    fn fit(&mut self, py: Python<'_>, frame: &NativeForecastFrame) -> PyResult<()> {
+        fit_forecaster_py(py, &mut self.model, frame)
+    }
+
+    fn predict(&self, py: Python<'_>, horizon: usize) -> PyResult<NativeForecastResult> {
+        predict_forecaster_py(py, &self.model, horizon)
+    }
+
+    fn metadata_json(&self) -> PyResult<String> {
+        serde_json::to_string(&self.model.metadata())
+            .map_err(|err| PyRuntimeError::new_err(err.to_string()))
+    }
+}
+
+#[pyclass(name = "TsbForecaster")]
+#[derive(Clone, Debug)]
+struct NativeTsbForecaster {
+    model: CoreTsbForecaster,
+}
+
+#[pymethods]
+impl NativeTsbForecaster {
+    #[new]
+    #[pyo3(signature = (alpha=0.2, beta=0.2))]
+    fn new(alpha: f64, beta: f64) -> PyResult<Self> {
+        Ok(Self {
+            model: CoreTsbForecaster::new(alpha, beta).map_err(to_py_value_error)?,
         })
     }
 
@@ -2418,6 +2493,88 @@ impl NativeKrigingForecaster {
         Ok(Self {
             model: CoreKrigingForecaster::with_config(coordinates, config)
                 .map_err(to_py_value_error)?,
+        })
+    }
+
+    fn fit(&mut self, py: Python<'_>, frame: &NativeForecastFrame) -> PyResult<()> {
+        fit_forecaster_py(py, &mut self.model, frame)
+    }
+
+    fn predict(&self, py: Python<'_>, horizon: usize) -> PyResult<NativeForecastResult> {
+        predict_forecaster_py(py, &self.model, horizon)
+    }
+
+    fn metadata_json(&self) -> PyResult<String> {
+        serde_json::to_string(&self.model.metadata())
+            .map_err(|err| PyRuntimeError::new_err(err.to_string()))
+    }
+}
+
+#[pyclass(name = "NBeatsForecaster")]
+struct NativeNBeatsForecaster {
+    model: CoreNBeatsForecaster,
+}
+
+#[pymethods]
+impl NativeNBeatsForecaster {
+    #[new]
+    #[pyo3(signature = (input_size=8, hidden_size=16, epochs=80, learning_rate=0.01))]
+    fn new(
+        input_size: usize,
+        hidden_size: usize,
+        epochs: usize,
+        learning_rate: f64,
+    ) -> PyResult<Self> {
+        Ok(Self {
+            model: CoreNBeatsForecaster::new(CoreNBeatsConfig {
+                input_size,
+                hidden_size,
+                epochs,
+                learning_rate,
+            })
+            .map_err(to_py_neural_error)?,
+        })
+    }
+
+    fn fit(&mut self, py: Python<'_>, frame: &NativeForecastFrame) -> PyResult<()> {
+        fit_forecaster_py(py, &mut self.model, frame)
+    }
+
+    fn predict(&self, py: Python<'_>, horizon: usize) -> PyResult<NativeForecastResult> {
+        predict_forecaster_py(py, &self.model, horizon)
+    }
+
+    fn metadata_json(&self) -> PyResult<String> {
+        serde_json::to_string(&self.model.metadata())
+            .map_err(|err| PyRuntimeError::new_err(err.to_string()))
+    }
+}
+
+#[pyclass(name = "NHiTSForecaster")]
+struct NativeNHiTSForecaster {
+    model: CoreNHiTSForecaster,
+}
+
+#[pymethods]
+impl NativeNHiTSForecaster {
+    #[new]
+    #[pyo3(signature = (input_size=12, hidden_size=16, epochs=80, learning_rate=0.01, pooling_size=2))]
+    fn new(
+        input_size: usize,
+        hidden_size: usize,
+        epochs: usize,
+        learning_rate: f64,
+        pooling_size: usize,
+    ) -> PyResult<Self> {
+        Ok(Self {
+            model: CoreNHiTSForecaster::new(CoreNHiTSConfig {
+                input_size,
+                hidden_size,
+                epochs,
+                learning_rate,
+                pooling_size,
+            })
+            .map_err(to_py_neural_error)?,
         })
     }
 
@@ -7510,11 +7667,16 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<NativeArimaForecaster>()?;
     m.add_class::<NativeAutoARIMAForecaster>()?;
     m.add_class::<NativeAutoStatsBank>()?;
+    m.add_class::<NativeCrostonForecaster>()?;
+    m.add_class::<NativeSbaForecaster>()?;
+    m.add_class::<NativeTsbForecaster>()?;
     m.add_class::<NativeKalmanForecaster>()?;
     m.add_class::<NativeLocalLevelKalmanForecaster>()?;
     m.add_class::<NativeAutoKalmanForecaster>()?;
     m.add_class::<NativeAutoLocalLevelKalmanForecaster>()?;
     m.add_class::<NativeKrigingForecaster>()?;
+    m.add_class::<NativeNBeatsForecaster>()?;
+    m.add_class::<NativeNHiTSForecaster>()?;
     m.add_class::<NativeAutoForecastModel>()?;
     m.add_class::<NativeCartoBoostLagForecaster>()?;
     m.add_class::<NativeWeightedEnsembleForecaster>()?;

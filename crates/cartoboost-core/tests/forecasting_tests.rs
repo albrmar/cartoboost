@@ -1,8 +1,8 @@
 use cartoboost_core::forecasting::{
-    evaluate_m_competition_metrics, CandidateValidationCutoffSchedule, ForecastActual,
-    ForecastFrame, ForecastFrameMetadata, ForecastFrequency, ForecastResult, ForecastRow,
-    ForecastWindow, Forecaster, NaiveForecaster, RollingOriginBacktester, RollingOriginSplitter,
-    SeasonalNaiveForecaster,
+    evaluate_m_competition_metrics, CandidateValidationCutoffSchedule, CrostonForecaster,
+    ForecastActual, ForecastFrame, ForecastFrameMetadata, ForecastFrequency, ForecastResult,
+    ForecastRow, ForecastWindow, Forecaster, NaiveForecaster, RollingOriginBacktester,
+    RollingOriginSplitter, SbaForecaster, SeasonalNaiveForecaster, TsbForecaster,
 };
 use chrono::{NaiveDate, NaiveDateTime};
 use std::collections::BTreeMap;
@@ -122,6 +122,72 @@ fn rejects_non_finite_targets() {
     )
     .expect_err("nan should be rejected");
     assert!(err.to_string().contains("forecast targets must be finite"));
+}
+
+#[test]
+fn fixed_intermittent_forecasters_fit_predict_and_report_metadata() {
+    let frame = ForecastFrame::new(
+        vec![
+            ForecastRow::new("PULocationID=132", ts(1), 0.0),
+            ForecastRow::new("PULocationID=132", ts(2), 3.0),
+            ForecastRow::new("PULocationID=132", ts(3), 0.0),
+            ForecastRow::new("PULocationID=132", ts(4), 6.0),
+            ForecastRow::new("PULocationID=237", ts(1), 0.0),
+            ForecastRow::new("PULocationID=237", ts(2), 2.0),
+            ForecastRow::new("PULocationID=237", ts(3), 0.0),
+            ForecastRow::new("PULocationID=237", ts(4), 4.0),
+        ],
+        ForecastFrequency::Daily,
+    )
+    .expect("valid intermittent taxi panel");
+
+    let mut croston = CrostonForecaster::new(0.2).expect("valid croston");
+    croston.fit(&frame).expect("croston fit");
+    let croston_forecast = croston.predict(2).expect("croston forecast");
+    assert_eq!(croston_forecast.predictions().len(), 4);
+    assert!(croston_forecast
+        .predictions()
+        .iter()
+        .all(|prediction| prediction.model == "croston" && prediction.mean >= 0.0));
+    assert_eq!(croston.metadata()["series_count"].as_u64(), Some(2));
+
+    let mut sba = SbaForecaster::new(0.2).expect("valid sba");
+    sba.fit(&frame).expect("sba fit");
+    assert!(sba
+        .predict(1)
+        .expect("sba forecast")
+        .predictions()
+        .iter()
+        .all(|prediction| prediction.model == "sba"));
+
+    let mut tsb = TsbForecaster::new(0.2, 0.3).expect("valid tsb");
+    tsb.fit(&frame).expect("tsb fit");
+    assert!(tsb
+        .predict(1)
+        .expect("tsb forecast")
+        .predictions()
+        .iter()
+        .all(|prediction| prediction.model == "tsb"));
+    assert_eq!(tsb.metadata()["beta"].as_f64(), Some(0.3));
+}
+
+#[test]
+fn fixed_intermittent_forecasters_reject_invalid_inputs() {
+    assert!(CrostonForecaster::new(0.0).is_err());
+    assert!(SbaForecaster::new(1.2).is_err());
+    assert!(TsbForecaster::new(0.2, 0.0).is_err());
+
+    let frame = ForecastFrame::new(
+        vec![
+            ForecastRow::single(ts(1), -1.0),
+            ForecastRow::single(ts(2), 2.0),
+        ],
+        ForecastFrequency::Daily,
+    )
+    .expect("frame validates generic finite targets");
+    let mut model = CrostonForecaster::default();
+    assert!(model.fit(&frame).is_err());
+    assert!(model.predict(1).is_err());
 }
 
 #[test]

@@ -1,8 +1,17 @@
 import importlib.util
+from pathlib import Path
 
 import pytest
+from cartoboost.forecasting import (
+    CrostonForecaster,
+    NBeatsForecaster,
+    NHiTSForecaster,
+    SbaForecaster,
+    TsbForecaster,
+)
 from cartoboost.forecasting.local import PiecewiseLinearSeasonalForecaster
 from cartoboost.forecasting.registry import ForecastModelSpec, ForecastRegistry
+from cartoboost.forecasting.schema import ForecastFrame
 
 
 def test_default_registry_contains_forecasting_v1_models():
@@ -15,19 +24,29 @@ def test_default_registry_contains_forecasting_v1_models():
         "optimized_theta",
         "piecewise_linear_seasonal",
         "ets",
+        "arima",
         "auto_arima",
+        "autostats_bank",
+        "croston",
+        "sba",
+        "tsb",
         "kalman",
         "local_level_kalman",
         "auto_kalman",
         "auto_local_level_kalman",
         "cartoboost_lag",
+        "auto_forecaster",
+    )
+
+
+def test_deferred_model_names_are_absent_from_default_registry():
+    registry = ForecastRegistry.defaults()
+
+    deferred = {
         "local_linear_trend_kalman",
         "unobserved_components",
         "sarimax",
         "dynamic_regression",
-        "croston",
-        "sba",
-        "tsb",
         "mstl_ets",
         "stl_arima",
         "quantile_carto_boost_lag",
@@ -35,7 +54,9 @@ def test_default_registry_contains_forecasting_v1_models():
         "bottom_up_reconciler",
         "min_trace_reconciler",
         "foundation_model_adapter_optional",
-    )
+    }
+
+    assert deferred.isdisjoint(registry.names())
 
 
 def test_registry_prevents_duplicate_names_unless_override():
@@ -67,6 +88,70 @@ def test_model_spec_reports_missing_optional_dependencies(monkeypatch):
         spec.create()
 
 
+def test_neural_forecaster_wrappers_delegate_to_native_bindings(install_fake_native):
+    native = install_fake_native("NBeatsForecaster")
+
+    model = NBeatsForecaster(input_size=3, hidden_size=4, epochs=5, learning_rate=0.2)
+
+    assert model.fit([1.0, 2.0, 3.0, 4.0]).predict(2) == {"args": (2,), "kwargs": {}}
+    assert native.calls[0] == (
+        "init",
+        {
+            "input_size": 3,
+            "hidden_size": 4,
+            "epochs": 5,
+            "learning_rate": 0.2,
+        },
+    )
+    assert native.calls[1][1].rows[-1] == ("__single__", "1970-01-04T00:00:00", 4.0)
+
+
+def test_nhits_forecaster_wrapper_delegates_to_native_binding(install_fake_native):
+    native = install_fake_native("NHiTSForecaster")
+
+    model = NHiTSForecaster(
+        input_size=4,
+        hidden_size=5,
+        epochs=6,
+        learning_rate=0.1,
+        pooling_size=2,
+    )
+
+    model.fit({"PULocationID=237": [8.0, 9.0, 10.0, 11.0]}).predict(3)
+    assert native.calls[0] == (
+        "init",
+        {
+            "input_size": 4,
+            "hidden_size": 5,
+            "epochs": 6,
+            "learning_rate": 0.1,
+            "pooling_size": 2,
+        },
+    )
+    assert native.calls[1][1].rows[-1] == (
+        "PULocationID=237",
+        "1970-01-04T00:00:00",
+        11.0,
+    )
+
+
+def test_intermittent_forecaster_wrappers_validate_parameters_and_delegate(install_fake_native):
+    native = install_fake_native("TsbForecaster")
+
+    model = TsbForecaster(alpha=0.3, beta=0.4)
+
+    assert model.fit([0.0, 2.0, 0.0, 4.0]).predict(2) == {"args": (2,), "kwargs": {}}
+    assert native.calls[0] == ("init", {"alpha": 0.3, "beta": 0.4})
+    assert native.calls[1][1].rows[-1] == ("__single__", "1970-01-04T00:00:00", 4.0)
+
+    with pytest.raises(ValueError, match="alpha"):
+        CrostonForecaster(alpha=0.0)
+    with pytest.raises(ValueError, match="alpha"):
+        SbaForecaster(alpha=1.2)
+    with pytest.raises(ValueError, match="beta"):
+        TsbForecaster(beta=float("nan"))
+
+
 def test_default_registry_models_are_native_wrappers(install_fake_native):
     native = install_fake_native("NaiveForecaster")
     registry = ForecastRegistry.defaults()
@@ -77,15 +162,116 @@ def test_default_registry_models_are_native_wrappers(install_fake_native):
     assert native.calls[1][1].rows[-1] == ("__single__", "1970-01-03T00:00:00", 3.0)
 
 
-def test_registry_placeholder_models_delegate_to_named_native_binding(install_fake_native):
-    native = install_fake_native("LocalLinearTrendKalmanForecaster")
+def test_every_default_registry_model_constructs_and_runs(monkeypatch):
+    import cartoboost
+    import pandas as pd
+
+    calls: list[tuple[str, object]] = []
+
+    class RecordingForecastFrame:
+        def __init__(self, rows, freq, **kwargs):
+            self.rows = rows
+            self.freq = freq
+            self.kwargs = kwargs
+
+    def recording_model_class(class_name: str):
+        class RecordingModel:
+            def __init__(self, **params):
+                calls.append((f"{class_name}.init", params))
+
+            def fit(self, frame):
+                calls.append((f"{class_name}.fit", frame))
+                return self
+
+            def predict(self, *args, **kwargs):
+                calls.append((f"{class_name}.predict", (args, kwargs)))
+                return {"model": class_name, "horizon": args[0]}
+
+            def metadata_json(self):
+                return f'{{"model": "{class_name}"}}'
+
+        return RecordingModel
+
+    native_class_names = {
+        "NaiveForecaster",
+        "SeasonalNaiveForecaster",
+        "ThetaForecaster",
+        "OptimizedThetaForecaster",
+        "PiecewiseLinearSeasonalForecaster",
+        "ETSForecaster",
+        "ArimaForecaster",
+        "AutoARIMAForecaster",
+        "AutoStatsBank",
+        "CrostonForecaster",
+        "SbaForecaster",
+        "TsbForecaster",
+        "KalmanForecaster",
+        "LocalLevelKalmanForecaster",
+        "AutoKalmanForecaster",
+        "AutoLocalLevelKalmanForecaster",
+        "CartoBoostLagForecaster",
+        "AutoForecastModel",
+    }
+    native = type("Native", (), {"ForecastFrame": RecordingForecastFrame})()
+    for class_name in native_class_names:
+        setattr(native, class_name, recording_model_class(class_name))
+    monkeypatch.setattr(cartoboost, "_native", native, raising=False)
+
+    frame = ForecastFrame.from_pandas(
+        pd.DataFrame(
+            {
+                "pickup_hour": pd.date_range("2026-01-01", periods=40, freq="D"),
+                "pickup_count": [float(10 + idx) for idx in range(40)],
+                "PULocationID": ["237"] * 40,
+            }
+        ),
+        timestamp_col="pickup_hour",
+        target_col="pickup_count",
+        series_id_col="PULocationID",
+        freq="D",
+    )
     registry = ForecastRegistry.defaults()
 
-    model = registry.create("local_linear_trend_kalman", process_variance=0.1)
+    for name in registry.names():
+        model = registry.create(name)
+        model.fit(frame)
+        result = model.predict(2)
+        assert result["horizon"] == 2
 
-    assert model.native_class_name == "LocalLinearTrendKalmanForecaster"
-    assert model.fit([1.0, 2.0]).predict(1) == {"args": (1,), "kwargs": {}}
-    assert native.calls[0] == ("init", {"process_variance": 0.1})
+    initialized = {name.split(".")[0] for name, _ in calls if name.endswith(".init")}
+    assert native_class_names == initialized
+
+
+def test_removed_default_model_name_fails_clearly():
+    registry = ForecastRegistry.defaults()
+
+    with pytest.raises(KeyError, match="sarimax"):
+        registry.create("sarimax")
+
+
+def test_removed_default_model_names_are_absent_from_maintained_docs():
+    root = Path(__file__).resolve().parents[2]
+    docs = "\n".join(
+        (root / path).read_text(encoding="utf-8")
+        for path in (
+            "docs/user-guide/model-types.md",
+            "docs/user-guide/forecasting-models/index.md",
+            "docs/reference/python-api.md",
+            "docs/llms.txt",
+        )
+    )
+
+    for removed in (
+        "sarimax",
+        "dynamic_regression",
+        "unobserved_components",
+        "mstl_ets",
+        "stl_arima",
+        "quantile_carto_boost_lag",
+        "conformal_forecaster",
+        "foundation_model_adapter_optional",
+    ):
+        assert removed not in docs
 
 
 def test_piecewise_linear_seasonal_wrapper_normalizes_native_overrides(install_fake_native):

@@ -157,6 +157,23 @@ The example is intentionally deterministic. It is useful for checking API
 shape, plotting, and interpretation, but it is not evidence for model selection
 on real TLC-derived taxi demand.
 
+The compact JSON fields are the first values to inspect:
+
+```json
+{
+  "auto_arima_selected_label": "ARIMA(3,0,0)",
+  "heldout_winner_by_rmse": "arima_2_1_1",
+  "arima_2_1_1": {"mae": 1.49, "rmse": 1.72, "bias": -0.04},
+  "auto_arima": {"mae": 9.67, "rmse": 10.48, "bias": -9.67}
+}
+```
+
+Exact values can change if you pass different `--hours`, `--train-hours`, or
+`--horizon` settings. Use `auto_arima_top_candidates` to see whether the native
+selected order was a clear fitted-residual winner, and use per-horizon
+`residuals` to check whether the held-out miss is directional or grows with
+horizon.
+
 ## Visual Diagnostics
 
 The most useful ARIMA plots show forecast shape and residual behavior together.
@@ -270,7 +287,6 @@ AutoARIMA searches all candidates in the bounded grid:
 from cartoboost.forecasting import AutoARIMAForecaster
 
 model = AutoARIMAForecaster(
-    seasonal=False,
     max_p=3,
     max_d=1,
     max_q=2,
@@ -356,9 +372,6 @@ parallelize panel work.
 | --- | --- |
 | `p`, `d`, `q` | Non-negative order values for `ArimaForecaster`; `p <= 8`, `d <= 2`, and `q <= 8`. |
 | `max_p`, `max_d`, `max_q` | Non-negative AutoARIMA search bounds with the same upper limits. |
-| `seasonal` | Must be `False`; seasonal AutoARIMA is not supported by the current Rust binding. |
-| `m` | Positive integer accepted by the wrapper, but seasonal search is not enabled. |
-| `error_policy` | Must be `"raise"`; Python fallback behavior is not available. |
 
 ## Validation Notes
 
@@ -367,8 +380,6 @@ parallelize panel work.
   lags.
 - Timestamps in a `ForecastFrame` must be regular at the declared frequency.
 - Duplicate `(series_id, timestamp)` pairs are rejected.
-- Seasonal AutoARIMA, SARIMAX, STL-ARIMA hybrids, and Python fallback policies
-  fail explicitly in this version.
 
 ## Held-Out Evaluation Pattern
 

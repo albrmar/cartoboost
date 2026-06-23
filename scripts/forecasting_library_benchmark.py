@@ -1119,20 +1119,12 @@ def load_synthetic_fixture(args: argparse.Namespace) -> tuple[Any, dict[str, Any
 def load_m1_fixture(args: argparse.Namespace) -> tuple[Any, dict[str, Any]]:
     pd = require_pandas_for_benchmark()
     pl = require_polars()
-    try:
-        from datasetsforecast.utils import convert_tsf_to_dataframe
-    except ImportError as exc:
-        raise ImportError(
-            "M1 benchmark source requires datasetsforecast; run `uv sync --group bench`."
-        ) from exc
 
     cache_dir = (
         DEFAULT_FORECASTING_CACHE_DIR if args.cache_dir == DEFAULT_CACHE_DIR else args.cache_dir
     )
     tsf_path = ensure_m1_tsf_file(args.m1_group, cache_dir=cache_dir, no_download=args.no_download)
-    loaded, frequency, forecast_horizon, _missing, _equal_length = convert_tsf_to_dataframe(
-        str(tsf_path)
-    )
+    loaded, frequency, forecast_horizon = parse_tsf_dataframe(tsf_path, pd)
     group_info = M1_GROUP_INFO[args.m1_group]
     series_column = next(
         (column for column in ["series_name", "series_id", "unique_id"] if column in loaded),
@@ -1195,6 +1187,76 @@ def load_m1_fixture(args: argparse.Namespace) -> tuple[Any, dict[str, Any]]:
         "split_type": "last_official_horizon_from_full_public_series",
         "static_covariates": STATIC_COVARIATES,
     }
+
+
+def parse_tsf_dataframe(tsf_path: Path, pd: Any) -> tuple[Any, str | None, int | None]:
+    attributes: list[tuple[str, str]] = []
+    frequency: str | None = None
+    horizon: int | None = None
+    in_data = False
+    rows: list[dict[str, Any]] = []
+    with tsf_path.open("r", encoding="cp1252") as handle:
+        for line_number, raw_line in enumerate(handle, start=1):
+            line = raw_line.strip()
+            if not line:
+                continue
+            lower = line.lower()
+            if not in_data:
+                if lower.startswith("@attribute"):
+                    parts = line.split()
+                    if len(parts) != 3:
+                        raise ValueError(f"invalid TSF @attribute line {line_number} in {tsf_path}")
+                    attributes.append((parts[1], parts[2].lower()))
+                    continue
+                if lower.startswith("@frequency"):
+                    parts = line.split(maxsplit=1)
+                    if len(parts) != 2:
+                        raise ValueError(f"invalid TSF @frequency line {line_number}")
+                    frequency = parts[1]
+                    continue
+                if lower.startswith("@horizon"):
+                    parts = line.split(maxsplit=1)
+                    if len(parts) != 2:
+                        raise ValueError(f"invalid TSF @horizon line {line_number}")
+                    horizon = int(parts[1])
+                    continue
+                if lower == "@data":
+                    in_data = True
+                    continue
+                continue
+
+            fields = line.split(":")
+            if len(fields) != len(attributes) + 1:
+                raise ValueError(
+                    f"TSF data line {line_number} has {len(fields) - 1} attributes; "
+                    f"expected {len(attributes)}"
+                )
+            row: dict[str, Any] = {}
+            for (name, value_type), value in zip(attributes, fields[:-1], strict=True):
+                row[name] = parse_tsf_attribute_value(value, value_type, line_number)
+            values = []
+            for value in fields[-1].split(","):
+                value = value.strip()
+                values.append(np.nan if value == "?" else float(value))
+            if not values:
+                raise ValueError(f"TSF data line {line_number} has no series values")
+            row["series_value"] = values
+            rows.append(row)
+    if not in_data:
+        raise ValueError(f"TSF file {tsf_path} is missing @data section")
+    if not rows:
+        raise ValueError(f"TSF file {tsf_path} did not contain any series rows")
+    return pd.DataFrame(rows), frequency, horizon
+
+
+def parse_tsf_attribute_value(value: str, value_type: str, line_number: int) -> Any:
+    if value_type == "numeric":
+        return float(value)
+    if value_type == "date":
+        return value
+    if value_type == "string":
+        return value
+    raise ValueError(f"unsupported TSF attribute type {value_type!r} on line {line_number}")
 
 
 def ensure_m1_tsf_file(group: str, *, cache_dir: Path, no_download: bool) -> Path:

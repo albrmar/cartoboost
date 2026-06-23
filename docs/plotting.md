@@ -20,6 +20,24 @@ diagnostics for CartoBoost benchmark evidence:
 | Interval calibration | `plot_interval_calibration` |
 | Model comparison | `plot_metric_comparison` |
 | Reusable plot bundle | `write_plot_report` |
+| Browser-local tree and splitter inspection | [Modeling Lab](../modeling-lab) |
+
+## Browser model visualizer
+
+The [Modeling Lab](../modeling-lab) is separate from `cartoboost.plotting`: it
+runs the Rust WebAssembly regression and neural modeling surfaces in the
+browser, then asks for opt-in model-structure metadata from that same fit. The
+visualizer renders a splitter atlas, boosted-tree blueprints, split-kind mix,
+top splitter rules, depth profile, and largest holdout residuals.
+
+Use the built-in taxi buttons to load either the January 2024 yellow taxi week
+sample or the 8,000-row route-hour sample spanning the full January 2024 yellow
+taxi month. The month sample is derived from the TLC public yellow taxi parquet
+source and kept small enough for browser documentation use.
+
+Visualization metadata is requested only by the Modeling Lab. Main WebAssembly
+forecasting, regression, and neural prediction calls continue without tree
+traversal unless a caller explicitly asks for the visualizer payload.
 
 ## Prophet plotting parity
 
@@ -62,6 +80,78 @@ forecast columns and model attributes (`history`, `seasonalities`,
 This is plotting parity only. CartoBoost does not expose a reusable `prophet`
 model alias; the local interpretable component model remains
 `PiecewiseLinearSeasonalForecaster`.
+
+The forecast plot follows the installed `prophet.plot.plot` behavior:
+
+| Element | Behavior matched by `cartoboost.plotting.plot` |
+| --- | --- |
+| Observations | `m.history["ds"]` and `m.history["y"]` drawn as black points. |
+| Forecast | `fcst["ds"]` and `fcst["yhat"]` drawn as a solid forecast line. |
+| Capacity | `fcst["cap"]` drawn as a dashed line only when `plot_cap=True`. |
+| Floor | `fcst["floor"]` drawn only when `m.logistic_floor`, `plot_cap=True`, and the column exists. |
+| Interval | `yhat_lower` / `yhat_upper` filled only when `uncertainty=True` and `m.uncertainty_samples` is nonzero. |
+| Axes | Prophet date formatting, grid, `xlabel="ds"`, `ylabel="y"`, and legend only when `include_legend=True`. |
+
+No fallback model attributes are supplied in the plotting layer. A caller must
+provide a Prophet-shaped object with the same attributes Prophet expects.
+
+```python
+from types import SimpleNamespace
+
+import pandas as pd
+
+from cartoboost.plotting import plot, save_figure
+
+history = pd.DataFrame(
+    {
+        "ds": pd.to_datetime(holdout_rows["pickup_date"]),
+        "y": holdout_rows["actual_loads"],
+    }
+)
+forecast = pd.DataFrame(
+    {
+        "ds": pd.to_datetime(holdout_rows["pickup_date"]),
+        "yhat": holdout_rows["cartoboost_auto_forecast"],
+    }
+)
+
+prophet_like_model = SimpleNamespace(
+    history=history,
+    logistic_floor=False,
+    uncertainty_samples=0,
+)
+
+fig = plot(prophet_like_model, forecast)
+save_figure(fig, "target/plots/prophet_forecast_pu237_do236.png", close=True)
+```
+
+Prophet's forecast plot is single-series. For taxi lane reviews, render one
+Prophet-shaped figure per pickup/dropoff lane rather than mixing lanes into one
+axis.
+
+![Prophet-compatible forecast plot for PU237 to DO236](assets/nyc_taxi_benchmarks/forecasting_plots/prophet_forecast_pu237-do236.png)
+
+![Prophet-compatible forecast plot for PU236 to DO237](assets/nyc_taxi_benchmarks/forecasting_plots/prophet_forecast_pu236-do237.png)
+
+![Prophet-compatible forecast plot for PU239 to DO238](assets/nyc_taxi_benchmarks/forecasting_plots/prophet_forecast_pu239-do238.png)
+
+These images were generated from the January 2024 NYC yellow taxi lane-demand
+benchmark holdout with:
+
+```sh
+uv run --no-sync --group dev --group bench python scripts/forecasting_library_benchmark.py \
+  --source nyc-taxi \
+  --year 2024 \
+  --months 1 \
+  --taxi-type yellow \
+  --lanes 24 \
+  --horizon 7 \
+  --no-download \
+  --no-hyperopt \
+  --model-roster cartoboost \
+  --output docs/assets/nyc_taxi_benchmarks/forecasting_library_benchmark_real.json \
+  --plot-dir docs/assets/nyc_taxi_benchmarks/forecasting_plots
+```
 
 Install the optional visualization dependency when using these helpers outside
 the development environment:

@@ -20,23 +20,14 @@ CLI_MODEL_NAMES = (
     "theta",
     "optimized_theta",
     "ets",
+    "arima",
     "auto_arima",
-    "cartoboost_lag",
-    "local_level_kalman",
-    "local_linear_trend_kalman",
-    "unobserved_components",
-    "sarimax",
-    "dynamic_regression",
+    "autostats_bank",
     "croston",
     "sba",
     "tsb",
-    "mstl_ets",
-    "stl_arima",
-    "quantile_carto_boost_lag",
-    "conformal_forecaster",
-    "bottom_up_reconciler",
-    "min_trace_reconciler",
-    "foundation_model_adapter_optional",
+    "cartoboost_lag",
+    "local_level_kalman",
 )
 
 ZERO_ARG_FIT_MODEL_NAMES = (
@@ -45,7 +36,12 @@ ZERO_ARG_FIT_MODEL_NAMES = (
     "theta",
     "optimized_theta",
     "ets",
+    "arima",
     "auto_arima",
+    "autostats_bank",
+    "croston",
+    "sba",
+    "tsb",
     "cartoboost_lag",
 )
 
@@ -384,7 +380,7 @@ def _new_model(config: ForecastConfig) -> Any:
             f"Rust/Python zero-argument CLI wrapper for forecast model {config.model!r} "
             "is not available."
         )
-    if config.model == "seasonal_naive":
+    if config.model in {"seasonal_naive", "autostats_bank"}:
         return ForecastRegistry.defaults().create(config.model, season_length=config.season_length)
     return ForecastRegistry.defaults().create(config.model)
 

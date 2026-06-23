@@ -28,7 +28,7 @@ use cartoboost_neural::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use wasm_bindgen::prelude::*;
 
 type BrowserNeuralPipelineOutput = (Vec<f64>, Vec<String>, Vec<cartoboost_core::Tree>, Value);
@@ -257,6 +257,7 @@ struct BrowserRegressionOptions {
     max_depth: Option<usize>,
     min_samples_leaf: Option<usize>,
     monotonic_constraints: Option<Vec<i8>>,
+    include_model_visualization: Option<bool>,
 }
 
 impl Default for BrowserRegressionOptions {
@@ -277,6 +278,7 @@ impl Default for BrowserRegressionOptions {
             max_depth: None,
             min_samples_leaf: None,
             monotonic_constraints: None,
+            include_model_visualization: None,
         }
     }
 }
@@ -351,6 +353,7 @@ struct BrowserNeuralOptions {
     graph_sage_learning_rate: Option<f32>,
     graph_sage_negative_samples: Option<usize>,
     graph_sage_seed: Option<u64>,
+    include_model_visualization: Option<bool>,
 }
 
 impl Default for BrowserNeuralOptions {
@@ -376,6 +379,7 @@ impl Default for BrowserNeuralOptions {
             graph_sage_learning_rate: None,
             graph_sage_negative_samples: None,
             graph_sage_seed: None,
+            include_model_visualization: None,
         }
     }
 }
@@ -407,6 +411,8 @@ struct BrowserRegressionResponse {
     metrics: BrowserRegressionMetrics,
     predictions: Vec<BrowserRegressionPrediction>,
     feature_importance: Vec<BrowserFeatureImportance>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    model_visualization: Option<BrowserModelVisualization>,
 }
 
 #[derive(Debug, Serialize)]
@@ -416,6 +422,8 @@ struct BrowserNeuralResponse {
     metrics: BrowserRegressionMetrics,
     predictions: Vec<BrowserRegressionPrediction>,
     feature_importance: Vec<BrowserFeatureImportance>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    model_visualization: Option<BrowserModelVisualization>,
 }
 
 #[derive(Debug, Serialize)]
@@ -444,6 +452,88 @@ struct BrowserRegressionPrediction {
 struct BrowserFeatureImportance {
     feature: String,
     split_count: usize,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BrowserModelVisualization {
+    summary: BrowserModelVisualizationSummary,
+    split_kinds: Vec<BrowserSplitKindCount>,
+    splitter_rules: Vec<BrowserSplitterRuleSummary>,
+    feature_split_counts: Vec<BrowserFeatureSplitCount>,
+    depth_histogram: Vec<BrowserDepthCount>,
+    tree_blueprints: Vec<BrowserTreeBlueprint>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BrowserModelVisualizationSummary {
+    tree_count: usize,
+    node_count: usize,
+    branch_count: usize,
+    leaf_count: usize,
+    max_depth: usize,
+    mean_leaf_value: f64,
+    mean_gain: f64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BrowserSplitKindCount {
+    kind: String,
+    count: usize,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BrowserSplitterRuleSummary {
+    kind: String,
+    label: String,
+    count: usize,
+    total_gain: f64,
+    mean_gain: f64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BrowserFeatureSplitCount {
+    feature: String,
+    kind: String,
+    count: usize,
+    total_gain: f64,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BrowserDepthCount {
+    depth: usize,
+    count: usize,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BrowserTreeBlueprint {
+    tree_index: usize,
+    node_count: usize,
+    branch_count: usize,
+    leaf_count: usize,
+    max_depth: usize,
+    total_gain: f64,
+    root: BrowserTreeNode,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct BrowserTreeNode {
+    id: usize,
+    depth: usize,
+    kind: String,
+    label: String,
+    value: Option<f64>,
+    gain: Option<f64>,
+    sample_weight_sum: Option<f64>,
+    left: Option<Box<BrowserTreeNode>>,
+    right: Option<Box<BrowserTreeNode>>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -1225,6 +1315,17 @@ fn run_regression_request(request: BrowserRegressionRequest) -> Result<BrowserRe
         metrics,
         predictions: prediction_rows,
         feature_importance,
+        model_visualization: request
+            .options
+            .include_model_visualization
+            .unwrap_or(false)
+            .then(|| {
+                model_visualization(
+                    &model.trees,
+                    &request.feature_names,
+                    &request.sparse_feature_names,
+                )
+            }),
     })
 }
 
@@ -1319,6 +1420,11 @@ fn run_neural_request(request: BrowserNeuralRequest) -> Result<BrowserNeuralResp
         metrics,
         predictions: prediction_rows,
         feature_importance,
+        model_visualization: request
+            .options
+            .include_model_visualization
+            .unwrap_or(false)
+            .then(|| model_visualization(&trees, &feature_names, &[])),
     })
 }
 
@@ -2194,6 +2300,541 @@ fn count_split(split: &Split, counts: &mut [usize], dense_feature_count: usize) 
 fn increment_feature(feature: usize, counts: &mut [usize]) {
     if let Some(count) = counts.get_mut(feature) {
         *count += 1;
+    }
+}
+
+fn model_visualization(
+    trees: &[cartoboost_core::Tree],
+    feature_names: &[String],
+    sparse_feature_names: &[String],
+) -> BrowserModelVisualization {
+    let mut names = feature_names.to_vec();
+    names.extend(sparse_feature_names.iter().cloned());
+    let mut totals = TreeStats::default();
+    let mut split_kind_counts = BTreeMap::<String, usize>::new();
+    let mut splitter_rules = BTreeMap::<(String, String), SplitterRuleAccumulator>::new();
+    let mut feature_split_counts = BTreeMap::<(String, String), SplitterRuleAccumulator>::new();
+    let mut depth_counts = BTreeMap::<usize, usize>::new();
+    for tree in trees {
+        let mut context = TreeStatsContext {
+            dense_feature_count: feature_names.len(),
+            feature_names: &names,
+            stats: &mut totals,
+            split_kind_counts: &mut split_kind_counts,
+            splitter_rules: &mut splitter_rules,
+            feature_split_counts: &mut feature_split_counts,
+            depth_counts: &mut depth_counts,
+        };
+        collect_tree_stats(&tree.root, 0, &mut context);
+    }
+    let tree_blueprints = trees
+        .iter()
+        .take(8)
+        .enumerate()
+        .map(|(tree_index, tree)| tree_blueprint(tree_index, tree, feature_names.len(), &names))
+        .collect();
+    BrowserModelVisualization {
+        summary: BrowserModelVisualizationSummary {
+            tree_count: trees.len(),
+            node_count: totals.node_count,
+            branch_count: totals.branch_count,
+            leaf_count: totals.leaf_count,
+            max_depth: totals.max_depth,
+            mean_leaf_value: finite_ratio(totals.leaf_value_sum, totals.leaf_count),
+            mean_gain: finite_ratio(totals.gain_sum, totals.branch_count),
+        },
+        split_kinds: split_kind_counts
+            .into_iter()
+            .map(|(kind, count)| BrowserSplitKindCount { kind, count })
+            .collect(),
+        splitter_rules: top_splitter_rules(splitter_rules),
+        feature_split_counts: top_feature_split_counts(feature_split_counts),
+        depth_histogram: depth_counts
+            .into_iter()
+            .map(|(depth, count)| BrowserDepthCount { depth, count })
+            .collect(),
+        tree_blueprints,
+    }
+}
+
+fn tree_blueprint(
+    tree_index: usize,
+    tree: &cartoboost_core::Tree,
+    dense_feature_count: usize,
+    feature_names: &[String],
+) -> BrowserTreeBlueprint {
+    let mut stats = TreeStats::default();
+    let mut split_kind_counts = BTreeMap::<String, usize>::new();
+    let mut splitter_rules = BTreeMap::<(String, String), SplitterRuleAccumulator>::new();
+    let mut feature_split_counts = BTreeMap::<(String, String), SplitterRuleAccumulator>::new();
+    let mut depth_counts = BTreeMap::<usize, usize>::new();
+    let mut context = TreeStatsContext {
+        dense_feature_count,
+        feature_names,
+        stats: &mut stats,
+        split_kind_counts: &mut split_kind_counts,
+        splitter_rules: &mut splitter_rules,
+        feature_split_counts: &mut feature_split_counts,
+        depth_counts: &mut depth_counts,
+    };
+    collect_tree_stats(&tree.root, 0, &mut context);
+    let mut next_id = 0;
+    BrowserTreeBlueprint {
+        tree_index,
+        node_count: stats.node_count,
+        branch_count: stats.branch_count,
+        leaf_count: stats.leaf_count,
+        max_depth: stats.max_depth,
+        total_gain: stats.gain_sum,
+        root: tree_node_blueprint(
+            &tree.root,
+            0,
+            dense_feature_count,
+            feature_names,
+            &mut next_id,
+        ),
+    }
+}
+
+#[derive(Default)]
+struct TreeStats {
+    node_count: usize,
+    branch_count: usize,
+    leaf_count: usize,
+    max_depth: usize,
+    gain_sum: f64,
+    leaf_value_sum: f64,
+}
+
+#[derive(Default)]
+struct SplitterRuleAccumulator {
+    count: usize,
+    total_gain: f64,
+}
+
+struct TreeStatsContext<'a> {
+    dense_feature_count: usize,
+    feature_names: &'a [String],
+    stats: &'a mut TreeStats,
+    split_kind_counts: &'a mut BTreeMap<String, usize>,
+    splitter_rules: &'a mut BTreeMap<(String, String), SplitterRuleAccumulator>,
+    feature_split_counts: &'a mut BTreeMap<(String, String), SplitterRuleAccumulator>,
+    depth_counts: &'a mut BTreeMap<usize, usize>,
+}
+
+fn collect_tree_stats(node: &Node, depth: usize, context: &mut TreeStatsContext<'_>) {
+    context.stats.node_count += 1;
+    context.stats.max_depth = context.stats.max_depth.max(depth);
+    *context.depth_counts.entry(depth).or_insert(0) += 1;
+    match node {
+        Node::Leaf { value, .. } => {
+            context.stats.leaf_count += 1;
+            context.stats.leaf_value_sum += *value;
+        }
+        Node::LinearLeaf { model, .. } => {
+            context.stats.leaf_count += 1;
+            context.stats.leaf_value_sum += model.intercept;
+        }
+        Node::Branch {
+            split,
+            left,
+            right,
+            gain,
+            ..
+        } => {
+            context.stats.branch_count += 1;
+            context.stats.gain_sum += *gain;
+            let (kind, label) =
+                split_display(split, context.dense_feature_count, context.feature_names);
+            *context.split_kind_counts.entry(kind.clone()).or_insert(0) += 1;
+            let rule = context
+                .splitter_rules
+                .entry((kind.clone(), label))
+                .or_default();
+            rule.count += 1;
+            rule.total_gain += *gain;
+            for feature in split_feature_indices(split, context.dense_feature_count) {
+                let feature_name = feature_label(feature, context.feature_names);
+                let feature_rule = context
+                    .feature_split_counts
+                    .entry((feature_name, kind.clone()))
+                    .or_default();
+                feature_rule.count += 1;
+                feature_rule.total_gain += *gain;
+            }
+            collect_tree_stats(left, depth + 1, context);
+            collect_tree_stats(right, depth + 1, context);
+        }
+    }
+}
+
+fn top_splitter_rules(
+    splitter_rules: BTreeMap<(String, String), SplitterRuleAccumulator>,
+) -> Vec<BrowserSplitterRuleSummary> {
+    let mut rules = splitter_rules
+        .into_iter()
+        .map(|((kind, label), accumulator)| BrowserSplitterRuleSummary {
+            kind,
+            label,
+            count: accumulator.count,
+            total_gain: accumulator.total_gain,
+            mean_gain: finite_ratio(accumulator.total_gain, accumulator.count),
+        })
+        .collect::<Vec<_>>();
+    rules.sort_by(|left, right| {
+        right
+            .total_gain
+            .total_cmp(&left.total_gain)
+            .then_with(|| right.count.cmp(&left.count))
+            .then_with(|| left.label.cmp(&right.label))
+    });
+    rules.truncate(16);
+    rules
+}
+
+fn top_feature_split_counts(
+    feature_split_counts: BTreeMap<(String, String), SplitterRuleAccumulator>,
+) -> Vec<BrowserFeatureSplitCount> {
+    let mut rows = feature_split_counts
+        .into_iter()
+        .map(|((feature, kind), accumulator)| BrowserFeatureSplitCount {
+            feature,
+            kind,
+            count: accumulator.count,
+            total_gain: accumulator.total_gain,
+        })
+        .collect::<Vec<_>>();
+    rows.sort_by(|left, right| {
+        right
+            .total_gain
+            .total_cmp(&left.total_gain)
+            .then_with(|| right.count.cmp(&left.count))
+            .then_with(|| left.feature.cmp(&right.feature))
+            .then_with(|| left.kind.cmp(&right.kind))
+    });
+    rows.truncate(24);
+    rows
+}
+
+fn tree_node_blueprint(
+    node: &Node,
+    depth: usize,
+    dense_feature_count: usize,
+    feature_names: &[String],
+    next_id: &mut usize,
+) -> BrowserTreeNode {
+    let id = *next_id;
+    *next_id += 1;
+    match node {
+        Node::Leaf {
+            value,
+            sample_weight_sum,
+            ..
+        } => BrowserTreeNode {
+            id,
+            depth,
+            kind: "leaf".to_string(),
+            label: format!("leaf {value:.3}"),
+            value: Some(*value),
+            gain: None,
+            sample_weight_sum: Some(*sample_weight_sum),
+            left: None,
+            right: None,
+        },
+        Node::LinearLeaf {
+            model,
+            sample_weight_sum,
+            ..
+        } => BrowserTreeNode {
+            id,
+            depth,
+            kind: "linear_leaf".to_string(),
+            label: format!("linear leaf {:+.3}", model.intercept),
+            value: Some(model.intercept),
+            gain: None,
+            sample_weight_sum: Some(*sample_weight_sum),
+            left: None,
+            right: None,
+        },
+        Node::Branch {
+            split,
+            left,
+            right,
+            gain,
+            sample_weight_sum,
+        } => {
+            let (kind, label) = split_display(split, dense_feature_count, feature_names);
+            let should_expand = depth < 3;
+            BrowserTreeNode {
+                id,
+                depth,
+                kind,
+                label,
+                value: None,
+                gain: Some(*gain),
+                sample_weight_sum: Some(*sample_weight_sum),
+                left: should_expand.then(|| {
+                    Box::new(tree_node_blueprint(
+                        left,
+                        depth + 1,
+                        dense_feature_count,
+                        feature_names,
+                        next_id,
+                    ))
+                }),
+                right: should_expand.then(|| {
+                    Box::new(tree_node_blueprint(
+                        right,
+                        depth + 1,
+                        dense_feature_count,
+                        feature_names,
+                        next_id,
+                    ))
+                }),
+            }
+        }
+    }
+}
+
+fn split_feature_indices(split: &Split, dense_feature_count: usize) -> Vec<usize> {
+    let mut features = BTreeSet::new();
+    collect_split_feature_indices(split, dense_feature_count, &mut features);
+    features.into_iter().collect()
+}
+
+fn collect_split_feature_indices(
+    split: &Split,
+    dense_feature_count: usize,
+    features: &mut BTreeSet<usize>,
+) {
+    match split {
+        Split::Axis { feature, .. }
+        | Split::PeriodicInterval { feature, .. }
+        | Split::SparseSetContainsAny { feature, .. } => {
+            features.insert(*feature);
+        }
+        Split::Diagonal2D {
+            x_feature,
+            y_feature,
+            ..
+        }
+        | Split::Gaussian2D {
+            x_feature,
+            y_feature,
+            ..
+        } => {
+            features.insert(*x_feature);
+            features.insert(*y_feature);
+        }
+        Split::SparseListContainsAny { sparse_feature, .. } => {
+            features.insert(dense_feature_count + *sparse_feature);
+        }
+        Split::Fuzzy { base, .. } => {
+            collect_split_feature_indices(base, dense_feature_count, features);
+        }
+    }
+}
+
+fn split_display(
+    split: &Split,
+    dense_feature_count: usize,
+    feature_names: &[String],
+) -> (String, String) {
+    match split {
+        Split::Axis {
+            feature, threshold, ..
+        } => (
+            "axis".to_string(),
+            format!(
+                "{} <= {:.3}",
+                feature_label(*feature, feature_names),
+                threshold
+            ),
+        ),
+        Split::Diagonal2D {
+            x_feature,
+            y_feature,
+            normal_x,
+            normal_y,
+            threshold,
+            ..
+        } => (
+            "diagonal_2d".to_string(),
+            format!(
+                "{:.2}*{} + {:.2}*{} <= {:.3}",
+                normal_x,
+                feature_label(*x_feature, feature_names),
+                normal_y,
+                feature_label(*y_feature, feature_names),
+                threshold
+            ),
+        ),
+        Split::Gaussian2D {
+            x_feature,
+            y_feature,
+            center_x,
+            center_y,
+            radius,
+            ..
+        } => (
+            "gaussian_2d".to_string(),
+            format!(
+                "{} / {} near {:.2}, {:.2} r{:.2}",
+                feature_label(*x_feature, feature_names),
+                feature_label(*y_feature, feature_names),
+                center_x,
+                center_y,
+                radius
+            ),
+        ),
+        Split::PeriodicInterval {
+            feature,
+            period,
+            start,
+            end,
+            ..
+        } => (
+            "periodic".to_string(),
+            format!(
+                "{} in {:.2}..{:.2} mod {:.2}",
+                feature_label(*feature, feature_names),
+                start,
+                end,
+                period
+            ),
+        ),
+        Split::SparseSetContainsAny { feature, ids, .. } => (
+            "sparse_set".to_string(),
+            format!(
+                "{} has {}",
+                feature_label(*feature, feature_names),
+                id_preview(ids)
+            ),
+        ),
+        Split::SparseListContainsAny {
+            sparse_feature,
+            ids,
+            ..
+        } => (
+            "sparse_list".to_string(),
+            format!(
+                "{} has {}",
+                feature_label(dense_feature_count + *sparse_feature, feature_names),
+                id_preview(ids)
+            ),
+        ),
+        Split::Fuzzy {
+            base,
+            bandwidth,
+            kernel,
+        } => {
+            let (_, label) = split_display(base, dense_feature_count, feature_names);
+            (
+                "fuzzy".to_string(),
+                format!("fuzzy {kernel:?} bw {:.3}: {label}", bandwidth),
+            )
+        }
+    }
+}
+
+fn feature_label(feature: usize, feature_names: &[String]) -> String {
+    feature_names
+        .get(feature)
+        .cloned()
+        .unwrap_or_else(|| format!("feature_{feature}"))
+}
+
+fn id_preview(ids: &[u64]) -> String {
+    let mut values = ids.iter().take(4).map(u64::to_string).collect::<Vec<_>>();
+    if ids.len() > values.len() {
+        values.push("...".to_string());
+    }
+    values.join(",")
+}
+
+fn finite_ratio(numerator: f64, denominator: usize) -> f64 {
+    if denominator == 0 {
+        0.0
+    } else {
+        numerator / denominator as f64
+    }
+}
+
+#[cfg(test)]
+mod model_visualization_tests {
+    use super::*;
+    use cartoboost_core::Tree;
+
+    #[test]
+    fn model_visualization_summarizes_tree_shape_and_split_labels() {
+        let trees = vec![Tree {
+            root: Node::Branch {
+                split: Split::Axis {
+                    feature: 0,
+                    threshold: 12.5,
+                    missing_goes_left: true,
+                },
+                left: Box::new(Node::Leaf {
+                    value: -1.25,
+                    sample_weight_sum: 3.0,
+                    training_loss: 0.4,
+                }),
+                right: Box::new(Node::Branch {
+                    split: Split::PeriodicInterval {
+                        feature: 1,
+                        period: 24.0,
+                        start: 7.0,
+                        end: 10.0,
+                        missing_goes_left: false,
+                    },
+                    left: Box::new(Node::Leaf {
+                        value: 0.5,
+                        sample_weight_sum: 2.0,
+                        training_loss: 0.1,
+                    }),
+                    right: Box::new(Node::Leaf {
+                        value: 1.5,
+                        sample_weight_sum: 4.0,
+                        training_loss: 0.2,
+                    }),
+                    gain: 1.25,
+                    sample_weight_sum: 6.0,
+                }),
+                gain: 2.75,
+                sample_weight_sum: 9.0,
+            },
+        }];
+        let visualization = model_visualization(
+            &trees,
+            &["pickup_hour".to_string(), "pickup_dow".to_string()],
+            &[],
+        );
+
+        assert_eq!(visualization.summary.tree_count, 1);
+        assert_eq!(visualization.summary.node_count, 5);
+        assert_eq!(visualization.summary.branch_count, 2);
+        assert_eq!(visualization.summary.leaf_count, 3);
+        assert_eq!(visualization.summary.max_depth, 2);
+        assert_eq!(visualization.depth_histogram.len(), 3);
+        assert_eq!(visualization.split_kinds[0].kind, "axis");
+        assert_eq!(visualization.split_kinds[1].kind, "periodic");
+        assert_eq!(visualization.splitter_rules.len(), 2);
+        assert!(
+            visualization.splitter_rules[0].total_gain
+                >= visualization.splitter_rules[1].total_gain
+        );
+        assert!(visualization
+            .feature_split_counts
+            .iter()
+            .any(|row| row.feature == "pickup_hour" && row.kind == "axis" && row.count == 1));
+        assert!(visualization
+            .feature_split_counts
+            .iter()
+            .any(|row| row.feature == "pickup_dow" && row.kind == "periodic" && row.count == 1));
+        assert!(visualization.tree_blueprints[0]
+            .root
+            .label
+            .contains("pickup_hour"));
     }
 }
 
@@ -4377,6 +5018,7 @@ mod tests {
                 max_depth: Some(3),
                 min_samples_leaf: Some(2),
                 monotonic_constraints: None,
+                include_model_visualization: None,
             },
         };
         let response = run_regression_request(request).expect("regression run");

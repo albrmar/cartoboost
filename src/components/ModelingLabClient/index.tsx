@@ -142,6 +142,63 @@ type RegressionResponse = {
     feature: string;
     splitCount: number;
   }[];
+  modelVisualization?: ModelVisualization;
+};
+
+type ModelVisualization = {
+  summary: {
+    treeCount: number;
+    nodeCount: number;
+    branchCount: number;
+    leafCount: number;
+    maxDepth: number;
+    meanLeafValue: number;
+    meanGain: number;
+  };
+  splitKinds: {
+    kind: string;
+    count: number;
+  }[];
+  splitterRules: {
+    kind: string;
+    label: string;
+    count: number;
+    totalGain: number;
+    meanGain: number;
+  }[];
+  featureSplitCounts: {
+    feature: string;
+    kind: string;
+    count: number;
+    totalGain: number;
+  }[];
+  depthHistogram: {
+    depth: number;
+    count: number;
+  }[];
+  treeBlueprints: TreeBlueprint[];
+};
+
+type TreeBlueprint = {
+  treeIndex: number;
+  nodeCount: number;
+  branchCount: number;
+  leafCount: number;
+  maxDepth: number;
+  totalGain: number;
+  root: TreeNodeBlueprint;
+};
+
+type TreeNodeBlueprint = {
+  id: number;
+  depth: number;
+  kind: string;
+  label: string;
+  value?: number;
+  gain?: number;
+  sampleWeightSum?: number;
+  left?: TreeNodeBlueprint;
+  right?: TreeNodeBlueprint;
 };
 
 type ModelOption = {
@@ -217,6 +274,9 @@ const neuralPipelineLabels: Record<string, string> = {
 const graphNeuralPipelines = new Set(['node2vec', 'graphsage', 'hetero_graphsage', 'hinsage']);
 type ActiveModelingSurface = 'forecast' | 'model' | 'neural';
 const TAXI_WEEK_SAMPLE_ROWS = 2500;
+const TAXI_MONTH_SAMPLE_ROWS = 8000;
+const VISUALIZED_MODEL_MAX_ROWS = 800;
+const JANUARY_2024_YELLOW_TAXI_MONTH_SOURCE_URL = 'https://d37ci6vzurychx.cloudfront.net/trip-data/yellow_tripdata_2024-01.parquet';
 const TAXI_ZONE_CENTROIDS: Record<string, {lat: number; lon: number}> = {
   4: {lat: 40.723752, lon: -73.976968},
   7: {lat: 40.761493, lon: -73.919694},
@@ -283,6 +343,7 @@ export default function ModelingLabClient(): React.ReactElement {
   const wasmJsUrl = useBaseUrl('/wasm/cartoboost/cartoboost_wasm.js');
   const wasmBinaryUrl = useBaseUrl('/wasm/cartoboost/cartoboost_wasm_bg.wasm');
   const januaryTaxiParquetUrl = useBaseUrl('/samples/yellow_tripdata_2024-01-week1.parquet');
+  const januaryTaxiMonthSampleUrl = useBaseUrl('/samples/yellow_tripdata_2024-01-month-route-hour-sample.parquet');
   const [table, setTable] = useState<ParsedTable | null>(null);
   const [timestampCol, setTimestampCol] = useState('timestamp');
   const [targetCol, setTargetCol] = useState('target');
@@ -309,18 +370,26 @@ export default function ModelingLabClient(): React.ReactElement {
   const [status, setStatus] = useState('Drop a CSV, TSV, or Parquet file to start.');
   const [isRunning, setIsRunning] = useState(false);
   const [isLoadingTaxiWeek, setIsLoadingTaxiWeek] = useState(false);
+  const [isLoadingTaxiMonth, setIsLoadingTaxiMonth] = useState(false);
   const [runProgress, setRunProgress] = useState<RunProgress | null>(null);
   const [runLog, setRunLog] = useState<RunLogEntry[]>([]);
   const [modelOptions, setModelOptions] = useState<ModelOption[]>(fallbackModelOptions);
 
   const previewRows = table?.rows.slice(0, 6) ?? [];
   const selectedForecastModel = modelOptions.find((option) => option.value === model) ?? modelOptions[0];
+  const isLoadingTaxiSample = isLoadingTaxiWeek || isLoadingTaxiMonth;
   const selectedColumnsReady =
     table !== null && timestampCol !== '' && targetCol !== '' && table.columns.includes(timestampCol) && table.columns.includes(targetCol);
 
   const appendRunLog = useCallback((message: string) => {
     const timestamp = new Date().toLocaleTimeString([], {hour: '2-digit', minute: '2-digit', second: '2-digit'});
     setRunLog((current) => [{id: Date.now(), message: `${timestamp} ${message}`}, ...current].slice(0, 8));
+  }, []);
+
+  const scheduleRun = useCallback((runner: () => Promise<void>) => {
+    window.setTimeout(() => {
+      void runner();
+    }, 30);
   }, []);
 
   useEffect(() => {
@@ -397,48 +466,84 @@ export default function ModelingLabClient(): React.ReactElement {
     [loadText],
   );
 
+  const applyTaxiTable = useCallback((parsed: ParsedTable, message: string) => {
+    const nextTimestampCol = guessColumn(parsed.columns, ['timestamp', 'tpep_pickup_datetime', 'pickup_datetime', 'date', 'ds', 'time']) ?? parsed.columns[0] ?? '';
+    const nextTargetCol = guessColumn(parsed.columns, ['target', 'total_amount', 'fare_amount', 'trip_distance', 'y', 'demand', 'trips', 'count', 'fare', 'duration']) ?? parsed.columns[1] ?? '';
+    const nextSeriesCol = guessColumn(parsed.columns, ['series_id', 'unique_id', 'PULocationID', 'DOLocationID', 'zone', 'route']) ?? '';
+    setTable(parsed);
+    setResult(null);
+    setComparisonResults([]);
+    setBacktestResults([]);
+    setRegressionResult(null);
+    setNeuralResult(null);
+    setTimestampCol(nextTimestampCol);
+    setTargetCol(nextTargetCol);
+    setSeriesCol(nextSeriesCol);
+    setFrequency('hourly');
+    setSeasonLength(24);
+    setFeatureCols(defaultFeatureColumns(parsed, nextTargetCol, nextTimestampCol, nextSeriesCol));
+    setSparseFeatureCols(defaultSparseFeatureColumns(parsed, nextTargetCol, nextTimestampCol, nextSeriesCol));
+    setNeuralIdCol(guessColumn(parsed.columns, ['pickup_zone_id', 'PULocationID', 'zone_id', 'id']) ?? '');
+    setGraphSourceCol(guessColumn(parsed.columns, ['pickup_zone_id', 'PULocationID', 'source', 'source_id']) ?? '');
+    setGraphTargetCol(guessColumn(parsed.columns, ['dropoff_zone_id', 'DOLocationID', 'target_node', 'target_id', 'destination']) ?? '');
+    setGraphWeightCol(guessColumn(parsed.columns, ['edge_weight', 'weight', 'trip_count']) ?? '');
+    setStatus(message);
+  }, []);
+
   const loadJanuaryTaxiParquet = useCallback(async () => {
     setIsLoadingTaxiWeek(true);
     setStatus('Loading real January 2024 yellow taxi Parquet week.');
     try {
+      await waitForBrowserPaint();
       const response = await fetch(januaryTaxiParquetUrl);
       if (!response.ok) {
         throw new Error(`Unable to load January taxi Parquet (${response.status}).`);
       }
-      const parsed = buildTaxiWeekSampleTable(
+      setStatus('Parsing January 2024 yellow taxi week sample.');
+      await waitForBrowserPaint();
+      const parsed = buildTaxiRouteHourSampleTable(
         await parseParquetBuffer(
           await response.arrayBuffer(),
           'yellow_tripdata_2024-01-week1.parquet',
         ),
         TAXI_WEEK_SAMPLE_ROWS,
       );
-      const nextTimestampCol = guessColumn(parsed.columns, ['timestamp', 'tpep_pickup_datetime', 'pickup_datetime', 'date', 'ds', 'time']) ?? parsed.columns[0] ?? '';
-      const nextTargetCol = guessColumn(parsed.columns, ['target', 'total_amount', 'fare_amount', 'trip_distance', 'y', 'demand', 'trips', 'count', 'fare', 'duration']) ?? parsed.columns[1] ?? '';
-      const nextSeriesCol = guessColumn(parsed.columns, ['series_id', 'unique_id', 'PULocationID', 'DOLocationID', 'zone', 'route']) ?? '';
-      setTable(parsed);
-      setResult(null);
-      setComparisonResults([]);
-      setBacktestResults([]);
-      setRegressionResult(null);
-      setNeuralResult(null);
-      setTimestampCol(nextTimestampCol);
-      setTargetCol(nextTargetCol);
-      setSeriesCol(nextSeriesCol);
-      setFrequency('hourly');
-      setSeasonLength(24);
-      setFeatureCols(defaultFeatureColumns(parsed, nextTargetCol, nextTimestampCol, nextSeriesCol));
-      setSparseFeatureCols(defaultSparseFeatureColumns(parsed, nextTargetCol, nextTimestampCol, nextSeriesCol));
-      setNeuralIdCol(guessColumn(parsed.columns, ['pickup_zone_id', 'PULocationID', 'zone_id', 'id']) ?? '');
-      setGraphSourceCol(guessColumn(parsed.columns, ['pickup_zone_id', 'PULocationID', 'source', 'source_id']) ?? '');
-      setGraphTargetCol(guessColumn(parsed.columns, ['dropoff_zone_id', 'DOLocationID', 'target_node', 'target_id', 'destination']) ?? '');
-      setGraphWeightCol(guessColumn(parsed.columns, ['edge_weight', 'weight', 'trip_count']) ?? '');
-      setStatus(`Loaded ${parsed.rows.length.toLocaleString()} sampled route-hour demand rows from January 2024 yellow taxi week 1.`);
+      applyTaxiTable(parsed, `Loaded ${parsed.rows.length.toLocaleString()} sampled route-hour demand rows from January 2024 yellow taxi week 1.`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : String(error));
     } finally {
       setIsLoadingTaxiWeek(false);
     }
-  }, [januaryTaxiParquetUrl]);
+  }, [applyTaxiTable, januaryTaxiParquetUrl]);
+
+  const loadJanuaryTaxiMonth = useCallback(async () => {
+    setIsLoadingTaxiMonth(true);
+    setStatus('Loading sampled route-hour rows from the January 2024 yellow taxi month.');
+    try {
+      await waitForBrowserPaint();
+      const response = await fetch(januaryTaxiMonthSampleUrl);
+      if (!response.ok) {
+        throw new Error(`Unable to load January taxi month sample (${response.status}).`);
+      }
+      setStatus('Parsing January 2024 yellow taxi month sample.');
+      await waitForBrowserPaint();
+      const parsed = buildTaxiRouteHourSampleTable(
+        await parseParquetBuffer(
+          await response.arrayBuffer(),
+          'yellow_tripdata_2024-01-month-route-hour-sample.parquet',
+        ),
+        TAXI_MONTH_SAMPLE_ROWS,
+      );
+      applyTaxiTable(
+        parsed,
+        `Loaded ${parsed.rows.length.toLocaleString()} route-hour demand rows sampled across the January 2024 yellow taxi month. Source: ${JANUARY_2024_YELLOW_TAXI_MONTH_SOURCE_URL}`,
+      );
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : String(error));
+    } finally {
+      setIsLoadingTaxiMonth(false);
+    }
+  }, [applyTaxiTable, januaryTaxiMonthSampleUrl]);
 
   const onDrop = useCallback(
     async (event: React.DragEvent<HTMLLabelElement>) => {
@@ -678,6 +783,7 @@ export default function ModelingLabClient(): React.ReactElement {
     setNeuralResult(null);
     setStatus('Fitting CartoBoost regression in WebAssembly.');
     try {
+      await waitForBrowserPaint();
       const response = await runBrowserRegression({
         wasmJsUrl,
         wasmBinaryUrl,
@@ -689,7 +795,7 @@ export default function ModelingLabClient(): React.ReactElement {
         modelingLoss,
       });
       setRegressionResult(response);
-      setStatus(`Modeling complete: ${response.metrics.trainRows.toLocaleString()} train rows, ${response.metrics.holdoutRows.toLocaleString()} holdout rows.`);
+      setStatus(modelVisualizerStatus('Modeling complete', response, table.rows.length));
     } catch (error) {
       setStatus(error instanceof Error ? error.message : String(error));
     } finally {
@@ -720,6 +826,7 @@ export default function ModelingLabClient(): React.ReactElement {
     setNeuralResult(null);
     setStatus(`Fitting ${neuralPipelineLabels[neuralPipeline] ?? neuralPipeline} in WebAssembly.`);
     try {
+      await waitForBrowserPaint();
       const response = await runBrowserNeural({
         wasmJsUrl,
         wasmBinaryUrl,
@@ -733,7 +840,7 @@ export default function ModelingLabClient(): React.ReactElement {
         graphWeightCol,
       });
       setNeuralResult(response);
-      setStatus(`Neural modeling complete: ${response.metrics.trainRows.toLocaleString()} train rows, ${response.metrics.holdoutRows.toLocaleString()} holdout rows.`);
+      setStatus(modelVisualizerStatus('Neural modeling complete', response, table.rows.length));
     } catch (error) {
       setStatus(error instanceof Error ? error.message : String(error));
     } finally {
@@ -834,11 +941,14 @@ export default function ModelingLabClient(): React.ReactElement {
           </p>
         </div>
         <div className={styles.headerActions}>
-          <button className={styles.secondaryButton} type="button" disabled={isLoadingTaxiWeek || isRunning} onClick={() => void loadJanuaryTaxiParquet()}>
+          <button className={styles.secondaryButton} type="button" disabled={isLoadingTaxiSample || isRunning} onClick={() => void loadJanuaryTaxiParquet()}>
             {isLoadingTaxiWeek ? 'Loading taxi week' : 'Load taxi week'}
           </button>
-          {isLoadingTaxiWeek && (
-            <div className={styles.loadingBar} role="progressbar" aria-label="Loading taxi week">
+          <button className={styles.secondaryButton} type="button" disabled={isLoadingTaxiSample || isRunning} onClick={() => void loadJanuaryTaxiMonth()}>
+            {isLoadingTaxiMonth ? 'Loading taxi month' : 'Load taxi month'}
+          </button>
+          {isLoadingTaxiSample && (
+            <div className={styles.loadingBar} role="progressbar" aria-label={isLoadingTaxiMonth ? 'Loading taxi month' : 'Loading taxi week'}>
               <span />
             </div>
           )}
@@ -1040,34 +1150,34 @@ export default function ModelingLabClient(): React.ReactElement {
             <div className={styles.actionGrid}>
             {activeModelingSurface === 'forecast' && (
               <>
-                <button className={styles.primaryButton} type="button" disabled={!selectedColumnsReady || isRunning || isLoadingTaxiWeek} onClick={() => void runForecast()}>
+                <button className={styles.primaryButton} type="button" disabled={!selectedColumnsReady || isRunning || isLoadingTaxiSample} onClick={() => scheduleRun(runForecast)}>
                   {isRunning ? 'Running forecast' : 'Run forecast'}
                 </button>
-                <button className={styles.secondaryActionButton} type="button" disabled={!selectedColumnsReady || isRunning || isLoadingTaxiWeek} onClick={() => void runComparison()}>
+                <button className={styles.secondaryActionButton} type="button" disabled={!selectedColumnsReady || isRunning || isLoadingTaxiSample} onClick={() => scheduleRun(runComparison)}>
                   Compare roster
                 </button>
-                <button className={styles.secondaryActionButton} type="button" disabled={!selectedColumnsReady || isRunning || isLoadingTaxiWeek} onClick={() => void runBacktest()}>
+                <button className={styles.secondaryActionButton} type="button" disabled={!selectedColumnsReady || isRunning || isLoadingTaxiSample} onClick={() => scheduleRun(runBacktest)}>
                   Backtest
                 </button>
               </>
             )}
             {activeModelingSurface === 'model' && (
-              <button className={styles.primaryButton} type="button" disabled={!selectedColumnsReady || featureCols.length === 0 || isRunning || isLoadingTaxiWeek} onClick={() => void runRegression()}>
+              <button className={styles.primaryButton} type="button" disabled={!selectedColumnsReady || featureCols.length === 0 || isRunning || isLoadingTaxiSample} onClick={() => scheduleRun(runRegression)}>
                 {isRunning ? 'Running model' : 'Run model'}
               </button>
             )}
             {activeModelingSurface === 'neural' && (
-              <button className={styles.primaryButton} type="button" disabled={!selectedColumnsReady || featureCols.length === 0 || isRunning || isLoadingTaxiWeek} onClick={() => void runNeural()}>
+              <button className={styles.primaryButton} type="button" disabled={!selectedColumnsReady || featureCols.length === 0 || isRunning || isLoadingTaxiSample} onClick={() => scheduleRun(runNeural)}>
                 {isRunning ? 'Running neural' : 'Run neural'}
               </button>
             )}
-            <button className={styles.secondaryActionButton} type="button" disabled={!table || isRunning || isLoadingTaxiWeek} onClick={exportSuggestedConfig}>
+            <button className={styles.secondaryActionButton} type="button" disabled={!table || isRunning || isLoadingTaxiSample} onClick={exportSuggestedConfig}>
               Export config
             </button>
             </div>
           </div>
-          {(runProgress || isLoadingTaxiWeek) && (
-            <ProgressBar progress={runProgress} label={isLoadingTaxiWeek ? 'Loading taxi week' : undefined} />
+          {(runProgress || isLoadingTaxiSample) && (
+            <ProgressBar progress={runProgress} label={isLoadingTaxiMonth ? 'Loading taxi month' : isLoadingTaxiWeek ? 'Loading taxi week' : undefined} />
           )}
           {runLog.length > 0 && (
             <div className={styles.runLog} aria-live="polite" aria-label="Run activity">
@@ -1099,9 +1209,14 @@ export default function ModelingLabClient(): React.ReactElement {
                     <dt>Holdout</dt>
                     <dd>{neuralResult.metrics.holdoutRows.toLocaleString()}</dd>
                   </div>
+                  <div>
+                    <dt>Visualized</dt>
+                    <dd>{(neuralResult.metrics.trainRows + neuralResult.metrics.holdoutRows).toLocaleString()}</dd>
+                  </div>
                 </dl>
               </div>
               <RegressionMetricSummary result={neuralResult} />
+              <CartoBoostModelVisualizer result={neuralResult} />
               <RegressionPredictionChart result={neuralResult} />
               <FeatureImportanceChart result={neuralResult} />
               <RegressionPredictionTable result={neuralResult} />
@@ -1122,9 +1237,14 @@ export default function ModelingLabClient(): React.ReactElement {
                     <dt>Holdout</dt>
                     <dd>{regressionResult.metrics.holdoutRows.toLocaleString()}</dd>
                   </div>
+                  <div>
+                    <dt>Visualized</dt>
+                    <dd>{(regressionResult.metrics.trainRows + regressionResult.metrics.holdoutRows).toLocaleString()}</dd>
+                  </div>
                 </dl>
               </div>
               <RegressionMetricSummary result={regressionResult} />
+              <CartoBoostModelVisualizer result={regressionResult} />
               <RegressionPredictionChart result={regressionResult} />
               <FeatureImportanceChart result={regressionResult} />
               <RegressionPredictionTable result={regressionResult} />
@@ -1702,6 +1822,367 @@ function RegressionMetricSummary({result}: {result: RegressionResponse}) {
       </p>
     </div>
   );
+}
+
+function modelVisualizerStatus(prefix: string, response: RegressionResponse, loadedRows: number) {
+  const fittedRows = response.metrics.trainRows + response.metrics.holdoutRows;
+  const sampleNote = loadedRows > fittedRows
+    ? ` Visualizer fit used ${fittedRows.toLocaleString()} sampled rows from ${loadedRows.toLocaleString()} loaded rows.`
+    : '';
+  return `${prefix}: ${response.metrics.trainRows.toLocaleString()} train rows, ${response.metrics.holdoutRows.toLocaleString()} holdout rows.${sampleNote}`;
+}
+
+function CartoBoostModelVisualizer({result}: {result: RegressionResponse}) {
+  const visualization = result.modelVisualization;
+  if (!visualization) {
+    return null;
+  }
+  const maxSplitCount = Math.max(...visualization.splitKinds.map((row) => row.count), 1);
+  const maxRuleGain = Math.max(...visualization.splitterRules.map((row) => row.totalGain), 1);
+  const maxDepthCount = Math.max(...visualization.depthHistogram.map((row) => row.count), 1);
+  const residualRows = [...result.predictions]
+    .sort((left, right) => Math.abs(right.residual) - Math.abs(left.residual))
+    .slice(0, 10);
+  const residualMax = Math.max(...residualRows.map((row) => Math.abs(row.residual)), 1);
+  return (
+    <section className={styles.modelVisualizer}>
+      <div className={styles.modelVisualizerHeader}>
+        <div>
+          <span className={styles.eyebrow}>CartoBoost structure</span>
+          <h3>Boosted tree visualizer</h3>
+        </div>
+        <dl>
+          <div>
+            <dt>Nodes</dt>
+            <dd>{visualization.summary.nodeCount.toLocaleString()}</dd>
+          </div>
+          <div>
+            <dt>Leaves</dt>
+            <dd>{visualization.summary.leafCount.toLocaleString()}</dd>
+          </div>
+          <div>
+            <dt>Depth</dt>
+            <dd>{visualization.summary.maxDepth.toLocaleString()}</dd>
+          </div>
+          <div>
+            <dt>Gain</dt>
+            <dd>{formatCompact(visualization.summary.meanGain)}</dd>
+          </div>
+        </dl>
+      </div>
+      <SplitterAtlas visualization={visualization} />
+      <div className={styles.modelVisualizerGrid}>
+        <TreeForestSvg trees={visualization.treeBlueprints} />
+        <div className={styles.modelVisualizerSide}>
+          <TreeRoster trees={visualization.treeBlueprints} />
+          <div className={styles.structurePanel}>
+            <strong>Split mix</strong>
+            {visualization.splitKinds.map((row) => (
+              <div className={styles.structureRow} key={row.kind}>
+                <span>{splitKindLabel(row.kind)}</span>
+                <i>
+                  <em style={{width: `${Math.max((row.count / maxSplitCount) * 100, 3)}%`}} />
+                </i>
+                <b>{row.count.toLocaleString()}</b>
+              </div>
+            ))}
+          </div>
+          <FeatureSplitterMatrix visualization={visualization} />
+          <div className={styles.structurePanel}>
+            <strong>Top splitter rules</strong>
+            {visualization.splitterRules.slice(0, 7).map((row) => (
+              <div className={styles.splitterRuleRow} key={`${row.kind}-${row.label}`}>
+                <span>
+                  <b>{splitKindLabel(row.kind)}</b>
+                  {row.label}
+                </span>
+                <i>
+                  <em style={{width: `${Math.max((row.totalGain / maxRuleGain) * 100, 3)}%`}} />
+                </i>
+                <strong>{`${row.count.toLocaleString()} / ${formatCompact(row.meanGain)}`}</strong>
+              </div>
+            ))}
+          </div>
+          <div className={styles.structurePanel}>
+            <strong>Depth profile</strong>
+            <div className={styles.depthProfile}>
+              {visualization.depthHistogram.map((row) => (
+                <span title={`Depth ${row.depth}: ${row.count.toLocaleString()} nodes`} key={row.depth}>
+                  <i style={{height: `${Math.max((row.count / maxDepthCount) * 100, 5)}%`}} />
+                  <em>{row.depth}</em>
+                </span>
+              ))}
+            </div>
+          </div>
+          <div className={styles.structurePanel}>
+            <strong>Largest holdout residuals</strong>
+            {residualRows.map((row) => (
+              <div className={styles.residualRow} key={row.rowIndex}>
+                <span>Row {row.rowIndex.toLocaleString()}</span>
+                <i>
+                  <em
+                    className={row.residual >= 0 ? styles.residualPositive : styles.residualNegative}
+                    style={{width: `${Math.max((Math.abs(row.residual) / residualMax) * 100, 3)}%`}}
+                  />
+                </i>
+                <b>{formatCompact(row.residual)}</b>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function FeatureSplitterMatrix({visualization}: {visualization: ModelVisualization}) {
+  if (visualization.featureSplitCounts.length === 0) {
+    return null;
+  }
+  const topFeatures = Array.from(new Set(visualization.featureSplitCounts.map((row) => row.feature))).slice(0, 8);
+  const kinds = visualization.splitKinds.map((row) => row.kind);
+  const maxCount = Math.max(...visualization.featureSplitCounts.map((row) => row.count), 1);
+  const countByFeatureKind = new Map(visualization.featureSplitCounts.map((row) => [`${row.feature}\u0000${row.kind}`, row]));
+  const gridTemplateColumns = `minmax(7rem, 1fr) repeat(${Math.max(kinds.length, 1)}, minmax(1.65rem, 0.28fr))`;
+  return (
+    <div className={styles.featureSplitterMatrix}>
+      <strong>Feature splitter matrix</strong>
+      <div className={styles.featureSplitterHeader} style={{gridTemplateColumns}}>
+        <span />
+        {kinds.map((kind) => (
+          <b title={splitKindLabel(kind)} key={kind}>{splitKindLabel(kind).replace(' threshold', '').replace(' spatial', '')}</b>
+        ))}
+      </div>
+      {topFeatures.map((feature) => (
+        <div className={styles.featureSplitterRow} style={{gridTemplateColumns}} key={feature}>
+          <span title={feature}>{feature}</span>
+          {kinds.map((kind) => {
+            const row = countByFeatureKind.get(`${feature}\u0000${kind}`);
+            return (
+              <i title={`${feature} / ${splitKindLabel(kind)}: ${row?.count ?? 0} splits`} key={kind}>
+                {row && <em style={{opacity: Math.max(row.count / maxCount, 0.18)}} />}
+              </i>
+            );
+          })}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function TreeRoster({trees}: {trees: TreeBlueprint[]}) {
+  if (trees.length === 0) {
+    return null;
+  }
+  const maxGain = Math.max(...trees.map((tree) => tree.totalGain), 1);
+  return (
+    <div className={styles.treeRoster}>
+      <strong>Tree roster</strong>
+      {trees.map((tree) => (
+        <div className={styles.treeRosterRow} key={tree.treeIndex}>
+          <span>{`Tree ${tree.treeIndex + 1}`}</span>
+          <i>
+            <em style={{width: `${Math.max((tree.totalGain / maxGain) * 100, 3)}%`}} />
+          </i>
+          <b>{formatCompact(tree.totalGain)}</b>
+          <small>{`${tree.nodeCount.toLocaleString()} nodes / ${tree.leafCount.toLocaleString()} leaves / d${tree.maxDepth}`}</small>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SplitterAtlas({visualization}: {visualization: ModelVisualization}) {
+  if (visualization.splitKinds.length === 0) {
+    return null;
+  }
+  const totalSplits = visualization.splitKinds.reduce((sum, row) => sum + row.count, 0);
+  return (
+    <div className={styles.splitterAtlas}>
+      {visualization.splitKinds.map((row) => {
+        const sampleRule = visualization.splitterRules.find((rule) => rule.kind === row.kind);
+        return (
+          <article className={styles.splitterCard} key={row.kind}>
+            <SplitterGlyph kind={row.kind} />
+            <div>
+              <strong>{splitKindLabel(row.kind)}</strong>
+              <span>{formatPercent(totalSplits === 0 ? 0 : row.count / totalSplits).replace(/^\+/, '')}</span>
+            </div>
+            <p>{sampleRule?.label ?? splitterKindHint(row.kind)}</p>
+          </article>
+        );
+      })}
+    </div>
+  );
+}
+
+function SplitterGlyph({kind}: {kind: string}) {
+  const color = splitKindColor(kind);
+  if (kind === 'diagonal_2d') {
+    return (
+      <svg className={styles.splitterGlyph} viewBox="0 0 64 46" aria-hidden="true">
+        <rect x="4" y="4" width="56" height="38" rx="6" />
+        <line x1="10" y1="38" x2="54" y2="8" style={{stroke: color}} />
+        <circle cx="20" cy="14" r="3" />
+        <circle cx="44" cy="32" r="3" />
+      </svg>
+    );
+  }
+  if (kind === 'gaussian_2d') {
+    return (
+      <svg className={styles.splitterGlyph} viewBox="0 0 64 46" aria-hidden="true">
+        <rect x="4" y="4" width="56" height="38" rx="6" />
+        <circle className={styles.splitterRing} cx="32" cy="23" r="14" style={{stroke: color}} />
+        <circle cx="32" cy="23" r="3" />
+      </svg>
+    );
+  }
+  if (kind === 'periodic') {
+    return (
+      <svg className={styles.splitterGlyph} viewBox="0 0 64 46" aria-hidden="true">
+        <rect x="4" y="4" width="56" height="38" rx="6" />
+        <path d="M8 26 C18 8, 28 8, 38 26 S54 44, 60 24" />
+        <rect className={styles.splitterBand} x="25" y="5" width="16" height="36" style={{fill: color}} />
+      </svg>
+    );
+  }
+  if (kind === 'sparse_set' || kind === 'sparse_list') {
+    return (
+      <svg className={styles.splitterGlyph} viewBox="0 0 64 46" aria-hidden="true">
+        <rect x="4" y="4" width="56" height="38" rx="6" />
+        {[14, 25, 36, 47].map((x, index) => (
+          <circle cx={x} cy={index % 2 === 0 ? 17 : 29} r="5" style={{fill: index < 2 ? color : undefined}} key={x} />
+        ))}
+      </svg>
+    );
+  }
+  if (kind === 'fuzzy') {
+    return (
+      <svg className={styles.splitterGlyph} viewBox="0 0 64 46" aria-hidden="true">
+        <rect x="4" y="4" width="56" height="38" rx="6" />
+        <rect className={styles.splitterBand} x="26" y="7" width="12" height="32" style={{fill: color}} />
+        <line x1="32" y1="8" x2="32" y2="38" style={{stroke: color}} />
+      </svg>
+    );
+  }
+  return (
+    <svg className={styles.splitterGlyph} viewBox="0 0 64 46" aria-hidden="true">
+      <rect x="4" y="4" width="56" height="38" rx="6" />
+      <line x1="32" y1="8" x2="32" y2="38" style={{stroke: color}} />
+      <circle cx="20" cy="18" r="3" />
+      <circle cx="45" cy="29" r="3" />
+    </svg>
+  );
+}
+
+function TreeForestSvg({trees}: {trees: TreeBlueprint[]}) {
+  const plottedTrees = trees.slice(0, 6);
+  if (plottedTrees.length === 0) {
+    return null;
+  }
+  const width = 900;
+  const height = 360;
+  const gutter = 18;
+  const treeWidth = (width - gutter * (plottedTrees.length + 1)) / plottedTrees.length;
+  const nodes = plottedTrees.flatMap((tree, treeOffset) =>
+    layoutTreeNodes(tree.root, gutter + treeOffset * (treeWidth + gutter), treeWidth, tree.treeIndex),
+  );
+  const edges = nodes.filter((node) => node.parentKey);
+  return (
+    <figure className={styles.treeForest}>
+      <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Boosted tree structure">
+        {plottedTrees.map((tree, index) => (
+          <g className={styles.treeMiniSummary} transform={`translate(${gutter + index * (treeWidth + gutter)}, 16)`} key={tree.treeIndex}>
+            <text x="0" y="0">{`Tree ${tree.treeIndex + 1}`}</text>
+            <text x="0" y="18">{`${tree.nodeCount} nodes, gain ${formatCompact(tree.totalGain)}`}</text>
+          </g>
+        ))}
+        {edges.map((node) => {
+          const parent = nodes.find((candidate) => candidate.key === node.parentKey);
+          if (!parent) {
+            return null;
+          }
+          return (
+            <line
+              className={styles.treeEdge}
+              x1={parent.x}
+              x2={node.x}
+              y1={parent.y + 14}
+              y2={node.y - 16}
+              key={`${parent.key}-${node.key}`}
+            />
+          );
+        })}
+        {nodes.map((node) => (
+          <g className={`${styles.treeNode} ${node.kind.includes('leaf') ? styles.treeLeaf : styles.treeBranch}`} transform={`translate(${node.x}, ${node.y})`} key={node.key}>
+            <title>{node.tooltip}</title>
+            <rect
+              x="-44"
+              y="-17"
+              width="88"
+              height="34"
+              rx="7"
+              style={node.kind.includes('leaf') ? undefined : {fill: splitKindFill(node.kind), stroke: splitKindColor(node.kind)}}
+            />
+            <text x="0" y="-2">{truncateLabel(node.label, 18)}</text>
+            <text x="0" y="12">{node.detail}</text>
+          </g>
+        ))}
+      </svg>
+      <figcaption>First {plottedTrees.length.toLocaleString()} trees, expanded to three split levels from native wasm tree metadata</figcaption>
+    </figure>
+  );
+}
+
+type PositionedTreeNode = {
+  key: string;
+  parentKey?: string;
+  x: number;
+  y: number;
+  kind: string;
+  label: string;
+  detail: string;
+  tooltip: string;
+};
+
+function layoutTreeNodes(
+  root: TreeNodeBlueprint,
+  xOffset: number,
+  treeWidth: number,
+  treeIndex: number,
+): PositionedTreeNode[] {
+  const positioned: PositionedTreeNode[] = [];
+  const visit = (node: TreeNodeBlueprint, depth: number, slot: number, slots: number, parentKey?: string) => {
+    const key = `${treeIndex}-${node.id}`;
+    const x = xOffset + ((slot + 0.5) / slots) * treeWidth;
+    const y = 64 + depth * 72;
+    positioned.push({
+      key,
+      parentKey,
+      x,
+      y,
+      kind: node.kind,
+      label: node.label,
+      detail: node.gain === undefined ? formatCompact(node.value) : `gain ${formatCompact(node.gain)}`,
+      tooltip: treeNodeTooltip(node),
+    });
+    if (node.left) {
+      visit(node.left, depth + 1, slot * 2, slots * 2, key);
+    }
+    if (node.right) {
+      visit(node.right, depth + 1, slot * 2 + 1, slots * 2, key);
+    }
+  };
+  visit(root, 0, 0, 1);
+  return positioned;
+}
+
+function treeNodeTooltip(node: TreeNodeBlueprint) {
+  const detail = node.gain === undefined
+    ? `leaf value ${formatMetric(node.value)}`
+    : `gain ${formatMetric(node.gain)}`;
+  const weight = node.sampleWeightSum === undefined ? '' : `, weight ${formatCompact(node.sampleWeightSum)}`;
+  return `${splitKindLabel(node.kind)}: ${node.label} (${detail}${weight})`;
 }
 
 function RegressionPredictionChart({result}: {result: RegressionResponse}) {
@@ -3327,6 +3808,65 @@ function formatCompact(value: unknown) {
   }).format(numeric);
 }
 
+function splitKindLabel(kind: string) {
+  const labels: Record<string, string> = {
+    axis: 'Axis threshold',
+    diagonal_2d: 'Diagonal spatial',
+    gaussian_2d: 'Gaussian spatial',
+    periodic: 'Periodic interval',
+    sparse_set: 'Sparse set',
+    sparse_list: 'Sparse list',
+    fuzzy: 'Fuzzy boundary',
+  };
+  return labels[kind] ?? kind.replaceAll('_', ' ');
+}
+
+function splitterKindHint(kind: string) {
+  const hints: Record<string, string> = {
+    axis: 'One feature threshold sends rows left or right.',
+    diagonal_2d: 'A learned line separates two feature dimensions.',
+    gaussian_2d: 'Rows inside a learned radius follow one branch.',
+    periodic: 'A wrapped interval captures clock or calendar phases.',
+    sparse_set: 'Membership in a set-valued feature controls routing.',
+    sparse_list: 'Any matching id in a sparse list controls routing.',
+    fuzzy: 'A soft boundary blends routing around a base split.',
+  };
+  return hints[kind] ?? 'Native CartoBoost splitter rule.';
+}
+
+function splitKindColor(kind: string) {
+  const colors: Record<string, string> = {
+    axis: '#168f86',
+    diagonal_2d: '#4f8cff',
+    gaussian_2d: '#d05ca6',
+    periodic: '#b7791f',
+    sparse_set: '#6c5ce7',
+    sparse_list: '#6c5ce7',
+    fuzzy: '#d14b57',
+  };
+  return colors[kind] ?? '#168f86';
+}
+
+function splitKindFill(kind: string) {
+  const fills: Record<string, string> = {
+    axis: '#e0f5f3',
+    diagonal_2d: '#e8f0ff',
+    gaussian_2d: '#fae7f3',
+    periodic: '#fff7df',
+    sparse_set: '#eeeafb',
+    sparse_list: '#eeeafb',
+    fuzzy: '#ffe8eb',
+  };
+  return fills[kind] ?? '#e0f5f3';
+}
+
+function truncateLabel(value: string, maxLength: number) {
+  if (value.length <= maxLength) {
+    return value;
+  }
+  return `${value.slice(0, Math.max(1, maxLength - 1))}...`;
+}
+
 function summarizeComponentRecord(record: ForecastComponentRecord) {
   const ignored = new Set(['trend_linear', 'changepoint_delta', 'seasonal_total', 'event_total', 'regressor_total', 'non_trend_total']);
   const rows: {label: string; value: number}[] = [];
@@ -4080,13 +4620,16 @@ async function runBrowserRegression({
   modelingMode: string;
   modelingLoss: string;
 }) {
-  const rows = table.rows
-    .map((row) => ({
-      features: featureCols.map((column) => Number(row[column])),
-      sparseSets: sparseFeatureCols.map((column) => parseSparseSet(row[column] ?? '')),
-      target: Number(row[targetCol]),
-    }))
-    .filter((row) => Number.isFinite(row.target) && row.features.every(Number.isFinite));
+  const rows = sampleModelRows(
+    table.rows
+      .map((row) => ({
+        features: featureCols.map((column) => Number(row[column])),
+        sparseSets: sparseFeatureCols.map((column) => parseSparseSet(row[column] ?? '')),
+        target: Number(row[targetCol]),
+      }))
+      .filter((row) => Number.isFinite(row.target) && row.features.every(Number.isFinite)),
+    VISUALIZED_MODEL_MAX_ROWS,
+  );
   if (rows.length < 4) {
     throw new Error('CartoBoost modeling needs at least four rows with finite target and feature values.');
   }
@@ -4110,11 +4653,12 @@ async function runBrowserRegression({
           .filter((column) => inferFeatureKind(column) === 'periodic')
           .map((column) => [column, inferPeriodicPeriod(column)]),
       ),
-      nEstimators: 120,
+      nEstimators: 24,
       learningRate: 0.06,
       maxDepth: 3,
       minSamplesLeaf: Math.max(2, Math.min(20, Math.floor(rows.length / 20))),
-      monotonicConstraints: featureCols.map(inferMonotonicConstraint),
+      monotonicConstraints: modelingMode === 'axis' ? featureCols.map(inferMonotonicConstraint) : undefined,
+      includeModelVisualization: true,
     },
   });
 }
@@ -4143,26 +4687,29 @@ async function runBrowserNeural({
   graphWeightCol: string;
 }) {
   const graphTopology = buildGraphTopology(table, graphSourceCol, graphTargetCol, featureCols);
-  const rows = table.rows
-    .map((row, rowIndex) => ({
-      id: neuralIdCol ? parseBrowserId(row[neuralIdCol]) : undefined,
-      source: graphSourceCol ? graphTopology.nodeIndex.get(row[graphSourceCol]) : undefined,
-      targetNode: graphTargetCol ? graphTopology.nodeIndex.get(row[graphTargetCol]) : undefined,
-      edgeWeight: graphWeightCol ? Number(row[graphWeightCol]) : undefined,
-      edgeType: graphTopology.edgeTypesByRow[rowIndex] ?? 0,
-      dense: featureCols.map((column) => Number(row[column])),
-      target: Number(row[targetCol]),
-    }))
-    .filter((row) => {
-      const validCommon = Number.isFinite(row.target) && row.dense.every(Number.isFinite);
-      if (!validCommon) {
-        return false;
-      }
-      if (graphNeuralPipelines.has(neuralPipeline)) {
-        return row.source !== undefined && row.targetNode !== undefined && (row.edgeWeight === undefined || Number.isFinite(row.edgeWeight));
-      }
-      return row.id !== undefined;
-    });
+  const rows = sampleModelRows(
+    table.rows
+      .map((row, rowIndex) => ({
+        id: neuralIdCol ? parseBrowserId(row[neuralIdCol]) : undefined,
+        source: graphSourceCol ? graphTopology.nodeIndex.get(row[graphSourceCol]) : undefined,
+        targetNode: graphTargetCol ? graphTopology.nodeIndex.get(row[graphTargetCol]) : undefined,
+        edgeWeight: graphWeightCol ? Number(row[graphWeightCol]) : undefined,
+        edgeType: graphTopology.edgeTypesByRow[rowIndex] ?? 0,
+        dense: featureCols.map((column) => Number(row[column])),
+        target: Number(row[targetCol]),
+      }))
+      .filter((row) => {
+        const validCommon = Number.isFinite(row.target) && row.dense.every(Number.isFinite);
+        if (!validCommon) {
+          return false;
+        }
+        if (graphNeuralPipelines.has(neuralPipeline)) {
+          return row.source !== undefined && row.targetNode !== undefined && (row.edgeWeight === undefined || Number.isFinite(row.edgeWeight));
+        }
+        return row.id !== undefined;
+      }),
+    VISUALIZED_MODEL_MAX_ROWS,
+  );
   if (rows.length < 4) {
     throw new Error('CartoBoost neural modeling needs at least four usable rows.');
   }
@@ -4178,7 +4725,7 @@ async function runBrowserNeural({
       holdoutFraction: 0.2,
       embeddingDim: 8,
       randomState: 42,
-      nEstimators: 80,
+      nEstimators: 20,
       learningRate: 0.07,
       maxDepth: 4,
       minSamplesLeaf: Math.max(2, Math.min(20, Math.floor(rows.length / 20))),
@@ -4190,6 +4737,7 @@ async function runBrowserNeural({
       graphSageEpochs: 3,
       graphSageNegativeSamples: 2,
       graphSageSeed: 42,
+      includeModelVisualization: true,
     },
   });
 }
@@ -4534,7 +5082,15 @@ function downsampleTable(table: ParsedTable, maxRows: number): ParsedTable {
   };
 }
 
-function buildTaxiWeekSampleTable(table: ParsedTable, maxRows: number): ParsedTable {
+function sampleModelRows<T>(rows: T[], maxRows: number): T[] {
+  if (rows.length <= maxRows) {
+    return rows;
+  }
+  const step = rows.length / maxRows;
+  return Array.from({length: maxRows}, (_, index) => rows[Math.floor(index * step)]).filter((row): row is T => row !== undefined);
+}
+
+function buildTaxiRouteHourSampleTable(table: ParsedTable, maxRows: number): ParsedTable {
   const requiredColumns = ['tpep_pickup_datetime', 'tpep_dropoff_datetime', 'PULocationID', 'DOLocationID'];
   if (!requiredColumns.every((column) => table.columns.includes(column))) {
     return downsampleTable(enrichTaxiRouteGeoColumns(table), maxRows);

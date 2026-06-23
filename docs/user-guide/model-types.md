@@ -18,6 +18,7 @@ appropriate, and artifact helpers.
 | Is the target one regular pickup-zone or lane series with its own history? | Local forecasters such as `SeasonalNaiveForecaster`, `ThetaForecaster`, `ETSForecaster`, `AutoARIMAForecaster`, or `KalmanForecaster` | [Forecasting Model Guides](forecasting-models/index.md) |
 | Are many related pickup zones, dropoff zones, or route panels forecast from shared lag features? | `CartoBoostLagForecaster` | [CartoBoost Lag](forecasting-models/cartoboost-lag.md) |
 | Should nearby coordinates borrow signal for a forecast panel? | `KrigingForecaster` | [Kriging](forecasting-models/kriging.md) |
+| Should a deterministic neural forecasting expert learn from regular taxi-demand windows? | `NBeatsForecaster` or `NHiTSForecaster` | [Forecasting Model Guides](forecasting-models/index.md) |
 | Do you need a fixed combination of fitted native forecasters? | `WeightedEnsembleForecaster` | [Weighted Ensembles](forecasting-models/ensembles.md) |
 | Are stable pickup zones, dropoff zones, or pairs themselves the learned artifact? | `NeuralEmbeddingStandaloneRegressor` | [Neural Features](../neural-features.md) |
 | Is the relationship network the object being modeled? | Graph standalone regressors or link predictors | [Graph Features](../graph-features.md) |
@@ -92,6 +93,23 @@ See [Python API Reference](../reference/python-api.md), [Parameters](parameters.
 [Feature Schema](../feature_schema.md), [Sparse Features](../sparse_features.md),
 and [Temporal-Spatial Modeling](../spatial_modeling.md).
 
+## Browser Splitter Visualizer
+
+Use the [Modeling Lab](../../modeling-lab) when you want to inspect a fitted
+CartoBoost model in the browser before moving to a Python or CLI workflow. The
+lab runs the Rust WebAssembly core locally, loads either the bundled January
+2024 yellow taxi week sample or an 8,000-row route-hour sample spread across
+the full January 2024 yellow taxi month, and renders the fitted tree structure
+without sending data to a server.
+
+The visualizer is opt-in metadata on the WebAssembly regression and neural
+model calls. It summarizes the boosted trees, split kinds, top splitter rules,
+depth profile, and largest holdout residuals after fitting; regular prediction
+paths do not pay the traversal cost unless visualization is requested. This is
+the best place to confirm whether axis, diagonal spatial, Gaussian spatial,
+periodic, sparse-set, or fuzzy splitters are actually used on taxi pickup,
+dropoff, route, fare, distance, duration, and demand features.
+
 ## Forecasting
 
 Forecasting has two documentation layers:
@@ -127,15 +145,15 @@ Choose the model guide by series structure:
 | Additive level, trend, or seasonality | [ETS](forecasting-models/ets.md) |
 | Autocorrelation and differencing | [ARIMA And AutoARIMA](forecasting-models/arima.md) |
 | Noisy local level and trend | [Kalman](forecasting-models/kalman.md) |
+| Sparse non-negative pickup demand with many true zero periods | `CrostonForecaster`, `SbaForecaster`, or `TsbForecaster` |
 | Interpretable trend, changepoints, seasonality, events, and regressors | [Piecewise Linear Seasonal](forecasting-models/piecewise-linear-seasonal) |
-| Prophet-compatible forecast plotting for Prophet-shaped outputs | [Prophet-Compatible Forecast Plot](forecasting-models/prophet.md) |
+| Prophet-compatible forecast plotting for Prophet-shaped outputs | [Plotting](../plotting.md) |
 | Coordinate-aware panel interpolation | [Kriging](forecasting-models/kriging.md) |
 | Shared supervised lag model across many series | [CartoBoost Lag](forecasting-models/cartoboost-lag.md) |
+| Reusable statistical expert-bank selection | `AutoStatsBank` |
 | Guarded default selector over native candidates | [AutoForecaster](forecasting-models/auto-forecaster.md) |
+| Windowed neural extrapolation | `NBeatsForecaster` or `NHiTSForecaster` |
 | Fixed-weight combinations of native forecasters | [Weighted Ensembles](forecasting-models/ensembles.md) |
-
-Current Rust bindings intentionally reject unsupported modes such as damped ETS,
-multiplicative ETS, seasonal AutoARIMA, and Python fallback algorithms.
 
 ## Graph And Neural Models
 

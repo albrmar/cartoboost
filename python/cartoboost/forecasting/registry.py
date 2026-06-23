@@ -7,8 +7,6 @@ from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
-from ._native_wrappers import NativeForecastWrapper
-
 Factory = Callable[..., Any]
 
 
@@ -105,82 +103,53 @@ class ForecastRegistry:
         return registry
 
 
-class RegisteredNativeForecaster(NativeForecastWrapper):
-    """Configurable native forecasting wrapper used by registry-only model specs."""
-
-    def __init__(self, *, native_class_name: str, **params: Any) -> None:
-        self.native_class_name = native_class_name
-        super().__init__(**params)
-
-
 def default_model_specs() -> tuple[ForecastModelSpec, ...]:
-    from .ensemble import BottomUpReconciler, MinTraceReconciler
+    from .auto import AutoForecaster
     from .global_models import CartoBoostLagForecaster
     from .local import (
+        ArimaForecaster,
         AutoARIMAForecaster,
         AutoKalmanForecaster,
         AutoLocalLevelKalmanForecaster,
+        AutoStatsBank,
+        CrostonForecaster,
         ETSForecaster,
         KalmanForecaster,
         LocalLevelKalmanForecaster,
         NaiveForecaster,
         OptimizedThetaForecaster,
         PiecewiseLinearSeasonalForecaster,
+        SbaForecaster,
         SeasonalNaiveForecaster,
         ThetaForecaster,
+        TsbForecaster,
     )
 
     return (
         ForecastModelSpec("naive", factory=NaiveForecaster),
-        ForecastModelSpec("seasonal_naive", factory=SeasonalNaiveForecaster),
+        ForecastModelSpec(
+            "seasonal_naive",
+            factory=SeasonalNaiveForecaster,
+            params={"season_length": 7},
+        ),
         ForecastModelSpec("theta", factory=ThetaForecaster),
         ForecastModelSpec("optimized_theta", factory=OptimizedThetaForecaster),
         ForecastModelSpec("piecewise_linear_seasonal", factory=PiecewiseLinearSeasonalForecaster),
         ForecastModelSpec("ets", factory=ETSForecaster),
+        ForecastModelSpec("arima", factory=ArimaForecaster),
         ForecastModelSpec("auto_arima", factory=AutoARIMAForecaster),
+        ForecastModelSpec(
+            "autostats_bank",
+            factory=AutoStatsBank,
+            params={"season_length": 7},
+        ),
+        ForecastModelSpec("croston", factory=CrostonForecaster),
+        ForecastModelSpec("sba", factory=SbaForecaster),
+        ForecastModelSpec("tsb", factory=TsbForecaster),
         ForecastModelSpec("kalman", factory=KalmanForecaster),
         ForecastModelSpec("local_level_kalman", factory=LocalLevelKalmanForecaster),
         ForecastModelSpec("auto_kalman", factory=AutoKalmanForecaster),
         ForecastModelSpec("auto_local_level_kalman", factory=AutoLocalLevelKalmanForecaster),
         ForecastModelSpec("cartoboost_lag", factory=CartoBoostLagForecaster),
-        ForecastModelSpec(
-            "local_linear_trend_kalman",
-            factory=_native_factory("LocalLinearTrendKalmanForecaster"),
-        ),
-        ForecastModelSpec(
-            "unobserved_components",
-            factory=_native_factory("UnobservedComponentsForecaster"),
-        ),
-        ForecastModelSpec("sarimax", factory=_native_factory("SarimaxForecaster")),
-        ForecastModelSpec(
-            "dynamic_regression",
-            factory=_native_factory("DynamicRegressionForecaster"),
-        ),
-        ForecastModelSpec("croston", factory=_native_factory("CrostonForecaster")),
-        ForecastModelSpec("sba", factory=_native_factory("SbaForecaster")),
-        ForecastModelSpec("tsb", factory=_native_factory("TsbForecaster")),
-        ForecastModelSpec("mstl_ets", factory=_native_factory("MstlEtsForecaster")),
-        ForecastModelSpec("stl_arima", factory=_native_factory("StlArimaForecaster")),
-        ForecastModelSpec(
-            "quantile_carto_boost_lag",
-            factory=_native_factory("QuantileCartoBoostLagForecaster"),
-        ),
-        ForecastModelSpec(
-            "conformal_forecaster",
-            factory=_native_factory("ConformalForecaster"),
-        ),
-        ForecastModelSpec("bottom_up_reconciler", factory=BottomUpReconciler),
-        ForecastModelSpec("min_trace_reconciler", factory=MinTraceReconciler),
-        ForecastModelSpec(
-            "foundation_model_adapter_optional",
-            factory=_native_factory("FoundationModelAdapterForecaster"),
-            metadata={"optional": True},
-        ),
+        ForecastModelSpec("auto_forecaster", factory=AutoForecaster),
     )
-
-
-def _native_factory(native_class_name: str) -> Factory:
-    def factory(**params: Any) -> RegisteredNativeForecaster:
-        return RegisteredNativeForecaster(native_class_name=native_class_name, **params)
-
-    return factory

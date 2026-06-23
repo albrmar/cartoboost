@@ -107,6 +107,8 @@ const config: Config = {
           { from: '/docs/forecasting_hybridization_assessment', to: '/docs/user-guide/forecasting-models/auto-forecaster' },
           { from: '/docs/forecasting_lag_features', to: '/docs/user-guide/forecasting-models/cartoboost-lag' },
           { from: '/docs/forecasting_models', to: '/docs/user-guide/forecasting-models' },
+          { from: '/docs/user-guide/forecasting-models/arima-examples', to: '/docs/user-guide/forecasting-models/arima' },
+          { from: '/docs/user-guide/forecasting-models/prophet', to: '/docs/plotting' },
           { from: '/docs/forecasting_neural', to: '/docs/forecasting' },
           { from: '/docs/forecasting_overhaul', to: '/docs/user-guide/forecasting-models/auto-forecaster' },
           { from: '/docs/forecasting_probabilistic', to: '/docs/forecasting' },

@@ -40,19 +40,31 @@ def _write_panel_csv(path: Path) -> None:
     )
 
 
-def test_help_lists_expanded_forecasting_v1_model_names() -> None:
+def test_help_lists_supported_cli_model_names() -> None:
     result = _run_forecast("fit", "--help")
 
     assert result.returncode == 0
     for model_name in (
+        "naive",
+        "seasonal_naive",
+        "theta",
+        "optimized_theta",
+        "ets",
+        "arima",
+        "auto_arima",
+        "autostats_bank",
+        "croston",
+        "sba",
+        "tsb",
+        "cartoboost_lag",
         "local_level_kalman",
+    ):
+        assert model_name in result.stdout
+    for model_name in (
         "local_linear_trend_kalman",
         "unobserved_components",
         "sarimax",
         "dynamic_regression",
-        "croston",
-        "sba",
-        "tsb",
         "mstl_ets",
         "stl_arima",
         "quantile_carto_boost_lag",
@@ -61,7 +73,7 @@ def test_help_lists_expanded_forecasting_v1_model_names() -> None:
         "min_trace_reconciler",
         "foundation_model_adapter_optional",
     ):
-        assert model_name in result.stdout
+        assert model_name not in result.stdout
 
 
 def test_fit_writes_artifact_with_rust_theta_binding(tmp_path: Path) -> None:
@@ -91,7 +103,55 @@ def test_fit_writes_artifact_with_rust_theta_binding(tmp_path: Path) -> None:
     assert (tmp_path / "artifact" / "model.json").exists()
 
 
-def test_fit_known_model_without_cli_wrapper_exits_nonzero_clearly(tmp_path: Path) -> None:
+def test_fit_writes_artifact_for_arima_and_autostats_bank(tmp_path: Path) -> None:
+    data = tmp_path / "pickup.csv"
+    data.write_text(
+        "\n".join(
+            [
+                "timestamp,PULocationID,pickup_demand",
+                "2026-01-01,142,10",
+                "2026-01-02,142,12",
+                "2026-01-03,142,14",
+                "2026-01-04,142,16",
+                "2026-01-05,142,18",
+                "2026-01-06,142,20",
+                "2026-01-07,142,22",
+                "2026-01-08,142,24",
+                "2026-01-09,142,26",
+                "2026-01-10,142,28",
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    for model_name in ("arima", "autostats_bank", "croston", "sba", "tsb"):
+        artifact_dir = tmp_path / model_name
+        result = _run_forecast(
+            "fit",
+            "--input",
+            str(data),
+            "--timestamp-col",
+            "timestamp",
+            "--target-col",
+            "pickup_demand",
+            "--series-id-col",
+            "PULocationID",
+            "--model",
+            model_name,
+            "--season-length",
+            "2",
+            "--horizon",
+            "2",
+            "--artifact-dir",
+            str(artifact_dir),
+        )
+
+        assert result.returncode == 0, result.stderr
+        assert (artifact_dir / "model.json").exists()
+
+
+def test_fit_removed_cli_model_exits_nonzero_clearly(tmp_path: Path) -> None:
     data = tmp_path / "pickup.csv"
     _write_panel_csv(data)
 
@@ -114,7 +174,7 @@ def test_fit_known_model_without_cli_wrapper_exits_nonzero_clearly(tmp_path: Pat
     )
 
     assert result.returncode != 0
-    assert "zero-argument CLI wrapper for forecast model 'sarimax'" in result.stderr
+    assert "unknown model 'sarimax'" in result.stderr
 
 
 def test_predict_exits_nonzero_until_rust_artifact_binding_exists(tmp_path: Path) -> None:
@@ -158,7 +218,7 @@ def test_compare_exposes_all_models_but_does_not_fake_metrics(tmp_path: Path) ->
     assert "Rust binding for forecasting model comparison is not available" in result.stderr
 
 
-def test_compare_accepts_expanded_model_list_but_does_not_fake_metrics(tmp_path: Path) -> None:
+def test_compare_rejects_removed_model_names(tmp_path: Path) -> None:
     data = tmp_path / "pickup.csv"
     _write_panel_csv(data)
 
@@ -173,7 +233,7 @@ def test_compare_accepts_expanded_model_list_but_does_not_fake_metrics(tmp_path:
         "--series-id-col",
         "PULocationID",
         "--model",
-        "theta,sarimax,conformal_forecaster,min_trace_reconciler",
+        "theta,sarimax,conformal_forecaster",
         "--horizon",
         "2",
         "--output",
@@ -181,7 +241,7 @@ def test_compare_accepts_expanded_model_list_but_does_not_fake_metrics(tmp_path:
     )
 
     assert result.returncode != 0
-    assert "Rust binding for forecasting model comparison is not available" in result.stderr
+    assert "unknown model 'sarimax'" in result.stderr
 
 
 def test_config_file_and_cli_overrides_use_rust_seasonal_naive_binding(tmp_path: Path) -> None:

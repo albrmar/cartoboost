@@ -88,8 +88,10 @@ leave at least one training row. A configured zero is rejected.
 
 ## Candidate Roster
 
-`AutoForecaster` scores a fixed roster. The roster is deterministic, but some
-members are eligible only when the data support their assumptions.
+`AutoForecaster` scores a fixed internal roster. These candidate names appear in
+AutoForecaster metadata and artifacts; they are not standalone registry model
+names. The roster is deterministic, but some members are eligible only when the
+data support their assumptions.
 
 | Candidate | What it represents | Eligibility |
 | --- | --- | --- |

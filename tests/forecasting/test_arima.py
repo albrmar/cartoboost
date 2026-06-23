@@ -23,10 +23,10 @@ def test_arima_converts_series_and_delegates_to_native(install_fake_native):
     assert native.calls[2] == ("predict", (2,), {})
 
 
-def test_auto_arima_rejects_python_fallback_policy():
-    with pytest.raises(ValueError, match="error_policy='raise'"):
+def test_auto_arima_rejects_unknown_parameters():
+    with pytest.raises(ValueError, match="unknown AutoARIMAForecaster parameters"):
         AutoARIMAForecaster(error_policy="fallback")
-    with pytest.raises(ValueError, match="seasonal=False"):
+    with pytest.raises(ValueError, match="unknown AutoARIMAForecaster parameters"):
         AutoARIMAForecaster(seasonal=True)
     with pytest.raises(ValueError, match="max_q"):
         AutoARIMAForecaster(max_q=9)

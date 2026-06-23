@@ -1,6 +1,7 @@
 from .arima import ArimaForecaster, AutoARIMAForecaster
 from .autostats import AutoStatsBank
 from .ets import ETSForecaster
+from .intermittent import CrostonForecaster, SbaForecaster, TsbForecaster
 from .kalman import (
     AutoKalmanForecaster,
     AutoLocalLevelKalmanForecaster,
@@ -19,6 +20,7 @@ __all__ = [
     "AutoKalmanForecaster",
     "AutoLocalLevelKalmanForecaster",
     "ArimaForecaster",
+    "CrostonForecaster",
     "ETSForecaster",
     "ForecastResult",
     "KalmanForecaster",
@@ -27,6 +29,8 @@ __all__ = [
     "NaiveForecaster",
     "OptimizedThetaForecaster",
     "PiecewiseLinearSeasonalForecaster",
+    "SbaForecaster",
     "SeasonalNaiveForecaster",
     "ThetaForecaster",
+    "TsbForecaster",
 ]

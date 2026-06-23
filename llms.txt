@@ -12,6 +12,8 @@ temporal, spatial, geotemporal, graph, and neural-embedding modeling.
 - Docs homepage component: ./src/pages/index.tsx
 - Modeling Lab page: ./src/pages/modeling-lab.tsx
 - Modeling Lab client: ./src/components/ModelingLabClient/index.tsx
+- Modeling Lab samples: ./static/samples/yellow_tripdata_2024-01-week1.parquet
+  and ./static/samples/yellow_tripdata_2024-01-month-route-hour-sample.parquet
 - Docs theme stylesheet: ./src/css/custom.css
 - Installation: ./docs/installation.md
 - Getting started: ./docs/getting-started.md
@@ -26,9 +28,7 @@ temporal, spatial, geotemporal, graph, and neural-embedding modeling.
   `residual_shock_decay` for opt-in recent residual shock propagation.
 - AutoForecaster guide: ./docs/user-guide/forecasting-models/auto-forecaster.md
 - Piecewise linear seasonal guide: ./docs/user-guide/forecasting-models/piecewise-linear-seasonal.md
-- Prophet-compatible forecast plot: ./docs/user-guide/forecasting-models/prophet.md
 - ARIMA and AutoARIMA guide: ./docs/user-guide/forecasting-models/arima.md
-- ARIMA examples: ./docs/user-guide/forecasting-models/arima-examples.md
 - Python API reference: ./docs/reference/python-api.md
 - Plotting: ./docs/plotting.md
 - Parameters: ./docs/user-guide/parameters.md
@@ -89,9 +89,11 @@ temporal, spatial, geotemporal, graph, and neural-embedding modeling.
 - Prefer taxi-style examples: pickup zones, dropoff zones, pickup-dropoff pairs,
   trip distance, fare, duration, and demand.
 - Use the Modeling Lab for browser-local WebAssembly forecasting, regression,
-  graph/neural modeling smoke tests, and taxi-style target diagnostics with
-  MapLibre/deck.gl WebGL maps, D3 fallback diagnostics, and exported targeting
-  run plans.
+  graph/neural modeling smoke tests, taxi-style target diagnostics, and
+  opt-in boosted-tree splitter visualization with week and month January 2024
+  yellow taxi samples. The model visualizer shows tree structure, split kind
+  mix, splitter rules, depth profiles, and holdout residuals without slowing
+  normal prediction calls.
 - Treat graph and neural standalone models as first-class direct APIs. Do not
   require `CartoBoostRegressor` when explaining standalone graph or neural usage.
 - Use `GraphFeatureTransformer` and `NeuralEmbeddingFeatures` only when the user

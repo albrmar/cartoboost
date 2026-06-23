@@ -25,6 +25,7 @@ from .local import (
     AutoKalmanForecaster,
     AutoLocalLevelKalmanForecaster,
     AutoStatsBank,
+    CrostonForecaster,
     ETSForecaster,
     KalmanForecaster,
     KrigingForecaster,
@@ -32,8 +33,10 @@ from .local import (
     NaiveForecaster,
     OptimizedThetaForecaster,
     PiecewiseLinearSeasonalForecaster,
+    SbaForecaster,
     SeasonalNaiveForecaster,
     ThetaForecaster,
+    TsbForecaster,
 )
 from .metrics import ForecastMetricSet
 from .neural import NBEATSForecaster, NBeatsForecaster, NHITSForecaster, NHiTSForecaster
@@ -75,6 +78,7 @@ __all__ = [
     "BaseForecaster",
     "CalendarFeatureConfig",
     "CartoBoostLagForecaster",
+    "CrostonForecaster",
     "ETSForecaster",
     "ExpandingWindowSplitter",
     "ForecastArtifact",
@@ -108,6 +112,7 @@ __all__ = [
     "RollingFeatureConfig",
     "RollingOriginBacktester",
     "RollingOriginSplitter",
+    "SbaForecaster",
     "SeasonalNaiveForecaster",
     "SequenceRow",
     "SequenceSeries",
@@ -115,6 +120,7 @@ __all__ = [
     "SingleSeriesForecasterMixin",
     "SlidingWindowSplitter",
     "ThetaForecaster",
+    "TsbForecaster",
     "forward_ekf",
     "generate_group_oof_candidate_rows",
     "missing_target_continuation",

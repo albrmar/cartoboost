@@ -224,6 +224,7 @@ class ForecastingConfig:
         if self.reconciliation is None:
             return None
         active_registry = registry or self.registry(include_defaults=True)
+        _register_reconciliation_specs(active_registry)
         return active_registry.create(
             self.reconciliation.model_name,
             **self.reconciliation.to_params(),
@@ -307,6 +308,19 @@ def _reconciliation_config_from_mapping(
 
 def _string_sequence(values: Sequence[Any]) -> tuple[str, ...]:
     return tuple(str(value) for value in values)
+
+
+def _register_reconciliation_specs(registry: ForecastRegistry) -> None:
+    from .ensemble import BottomUpReconciler, MinTraceReconciler
+
+    registry.register(
+        ForecastModelSpec("bottom_up_reconciler", factory=BottomUpReconciler),
+        override=True,
+    )
+    registry.register(
+        ForecastModelSpec("min_trace_reconciler", factory=MinTraceReconciler),
+        override=True,
+    )
 
 
 def _loads_toml(text: str) -> dict[str, Any]:

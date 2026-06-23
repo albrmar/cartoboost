@@ -77,8 +77,9 @@ pub use global::{
 pub use hierarchy::{HierarchyNode, HierarchySpec};
 pub use horizon::{ForecastOutput, ForecastRequest, ForecastStrategy, QuantileForecastOutput};
 pub use intermittent::{
-    adida_forecast, croston_forecast, sba_forecast, tsb_forecast, IntermittentDemandConfig,
-    IntermittentDemandForecaster, IntermittentDemandMethod,
+    adida_forecast, croston_forecast, sba_forecast, tsb_forecast, CrostonForecaster,
+    IntermittentDemandConfig, IntermittentDemandForecaster, IntermittentDemandMethod,
+    SbaForecaster, TsbForecaster,
 };
 pub use lag_features::{CalendarFeature, LagFeatureBuilder, LagFeatureConfig, LagFeatureRow};
 pub use lag_plus::{LagPlusConfig, LagPlusForecaster};

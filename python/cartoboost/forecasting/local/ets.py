@@ -14,7 +14,6 @@ class ETSForecaster(NativeForecastWrapper):
         trend: str | None = None,
         seasonal: str | None = None,
         seasonal_periods: int | None = None,
-        damped_trend: bool = False,
         alpha: float = 0.5,
         beta: float = 0.1,
         gamma: float | None = None,
@@ -25,8 +24,6 @@ class ETSForecaster(NativeForecastWrapper):
             raise ValueError(
                 "Rust ETS currently supports seasonal=None or additive seasonality only"
             )
-        if damped_trend:
-            raise ValueError("Rust ETS currently does not support damped_trend")
         if seasonal is not None and (seasonal_periods is None or int(seasonal_periods) <= 1):
             raise ValueError("seasonal_periods must be greater than 1 when seasonal is set")
         if seasonal is None and gamma is not None:
@@ -49,7 +46,6 @@ class ETSForecaster(NativeForecastWrapper):
         self.trend = trend
         self.seasonal = seasonal
         self.seasonal_periods = None if seasonal_periods is None else int(seasonal_periods)
-        self.damped_trend = bool(damped_trend)
         self.alpha = alpha
         self.beta = beta
         self.gamma = gamma

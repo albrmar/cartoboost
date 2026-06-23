@@ -869,6 +869,439 @@ body:has(.shell) :global(.footer) {
   text-transform: uppercase;
 }
 
+.modelVisualizer {
+  background: var(--lab-panel);
+  border: 1px solid var(--lab-border);
+  border-radius: 8px;
+  box-shadow: 0 12px 30px rgba(11, 18, 32, 0.05);
+  display: grid;
+  gap: 0.75rem;
+  overflow: hidden;
+  padding: 0.75rem;
+}
+
+.modelVisualizerHeader {
+  align-items: start;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+}
+
+.modelVisualizerHeader h3 {
+  color: var(--lab-heading);
+  font-size: 1.1rem;
+  letter-spacing: 0;
+  margin: 0;
+}
+
+.modelVisualizerHeader dl {
+  display: grid;
+  gap: 0.45rem;
+  grid-template-columns: repeat(4, minmax(4.6rem, auto));
+  margin: 0;
+}
+
+.modelVisualizerHeader dt {
+  color: var(--lab-muted);
+  font-size: 0.7rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.modelVisualizerHeader dd {
+  color: var(--lab-heading);
+  font-size: 1rem;
+  font-weight: 800;
+  margin: 0;
+}
+
+.modelVisualizerGrid {
+  align-items: stretch;
+  display: grid;
+  gap: 0.7rem;
+  grid-template-columns: minmax(0, 1.45fr) minmax(280px, 0.55fr);
+}
+
+.splitterAtlas {
+  display: grid;
+  gap: 0.55rem;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+}
+
+.splitterCard {
+  background: var(--lab-panel-soft);
+  border: 1px solid var(--lab-border-strong);
+  border-radius: 8px;
+  display: grid;
+  gap: 0.45rem;
+  grid-template-columns: 64px minmax(0, 1fr);
+  margin: 0;
+  min-width: 0;
+  padding: 0.55rem;
+}
+
+.splitterCard div {
+  align-content: center;
+  display: grid;
+  gap: 0.12rem;
+  min-width: 0;
+}
+
+.splitterCard strong {
+  color: var(--lab-heading);
+  font-size: 0.82rem;
+  overflow-wrap: anywhere;
+}
+
+.splitterCard span {
+  color: var(--lab-muted);
+  font-size: 0.74rem;
+  font-weight: 800;
+}
+
+.splitterCard p {
+  color: var(--lab-text);
+  font-size: 0.74rem;
+  grid-column: 1 / -1;
+  line-height: 1.25;
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.splitterGlyph {
+  display: block;
+  height: 46px;
+  width: 64px;
+}
+
+.splitterGlyph rect:first-child {
+  fill: #ffffff;
+  stroke: #cfd8e3;
+}
+
+.splitterGlyph line {
+  stroke-linecap: round;
+  stroke-width: 3;
+}
+
+.splitterGlyph circle {
+  fill: #526274;
+  opacity: 0.78;
+}
+
+.splitterGlyph path {
+  fill: none;
+  stroke: #526274;
+  stroke-width: 2;
+}
+
+.splitterRing {
+  fill: none !important;
+  stroke-width: 3;
+}
+
+.splitterBand {
+  opacity: 0.3;
+}
+
+.treeForest {
+  background: var(--lab-panel-soft);
+  border: 1px solid var(--lab-border-strong);
+  border-radius: 8px;
+  margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0.55rem;
+}
+
+.treeForest svg {
+  display: block;
+  height: auto;
+  width: 100%;
+}
+
+.treeForest figcaption {
+  color: var(--lab-muted);
+  font-size: 0.78rem;
+  margin-top: 0.35rem;
+}
+
+.treeMiniSummary text {
+  fill: var(--lab-muted);
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.treeMiniSummary text:first-child {
+  fill: var(--lab-heading);
+}
+
+.treeEdge {
+  opacity: 0.6;
+  stroke: #9fb0c4;
+  stroke-width: 1.4;
+}
+
+.treeNode rect {
+  fill: #ffffff;
+  stroke: #cfd8e3;
+  stroke-width: 1;
+}
+
+.treeBranch rect {
+  fill: #e0f5f3;
+  stroke: #168f86;
+}
+
+.treeLeaf rect {
+  fill: #fff7ed;
+  stroke: #ffb454;
+}
+
+.treeNode text {
+  fill: #122033;
+  font-size: 0.56rem;
+  font-weight: 800;
+  text-anchor: middle;
+}
+
+.treeNode text:last-child {
+  fill: #526274;
+  font-size: 0.52rem;
+}
+
+.modelVisualizerSide {
+  display: grid;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+.treeRoster {
+  background: var(--lab-panel-soft);
+  border: 1px solid var(--lab-border-strong);
+  border-radius: 8px;
+  display: grid;
+  gap: 0.42rem;
+  min-width: 0;
+  padding: 0.55rem;
+}
+
+.treeRoster > strong {
+  color: var(--lab-heading);
+  font-size: 0.82rem;
+}
+
+.treeRosterRow {
+  align-items: center;
+  display: grid;
+  gap: 0.35rem 0.45rem;
+  grid-template-columns: minmax(3.6rem, auto) minmax(4rem, 1fr) minmax(3rem, auto);
+  min-width: 0;
+}
+
+.treeRosterRow span,
+.treeRosterRow b,
+.treeRosterRow small {
+  color: var(--lab-text);
+  font-size: 0.74rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.treeRosterRow b {
+  color: var(--lab-muted);
+  text-align: right;
+}
+
+.treeRosterRow small {
+  color: var(--lab-muted);
+  grid-column: 1 / -1;
+}
+
+.treeRosterRow i {
+  background: #d8e0ea;
+  border-radius: 999px;
+  display: block;
+  height: 0.55rem;
+  overflow: hidden;
+}
+
+.treeRosterRow em {
+  background: #526274;
+  border-radius: inherit;
+  display: block;
+  height: 100%;
+}
+
+.featureSplitterMatrix {
+  background: var(--lab-panel-soft);
+  border: 1px solid var(--lab-border-strong);
+  border-radius: 8px;
+  display: grid;
+  gap: 0.38rem;
+  min-width: 0;
+  padding: 0.55rem;
+}
+
+.featureSplitterMatrix > strong {
+  color: var(--lab-heading);
+  font-size: 0.82rem;
+}
+
+.featureSplitterHeader,
+.featureSplitterRow {
+  align-items: center;
+  display: grid;
+  gap: 0.22rem;
+  min-width: 0;
+}
+
+.featureSplitterHeader b {
+  color: var(--lab-muted);
+  font-size: 0.56rem;
+  font-weight: 800;
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.featureSplitterRow span {
+  color: var(--lab-text);
+  font-size: 0.72rem;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.featureSplitterRow i {
+  background: #d8e0ea;
+  border-radius: 5px;
+  display: block;
+  height: 1.05rem;
+  overflow: hidden;
+}
+
+.featureSplitterRow em {
+  background: #168f86;
+  display: block;
+  height: 100%;
+  width: 100%;
+}
+
+.structurePanel {
+  background: var(--lab-panel-soft);
+  border: 1px solid var(--lab-border-strong);
+  border-radius: 8px;
+  display: grid;
+  gap: 0.42rem;
+  min-width: 0;
+  padding: 0.55rem;
+}
+
+.structurePanel > strong {
+  color: var(--lab-heading);
+  font-size: 0.82rem;
+}
+
+.structureRow,
+.residualRow,
+.splitterRuleRow {
+  align-items: center;
+  display: grid;
+  gap: 0.45rem;
+  grid-template-columns: minmax(7.2rem, 0.72fr) minmax(4.5rem, 1fr) minmax(3.2rem, auto);
+}
+
+.structureRow span,
+.structureRow b,
+.residualRow span,
+.residualRow b,
+.splitterRuleRow span,
+.splitterRuleRow strong {
+  color: var(--lab-text);
+  font-size: 0.76rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.structureRow b,
+.residualRow b,
+.splitterRuleRow strong {
+  color: var(--lab-muted);
+  text-align: right;
+}
+
+.structureRow i,
+.residualRow i,
+.splitterRuleRow i {
+  background: #d8e0ea;
+  border-radius: 999px;
+  display: block;
+  height: 0.55rem;
+  overflow: hidden;
+}
+
+.structureRow em,
+.residualRow em,
+.splitterRuleRow em {
+  background: #168f86;
+  border-radius: inherit;
+  display: block;
+  height: 100%;
+}
+
+.splitterRuleRow span b {
+  color: var(--lab-muted);
+  display: block;
+  font-size: 0.68rem;
+  text-transform: uppercase;
+}
+
+.depthProfile {
+  align-items: end;
+  display: grid;
+  gap: 0.25rem;
+  grid-template-columns: repeat(auto-fit, minmax(1.6rem, 1fr));
+  height: 92px;
+}
+
+.depthProfile span {
+  align-items: center;
+  display: grid;
+  gap: 0.25rem;
+  grid-template-rows: 1fr auto;
+  height: 100%;
+  justify-items: center;
+}
+
+.depthProfile i {
+  align-self: end;
+  background: #168f86;
+  border-radius: 5px 5px 0 0;
+  display: block;
+  min-height: 5px;
+  width: 100%;
+}
+
+.depthProfile em {
+  color: var(--lab-muted);
+  font-size: 0.7rem;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.residualPositive {
+  background: #168f86 !important;
+}
+
+.residualNegative {
+  background: #d14b57 !important;
+}
+
 .metricRow {
   align-items: center;
   display: grid;

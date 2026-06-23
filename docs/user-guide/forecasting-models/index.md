@@ -15,15 +15,16 @@ model modes.
 | --- | --- | --- |
 | [Naive And Seasonal Naive](naive-seasonal.md) | Establish transparent last-value and last-season baselines. | Start here for every forecast comparison. |
 | [Theta](theta.md) | Extrapolate level and trend with a lightweight deterministic model. | Includes manual and optimized theta examples. |
-| [ETS](ets.md) | Model additive level, trend, and seasonality. | Multiplicative and damped ETS modes are rejected. |
-| [ARIMA And AutoARIMA](arima.md) | Use differencing and autocorrelation in a bounded non-seasonal search. | Seasonal AutoARIMA is not exposed. |
-| [ARIMA Examples](arima-examples.md) | Run a visual ARIMA smoke check and benchmark-oriented example. | Uses deterministic taxi-lane fixtures. |
+| [ETS](ets.md) | Model additive level, trend, and seasonality. | Uses Rust-native additive ETS state updates. |
+| [ARIMA And AutoARIMA](arima.md) | Use differencing and autocorrelation in a bounded search. | Covers fixed-order ARIMA, AutoARIMA candidate selection, visual smoke checks, GIL behavior, and benchmark notes. |
 | [Kalman](kalman.md) | Track noisy local level and local trend over time. | Includes state diagnostics and visualization examples. |
 | [Piecewise Linear Seasonal](/docs/user-guide/forecasting-models/piecewise-linear-seasonal) | Fit interpretable trend, changepoint, seasonality, event, and regressor components without Stan. | Rust-native API exposed through Python and WASM as `piecewise_linear_seasonal`. |
-| [Prophet-Compatible Forecast Plot](prophet.md) | Render Prophet-shaped forecast outputs with the same plotting contract as `prophet.plot.plot`. | Plotting parity only; CartoBoost does not expose a reusable `Prophet` model class. |
 | [Kriging](kriging.md) | Borrow signal across pickup-zone or route coordinates. | Useful for coordinate-aware panel forecasting. |
 | [CartoBoost Lag](cartoboost-lag.md) | Learn one supervised lag model across many related series. | Use for pickup-zone, dropoff-zone, and lane-level panels. |
+| `AutoStatsBank` | Validate a deterministic Rust-native statistical expert bank. | Public wrapper for generic statistical candidate selection; benchmark labels stay in benchmark harnesses. |
+| `CrostonForecaster`, `SbaForecaster`, `TsbForecaster` | Forecast sparse non-negative taxi-demand series with fixed intermittent-demand methods. | Use when zeros are meaningful no-pickup periods rather than missing rows. |
 | [AutoForecaster](auto-forecaster.md) | Use the guarded Rust-native default selector over lag, direct, residual-corrected, intermittent, and classical candidates. | Includes diagrams for validation, gating, prediction, and metadata inspection. |
+| N-BEATS / N-HiTS wrappers | Train deterministic Rust-native neural forecasting experts from regular panels. | Public Python classes are `NBeatsForecaster` and `NHiTSForecaster`; use them when windowed neural extrapolation is the model being tested. |
 | [Weighted Ensembles](ensembles.md) | Combine fitted native forecasters with explicit weights. | Components and weights must be named explicitly. |
 
 ## Scientific Choice Criteria
@@ -38,9 +39,11 @@ Choose the model whose assumptions match the signal you can defend:
 | Recent autocorrelation and differencing explain the series. | ARIMA or AutoARIMA | Models local serial dependence after bounded non-seasonal differencing. |
 | The measured series is noisy and the latent level/trend should update gradually. | Kalman | Separates observation noise from latent state movement. |
 | You need interpretable changepoints, Fourier seasonalities, event windows, known future regressors, quantiles, and component decomposition in one local model. | [Piecewise linear seasonal](/docs/user-guide/forecasting-models/piecewise-linear-seasonal) | Estimates the additive or multiplicative component path in Rust, keeps fitting deterministic and fast, and avoids Stan/CmdStan runtime costs. |
-| You need a forecast figure that matches Prophet's plotting surface for a Prophet-shaped result. | [Prophet-compatible forecast plot](prophet.md) | Uses the same observed-point, forecast-line, capacity, floor, interval, axis, and legend behavior as `prophet.plot.plot`. |
+| You need a forecast figure that matches Prophet's plotting surface for a Prophet-shaped result. | [Plotting](../../plotting.md) | Uses the same observed-point, forecast-line, capacity, floor, interval, axis, and legend behavior as `prophet.plot.plot`. |
 | Nearby zones, route midpoints, or residual surfaces should be spatially related. | Kriging | Uses coordinate distance and a variogram to borrow cross-series signal. |
 | Many related zones or lanes share lag, rolling, calendar, or trend structure. | CartoBoost lag | Learns one supervised model from many aligned panel examples. |
+| Pickup demand is sparse with many true zero periods. | Croston, SBA, or TSB | Uses fixed Rust-native intermittent-demand smoothing instead of generic trend extrapolation. |
+| A local statistical bank should choose among reusable non-benchmark candidates. | AutoStatsBank | Runs Rust-native validation over a deterministic statistical expert bank. |
 | A production taxi-demand panel needs a deterministic guarded default with auditable candidate weights. | AutoForecaster | Validates a fixed Rust-native roster, protects the lag baseline, and stores global, horizon, and series weights. |
 | Validated models capture complementary errors. | Weighted ensemble | Averages explicit native components after each member proves useful. |
 
@@ -80,12 +83,13 @@ targets, regular frequency, panel ids, and covariate role metadata.
 
 ## Advanced Native Candidates
 
-`AutoForecaster` can validate internal direct, rectified-recursive,
+`AutoStatsBank` is a public wrapper for the reusable statistical expert bank.
+`AutoForecaster` can also validate internal direct, rectified-recursive,
 intermittent-demand, classical-expert, and decomposition-style candidates when
 those candidates are exposed by the compiled Rust core. Treat those as roster
-members of the guarded default selector unless a separate Python class is part
-of the public API. Keep benchmark-specific names and competition scoring labels
-in benchmark harnesses and reports.
+members of guarded selectors unless a separate Python class is part of the
+public API. Keep benchmark-specific names and competition scoring labels in
+benchmark harnesses and reports.
 
 Use [Piecewise Linear Seasonal](/docs/user-guide/forecasting-models/piecewise-linear-seasonal) when the forecast
 claim depends on inspectable local structure: growth, changepoints, Fourier
