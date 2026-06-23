@@ -48,6 +48,7 @@ const sidebars: SidebarsConfig = {
             'user-guide/forecasting-models/arima-examples',
             'user-guide/forecasting-models/kalman',
             'user-guide/forecasting-models/piecewise-linear-seasonal',
+            'user-guide/forecasting-models/prophet',
             'user-guide/forecasting-models/kriging',
             'user-guide/forecasting-models/cartoboost-lag',
             'user-guide/forecasting-models/ensembles',

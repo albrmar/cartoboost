@@ -20,6 +20,7 @@ model modes.
 | [ARIMA Examples](arima-examples.md) | Run a visual ARIMA smoke check and benchmark-oriented example. | Uses deterministic taxi-lane fixtures. |
 | [Kalman](kalman.md) | Track noisy local level and local trend over time. | Includes state diagnostics and visualization examples. |
 | [Piecewise Linear Seasonal](/docs/user-guide/forecasting-models/piecewise-linear-seasonal) | Fit interpretable trend, changepoint, seasonality, event, and regressor components without Stan. | Rust-native API exposed through Python and WASM as `piecewise_linear_seasonal`. |
+| [Prophet-Compatible Forecast Plot](prophet.md) | Render Prophet-shaped forecast outputs with the same plotting contract as `prophet.plot.plot`. | Plotting parity only; CartoBoost does not expose a reusable `Prophet` model class. |
 | [Kriging](kriging.md) | Borrow signal across pickup-zone or route coordinates. | Useful for coordinate-aware panel forecasting. |
 | [CartoBoost Lag](cartoboost-lag.md) | Learn one supervised lag model across many related series. | Use for pickup-zone, dropoff-zone, and lane-level panels. |
 | [AutoForecaster](auto-forecaster.md) | Use the guarded Rust-native default selector over lag, direct, residual-corrected, intermittent, and classical candidates. | Includes diagrams for validation, gating, prediction, and metadata inspection. |
@@ -37,6 +38,7 @@ Choose the model whose assumptions match the signal you can defend:
 | Recent autocorrelation and differencing explain the series. | ARIMA or AutoARIMA | Models local serial dependence after bounded non-seasonal differencing. |
 | The measured series is noisy and the latent level/trend should update gradually. | Kalman | Separates observation noise from latent state movement. |
 | You need interpretable changepoints, Fourier seasonalities, event windows, known future regressors, quantiles, and component decomposition in one local model. | [Piecewise linear seasonal](/docs/user-guide/forecasting-models/piecewise-linear-seasonal) | Estimates the additive or multiplicative component path in Rust, keeps fitting deterministic and fast, and avoids Stan/CmdStan runtime costs. |
+| You need a forecast figure that matches Prophet's plotting surface for a Prophet-shaped result. | [Prophet-compatible forecast plot](prophet.md) | Uses the same observed-point, forecast-line, capacity, floor, interval, axis, and legend behavior as `prophet.plot.plot`. |
 | Nearby zones, route midpoints, or residual surfaces should be spatially related. | Kriging | Uses coordinate distance and a variogram to borrow cross-series signal. |
 | Many related zones or lanes share lag, rolling, calendar, or trend structure. | CartoBoost lag | Learns one supervised model from many aligned panel examples. |
 | A production taxi-demand panel needs a deterministic guarded default with auditable candidate weights. | AutoForecaster | Validates a fixed Rust-native roster, protects the lag baseline, and stores global, horizon, and series weights. |

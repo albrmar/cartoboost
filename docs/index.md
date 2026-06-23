@@ -129,6 +129,8 @@ be transformed trip duration, fare amount, or future pickup-zone demand.
   for naive, seasonal naive, theta, ETS, ARIMA, AutoARIMA, Kalman, piecewise
   linear seasonal, kriging, CartoBoost lag, AutoForecaster, and weighted
   ensembles.
+- [Prophet-Compatible Forecast Plot](user-guide/forecasting-models/prophet.md): exact
+  `prophet.plot.plot`-style forecast rendering for Prophet-shaped outputs.
 
 ## What CartoBoost Supports
 

@@ -26,6 +26,7 @@ temporal, spatial, geotemporal, graph, and neural-embedding modeling.
   `residual_shock_decay` for opt-in recent residual shock propagation.
 - AutoForecaster guide: ./docs/user-guide/forecasting-models/auto-forecaster.md
 - Piecewise linear seasonal guide: ./docs/user-guide/forecasting-models/piecewise-linear-seasonal.md
+- Prophet-compatible forecast plot: ./docs/user-guide/forecasting-models/prophet.md
 - ARIMA and AutoARIMA guide: ./docs/user-guide/forecasting-models/arima.md
 - ARIMA examples: ./docs/user-guide/forecasting-models/arima-examples.md
 - Python API reference: ./docs/reference/python-api.md

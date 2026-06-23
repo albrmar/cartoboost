@@ -674,9 +674,9 @@ def plot(
     ax.plot(fcst["ds"], fcst["yhat"], ls="-", c="#0072B2", label="Forecast")
     if plot_cap and "cap" in fcst:
         ax.plot(fcst["ds"], fcst["cap"], ls="--", c="k", label="Maximum capacity")
-    if plot_cap and getattr(m, "logistic_floor", False) and "floor" in fcst:
+    if m.logistic_floor and "floor" in fcst and plot_cap:
         ax.plot(fcst["ds"], fcst["floor"], ls="--", c="k", label="Minimum capacity")
-    if uncertainty and getattr(m, "uncertainty_samples", 0):
+    if uncertainty and m.uncertainty_samples:
         ax.fill_between(
             fcst["ds"],
             fcst["yhat_lower"],
@@ -709,9 +709,9 @@ def plot_components(
 
     pyplot = _require_pyplot()
     components = ["trend"]
-    if getattr(m, "train_holiday_names", None) is not None and "holidays" in fcst:
+    if m.train_holiday_names is not None and "holidays" in fcst:
         components.append("holidays")
-    seasonalities = getattr(m, "seasonalities", {})
+    seasonalities = m.seasonalities
     if "weekly" in seasonalities and "weekly" in fcst:
         components.append("weekly")
     if "yearly" in seasonalities and "yearly" in fcst:
@@ -719,10 +719,10 @@ def plot_components(
     components.extend(
         name for name in sorted(seasonalities) if name in fcst and name not in {"weekly", "yearly"}
     )
-    extra_regressors = getattr(m, "extra_regressors", {})
+    extra_regressors = m.extra_regressors
     modes = {"additive": False, "multiplicative": False}
     for props in extra_regressors.values():
-        modes[str(props.get("mode", "additive"))] = True
+        modes[props["mode"]] = True
     for mode in ["additive", "multiplicative"]:
         column = f"extra_regressors_{mode}"
         if modes[mode] and column in fcst:
@@ -735,10 +735,8 @@ def plot_components(
 
     multiplicative_axes = []
     pandas = _require_pandas()
-    history_ds = pandas.to_datetime(m.history["ds"])
-    diffs = history_ds.diff()
-    nonzero_diffs = diffs[diffs.to_numpy().nonzero()[0]]
-    min_dt = nonzero_diffs.min() if len(nonzero_diffs) else pandas.Timedelta(days=1)
+    dt = pandas.to_datetime(m.history["ds"]).diff()
+    min_dt = dt.iloc[dt.values.nonzero()[0]].min()
 
     for axis, name in zip(axes, components, strict=True):
         if name == "trend":
@@ -746,7 +744,7 @@ def plot_components(
                 m, fcst, "trend", ax=axis, uncertainty=uncertainty, plot_cap=plot_cap
             )
         elif name in seasonalities:
-            period = seasonalities[name].get("period")
+            period = seasonalities[name]["period"]
             if (name == "weekly" or period == 7) and min_dt == pandas.Timedelta(days=1):
                 plot_weekly(
                     m, ax=axis, uncertainty=uncertainty, weekly_start=weekly_start, name=name
@@ -759,7 +757,7 @@ def plot_components(
                 plot_seasonality(m, name, ax=axis, uncertainty=uncertainty)
         else:
             plot_forecast_component(m, fcst, name, ax=axis, uncertainty=uncertainty, plot_cap=False)
-        if name in getattr(m, "component_modes", {}).get("multiplicative", []):
+        if name in m.component_modes["multiplicative"]:
             multiplicative_axes.append(axis)
 
     figure.tight_layout()
@@ -788,9 +786,9 @@ def plot_forecast_component(
     artists += ax.plot(fcst["ds"], fcst[name], ls="-", c="#0072B2")
     if plot_cap and "cap" in fcst:
         artists += ax.plot(fcst["ds"], fcst["cap"], ls="--", c="k")
-    if plot_cap and getattr(m, "logistic_floor", False) and "floor" in fcst:
-        artists += ax.plot(fcst["ds"], fcst["floor"], ls="--", c="k")
-    if uncertainty and getattr(m, "uncertainty_samples", 0):
+    if m.logistic_floor and "floor" in fcst and plot_cap:
+        ax.plot(fcst["ds"], fcst["floor"], ls="--", c="k")
+    if uncertainty and m.uncertainty_samples:
         artists.append(
             ax.fill_between(
                 fcst["ds"], fcst[f"{name}_lower"], fcst[f"{name}_upper"], color="#0072B2", alpha=0.2
@@ -800,7 +798,7 @@ def plot_forecast_component(
     ax.grid(True, which="major", c="gray", ls="-", lw=1, alpha=0.2)
     ax.set_xlabel("ds")
     ax.set_ylabel(name)
-    if name in getattr(m, "component_modes", {}).get("multiplicative", []):
+    if name in m.component_modes["multiplicative"]:
         set_y_as_percent(ax)
     return artists
 
@@ -810,14 +808,13 @@ def seasonality_plot_df(m: Any, ds: Any) -> Any:
 
     pandas = _require_pandas()
     data: dict[str, Any] = {"ds": ds, "cap": 1.0, "floor": 0.0}
-    for name in getattr(m, "extra_regressors", {}):
+    for name in m.extra_regressors:
         data[name] = 0.0
-    for props in getattr(m, "seasonalities", {}).values():
-        condition_name = props.get("condition_name")
-        if condition_name is not None:
-            data[condition_name] = True
+    for props in m.seasonalities.values():
+        if props["condition_name"] is not None:
+            data[props["condition_name"]] = True
     frame = pandas.DataFrame(data)
-    return m.setup_dataframe(frame) if hasattr(m, "setup_dataframe") else frame
+    return m.setup_dataframe(frame)
 
 
 def plot_weekly(
@@ -839,7 +836,7 @@ def plot_weekly(
     seas = m.predict_seasonal_components(seasonality_plot_df(m, days))
     labels = days.day_name()
     artists = ax.plot(range(len(labels)), seas[name], ls="-", c="#0072B2")
-    if uncertainty and getattr(m, "uncertainty_samples", 0):
+    if uncertainty and m.uncertainty_samples:
         artists.append(
             ax.fill_between(
                 range(len(labels)),
@@ -854,7 +851,7 @@ def plot_weekly(
     ax.set_xticklabels(labels)
     ax.set_xlabel("Day of week")
     ax.set_ylabel(name)
-    if getattr(m, "seasonalities", {}).get(name, {}).get("mode") == "multiplicative":
+    if m.seasonalities[name]["mode"] == "multiplicative":
         set_y_as_percent(ax)
     return artists
 
@@ -878,7 +875,7 @@ def plot_yearly(
     df_y = seasonality_plot_df(m, days)
     seas = m.predict_seasonal_components(df_y)
     artists = ax.plot(df_y["ds"], seas[name], ls="-", c="#0072B2")
-    if uncertainty and getattr(m, "uncertainty_samples", 0):
+    if uncertainty and m.uncertainty_samples:
         artists.append(
             ax.fill_between(
                 df_y["ds"], seas[f"{name}_lower"], seas[f"{name}_upper"], color="#0072B2", alpha=0.2
@@ -888,7 +885,7 @@ def plot_yearly(
     _format_month_axis(ax)
     ax.set_xlabel("Day of year")
     ax.set_ylabel(name)
-    if getattr(m, "seasonalities", {}).get(name, {}).get("mode") == "multiplicative":
+    if m.seasonalities[name]["mode"] == "multiplicative":
         set_y_as_percent(ax)
     return artists
 
@@ -908,13 +905,13 @@ def plot_seasonality(
         figure = pyplot.figure(facecolor="w", figsize=figsize)
         ax = figure.add_subplot(111)
     start = pandas.to_datetime("2017-01-01 0000")
-    period = getattr(m, "seasonalities", {})[name]["period"]
+    period = m.seasonalities[name]["period"]
     end = start + pandas.Timedelta(days=period)
     days = pandas.to_datetime(np.linspace(start.value, end.value, 200))
     df_y = seasonality_plot_df(m, days)
     seas = m.predict_seasonal_components(df_y)
     artists = ax.plot(df_y["ds"], seas[name], ls="-", c="#0072B2")
-    if uncertainty and getattr(m, "uncertainty_samples", 0):
+    if uncertainty and m.uncertainty_samples:
         artists.append(
             ax.fill_between(
                 df_y["ds"], seas[f"{name}_lower"], seas[f"{name}_upper"], color="#0072B2", alpha=0.2
@@ -923,7 +920,7 @@ def plot_seasonality(
     ax.grid(True, which="major", c="gray", ls="-", lw=1, alpha=0.2)
     _format_seasonality_axis(ax, name, period, start, end)
     ax.set_ylabel(name)
-    if getattr(m, "seasonalities", {}).get(name, {}).get("mode") == "multiplicative":
+    if m.seasonalities[name]["mode"] == "multiplicative":
         set_y_as_percent(ax)
     return artists
 
@@ -951,10 +948,8 @@ def add_changepoints_to_plot(
     artists = []
     if trend:
         artists.append(ax.plot(fcst["ds"], fcst["trend"], c=cp_color))
-    changepoints = getattr(m, "changepoints", [])
-    if len(changepoints) > 0:
-        deltas = np.nanmean(getattr(m, "params", {}).get("delta", []), axis=0)
-        significant = changepoints[np.abs(deltas) >= threshold]
+    if len(m.changepoints) > 0:
+        significant = m.changepoints[np.abs(np.nanmean(m.params["delta"], axis=0)) >= threshold]
     else:
         significant = []
     for changepoint in significant:
@@ -1015,7 +1010,7 @@ def plot_plotly(
             mode="markers",
         )
     ]
-    if uncertainty and getattr(m, "uncertainty_samples", 0):
+    if uncertainty and m.uncertainty_samples:
         data.append(
             go.Scatter(
                 x=fcst["ds"],
@@ -1033,10 +1028,10 @@ def plot_plotly(
             mode="lines",
             line={"color": "#0072B2", "width": 2},
             fillcolor="rgba(0, 114, 178, 0.2)",
-            fill="tonexty" if uncertainty and getattr(m, "uncertainty_samples", 0) else "none",
+            fill="tonexty" if uncertainty and m.uncertainty_samples else "none",
         )
     )
-    if uncertainty and getattr(m, "uncertainty_samples", 0):
+    if uncertainty and m.uncertainty_samples:
         data.append(
             go.Scatter(
                 x=fcst["ds"],
@@ -1058,7 +1053,7 @@ def plot_plotly(
                 line={"color": "black", "dash": "dash", "width": 2},
             )
         )
-    if plot_cap and getattr(m, "logistic_floor", False) and "floor" in fcst:
+    if m.logistic_floor and "floor" in fcst and plot_cap:
         data.append(
             go.Scatter(
                 name="Floor",
@@ -1078,9 +1073,10 @@ def plot_plotly(
                 line={"color": "#B23B00", "width": 2},
             )
         )
-    if changepoints and len(getattr(m, "changepoints", [])) > 0:
-        deltas = np.nanmean(getattr(m, "params", {}).get("delta", []), axis=0)
-        significant = m.changepoints[np.abs(deltas) >= changepoints_threshold]
+    if changepoints and len(m.changepoints) > 0:
+        significant = m.changepoints[
+            np.abs(np.nanmean(m.params["delta"], axis=0)) >= changepoints_threshold
+        ]
         data.append(
             go.Scatter(
                 x=significant,
@@ -1131,18 +1127,18 @@ def plot_components_plotly(
     components: dict[str, Mapping[str, Any]] = {
         "trend": get_forecast_component_plotly_props(m, fcst, "trend", uncertainty, plot_cap)
     }
-    if getattr(m, "train_holiday_names", None) is not None and "holidays" in fcst:
+    if m.train_holiday_names is not None and "holidays" in fcst:
         components["holidays"] = get_forecast_component_plotly_props(
             m, fcst, "holidays", uncertainty
         )
     modes = {"additive": False, "multiplicative": False}
-    for props in getattr(m, "extra_regressors", {}).values():
-        modes[str(props.get("mode", "additive"))] = True
+    for props in m.extra_regressors.values():
+        modes[props["mode"]] = True
     for mode in ["additive", "multiplicative"]:
         column = f"extra_regressors_{mode}"
         if modes[mode] and column in fcst:
             components[column] = get_forecast_component_plotly_props(m, fcst, column)
-    for name in getattr(m, "seasonalities", {}):
+    for name in m.seasonalities:
         components[name] = get_seasonality_plotly_props(m, name)
 
     figure = make_subplots(rows=len(components), cols=1, print_grid=False)
@@ -1216,25 +1212,32 @@ def get_forecast_component_plotly_props(
 
     go, _ = _require_plotly()
     pandas = _require_pandas()
-    range_margin = (
-        pandas.to_datetime(fcst["ds"]).max() - pandas.to_datetime(fcst["ds"]).min()
-    ) * 0.05
-    range_x = [
-        pandas.to_datetime(fcst["ds"]).min() - range_margin,
-        pandas.to_datetime(fcst["ds"]).max() + range_margin,
-    ]
+    range_margin = (fcst["ds"].max() - fcst["ds"].min()) * 0.05
+    range_x = [fcst["ds"].min() - range_margin, fcst["ds"].max() + range_margin]
+    text = None
+    mode = "lines"
+    if name == "holidays":
+        holidays = m.construct_holiday_dataframe(fcst["ds"])
+        holiday_features, _, _ = m.make_holiday_features(fcst["ds"], holidays)
+        holiday_features.columns = holiday_features.columns.str.replace("_delim_", "", regex=False)
+        holiday_features.columns = holiday_features.columns.str.replace("+0", "", regex=False)
+        text = pandas.Series(data="", index=holiday_features.index)
+        for holiday_feature, indices in holiday_features.items():
+            text[indices.astype(bool) & (text != "")] += "<br>"
+            text[indices.astype(bool)] += holiday_feature
     traces = [
         go.Scatter(
             name=name,
             x=fcst["ds"],
             y=fcst[name],
-            mode="lines",
+            mode=mode,
             line=go.scatter.Line(color="#0072B2", width=2),
+            text=text,
         )
     ]
     if (
         uncertainty
-        and getattr(m, "uncertainty_samples", 0)
+        and m.uncertainty_samples
         and (fcst[f"{name}_upper"] != fcst[f"{name}_lower"]).any()
     ):
         traces.append(
@@ -1242,7 +1245,7 @@ def get_forecast_component_plotly_props(
                 name=f"{name}_upper",
                 x=fcst["ds"],
                 y=fcst[f"{name}_upper"],
-                mode="lines",
+                mode=mode,
                 line=go.scatter.Line(width=0, color="rgba(0, 114, 178, 0.2)"),
             )
         )
@@ -1251,7 +1254,7 @@ def get_forecast_component_plotly_props(
                 name=f"{name}_lower",
                 x=fcst["ds"],
                 y=fcst[f"{name}_lower"],
-                mode="lines",
+                mode=mode,
                 line=go.scatter.Line(width=0, color="rgba(0, 114, 178, 0.2)"),
                 fillcolor="rgba(0, 114, 178, 0.2)",
                 fill="tonexty",
@@ -1267,7 +1270,7 @@ def get_forecast_component_plotly_props(
                 line=go.scatter.Line(color="black", dash="dash", width=2),
             )
         )
-    if plot_cap and getattr(m, "logistic_floor", False) and "floor" in fcst:
+    if m.logistic_floor and "floor" in fcst and plot_cap:
         traces.append(
             go.Scatter(
                 name="Floor",
@@ -1282,7 +1285,7 @@ def get_forecast_component_plotly_props(
         title=go.layout.yaxis.Title(text=name),
         zerolinecolor="#AAA",
     )
-    if name in getattr(m, "component_modes", {}).get("multiplicative", []):
+    if name in m.component_modes["multiplicative"]:
         yaxis.update(tickformat="%", hoverformat=".2%")
     return {"traces": traces, "xaxis": go.layout.XAxis(type="date", range=range_x), "yaxis": yaxis}
 
@@ -1293,16 +1296,14 @@ def get_seasonality_plotly_props(m: Any, name: str, uncertainty: bool = True) ->
     go, _ = _require_plotly()
     pandas = _require_pandas()
     start = pandas.to_datetime("2017-01-01 0000")
-    period = getattr(m, "seasonalities", {})[name]["period"]
+    period = m.seasonalities[name]["period"]
     end = start + pandas.Timedelta(days=period)
-    history_ds = pandas.to_datetime(m.history["ds"])
-    if (history_ds.dt.hour == 0).all():
+    if (m.history["ds"].dt.hour == 0).all():
         points = int(np.floor(period))
-    elif (history_ds.dt.minute == 0).all():
+    elif (m.history["ds"].dt.minute == 0).all():
         points = int(np.floor(period * 24))
     else:
         points = int(np.floor(period * 24 * 60))
-    points = max(points, 2)
     days = pandas.to_datetime(np.linspace(start.value, end.value, points, endpoint=False))
     df_y = seasonality_plot_df(m, days)
     seas = m.predict_seasonal_components(df_y)
@@ -1317,7 +1318,7 @@ def get_seasonality_plotly_props(m: Any, name: str, uncertainty: bool = True) ->
     ]
     if (
         uncertainty
-        and getattr(m, "uncertainty_samples", 0)
+        and m.uncertainty_samples
         and (seas[f"{name}_upper"] != seas[f"{name}_lower"]).any()
     ):
         traces.append(
@@ -1350,7 +1351,7 @@ def get_seasonality_plotly_props(m: Any, name: str, uncertainty: bool = True) ->
         tickformat = "%B %e"
     range_margin = (df_y["ds"].max() - df_y["ds"].min()) * 0.05
     yaxis = go.layout.YAxis(title=go.layout.yaxis.Title(text=name), zerolinecolor="#AAA")
-    if getattr(m, "seasonalities", {}).get(name, {}).get("mode") == "multiplicative":
+    if m.seasonalities[name]["mode"] == "multiplicative":
         yaxis.update(tickformat="%", hoverformat=".2%")
     return {
         "traces": traces,
@@ -1593,9 +1594,6 @@ def write_plot_report(
 
 def _require_pyplot() -> Any:
     try:
-        import matplotlib
-
-        matplotlib.use("Agg", force=True)
         import matplotlib.pyplot as pyplot
     except ImportError as exc:  # pragma: no cover - depends on optional dependency
         raise ImportError(
@@ -1783,37 +1781,70 @@ def _prophet_performance_metrics(df_cv: Any, metric: str, rolling_window: float)
     frame["ds"] = pandas.to_datetime(frame["ds"])
     frame["cutoff"] = pandas.to_datetime(frame["cutoff"])
     frame["horizon"] = frame["ds"] - frame["cutoff"]
+    frame = frame.sort_values("horizon")
+    if metric == "coverage" and not {"yhat_lower", "yhat_upper"}.issubset(frame.columns):
+        raise ValueError("coverage metric requires 'yhat_lower' and 'yhat_upper'")
+    if metric == "mape" and frame["y"].abs().min() < 1e-8:
+        raise ValueError("mape metric is undefined when y is close to 0")
+    window = int(rolling_window * frame.shape[0])
+    if window >= 0:
+        window = max(window, 1)
+        window = min(window, frame.shape[0])
+
     error = frame["y"] - frame["yhat"]
     abs_error = error.abs()
     squared_error = error**2
-    y_abs = frame["y"].abs().replace(0, np.nan)
-    values = {
-        "mse": squared_error,
-        "rmse": squared_error,
-        "mae": abs_error,
-        "mape": abs_error / y_abs,
-        "mdape": abs_error / y_abs,
-        "smape": 2 * abs_error / (frame["y"].abs() + frame["yhat"].abs()).replace(0, np.nan),
-        "coverage": (
-            (frame["y"] >= frame["yhat_lower"]) & (frame["y"] <= frame["yhat_upper"])
-            if {"yhat_lower", "yhat_upper"}.issubset(frame.columns)
-            else pandas.Series(np.nan, index=frame.index)
-        ),
-    }
-    frame[metric] = values[metric].astype(float)
-    frame = frame.sort_values("horizon")
-    if rolling_window < 0:
-        result = frame[["horizon", metric]].copy()
+    if metric == "mse":
+        values = squared_error
+        result = (
+            pandas.DataFrame({"horizon": frame["horizon"], metric: values})
+            if window < 0
+            else _rolling_mean_by_h(values.values, frame["horizon"].values, window, metric)
+        )
+    elif metric == "rmse":
+        result = (
+            pandas.DataFrame({"horizon": frame["horizon"], "rmse": np.sqrt(squared_error)})
+            if window < 0
+            else _rolling_mean_by_h(squared_error.values, frame["horizon"].values, window, "rmse")
+        )
+        if window >= 0:
+            result["rmse"] = np.sqrt(result["rmse"])
+    elif metric == "mae":
+        result = (
+            pandas.DataFrame({"horizon": frame["horizon"], metric: abs_error})
+            if window < 0
+            else _rolling_mean_by_h(abs_error.values, frame["horizon"].values, window, metric)
+        )
+    elif metric == "mape":
+        values = np.abs((frame["y"] - frame["yhat"]) / frame["y"])
+        result = (
+            pandas.DataFrame({"horizon": frame["horizon"], metric: values})
+            if window < 0
+            else _rolling_mean_by_h(values.values, frame["horizon"].values, window, metric)
+        )
+    elif metric == "mdape":
+        values = np.abs((frame["y"] - frame["yhat"]) / frame["y"])
+        result = (
+            pandas.DataFrame({"horizon": frame["horizon"], metric: values})
+            if window < 0
+            else _rolling_median_by_h(values.values, frame["horizon"], window, metric)
+        )
+    elif metric == "smape":
+        values = abs_error / ((frame["y"].abs() + frame["yhat"].abs()) / 2)
+        values = values.fillna(0)
+        result = (
+            pandas.DataFrame({"horizon": frame["horizon"], metric: values})
+            if window < 0
+            else _rolling_mean_by_h(values.values, frame["horizon"].values, window, metric)
+        )
     else:
-        window = max(1, int(np.ceil(len(frame) * rolling_window)))
-        result = frame[["horizon", metric]].copy()
-        if metric == "mdape":
-            result[metric] = result[metric].rolling(window=window, min_periods=1).median()
-        elif metric == "rmse":
-            result[metric] = np.sqrt(squared_error.rolling(window=window, min_periods=1).mean())
-        else:
-            result[metric] = result[metric].rolling(window=window, min_periods=1).mean()
-    return result.dropna(subset=[metric])
+        values = (frame["y"] >= frame["yhat_lower"]) & (frame["y"] <= frame["yhat_upper"])
+        result = (
+            pandas.DataFrame({"horizon": frame["horizon"], metric: values})
+            if window < 0
+            else _rolling_mean_by_h(values.values, frame["horizon"].values, window, metric)
+        )
+    return result
 
 
 def _timedelta_plot_values(values: Any, *, unit_name: str | None = None) -> tuple[np.ndarray, str]:
@@ -1837,6 +1868,62 @@ def _timedelta_plot_values(values: Any, *, unit_name: str | None = None) -> tupl
                 break
     divisor = {name: divisor for name, divisor, _ in unit_names}[unit_name]
     return timedeltas.astype("timedelta64[ns]").astype(np.int64) / float(divisor), unit_name
+
+
+def _rolling_mean_by_h(x: Any, h: Any, w: int, name: str) -> Any:
+    pandas = _require_pandas()
+    grouped = (
+        pandas.DataFrame({"x": x, "h": h})
+        .groupby("h")
+        .agg(["sum", "count"])
+        .reset_index()
+        .sort_values("h")
+    )
+    sums = grouped["x"]["sum"].values
+    counts = grouped["x"]["count"].values
+    horizons = grouped.h.values
+    trailing_i = len(grouped) - 1
+    x_sum = 0.0
+    n_sum = 0
+    res_x = np.empty(len(grouped))
+    for i in range(len(grouped) - 1, -1, -1):
+        x_sum += sums[i]
+        n_sum += counts[i]
+        while n_sum >= w:
+            excess_n = n_sum - w
+            excess_x = excess_n * sums[i] / counts[i]
+            res_x[trailing_i] = (x_sum - excess_x) / w
+            x_sum -= sums[trailing_i]
+            n_sum -= counts[trailing_i]
+            trailing_i -= 1
+    return pandas.DataFrame(
+        {"horizon": horizons[(trailing_i + 1) :], name: res_x[(trailing_i + 1) :]}
+    )
+
+
+def _rolling_median_by_h(x: Any, h: Any, w: int, name: str) -> Any:
+    pandas = _require_pandas()
+    frame = pandas.DataFrame({"x": x, "h": h})
+    grouped = frame.groupby("h")
+    horizons = grouped.size().reset_index().sort_values("h")["h"]
+    res_h = []
+    res_x = []
+    i = len(horizons) - 1
+    while i >= 0:
+        horizon = horizons[i]
+        values = grouped.get_group(horizon).x.tolist()
+        next_idx_to_add = np.array(h == horizon).argmax() - 1
+        while len(values) < w and next_idx_to_add >= 0:
+            values.append(x[next_idx_to_add])
+            next_idx_to_add -= 1
+        if len(values) < w:
+            break
+        res_h.append(horizons[i])
+        res_x.append(np.median(values))
+        i -= 1
+    res_h.reverse()
+    res_x.reverse()
+    return pandas.DataFrame({"horizon": res_h, name: res_x})
 
 
 def _infer_component_columns(rows: Sequence[Mapping[str, Any]], time_col: str) -> list[str]:

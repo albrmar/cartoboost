@@ -128,6 +128,7 @@ Choose the model guide by series structure:
 | Autocorrelation and differencing | [ARIMA And AutoARIMA](forecasting-models/arima.md) |
 | Noisy local level and trend | [Kalman](forecasting-models/kalman.md) |
 | Interpretable trend, changepoints, seasonality, events, and regressors | [Piecewise Linear Seasonal](forecasting-models/piecewise-linear-seasonal) |
+| Prophet-compatible forecast plotting for Prophet-shaped outputs | [Prophet-Compatible Forecast Plot](forecasting-models/prophet.md) |
 | Coordinate-aware panel interpolation | [Kriging](forecasting-models/kriging.md) |
 | Shared supervised lag model across many series | [CartoBoost Lag](forecasting-models/cartoboost-lag.md) |
 | Guarded default selector over native candidates | [AutoForecaster](forecasting-models/auto-forecaster.md) |

@@ -451,6 +451,62 @@ def test_prophet_plotting_public_surface_matches_upstream_122() -> None:
         assert normalized_signature(getattr(plotting, name)) == PROPHET_PLOT_122_SIGNATURES[name]
 
 
+def test_prophet_forecast_plot_matches_upstream_artist_contract() -> None:
+    model, fcst = prophet_like_inputs()
+
+    figure = plot(model, fcst)
+    axis = figure.axes[0]
+
+    observed, forecast = axis.lines[:2]
+    assert pd.to_datetime(observed.get_xdata()).tolist() == model.history["ds"].tolist()
+    assert observed.get_ydata().tolist() == model.history["y"].tolist()
+    assert observed.get_marker() == "."
+    assert observed.get_color() == "k"
+    assert pd.to_datetime(forecast.get_xdata()).tolist() == fcst["ds"].tolist()
+    assert forecast.get_ydata().tolist() == fcst["yhat"].tolist()
+    assert forecast.get_color() == "#0072B2"
+    assert forecast.get_linestyle() == "-"
+    assert axis.get_xlabel() == "ds"
+    assert axis.get_ylabel() == "y"
+    assert axis.get_legend() is None
+    assert axis.collections
+
+
+def test_prophet_forecast_component_floor_display_and_return_match_upstream() -> None:
+    model, fcst = prophet_like_inputs()
+    model.logistic_floor = True
+    fcst = fcst.assign(cap=np.linspace(20.0, 24.0, len(fcst)), floor=0.0)
+
+    import matplotlib.pyplot as pyplot
+
+    figure, axis = pyplot.subplots()
+    artists = plot_forecast_component(model, fcst, "trend", ax=axis, plot_cap=True)
+
+    assert len(axis.lines) == 3
+    assert [line.get_ydata().tolist() for line in axis.lines] == [
+        fcst["trend"].tolist(),
+        fcst["cap"].tolist(),
+        fcst["floor"].tolist(),
+    ]
+    assert len(artists) == 3
+    assert artists[0] is axis.lines[0]
+    assert artists[1] is axis.lines[1]
+    assert artists[2] in axis.collections
+    pyplot.close(figure)
+
+
+def test_prophet_compatible_helpers_require_prophet_shaped_model_attributes() -> None:
+    model, fcst = prophet_like_inputs()
+    incomplete_model = SimpleNamespace(history=model.history)
+
+    with pytest.raises(AttributeError):
+        plot(incomplete_model, fcst)
+    with pytest.raises(AttributeError):
+        plot_forecast_component(incomplete_model, fcst, "trend")
+    with pytest.raises(AttributeError):
+        seasonality_plot_df(SimpleNamespace(extra_regressors={}, seasonalities={}), fcst["ds"])
+
+
 def test_prophet_compatible_matplotlib_helpers_write_figures(tmp_path: Path) -> None:
     model, fcst = prophet_like_inputs()
 
@@ -507,6 +563,122 @@ def test_prophet_compatible_seasonality_dataframe_and_cv_metric(tmp_path: Path) 
     )
     figure = plot_cross_validation_metric(cv_rows, "rmse", rolling_window=0.5)
     assert_writes_png(tmp_path, figure, "prophet_cv_rmse.png")
+
+
+def test_prophet_cross_validation_metric_uses_upstream_horizon_grouped_rolling() -> None:
+    cv_rows = pd.DataFrame(
+        {
+            "ds": pd.to_datetime(
+                [
+                    "2026-01-07",
+                    "2026-01-08",
+                    "2026-01-08",
+                    "2026-01-09",
+                    "2026-01-09",
+                    "2026-01-10",
+                ]
+            ),
+            "cutoff": pd.to_datetime(
+                [
+                    "2026-01-05",
+                    "2026-01-05",
+                    "2026-01-06",
+                    "2026-01-05",
+                    "2026-01-06",
+                    "2026-01-06",
+                ]
+            ),
+            "y": [10.0, 13.0, 15.0, 20.0, 23.0, 27.0],
+            "yhat": [9.0, 11.0, 14.0, 16.0, 20.0, 22.0],
+        }
+    )
+
+    figure = plot_cross_validation_metric(cv_rows, "mse", rolling_window=0.5)
+    axis = figure.axes[0]
+
+    assert axis.get_xlabel() == "Horizon (hours)"
+    assert axis.lines[1].get_xdata().tolist() == [72.0, 96.0]
+    assert axis.lines[1].get_ydata().tolist() == pytest.approx([14.0 / 3.0, 47.5 / 3.0])
+
+
+def test_prophet_cross_validation_metric_internals_cover_all_upstream_metrics() -> None:
+    import cartoboost.plotting as plotting
+
+    cv_rows = pd.DataFrame(
+        {
+            "ds": pd.to_datetime(
+                [
+                    "2026-01-07",
+                    "2026-01-08",
+                    "2026-01-08",
+                    "2026-01-09",
+                    "2026-01-09",
+                    "2026-01-10",
+                ]
+            ),
+            "cutoff": pd.to_datetime(
+                [
+                    "2026-01-05",
+                    "2026-01-05",
+                    "2026-01-06",
+                    "2026-01-05",
+                    "2026-01-06",
+                    "2026-01-06",
+                ]
+            ),
+            "y": [10.0, 13.0, 15.0, 20.0, 23.0, 27.0],
+            "yhat": [9.0, 11.0, 14.0, 16.0, 20.0, 22.0],
+            "yhat_lower": [8.0, 10.0, 13.0, 18.0, 21.0, 20.0],
+            "yhat_upper": [11.0, 12.0, 16.0, 21.0, 24.0, 25.0],
+        }
+    )
+
+    expected = {
+        "mse": [14.0 / 3.0, 47.5 / 3.0],
+        "rmse": [np.sqrt(14.0 / 3.0), np.sqrt(47.5 / 3.0)],
+        "mae": [2.0, 23.0 / 6.0],
+        "mape": [0.1225380899293943, 0.17577521780420333],
+        "mdape": [0.13043478260869565, 0.18518518518518517],
+        "smape": [0.13110529598521833, 0.19313487668969395],
+        "coverage": [2.0 / 3.0, 0.5],
+    }
+    for metric, values in expected.items():
+        result = plotting._prophet_performance_metrics(cv_rows, metric, 0.5)
+        assert result["horizon"].tolist() == [pd.Timedelta(days=3), pd.Timedelta(days=4)]
+        assert result[metric].tolist() == pytest.approx(values)
+
+    point_result = plotting._prophet_performance_metrics(cv_rows, "coverage", -1)
+    assert point_result["coverage"].tolist() == [True, True, False, True, True, False]
+
+
+def test_prophet_plotly_forecast_trace_contract_matches_upstream() -> None:
+    pytest.importorskip("plotly")
+    model, fcst = prophet_like_inputs()
+    model.logistic_floor = True
+    fcst = fcst.assign(cap=np.linspace(20.0, 24.0, len(fcst)), floor=0.0)
+
+    figure = plot_plotly(model, fcst, trend=True, changepoints=True)
+
+    assert [trace.name for trace in figure.data] == [
+        "Actual",
+        None,
+        "Predicted",
+        None,
+        "Cap",
+        "Floor",
+        "Trend",
+        None,
+    ]
+    assert figure.data[0].mode == "markers"
+    assert figure.data[0].marker.color == "black"
+    assert figure.data[0].marker.size == 4
+    assert figure.data[2].line.color == "#0072B2"
+    assert figure.data[2].fill == "tonexty"
+    assert figure.data[4].line.dash == "dash"
+    assert figure.data[5].line.dash == "dash"
+    assert figure.data[6].line.color == "#B23B00"
+    assert figure.layout.showlegend is False
+    assert figure.layout.xaxis.rangeslider.visible is True
 
 
 def test_prophet_compatible_plotly_helpers_match_expected_shape() -> None:
