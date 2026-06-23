@@ -971,7 +971,6 @@ fn run_forecast_request(request: BrowserForecastRequest) -> Result<BrowserForeca
         ));
     }
     let model = request.model;
-    let requested_model = model.trim().to_ascii_lowercase().replace('-', "_");
     let options = request.options;
     let frame =
         forecast_frame_from_browser_request(request.rows, request.frequency, request.metadata)?;
@@ -1024,13 +1023,7 @@ fn run_forecast_request(request: BrowserForecastRequest) -> Result<BrowserForeca
             quantiles,
         });
     }
-    let mut forecaster = match build_forecaster(&model, &options, &frame, request.horizon) {
-        Ok(forecaster) => forecaster,
-        Err(error) if tolerant_browser_forecast_model(&requested_model) => {
-            return tolerant_forecast_response(&requested_model, &frame, request.horizon, error);
-        }
-        Err(error) => return Err(error),
-    };
+    let mut forecaster = build_forecaster(&model, &options, &frame, request.horizon)?;
     let fit_result = forecaster
         .fit(&frame)
         .and_then(|()| forecaster.predict(request.horizon));
@@ -1042,9 +1035,6 @@ fn run_forecast_request(request: BrowserForecastRequest) -> Result<BrowserForeca
             forecast,
             None,
         )),
-        Err(error) if tolerant_browser_forecast_model(&requested_model) => {
-            tolerant_forecast_response(&requested_model, &frame, request.horizon, error)
-        }
         Err(error) => Err(error),
     }
 }
@@ -1071,33 +1061,6 @@ fn forecast_response(
         samples: None,
         quantiles: None,
     }
-}
-
-fn tolerant_browser_forecast_model(model: &str) -> bool {
-    !matches!(model, "" | "naive")
-}
-
-fn tolerant_forecast_response(
-    requested_model: &str,
-    frame: &ForecastFrame,
-    horizon: usize,
-    error: CartoBoostError,
-) -> Result<BrowserForecastResponse> {
-    let mut fallback = NaiveForecaster::new();
-    fallback.fit(frame)?;
-    let forecast = fallback.predict(horizon)?;
-    Ok(forecast_response(
-        fallback.model_name(),
-        frame,
-        fallback.metadata(),
-        forecast,
-        Some(json!({
-            "requestedModel": requested_model,
-            "fallbackModel": fallback.model_name(),
-            "reason": error.to_string(),
-            "policy": "valid browser forecast frame; requested model could not fit this dataset shape, so WebAssembly returned a simple native baseline with this warning",
-        })),
-    ))
 }
 
 fn fit_piecewise_linear_seasonal_artifact_request(
