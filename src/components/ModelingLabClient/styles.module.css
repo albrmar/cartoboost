@@ -501,6 +501,40 @@ body:has(.shell) :global(.footer) {
   flex: 0 0 auto;
 }
 
+.runLog {
+  background: var(--lab-panel-soft);
+  border: 1px solid var(--lab-border-strong);
+  border-radius: 8px;
+  display: grid;
+  gap: 0.35rem;
+  margin-top: 0.55rem;
+  max-height: 9.5rem;
+  overflow: auto;
+  padding: 0.55rem;
+}
+
+.runLog strong {
+  color: var(--lab-heading);
+  font-size: 0.7rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.runLog ol {
+  display: grid;
+  gap: 0.28rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.runLog li {
+  color: var(--lab-muted);
+  font-size: 0.74rem;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
 @keyframes loading-slide {
   0% {
     transform: translateX(-110%);
@@ -1578,6 +1612,7 @@ body:has(.shell) :global(.footer) {
 :global([data-theme='dark']) .actionBlock,
 :global([data-theme='dark']) .settingHint,
 :global([data-theme='dark']) .progressWrap,
+:global([data-theme='dark']) .runLog,
 :global([data-theme='dark']) .secondaryButton,
 :global([data-theme='dark']) .secondaryActionButton,
 :global([data-theme='dark']) .inlineActionButton,
@@ -1702,9 +1737,14 @@ body:has(.shell) :global(.footer) {
   color: #e8eef8;
 }
 
+:global([data-theme='dark']) .runLog strong {
+  color: #e8eef8;
+}
+
 :global([data-theme='dark']) .neuralSummary span,
 :global([data-theme='dark']) .settingHint,
-:global([data-theme='dark']) .progressMeta strong {
+:global([data-theme='dark']) .progressMeta strong,
+:global([data-theme='dark']) .runLog li {
   color: #9db0c9;
 }
 

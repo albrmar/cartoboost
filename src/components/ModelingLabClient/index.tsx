@@ -106,6 +106,11 @@ type RunProgress = {
   total?: number;
 };
 
+type RunLogEntry = {
+  id: number;
+  message: string;
+};
+
 type RegressionResponse = {
   metadata: {
     model: string;
@@ -213,13 +218,65 @@ const graphNeuralPipelines = new Set(['node2vec', 'graphsage', 'hetero_graphsage
 type ActiveModelingSurface = 'forecast' | 'model' | 'neural';
 const TAXI_WEEK_SAMPLE_ROWS = 2500;
 const TAXI_ZONE_CENTROIDS: Record<string, {lat: number; lon: number}> = {
+  4: {lat: 40.723752, lon: -73.976968},
+  7: {lat: 40.761493, lon: -73.919694},
+  13: {lat: 40.709139, lon: -74.016103},
+  24: {lat: 40.798641, lon: -73.967191},
+  33: {lat: 40.696011, lon: -73.995475},
+  41: {lat: 40.804333, lon: -73.951292},
+  43: {lat: 40.782478, lon: -73.965553},
+  48: {lat: 40.762252, lon: -73.990376},
+  50: {lat: 40.766948, lon: -73.995548},
+  68: {lat: 40.748428, lon: -73.999917},
+  74: {lat: 40.801169, lon: -73.937345},
+  75: {lat: 40.790011, lon: -73.94575},
+  79: {lat: 40.727705, lon: -73.986388},
+  87: {lat: 40.706808, lon: -74.007495},
+  88: {lat: 40.703357, lon: -74.011515},
+  90: {lat: 40.742279, lon: -73.996971},
+  100: {lat: 40.753513, lon: -73.988787},
+  107: {lat: 40.736824, lon: -73.984053},
+  113: {lat: 40.733217, lon: -73.994583},
+  114: {lat: 40.729277, lon: -74.002972},
+  125: {lat: 40.724159, lon: -74.004778},
   132: {lat: 40.646985, lon: -73.786533},
+  137: {lat: 40.740439, lon: -73.976494},
+  138: {lat: 40.77375, lon: -73.872923},
+  140: {lat: 40.766558, lon: -73.95353},
+  141: {lat: 40.766948, lon: -73.959635},
   142: {lat: 40.775932, lon: -73.982196},
+  143: {lat: 40.775965, lon: -73.987646},
+  144: {lat: 40.720889, lon: -73.996919},
+  148: {lat: 40.718939, lon: -73.990896},
+  151: {lat: 40.799717, lon: -73.970552},
+  158: {lat: 40.735035, lon: -74.008984},
   161: {lat: 40.758028, lon: -73.977698},
+  162: {lat: 40.756687, lon: -73.972356},
+  163: {lat: 40.764421, lon: -73.977569},
+  164: {lat: 40.748574, lon: -73.985156},
+  166: {lat: 40.812887, lon: -73.962663},
+  170: {lat: 40.747745, lon: -73.978492},
+  186: {lat: 40.748497, lon: -73.992437},
+  209: {lat: 40.707062, lon: -74.003757},
+  211: {lat: 40.722327, lon: -74.001905},
+  224: {lat: 40.73182, lon: -73.976848},
+  229: {lat: 40.756728, lon: -73.965146},
+  230: {lat: 40.759818, lon: -73.984196},
+  231: {lat: 40.717773, lon: -74.008584},
+  232: {lat: 40.715761, lon: -73.986782},
+  233: {lat: 40.749948, lon: -73.970771},
+  234: {lat: 40.740337, lon: -73.990457},
   236: {lat: 40.780436, lon: -73.957012},
   237: {lat: 40.768615, lon: -73.965635},
   238: {lat: 40.791705, lon: -73.973049},
   239: {lat: 40.783962, lon: -73.978632},
+  246: {lat: 40.753309, lon: -74.004015},
+  249: {lat: 40.734576, lon: -74.005281},
+  261: {lat: 40.709729, lon: -74.013379},
+  262: {lat: 40.77699, lon: -73.94615},
+  263: {lat: 40.778766, lon: -73.95101},
+  264: {lat: 40.758896, lon: -73.98513},
+  265: {lat: 40.710051, lon: -73.865438},
 };
 
 export default function ModelingLabClient(): React.ReactElement {
@@ -253,12 +310,18 @@ export default function ModelingLabClient(): React.ReactElement {
   const [isRunning, setIsRunning] = useState(false);
   const [isLoadingTaxiWeek, setIsLoadingTaxiWeek] = useState(false);
   const [runProgress, setRunProgress] = useState<RunProgress | null>(null);
+  const [runLog, setRunLog] = useState<RunLogEntry[]>([]);
   const [modelOptions, setModelOptions] = useState<ModelOption[]>(fallbackModelOptions);
 
   const previewRows = table?.rows.slice(0, 6) ?? [];
   const selectedForecastModel = modelOptions.find((option) => option.value === model) ?? modelOptions[0];
   const selectedColumnsReady =
     table !== null && timestampCol !== '' && targetCol !== '' && table.columns.includes(timestampCol) && table.columns.includes(targetCol);
+
+  const appendRunLog = useCallback((message: string) => {
+    const timestamp = new Date().toLocaleTimeString([], {hour: '2-digit', minute: '2-digit', second: '2-digit'});
+    setRunLog((current) => [{id: Date.now(), message: `${timestamp} ${message}`}, ...current].slice(0, 8));
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -448,13 +511,19 @@ export default function ModelingLabClient(): React.ReactElement {
     setRegressionResult(null);
     setNeuralResult(null);
     setComparisonResults([]);
+    setRunLog([]);
     setStatus('Running native model roster.');
     const roster = modelOptions.filter((option) => option.value !== 'kriging' || hasCoordinateColumns(table.columns));
     setRunProgress({label: 'Running native roster', current: 0, total: roster.length});
+    appendRunLog(`Started roster comparison with ${roster.length.toLocaleString()} models.`);
+    await waitForBrowserPaint();
     const nextResults: ComparisonResult[] = [];
     for (const [index, option] of roster.entries()) {
       setRunProgress({label: `Running ${option.label}`, current: index, total: roster.length});
       setStatus(`Running ${option.label}.`);
+      appendRunLog(`Running ${option.label}.`);
+      await waitForBrowserPaint();
+      const started = performance.now();
       try {
         const response = await runBrowserForecast({
           wasmJsUrl,
@@ -474,7 +543,9 @@ export default function ModelingLabClient(): React.ReactElement {
           pipeline: option.group,
           response,
         });
+        appendRunLog(`Finished ${option.label} in ${formatElapsedMs(performance.now() - started)}.`);
       } catch (error) {
+        appendRunLog(`${option.label} reported a constraint after ${formatElapsedMs(performance.now() - started)}.`);
         nextResults.push({
           requestedModel: option.value,
           label: option.label,
@@ -484,12 +555,15 @@ export default function ModelingLabClient(): React.ReactElement {
       }
       setComparisonResults([...nextResults]);
       setRunProgress({label: `Checked ${option.label}`, current: index + 1, total: roster.length});
+      await waitForBrowserPaint();
     }
     const successes = nextResults.filter((item) => item.response).length;
     setStatus(`Model roster complete: ${successes.toLocaleString()} succeeded, ${(nextResults.length - successes).toLocaleString()} reported constraints.`);
+    appendRunLog(`Roster complete: ${successes.toLocaleString()} succeeded.`);
     setIsRunning(false);
     setRunProgress(null);
   }, [
+    appendRunLog,
     frequency,
     horizon,
     modelOptions,
@@ -515,15 +589,21 @@ export default function ModelingLabClient(): React.ReactElement {
     setBacktestResults([]);
     setRegressionResult(null);
     setNeuralResult(null);
+    setRunLog([]);
     setStatus('Running holdout backtest across native roster.');
     try {
       const split = holdoutSplit(table, timestampCol, targetCol, seriesCol, horizon);
       const roster = modelOptions.filter((option) => option.value !== 'kriging' || hasCoordinateColumns(table.columns));
       setRunProgress({label: 'Running holdout backtest', current: 0, total: roster.length});
+      appendRunLog(`Started holdout backtest with ${roster.length.toLocaleString()} models.`);
+      await waitForBrowserPaint();
       const nextResults: BacktestResult[] = [];
       for (const [index, option] of roster.entries()) {
         setRunProgress({label: `Backtesting ${option.label}`, current: index, total: roster.length});
         setStatus(`Backtesting ${option.label}.`);
+        appendRunLog(`Backtesting ${option.label}.`);
+        await waitForBrowserPaint();
+        const started = performance.now();
         try {
           const response = await runBrowserForecast({
             wasmJsUrl,
@@ -545,7 +625,9 @@ export default function ModelingLabClient(): React.ReactElement {
             response,
             ...metrics,
           });
+          appendRunLog(`Scored ${option.label} in ${formatElapsedMs(performance.now() - started)}.`);
         } catch (error) {
+          appendRunLog(`${option.label} reported a constraint after ${formatElapsedMs(performance.now() - started)}.`);
           nextResults.push({
             requestedModel: option.value,
             label: option.label,
@@ -555,16 +637,20 @@ export default function ModelingLabClient(): React.ReactElement {
         }
         setBacktestResults([...nextResults]);
         setRunProgress({label: `Checked ${option.label}`, current: index + 1, total: roster.length});
+        await waitForBrowserPaint();
       }
       const successes = nextResults.filter((item) => item.rmse !== undefined).length;
       setStatus(`Holdout backtest complete: ${successes.toLocaleString()} scored, ${(nextResults.length - successes).toLocaleString()} reported constraints.`);
+      appendRunLog(`Backtest complete: ${successes.toLocaleString()} scored.`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : String(error));
+      appendRunLog(error instanceof Error ? error.message : String(error));
     } finally {
       setIsRunning(false);
       setRunProgress(null);
     }
   }, [
+    appendRunLog,
     frequency,
     horizon,
     modelOptions,
@@ -982,6 +1068,16 @@ export default function ModelingLabClient(): React.ReactElement {
           </div>
           {(runProgress || isLoadingTaxiWeek) && (
             <ProgressBar progress={runProgress} label={isLoadingTaxiWeek ? 'Loading taxi week' : undefined} />
+          )}
+          {runLog.length > 0 && (
+            <div className={styles.runLog} aria-live="polite" aria-label="Run activity">
+              <strong>Run activity</strong>
+              <ol>
+                {runLog.map((entry) => (
+                  <li key={entry.id}>{entry.message}</li>
+                ))}
+              </ol>
+            </div>
           )}
           <p className={styles.status}>{status}</p>
         </div>
@@ -4353,6 +4449,19 @@ function normalizeTimestamp(value: string) {
   return value.length === 10 ? `${value}T00:00:00` : value.replace(' ', 'T').replace(/\.\d{3}Z$/, '');
 }
 
+async function waitForBrowserPaint() {
+  await new Promise<void>((resolve) => {
+    window.requestAnimationFrame(() => window.setTimeout(resolve, 0));
+  });
+}
+
+function formatElapsedMs(value: number) {
+  if (value >= 1000) {
+    return `${(value / 1000).toFixed(1)}s`;
+  }
+  return `${Math.max(1, Math.round(value)).toLocaleString()}ms`;
+}
+
 function parseDelimited(text: string, fileName: string): ParsedTable {
   const delimiter = text.includes('\t') ? '\t' : ',';
   const rows = parseRows(text.trim(), delimiter);
@@ -4527,10 +4636,10 @@ function enrichTaxiRouteGeoColumns(table: ParsedTable): ParsedTable {
     const dropoffCentroid = TAXI_ZONE_CENTROIDS[row.DOLocationID ?? ''];
     return {
       ...row,
-      pickup_latitude: formatCoordinate(pickupCentroid?.lat),
-      pickup_longitude: formatCoordinate(pickupCentroid?.lon),
-      dropoff_latitude: formatCoordinate(dropoffCentroid?.lat),
-      dropoff_longitude: formatCoordinate(dropoffCentroid?.lon),
+      pickup_latitude: formatCoordinate(pickupCentroid?.lat) || row.pickup_latitude || '',
+      pickup_longitude: formatCoordinate(pickupCentroid?.lon) || row.pickup_longitude || '',
+      dropoff_latitude: formatCoordinate(dropoffCentroid?.lat) || row.dropoff_latitude || '',
+      dropoff_longitude: formatCoordinate(dropoffCentroid?.lon) || row.dropoff_longitude || '',
     };
   });
   return {
