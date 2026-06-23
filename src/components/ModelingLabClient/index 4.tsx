@@ -219,7 +219,6 @@ type GeoDemandPoint = {
   target: number;
   dropLon: number;
   dropLat: number;
-  routeKey?: string;
 };
 
 type WasmModelMetadata = {
@@ -513,7 +512,6 @@ export default function ModelingLabClient(): React.ReactElement {
           'yellow_taxi_2024-01-single-lane-5000.parquet',
         ),
         TAXI_LANE_SAMPLE_ROWS,
-        {fileName: 'yellow_taxi_2024-01-single-lane-5000.parquet'},
       );
       applyTaxiTable(parsed, `Loaded ${parsed.rows.length.toLocaleString()} hourly rows for taxi lane PU132-DO236.`);
     } catch (error) {
@@ -540,13 +538,8 @@ export default function ModelingLabClient(): React.ReactElement {
           'yellow_taxi_2024-01-varied-routes-2500.parquet',
         ),
         TAXI_VARIED_ROUTE_SAMPLE_ROWS,
-        {
-          balancedManhattanRoutes: true,
-          fileName: 'yellow_taxi_2024-01-varied-routes-2500.parquet',
-        },
       );
-      const laneCount = new Set(parsed.rows.map((row) => row.series_id).filter(Boolean)).size;
-      applyTaxiTable(parsed, `Loaded ${parsed.rows.length.toLocaleString()} route-hour rows across ${laneCount.toLocaleString()} varied Manhattan pickup/dropoff lanes.`);
+      applyTaxiTable(parsed, `Loaded ${parsed.rows.length.toLocaleString()} route-hour rows across varied pickup/dropoff coordinates.`);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : String(error));
     } finally {
@@ -2536,7 +2529,7 @@ function TargetRunPlan({
           <span className={styles.eyebrow}>Targeting</span>
           <h3>Recommended run plan</h3>
         </div>
-        <span>{profile.score >= 80 ? 'Ready' : 'Review'}</span>
+        <span>{profile.score.toLocaleString()} readiness</span>
       </div>
       <div className={styles.planGrid}>
         <p>
@@ -2552,7 +2545,7 @@ function TargetRunPlan({
           {profile.loss}
         </p>
         <p>
-          <span>Relationships</span>
+          <span>Graph path</span>
           {profile.graphPath}
         </p>
       </div>
@@ -2780,18 +2773,14 @@ function WebGlGeoMap({
   minTarget,
   maxTarget,
   hasDropoff,
-  selectedRouteKey,
-  onSelectRoute,
 }: {
   points: GeoDemandPoint[];
   minTarget: number;
   maxTarget: number;
   hasDropoff: boolean;
-  selectedRouteKey: string | null;
-  onSelectRoute: (routeKey: string | null) => void;
 }) {
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
-  const [status, setStatus] = useState('Loading route map');
+  const [status, setStatus] = useState('Loading MapLibre and deck.gl');
 
   useEffect(() => {
     if (!mapContainerRef.current || points.length === 0) {
@@ -2849,37 +2838,22 @@ function WebGlGeoMap({
               id: 'route-arcs',
               data: routePoints,
               getHeight: 0.18,
-              getSourceColor: (point) =>
-                selectedRouteKey && point.routeKey !== selectedRouteKey
-                  ? targetRgb(point.target, minTarget, maxTarget, 48)
-                  : targetRgb(point.target, minTarget, maxTarget, 210),
+              getSourceColor: (point) => targetRgb(point.target, minTarget, maxTarget, 180),
               getSourcePosition: (point) => [point.lon, point.lat],
-              getTargetColor: (point) =>
-                selectedRouteKey && point.routeKey !== selectedRouteKey
-                  ? targetRgb(point.target, minTarget, maxTarget, 38)
-                  : targetRgb(point.target, minTarget, maxTarget, 150),
+              getTargetColor: (point) => targetRgb(point.target, minTarget, maxTarget, 110),
               getTargetPosition: (point) => [point.dropLon, point.dropLat],
-              getWidth: (point) =>
-                (point.routeKey === selectedRouteKey ? 5 : 1) +
-                Math.max(0, (point.target - minTarget) / (maxTarget - minTarget || 1)) * 4,
-              onClick: ({object}) => onSelectRoute(object?.routeKey ?? null),
+              getWidth: (point) => 1 + Math.max(0, (point.target - minTarget) / (maxTarget - minTarget || 1)) * 4,
               pickable: true,
             }),
             new ScatterplotLayer<GeoDemandPoint>({
               id: 'pickup-points',
               data: points,
-              getFillColor: (point) =>
-                selectedRouteKey && point.routeKey !== selectedRouteKey
-                  ? targetRgb(point.target, minTarget, maxTarget, 70)
-                  : targetRgb(point.target, minTarget, maxTarget, 230),
+              getFillColor: (point) => targetRgb(point.target, minTarget, maxTarget, 220),
               getLineColor: [255, 255, 255, 220],
-              getLineWidth: (point) => (point.routeKey === selectedRouteKey ? 3 : 1),
+              getLineWidth: 1,
               getPosition: (point) => [point.lon, point.lat],
-              getRadius: (point) =>
-                (point.routeKey === selectedRouteKey ? 8 : 5) +
-                Math.max(0, (point.target - minTarget) / (maxTarget - minTarget || 1)) * 8,
+              getRadius: (point) => 5 + Math.max(0, (point.target - minTarget) / (maxTarget - minTarget || 1)) * 8,
               lineWidthUnits: 'pixels',
-              onClick: ({object}) => onSelectRoute(object?.routeKey ?? null),
               pickable: true,
               radiusUnits: 'pixels',
               stroked: true,
@@ -2892,7 +2866,7 @@ function WebGlGeoMap({
             const bounds = allCoordinates.reduce((nextBounds, coordinate) => nextBounds.extend(coordinate), new maplibregl.LngLatBounds(allCoordinates[0], allCoordinates[0]));
             map.fitBounds(bounds, {duration: 0, padding: 42});
           }
-          setStatus('Pickup demand and route paths');
+          setStatus('MapLibre + deck.gl WebGL layers');
         });
         cleanup = () => {
           overlay.finalize();
@@ -2908,21 +2882,20 @@ function WebGlGeoMap({
       cancelled = true;
       cleanup?.();
     };
-  }, [hasDropoff, maxTarget, minTarget, onSelectRoute, points, selectedRouteKey]);
+  }, [hasDropoff, maxTarget, minTarget, points]);
 
   return (
     <div className={styles.webglMapShell}>
       <div className={styles.webglMap} ref={mapContainerRef} />
       <div className={styles.webglMapOverlay}>
         <span>{status}</span>
-        <strong>{selectedRouteKey ?? (hasDropoff ? 'Pickup demand, hotspots, and dropoff paths' : 'Pickup demand and hotspots')}</strong>
+        <strong>{hasDropoff ? 'Heatmap, pickup points, and route arcs' : 'Heatmap and pickup points'}</strong>
       </div>
     </div>
   );
 }
 
 function GeoDatasetVisualization({table, targetCol, seriesCol}: {table: ParsedTable; targetCol: string; seriesCol: string}) {
-  const [selectedRouteKey, setSelectedRouteKey] = useState<string | null>(null);
   const pickup = coordinatePair(table.columns, ['pickup', 'pu', 'origin', '']);
   const dropoff = coordinatePair(table.columns, ['dropoff', 'do', 'destination']);
   const h3Columns = table.columns.filter((column) => {
@@ -2940,9 +2913,6 @@ function GeoDatasetVisualization({table, targetCol, seriesCol}: {table: ParsedTa
           target: Number(row[targetCol]),
           dropLon: dropoff ? Number(row[dropoff.lon]) : Number.NaN,
           dropLat: dropoff ? Number(row[dropoff.lat]) : Number.NaN,
-          routeKey: dropoff
-            ? routeKeyFromCoordinates(Number(row[pickup.lat]), Number(row[pickup.lon]), Number(row[dropoff.lat]), Number(row[dropoff.lon]))
-            : undefined,
         }))
         .filter((point) => Number.isFinite(point.lon) && Number.isFinite(point.lat) && Number.isFinite(point.target))
         .slice(0, 600)
@@ -2950,7 +2920,6 @@ function GeoDatasetVisualization({table, targetCol, seriesCol}: {table: ParsedTa
   const routePoints = points.filter((point) => Number.isFinite(point.dropLon) && Number.isFinite(point.dropLat)).slice(0, 140);
   const hotCells = spatialBins(points, 5);
   const topRoutes = dropoff ? topRoutePairs(table, pickup, dropoff, targetCol, 6) : [];
-  const selectedRoute = selectedRouteKey ? topRoutes.find((row) => row.key === selectedRouteKey) ?? null : null;
   const zoneLeaders = seriesCol ? topTargetGroups(table, seriesCol, targetCol, 6) : [];
   const allLon = points.flatMap((point) => (Number.isFinite(point.dropLon) ? [point.lon, point.dropLon] : [point.lon]));
   const allLat = points.flatMap((point) => (Number.isFinite(point.dropLat) ? [point.lat, point.dropLat] : [point.lat]));
@@ -3042,7 +3011,7 @@ function GeoDatasetVisualization({table, targetCol, seriesCol}: {table: ParsedTa
       <div className={styles.geoHeader}>
         <div>
           <span className={styles.eyebrow}>Geography</span>
-          <h3>{pickup ? 'Pickup and dropoff geography' : 'Spatial cell coverage'}</h3>
+          <h3>{pickup ? 'Spatial demand view' : 'H3 coverage view'}</h3>
         </div>
         <span>
           {points.length > 0
@@ -3057,46 +3026,21 @@ function GeoDatasetVisualization({table, targetCol, seriesCol}: {table: ParsedTa
             {`${formatMetric(minLat)}, ${formatMetric(minLon)} to ${formatMetric(maxLat)}, ${formatMetric(maxLon)}`}
           </p>
           <p>
-            <span>Demand range</span>
+            <span>Target intensity</span>
             {`${formatCompact(minTarget)} to ${formatCompact(maxTarget)}`}
           </p>
           <p>
-            <span>Map shows</span>
-            {dropoff ? 'Pickup volume, high-demand areas, and pickup-to-dropoff paths' : 'Pickup volume and high-demand areas'}
+            <span>Map layers</span>
+            {dropoff ? 'MapLibre basemap, deck.gl heatmap, route arcs, D3 contours' : 'MapLibre basemap, deck.gl heatmap, D3 contours'}
           </p>
         </div>
       )}
       {points.length > 0 && (
-        <WebGlGeoMap
-          points={points}
-          minTarget={minTarget}
-          maxTarget={maxTarget}
-          hasDropoff={Boolean(dropoff)}
-          selectedRouteKey={selectedRouteKey}
-          onSelectRoute={setSelectedRouteKey}
-        />
+        <WebGlGeoMap points={points} minTarget={minTarget} maxTarget={maxTarget} hasDropoff={Boolean(dropoff)} />
       )}
       {points.length > 0 && (
         <svg className={styles.geoSvg} viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Geographic dataset preview">
           <rect x="0" y="0" width={width} height={height} />
-          <text className={styles.geoAxisTitle} x={width / 2} y={height - 9}>
-            Longitude
-          </text>
-          <text className={styles.geoAxisTitle} x={15} y={height / 2} transform={`rotate(-90 15 ${height / 2})`}>
-            Latitude
-          </text>
-          <text className={styles.geoAxisTick} x={padding} y={height - 30}>
-            {formatMetric(minLon)}
-          </text>
-          <text className={styles.geoAxisTick} x={width - padding} y={height - 30} textAnchor="end">
-            {formatMetric(maxLon)}
-          </text>
-          <text className={styles.geoAxisTick} x={34} y={height - padding}>
-            {formatMetric(minLat)}
-          </text>
-          <text className={styles.geoAxisTick} x={34} y={padding + 5}>
-            {formatMetric(maxLat)}
-          </text>
           {graticulePath && <path className={styles.graticuleLine} d={graticulePath} />}
           {contourRows.map((contour, index) => (
             <path
@@ -3116,100 +3060,56 @@ function GeoDatasetVisualization({table, targetCol, seriesCol}: {table: ParsedTa
           ))}
           {projectedRoutes.map((point, index) => (
             <line
-              className={point.routeKey === selectedRouteKey ? styles.selectedGeoRoute : undefined}
               x1={point.x}
               y1={point.y}
               x2={point.dropX}
               y2={point.dropY}
-              onClick={() => setSelectedRouteKey(point.routeKey ?? null)}
               key={`route-${index}`}
             />
           ))}
           {projectedPoints.map((point, index) => (
             <circle
-              className={point.routeKey === selectedRouteKey ? styles.selectedGeoPoint : undefined}
               cx={point.x}
               cy={point.y}
               r="4"
               style={{fill: targetColor(point.target, minTarget, maxTarget)}}
-              onClick={() => setSelectedRouteKey(point.routeKey ?? null)}
               key={`point-${index}`}
             />
           ))}
-          <g className={styles.geoLegend} transform={`translate(${width - 196} 18)`}>
-            <rect x="0" y="0" width="170" height="46" rx="6" />
-            <text x="10" y="16">Demand</text>
-            {[0, 1, 2, 3, 4].map((step) => (
-              <path
-                d={`M${10 + step * 28} 25H${38 + step * 28}V35H${10 + step * 28}Z`}
-                fill={targetColor(minTarget + ((maxTarget - minTarget || 1) * step) / 4, minTarget, maxTarget)}
-                key={step}
-              />
-            ))}
-            <text x="10" y="43">{formatCompact(minTarget)}</text>
-            <text x="150" y="43" textAnchor="end">{formatCompact(maxTarget)}</text>
-          </g>
         </svg>
       )}
       {topRoutes.length > 0 && (
-        <section className={styles.geoListSection} aria-label="Top pickup to dropoff routes">
-          <div className={styles.geoListHeader}>
-            <strong>Top pickup to dropoff routes</strong>
-            {selectedRoute && (
-              <span>
-                Selected mean {formatCompact(selectedRoute.mean)} from {selectedRoute.count.toLocaleString()} rows
-              </span>
-            )}
-          </div>
-          <div className={styles.routeList}>
-            {topRoutes.map((row, index) => (
-              <button
-                className={row.key === selectedRouteKey ? styles.routeButtonActive : undefined}
-                type="button"
-                onClick={() => setSelectedRouteKey((current) => (current === row.key ? null : row.key))}
-                key={row.key}
-              >
-                <strong>{index + 1}. {row.key}</strong>
-                <i>{formatCompact(row.mean)}</i>
-                <em>{row.count.toLocaleString()} rows</em>
-              </button>
-            ))}
-          </div>
-        </section>
+        <div className={styles.routeList}>
+          {topRoutes.map((row, index) => (
+            <span key={row.key}>
+              <strong>{index + 1}. {row.key}</strong>
+              <i>{formatCompact(row.mean)}</i>
+              <em>{row.count.toLocaleString()} rows</em>
+            </span>
+          ))}
+        </div>
       )}
       {zoneLeaders.length > 0 && (
-        <section className={styles.geoListSection} aria-label="Highest demand zones or series">
-          <div className={styles.geoListHeader}>
-            <strong>Highest demand zones or series</strong>
-            <span>Ranked by mean {targetCol}</span>
-          </div>
-          <div className={styles.routeList}>
-            {zoneLeaders.map((row, index) => (
-              <span key={row.key}>
-                <strong>{index + 1}. {row.key}</strong>
-                <i>{formatCompact(row.mean)}</i>
-                <em>{row.count.toLocaleString()} rows</em>
-              </span>
-            ))}
-          </div>
-        </section>
+        <div className={styles.routeList}>
+          {zoneLeaders.map((row, index) => (
+            <span key={row.key}>
+              <strong>{index + 1}. {row.key}</strong>
+              <i>{formatCompact(row.mean)}</i>
+              <em>{row.count.toLocaleString()} rows</em>
+            </span>
+          ))}
+        </div>
       )}
       {h3DisplayRows.length > 0 && (
-        <section className={styles.geoListSection} aria-label="Detected H3 cells">
-          <div className={styles.geoListHeader}>
-            <strong>Detected H3 cells</strong>
-            <span>Column and row frequency</span>
-          </div>
-          <div className={styles.h3List}>
-            {h3DisplayRows.map((row) => (
-              <span key={`${row.column}-${h3CellLabel(row)}`}>
-                <strong>{row.column}</strong>
-                {h3CellLabel(row)}
-                <i>{h3CellCount(row).toLocaleString()}</i>
-              </span>
-            ))}
-          </div>
-        </section>
+        <div className={styles.h3List}>
+          {h3DisplayRows.map((row) => (
+            <span key={`${row.column}-${h3CellLabel(row)}`}>
+              <strong>{row.column}</strong>
+              {h3CellLabel(row)}
+              <i>{h3CellCount(row).toLocaleString()}</i>
+            </span>
+          ))}
+        </div>
       )}
     </section>
   );
@@ -3399,7 +3299,7 @@ function buildTargetingProfile(
     l1: 'L1 median',
     l2: 'L2 mean',
   }[lossValue];
-  const graphPath = hasGraph ? 'Pickup/dropoff columns detected' : hasSparse ? 'Sparse features selected' : seriesCol ? 'Series ID selected' : 'Dense features only';
+  const graphPath = hasGraph ? 'Graph neural ready' : hasSparse ? 'Sparse set ready' : seriesCol ? 'ID embedding ready' : 'Dense features only';
   const recommendedFeatureCols = roles
     .filter((role) => role.role !== 'sparse set' && role.status !== 'review')
     .slice(0, 12)
@@ -3661,15 +3561,12 @@ function topRoutePairs(
   const groups = new Map<string, {sum: number; count: number}>();
   for (const row of table.rows) {
     const target = Number(row[targetCol]);
-    const key = routeKeyFromCoordinates(
-      Number(row[pickup.lat]),
-      Number(row[pickup.lon]),
-      Number(row[dropoff.lat]),
-      Number(row[dropoff.lon]),
-    );
-    if (!Number.isFinite(target) || !key) {
+    const pickupLabel = `${Number(row[pickup.lat]).toFixed(3)},${Number(row[pickup.lon]).toFixed(3)}`;
+    const dropoffLabel = `${Number(row[dropoff.lat]).toFixed(3)},${Number(row[dropoff.lon]).toFixed(3)}`;
+    if (!Number.isFinite(target) || pickupLabel.includes('NaN') || dropoffLabel.includes('NaN')) {
       continue;
     }
+    const key = `${pickupLabel} -> ${dropoffLabel}`;
     const group = groups.get(key) ?? {sum: 0, count: 0};
     group.sum += target;
     group.count += 1;
@@ -3683,13 +3580,6 @@ function topRoutePairs(
     })
     .sort((left, right) => right.mean - left.mean || right.count - left.count || left.key.localeCompare(right.key))
     .slice(0, limit);
-}
-
-function routeKeyFromCoordinates(pickupLat: number, pickupLon: number, dropoffLat: number, dropoffLon: number) {
-  if (![pickupLat, pickupLon, dropoffLat, dropoffLon].every(Number.isFinite)) {
-    return undefined;
-  }
-  return `${pickupLat.toFixed(3)},${pickupLon.toFixed(3)} -> ${dropoffLat.toFixed(3)},${dropoffLon.toFixed(3)}`;
 }
 
 function rankTargetOpportunities(
@@ -3858,7 +3748,6 @@ type ProjectedGeoPoint = {
   target: number;
   dropLon: number;
   dropLat: number;
-  routeKey?: string;
   x: number;
   y: number;
   dropX?: number;
@@ -4621,19 +4510,7 @@ function observedBoundsTarget(
 
 async function importExternalModule(url: string) {
   const dynamicImport = new Function('url', 'return import(url);') as (url: string) => Promise<unknown>;
-  const response = await fetch(url, {cache: 'no-store'});
-  const contentType = response.headers.get('content-type') ?? '';
-  if (!response.ok || contentType.includes('text/html')) {
-    throw new Error('CartoBoost WebAssembly bundle is not available from this dev server.');
-  }
-  const blobUrl = URL.createObjectURL(
-    new Blob([await response.text()], {type: contentType.includes('javascript') ? contentType : 'text/javascript'}),
-  );
-  try {
-    return await dynamicImport(blobUrl);
-  } finally {
-    URL.revokeObjectURL(blobUrl);
-  }
+  return dynamicImport(url);
 }
 
 async function ensureJavaScriptModule(url: string) {
@@ -4752,19 +4629,13 @@ async function runBrowserForecast({
 }
 
 function runForecastRequestInWorker(wasmJsUrl: string, wasmBinaryUrl: string, request: unknown): Promise<ForecastResponse> {
-  const absoluteWasmJsUrl = absoluteBrowserUrl(wasmJsUrl);
-  const absoluteWasmBinaryUrl = absoluteBrowserUrl(wasmBinaryUrl);
-  const client = getForecastWorkerClient(absoluteWasmJsUrl, absoluteWasmBinaryUrl);
+  const client = getForecastWorkerClient(wasmJsUrl, wasmBinaryUrl);
   const id = client.nextId;
   client.nextId += 1;
   return new Promise((resolve, reject) => {
     client.pending.set(id, {resolve, reject});
-    client.worker.postMessage({id, wasmJsUrl: absoluteWasmJsUrl, wasmBinaryUrl: absoluteWasmBinaryUrl, request});
+    client.worker.postMessage({id, wasmJsUrl, wasmBinaryUrl, request});
   });
-}
-
-function absoluteBrowserUrl(url: string) {
-  return new URL(url, window.location.href).toString();
 }
 
 function getForecastWorkerClient(wasmJsUrl: string, wasmBinaryUrl: string): ForecastWorkerClient {
@@ -4814,16 +4685,7 @@ async function getWasmModule(wasmJsUrl, wasmBinaryUrl) {
   }
   wasmKey = key;
   wasmPromise = (async () => {
-    const response = await fetch(wasmJsUrl, {cache: 'no-store'});
-    const contentType = response.headers.get('content-type') || '';
-    if (!response.ok || contentType.includes('text/html')) {
-      throw new Error('CartoBoost WebAssembly bundle is not available from this dev server.');
-    }
-    const blobUrl = URL.createObjectURL(
-      new Blob([await response.text()], {type: contentType.includes('javascript') ? contentType : 'text/javascript'}),
-    );
-    const wasmModule = await import(blobUrl);
-    URL.revokeObjectURL(blobUrl);
+    const wasmModule = await import(wasmJsUrl);
     await wasmModule.default({module_or_path: wasmBinaryUrl});
     return wasmModule;
   })();
@@ -5330,22 +5192,10 @@ function sampleModelRows<T>(rows: T[], maxRows: number): T[] {
   return Array.from({length: maxRows}, (_, index) => rows[Math.floor(index * step)]).filter((row): row is T => row !== undefined);
 }
 
-function buildTaxiRouteHourSampleTable(
-  table: ParsedTable,
-  maxRows: number,
-  options: {balancedManhattanRoutes?: boolean; fileName?: string} = {},
-): ParsedTable {
+function buildTaxiRouteHourSampleTable(table: ParsedTable, maxRows: number): ParsedTable {
   const requiredColumns = ['tpep_pickup_datetime', 'tpep_dropoff_datetime', 'PULocationID', 'DOLocationID'];
   if (!requiredColumns.every((column) => table.columns.includes(column))) {
-    const enriched = enrichTaxiRouteGeoColumns(table);
-    return downsampleTable(
-      {
-        ...enriched,
-        rows: options.balancedManhattanRoutes ? balancedManhattanRouteRows(enriched.rows, maxRows) : enriched.rows,
-        fileName: options.fileName ?? enriched.fileName,
-      },
-      maxRows,
-    );
+    return downsampleTable(enrichTaxiRouteGeoColumns(table), maxRows);
   }
   const groups = new Map<
     string,
@@ -5412,7 +5262,6 @@ function buildTaxiRouteHourSampleTable(
         avg_duration_minutes: formatFixed(group.durationMinutes / group.count, 2),
       };
     });
-  const selectedRows = options.balancedManhattanRoutes ? balancedManhattanRouteRows(rows, maxRows) : rows;
   return downsampleTable(enrichTaxiRouteGeoColumns({
     columns: [
       'timestamp',
@@ -5426,77 +5275,9 @@ function buildTaxiRouteHourSampleTable(
       'avg_trip_distance',
       'avg_duration_minutes',
     ],
-    rows: selectedRows,
-    fileName: options.fileName ?? table.fileName,
+    rows,
+    fileName: 'yellow_taxi_2024-01-single-lane-5000.parquet',
   }), maxRows);
-}
-
-function balancedManhattanRouteRows(rows: Record<string, string>[], maxRows: number) {
-  const routeGroups = new Map<string, Record<string, string>[]>();
-  for (const row of rows) {
-    if (!isManhattanRoute(row)) {
-      continue;
-    }
-    const route = row.series_id;
-    const group = routeGroups.get(route) ?? [];
-    group.push(row);
-    routeGroups.set(route, group);
-  }
-  const groups = Array.from(routeGroups.entries())
-    .filter(([, group]) => group.length > 0)
-    .sort((left, right) => {
-      const leftScore = routeCoverageScore(left[1]);
-      const rightScore = routeCoverageScore(right[1]);
-      return rightScore - leftScore || left[0].localeCompare(right[0]);
-    });
-  if (groups.length < 2) {
-    return rows;
-  }
-  const targetPerRoute = Math.max(1, Math.floor(maxRows / groups.length));
-  const selected = groups.flatMap(([, group]) => evenlySampleRows(group, targetPerRoute));
-  let cursor = 0;
-  while (selected.length < maxRows && groups.some(([, group]) => group.length > targetPerRoute)) {
-    const group = groups[cursor % groups.length][1];
-    const row = group[targetPerRoute + Math.floor(cursor / groups.length)];
-    if (row) {
-      selected.push(row);
-    }
-    cursor += 1;
-    if (cursor > rows.length + groups.length) {
-      break;
-    }
-  }
-  return selected
-    .slice(0, maxRows)
-    .sort((left, right) => left.timestamp.localeCompare(right.timestamp) || left.series_id.localeCompare(right.series_id));
-}
-
-function isManhattanRoute(row: Record<string, string>) {
-  const pickup = TAXI_ZONE_CENTROIDS[row.PULocationID ?? ''];
-  const dropoff = TAXI_ZONE_CENTROIDS[row.DOLocationID ?? ''];
-  return Boolean(pickup && dropoff && isManhattanCentroid(pickup) && isManhattanCentroid(dropoff) && row.PULocationID !== row.DOLocationID);
-}
-
-function isManhattanCentroid(point: {lat: number; lon: number}) {
-  return point.lat >= 40.70 && point.lat <= 40.83 && point.lon >= -74.02 && point.lon <= -73.93;
-}
-
-function routeCoverageScore(rows: Record<string, string>[]) {
-  if (rows.length === 0) {
-    return 0;
-  }
-  const pickup = TAXI_ZONE_CENTROIDS[rows[0].PULocationID ?? ''];
-  const dropoff = TAXI_ZONE_CENTROIDS[rows[0].DOLocationID ?? ''];
-  const distance = pickup && dropoff ? Math.hypot(pickup.lat - dropoff.lat, pickup.lon - dropoff.lon) : 0;
-  return rows.length + distance * 1000;
-}
-
-function evenlySampleRows<T>(rows: T[], maxRows: number): T[] {
-  if (rows.length <= maxRows) {
-    return rows;
-  }
-  const step = rows.length / maxRows;
-  return Array.from({length: maxRows}, (_, index) => rows[Math.floor(index * step)]).filter((row): row is T => row !== undefined);
 }
 
 function enrichTaxiRouteGeoColumns(table: ParsedTable): ParsedTable {
