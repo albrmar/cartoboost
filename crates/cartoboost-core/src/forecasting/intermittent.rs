@@ -399,8 +399,13 @@ fn fit_series(
     let candidates = candidate_methods(values);
     let mut best: Option<(IntermittentDemandMethod, f64)> = None;
     for method in candidates {
-        let forecast = method_forecast(method, train, validation.len(), config)?;
-        let loss = objective_loss(validation, &forecast, config.objective)?;
+        let loss = if validation_window == 0 {
+            method_forecast(method, values, 1, config)?;
+            0.0
+        } else {
+            let forecast = method_forecast(method, train, validation.len(), config)?;
+            objective_loss(validation, &forecast, config.objective)?
+        };
         if !loss.is_finite() {
             continue;
         }
@@ -586,6 +591,9 @@ fn effective_validation_window(frame: &ForecastFrame, configured: Option<usize>)
         .map(Vec::len)
         .min()
         .unwrap_or(0);
+    if min_history < 2 {
+        return 0;
+    }
     (min_history / 5).clamp(1, 8)
 }
 

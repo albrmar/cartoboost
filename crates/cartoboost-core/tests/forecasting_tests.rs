@@ -1,9 +1,9 @@
 use cartoboost_core::forecasting::{
     evaluate_m_competition_metrics, CandidateValidationCutoffSchedule, CrostonForecaster,
     ForecastActual, ForecastFrame, ForecastFrameMetadata, ForecastFrequency, ForecastRegistry,
-    ForecastResult, ForecastRow, ForecastWindow, Forecaster, NaiveForecaster,
-    RollingOriginBacktester, RollingOriginSplitter, SbaForecaster, SeasonalNaiveForecaster,
-    TsbForecaster,
+    ForecastResult, ForecastRow, ForecastWindow, Forecaster, IntermittentDemandForecaster,
+    NaiveForecaster, RollingOriginBacktester, RollingOriginSplitter, SbaForecaster,
+    SeasonalNaiveForecaster, TsbForecaster,
 };
 use chrono::{NaiveDate, NaiveDateTime};
 use std::collections::BTreeMap;
@@ -266,6 +266,29 @@ fn fixed_intermittent_forecasters_reject_invalid_inputs() {
     let mut model = CrostonForecaster::default();
     assert!(model.fit(&frame).is_err());
     assert!(model.predict(1).is_err());
+}
+
+#[test]
+fn intermittent_demand_uses_no_holdout_selection_for_single_observation_panels() {
+    let frame = ForecastFrame::new(
+        vec![
+            ForecastRow::new("PULocationID=132", ts(1), 3.0),
+            ForecastRow::new("PULocationID=237", ts(1), 0.0),
+        ],
+        ForecastFrequency::Daily,
+    )
+    .expect("valid one-row intermittent panel");
+    let mut model = IntermittentDemandForecaster::default();
+
+    model.fit(&frame).expect("fit");
+    let forecast = model.predict(2).expect("forecast");
+
+    assert_eq!(forecast.predictions().len(), 4);
+    assert!(forecast
+        .predictions()
+        .iter()
+        .all(|prediction| { prediction.model == "intermittent_demand" && prediction.mean >= 0.0 }));
+    assert_eq!(model.metadata()["validation_window"].as_u64(), Some(0));
 }
 
 #[test]

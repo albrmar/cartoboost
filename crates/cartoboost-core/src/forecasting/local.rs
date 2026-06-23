@@ -3891,9 +3891,9 @@ impl FittedKalmanSeries {
         trend_process_variance: f64,
         observation_variance: f64,
     ) -> Result<Self> {
-        if history.len() < 2 {
+        if history.is_empty() {
             return Err(CartoBoostError::InvalidInput(format!(
-                "series {series_id} requires at least two rows for kalman forecasting"
+                "series {series_id} requires at least one row for kalman forecasting"
             )));
         }
         let values = history.iter().map(|row| row.target).collect::<Vec<_>>();
@@ -3902,6 +3902,13 @@ impl FittedKalmanSeries {
             trend_process_variance,
             observation_variance,
         )?;
+        if values.len() == 1 {
+            return Ok(Self {
+                last_timestamp: history.last().expect("history length checked").timestamp,
+                level: values[0],
+                trend: 0.0,
+            });
+        }
         let result = fit_local_linear_kalman(&values, config)
             .map_err(|err| CartoBoostError::InvalidInput(format!("{series_id}: {err}")))?;
         Ok(Self {
@@ -3973,9 +3980,9 @@ impl FittedETSSeries {
         season_length: Option<usize>,
         damping_phi: f64,
     ) -> Result<Self> {
-        if history.len() < 2 {
+        if history.is_empty() {
             return Err(CartoBoostError::InvalidInput(format!(
-                "series {series_id} requires at least two rows for ETS forecasting"
+                "series {series_id} requires at least one row for ETS forecasting"
             )));
         }
         let values = history.iter().map(|row| row.target).collect::<Vec<_>>();
@@ -3995,6 +4002,23 @@ impl FittedETSSeries {
             }
             None => None,
         };
+        if values.len() == 1 {
+            let initial_seasonal = seasonals.as_ref().map(|s| s[0]).unwrap_or(0.0);
+            let level = values[0] - initial_seasonal;
+            return Ok(Self {
+                last_timestamp: history.last().expect("history length checked").timestamp,
+                n_obs: history.len(),
+                level,
+                trend: 0.0,
+                damping_phi,
+                seasonals,
+                fitted_values: vec![values[0]],
+                residuals: vec![0.0],
+                level_values: vec![level],
+                trend_values: vec![0.0],
+                seasonal_values: vec![initial_seasonal],
+            });
+        }
 
         let mut level = values[0] - seasonals.as_ref().map(|s| s[0]).unwrap_or(0.0);
         let mut trend = initial_trend(&values, seasonals.as_deref());
@@ -8826,6 +8850,25 @@ mod tests {
     }
 
     #[test]
+    fn kalman_degrades_single_observation_to_zero_trend_level_fit() {
+        let frame = ForecastFrame::new(
+            vec![ForecastRow::single(ts(1), 12.5)],
+            ForecastFrequency::Daily,
+        )
+        .expect("valid frame");
+        let mut model = KalmanForecaster::new(0.01, 0.001, 0.1).expect("valid kalman");
+
+        model.fit(&frame).expect("fit single observation");
+        let forecast = model.predict(2).expect("forecast");
+
+        assert_eq!(forecast.predictions().len(), 2);
+        assert!(forecast
+            .predictions()
+            .iter()
+            .all(|prediction| prediction.mean == 12.5));
+    }
+
+    #[test]
     fn local_level_kalman_forecasts_flat_panel_levels() {
         let frame = ForecastFrame::new(
             vec![
@@ -8997,6 +9040,42 @@ mod tests {
             .predictions()
             .iter()
             .all(|prediction| prediction.mean.is_finite()));
+    }
+
+    #[test]
+    fn ets_and_auto_ets_degrade_single_observation_to_level_fit() {
+        let frame = ForecastFrame::new(
+            vec![ForecastRow::single(ts(1), 42.0)],
+            ForecastFrequency::Daily,
+        )
+        .expect("valid frame");
+        let mut ets = ETSForecaster::with_additive_seasonality(0.5, 0.2, Some(0.5), Some(7))
+            .expect("valid seasonal ets");
+        let mut auto_ets = AutoETSForecaster::with_grids(
+            vec![0.3, 0.5],
+            vec![0.0, 0.1],
+            vec![Some(0.0), Some(0.2)],
+            vec![0.9, 1.0],
+            Some(7),
+        )
+        .expect("valid auto ets");
+
+        ets.fit(&frame).expect("ets fit");
+        auto_ets.fit(&frame).expect("auto ets fit");
+        let ets_forecast = ets.predict(2).expect("ets forecast");
+        let auto_forecast = auto_ets.predict(2).expect("auto ets forecast");
+
+        assert_eq!(ets_forecast.predictions().len(), 2);
+        assert_eq!(auto_forecast.predictions().len(), 2);
+        assert!(ets_forecast
+            .predictions()
+            .iter()
+            .chain(auto_forecast.predictions())
+            .all(|prediction| prediction.mean == 42.0));
+        assert!(auto_ets
+            .validation_scores()
+            .iter()
+            .all(|score| score.mse.is_finite()));
     }
 
     #[test]
