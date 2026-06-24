@@ -2512,23 +2512,12 @@ function LineChart({caption, series, showForecastBoundary = true}: {caption: str
   const forecastBoundaryX = actualMaxIndex === null
     ? null
     : leftPadding + ((actualMaxIndex - visibleMinIndex) / visibleIndexSpan) * plotWidth;
-  const markerStrideFor = (seriesIndex: number, pointCount: number) => {
-    if (seriesIndex > 0) {
-      return 1;
-    }
-    if (zoom >= 8) {
-      return 1;
-    }
-    if (zoom >= 4) {
-      return Math.max(1, Math.ceil(pointCount / 42));
-    }
-    if (zoom >= 2) {
-      return Math.max(1, Math.ceil(pointCount / 28));
-    }
-    return Math.max(1, Math.ceil(pointCount / 18));
-  };
-  const shouldShowPoint = (seriesIndex: number, index: number, pointCount: number) =>
-    index % markerStrideFor(seriesIndex, pointCount) === 0 || index === pointCount - 1;
+  const markerLimit = zoom >= 8 ? 72 : zoom >= 4 ? 42 : zoom >= 2 ? 26 : 14;
+  const hoverLimit = zoom >= 8 ? 140 : zoom >= 4 ? 96 : zoom >= 2 ? 64 : 36;
+  const pointStrideFor = (pointCount: number, limit: number) =>
+    Math.max(1, Math.ceil(pointCount / limit));
+  const shouldSamplePoint = (index: number, pointCount: number, limit: number) =>
+    index === 0 || index === pointCount - 1 || index % pointStrideFor(pointCount, limit) === 0;
   const outcomeRows = plotSeries
     .filter((item) => item.points.length > 0)
     .map((item) => {
@@ -2608,24 +2597,24 @@ function LineChart({caption, series, showForecastBoundary = true}: {caption: str
           );
         })}
         {plotSeries.flatMap((item, seriesIndex) =>
-          item.points.filter((point, index, points) => shouldShowPoint(seriesIndex, index, points.length)).map((point, index) => (
+          item.points.filter((point, index, points) => shouldSamplePoint(index, points.length, markerLimit)).map((point, index) => (
             <circle
               className={seriesIndex === 0 ? styles.actualPointMarker : styles.forecastPointMarker}
               cx={point.x}
               cy={point.y}
-              r={seriesIndex === 0 ? 2.8 : 4.2}
+              r={seriesIndex === 0 ? 1.7 : 2.2}
               style={{stroke: item.color}}
               key={`marker-${item.label}-${point.index}-${index}`}
             />
           )),
         )}
         {plotSeries.flatMap((item, seriesIndex) =>
-          item.points.filter((point, index, points) => shouldShowPoint(seriesIndex, index, points.length)).map((point) => (
+          item.points.filter((point, index, points) => shouldSamplePoint(index, points.length, hoverLimit)).map((point) => (
             <circle
               className={styles.interactivePoint}
               cx={point.x}
               cy={point.y}
-              r="9"
+              r="6"
               tabIndex={0}
               role="button"
               aria-label={`${item.label} step ${point.index}: ${formatMetric(point.value)}`}
