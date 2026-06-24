@@ -25,10 +25,15 @@ diagnostics for CartoBoost benchmark evidence:
 ## Browser model visualizer
 
 The [Modeling Lab](../modeling-lab) is separate from `cartoboost.plotting`: it
-runs the Rust WebAssembly regression and neural modeling surfaces in the
-browser, then asks for opt-in model-structure metadata from that same fit. The
-visualizer renders a splitter atlas, boosted-tree blueprints, split-kind mix,
-top splitter rules, depth profile, and largest holdout residuals.
+runs the Rust WebAssembly forecasting, regression, and neural modeling surfaces
+in the browser, then asks for opt-in diagnostics from that same fit. For
+`piecewise_linear_seasonal`, the forecast request includes component and
+historical component payloads and renders a Prophet-style debugger with
+forecast trend, seasonal, event, and regressor panels plus historical actual,
+fitted, trend, seasonality, trend-movement, and residual plots. For regression
+and neural surfaces, the visualizer renders a splitter atlas, boosted-tree
+blueprints, split-kind mix, top splitter rules, depth profile, and largest
+holdout residuals.
 
 Use the built-in taxi buttons to load either bundled browser sample. The
 5,000-row single-lane yellow taxi demand sample is shaped for forecasting demos:
@@ -38,8 +43,9 @@ roster comparisons without changing the forecast task into a panel problem. The
 graph, neural, and splitter-visualization checks.
 
 Visualization metadata is requested only by the Modeling Lab. Main WebAssembly
-forecasting, regression, and neural prediction calls continue without tree
-traversal unless a caller explicitly asks for the visualizer payload.
+forecasting, regression, and neural prediction calls continue without historical
+component payloads or tree traversal unless a caller explicitly asks for those
+debugger fields.
 
 ## Prophet plotting parity
 

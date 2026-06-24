@@ -1686,7 +1686,7 @@ impl NativePiecewiseLinearSeasonalForecaster {
         growth="linear",
         component_mode="additive",
         changepoints=25,
-        changepoint_range=0.8,
+        changepoint_range=1.0,
         changepoint_timestamps=None,
         yearly_fourier_order=0,
         weekly_fourier_order=3,

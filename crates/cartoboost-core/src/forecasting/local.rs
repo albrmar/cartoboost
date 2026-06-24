@@ -503,7 +503,7 @@ impl Default for PiecewiseLinearSeasonalConfig {
             huber_delta: 1.345,
             irls_iterations: 5,
             changepoints: 25,
-            changepoint_range: 0.8,
+            changepoint_range: 1.0,
             changepoint_timestamps: Vec::new(),
             yearly_fourier_order: 0,
             weekly_fourier_order: 3,
@@ -7074,6 +7074,69 @@ mod tests {
         assert!(predictions[6].mean > predictions[0].mean);
         assert_eq!(predictions[0].model, "piecewise_linear_seasonal");
         assert_eq!(model.metadata()["weekly_fourier_order"].as_u64(), Some(3));
+    }
+
+    #[test]
+    fn piecewise_linear_default_changepoint_range_tracks_late_weekly_lane_movement() {
+        let start = ts(1);
+        let rows = (0..140)
+            .map(|week| {
+                let late_ramp = if week >= 92 {
+                    55.0 * f64::from(week - 92)
+                } else {
+                    0.0
+                };
+                let current_ramp = if week >= 118 {
+                    140.0 * f64::from(week - 118)
+                } else {
+                    0.0
+                };
+                let annual = 70.0 * (std::f64::consts::TAU * f64::from(week) / 52.18).sin();
+                ForecastRow::new(
+                    "PULocationID=132->DOLocationID=236",
+                    start + Duration::weeks(i64::from(week)),
+                    1100.0 + 2.2 * f64::from(week) + late_ramp + current_ramp + annual,
+                )
+            })
+            .collect::<Vec<_>>();
+        let default_rmse = rolling_one_week_rmse(
+            &rows,
+            PiecewiseLinearSeasonalConfig {
+                weekly_fourier_order: 0,
+                auto_weekly_seasonality: false,
+                changepoint_l2_regularization: 0.001,
+                ..PiecewiseLinearSeasonalConfig::default()
+            },
+        );
+        let strict_prophet_range_rmse = rolling_one_week_rmse(
+            &rows,
+            PiecewiseLinearSeasonalConfig {
+                changepoint_range: 0.8,
+                weekly_fourier_order: 0,
+                auto_weekly_seasonality: false,
+                changepoint_l2_regularization: 0.001,
+                ..PiecewiseLinearSeasonalConfig::default()
+            },
+        );
+
+        assert!(default_rmse < strict_prophet_range_rmse * 0.4);
+    }
+
+    fn rolling_one_week_rmse(rows: &[ForecastRow], config: PiecewiseLinearSeasonalConfig) -> f64 {
+        let mut sum_squared = 0.0;
+        for holdout_weeks_back in (1..=12).rev() {
+            let cutoff = rows.len() - holdout_weeks_back;
+            let train = rows[..cutoff].to_vec();
+            let actual = rows[cutoff].target;
+            let frame = ForecastFrame::new(train, ForecastFrequency::Weekly).expect("valid frame");
+            let mut model =
+                PiecewiseLinearSeasonalForecaster::new(config.clone()).expect("valid config");
+            model.fit(&frame).expect("fit");
+            let prediction = model.predict(1).expect("predict").predictions()[0].mean;
+            let error = prediction - actual;
+            sum_squared += error * error;
+        }
+        (sum_squared / 12.0).sqrt()
     }
 
     #[test]

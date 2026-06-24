@@ -225,7 +225,7 @@ Forecasters:
 | `SbaForecaster` | Rust-native fixed SBA intermittent-demand forecaster with Croston bias adjustment. |
 | `TsbForecaster` | Rust-native fixed TSB intermittent-demand forecaster with separate demand and occurrence smoothing. |
 | `KrigingForecaster` | Coordinate-aware Rust-native panel forecaster using stable series coordinates and variogram controls. |
-| `PiecewiseLinearSeasonalForecaster` | Rust-native piecewise linear seasonal local model with linear, flat, or logistic growth, automatic or explicit changepoints, Prophet-shaped holiday tables and optional country holiday calendars normalized into native event windows, Fourier seasonalities, conditional custom seasonalities, events, automatic extra-regressor standardization, per-component regularization, residual intervals, deterministic sampled trend uncertainty, external trend adjustments, residual shock propagation, fitted JSON round-trips, `components()` / `components_json()` forecast decomposition, and `history_components()` / `history_components_json()` fitted trend, movement, seasonality, event, and regressor diagnostics; browser/WASM exposes matching fitted artifact prediction and component helpers. |
+| `PiecewiseLinearSeasonalForecaster` | Rust-native piecewise linear seasonal local model with linear, flat, or logistic growth, automatic or explicit changepoints, Prophet-shaped holiday tables and optional country holiday calendars normalized into native event windows, Fourier seasonalities, conditional custom seasonalities, events, automatic extra-regressor standardization, per-component regularization, residual intervals, deterministic sampled trend uncertainty, external trend adjustments, residual shock propagation, fitted JSON round-trips, `components()` / `components_json()` forecast decomposition, and `history_components()` / `history_components_frame()` / `history_components_json()` fitted trend, movement, seasonality, event, and regressor diagnostics; browser/WASM exposes matching fitted artifact prediction and component helpers. |
 | `CartoBoostLagForecaster` | Global recursive forecaster using leakage-safe lag, rolling, calendar, static, and known-future features with `CartoBoostRegressor`. |
 | `AutoForecaster` | Guarded Rust-native model selector over reusable internal forecasting candidates with validation metadata and fitted artifacts. |
 | `NBeatsForecaster` | Rust-native deterministic N-BEATS style forecasting expert for regular forecast windows. |
@@ -243,8 +243,10 @@ dynamic cap/floor regressors, prediction interval levels, quantile levels,
 trend/coefficient uncertainty controls, `trend_adjustments`,
 `trend_adjustments_by_series`, `residual_shock_window`,
 `residual_shock_scale`, `residual_shock_decay`, and robust Huber fitting.
-The default automatic changepoint count is 25 to match Prophet's public default
-while preserving Rust-native fitting and artifact serialization.
+The default automatic changepoint count is 25 to match Prophet's public default;
+CartoBoost uses `changepoint_range=1.0` by default so short-horizon lane
+backtests can fit recent trend movement across the full training window. Set
+`changepoint_range=0.8` for Prophet's stricter default placement.
 Fitted models serialize with `to_json()` / `from_json()` and prediction results
 preserve interval columns through native JSON round-trips.
 

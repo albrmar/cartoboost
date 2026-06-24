@@ -31,6 +31,19 @@ type ForecastComponentRecord = {
   components: Record<string, number | Record<string, number>>;
 };
 
+type ForecastHistoryComponentRecord = {
+  series_id: string;
+  timestamp: string;
+  index: number;
+  actual: number;
+  fitted: number;
+  residual: number;
+  trend: number;
+  trend_movement?: number | null;
+  fitted_movement?: number | null;
+  components: Record<string, number | Record<string, number>>;
+};
+
 type ForecastQuantileRecord = {
   series_id: string;
   timestamp: string;
@@ -77,6 +90,9 @@ type ForecastResponse = {
   };
   components?: {
     records: ForecastComponentRecord[];
+  };
+  historyComponents?: {
+    records: ForecastHistoryComponentRecord[];
   };
   samples?: {
     records: unknown[];
@@ -1337,6 +1353,7 @@ export default function ModelingLabClient(): React.ReactElement {
               <ForecastChart actualRows={actualRows} rows={chartRows} quantiles={firstSeriesQuantileRows(result)} />
               {table && <GeoDatasetVisualization table={table} targetCol={targetCol} seriesCol={seriesCol} />}
               <ForecastComponentSummary components={result.components} />
+              <ProphetDebuggerPanel response={result} />
               <ForecastTable records={result.forecast.records.slice(0, 12)} />
             </>
           ) : (
@@ -1777,6 +1794,85 @@ function ForecastComponentSummary({components}: {components?: ForecastResponse['
           </tbody>
         </table>
       </div>
+    </section>
+  );
+}
+
+function ProphetDebuggerPanel({response}: {response: ForecastResponse}) {
+  const componentRows = firstSeriesComponentRows(response);
+  const historyRows = firstSeriesHistoryComponentRows(response);
+  if (componentRows.length === 0 && historyRows.length === 0) {
+    return null;
+  }
+  const lastHistory = historyRows.at(-1);
+  const trendMovement = lastHistory?.trend_movement ?? null;
+  const seasonalTotal = lastHistory ? numberComponent(lastHistory.components.seasonal_total) : null;
+  const residual = lastHistory?.residual ?? null;
+  const forecastComponentSeries = forecastComponentChartSeries(componentRows);
+  const historyTrendSeries = historyTrendChartSeries(historyRows);
+  const historySeasonalitySeries = historySeasonalityChartSeries(historyRows);
+  return (
+    <section className={styles.debuggerPanel}>
+      <div className={styles.componentHeader}>
+        <div>
+          <span className={styles.eyebrow}>Prophet-style debugger</span>
+          <h3>{componentRows[0]?.series_id ?? historyRows[0]?.series_id ?? 'Forecast components'}</h3>
+        </div>
+        <p>{componentRows.length > 0 ? `${componentRows.length.toLocaleString()} forecast steps` : `${historyRows.length.toLocaleString()} history rows`}</p>
+      </div>
+      <div className={styles.debuggerMetrics}>
+        <p>
+          <span>Last trend move</span>
+          {formatCompact(trendMovement)}
+        </p>
+        <p>
+          <span>Last seasonality</span>
+          {formatCompact(seasonalTotal)}
+        </p>
+        <p>
+          <span>Last residual</span>
+          {formatCompact(residual)}
+        </p>
+      </div>
+      {forecastComponentSeries.length > 0 && (
+        <LineChart caption="Forecast trend and seasonal components" series={forecastComponentSeries} showForecastBoundary={false} />
+      )}
+      {historyTrendSeries.length > 0 && (
+        <LineChart caption="Historical actual, fitted, and trend" series={historyTrendSeries} showForecastBoundary={false} />
+      )}
+      {historySeasonalitySeries.length > 0 && (
+        <LineChart caption="Historical seasonality and residual diagnostics" series={historySeasonalitySeries} showForecastBoundary={false} />
+      )}
+      {historyRows.length > 0 && (
+        <div className={styles.tableScroller}>
+          <table>
+            <thead>
+              <tr>
+                <th>Timestamp</th>
+                <th>Actual</th>
+                <th>Fitted</th>
+                <th>Trend</th>
+                <th>Trend move</th>
+                <th>Seasonality</th>
+                <th>Residual</th>
+              </tr>
+            </thead>
+            <tbody>
+              {historyRows.slice(-8).map((row) => (
+                <tr key={`${row.series_id}-${row.timestamp}-${row.index}`}>
+                  <td>{row.timestamp}</td>
+                  <td>{formatCompact(row.actual)}</td>
+                  <td>{formatCompact(row.fitted)}</td>
+                  <td>{formatCompact(row.trend)}</td>
+                  <td>{formatCompact(row.trend_movement)}</td>
+                  <td>{formatCompact(numberComponent(row.components.seasonal_total))}</td>
+                  <td>{formatCompact(row.residual)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </section>
   );
 }
@@ -2336,7 +2432,7 @@ type ActiveChartPoint = {
   y: number;
 };
 
-function LineChart({caption, series}: {caption: string; series: ChartSeries[]}) {
+function LineChart({caption, series, showForecastBoundary = true}: {caption: string; series: ChartSeries[]; showForecastBoundary?: boolean}) {
   const [hoverPoint, setHoverPoint] = useState<ActiveChartPoint | null>(null);
   const [pinnedPoint, setPinnedPoint] = useState<ActiveChartPoint | null>(null);
   const [zoom, setZoom] = useState(1);
@@ -2374,7 +2470,7 @@ function LineChart({caption, series}: {caption: string; series: ChartSeries[]}) 
   const max = Math.max(...values);
   const span = max - min || 1;
   const actualSeries = drawable[0]?.points ?? [];
-  const actualMaxIndex = actualSeries.length === 0 ? null : Math.max(...actualSeries.map((point) => point.index));
+  const actualMaxIndex = !showForecastBoundary || actualSeries.length === 0 ? null : Math.max(...actualSeries.map((point) => point.index));
   const plotSeries = drawable.map((item, seriesIndex) => ({
     ...item,
     color: chartColor(seriesIndex),
@@ -4183,6 +4279,86 @@ function numberComponent(value: number | Record<string, number> | undefined) {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0;
 }
 
+function componentPointValue(record: ForecastComponentRecord | ForecastHistoryComponentRecord, name: string) {
+  return numberComponent(record.components[name]);
+}
+
+function forecastComponentChartSeries(records: ForecastComponentRecord[]): ChartSeries[] {
+  if (records.length === 0) {
+    return [];
+  }
+  return [
+    {
+      label: 'Prediction',
+      points: records.map((record) => ({index: record.horizon, value: record.prediction})),
+    },
+    {
+      label: 'Trend',
+      points: records.map((record) => ({index: record.horizon, value: record.trend})),
+    },
+    {
+      label: 'Seasonality',
+      points: records.map((record) => ({index: record.horizon, value: componentPointValue(record, 'seasonal_total')})),
+    },
+    {
+      label: 'Events',
+      points: records.map((record) => ({index: record.horizon, value: componentPointValue(record, 'event_total')})),
+    },
+    {
+      label: 'Regressors',
+      points: records.map((record) => ({index: record.horizon, value: componentPointValue(record, 'regressor_total')})),
+    },
+  ].filter((series) => series.points.some((point) => Math.abs(numberComponent(point.value as number)) > 1.0e-9 || series.label === 'Prediction' || series.label === 'Trend'));
+}
+
+function historyTrendChartSeries(records: ForecastHistoryComponentRecord[]): ChartSeries[] {
+  if (records.length === 0) {
+    return [];
+  }
+  return [
+    {
+      label: 'Actual',
+      points: records.map((record) => ({index: record.index, value: record.actual})),
+    },
+    {
+      label: 'Fitted',
+      points: records.map((record) => ({index: record.index, value: record.fitted})),
+    },
+    {
+      label: 'Trend',
+      points: records.map((record) => ({index: record.index, value: record.trend})),
+    },
+  ];
+}
+
+function historySeasonalityChartSeries(records: ForecastHistoryComponentRecord[]): ChartSeries[] {
+  if (records.length === 0) {
+    return [];
+  }
+  return [
+    {
+      label: 'Seasonality',
+      points: records.map((record) => ({index: record.index, value: componentPointValue(record, 'seasonal_total')})),
+    },
+    {
+      label: 'Weekly',
+      points: records.map((record) => ({index: record.index, value: componentPointValue(record, 'weekly')})),
+    },
+    {
+      label: 'Yearly',
+      points: records.map((record) => ({index: record.index, value: componentPointValue(record, 'yearly')})),
+    },
+    {
+      label: 'Residual',
+      points: records.map((record) => ({index: record.index, value: record.residual})),
+    },
+    {
+      label: 'Trend movement',
+      points: records.map((record) => ({index: record.index, value: record.trend_movement})),
+    },
+  ].filter((series) => series.points.some((point) => Math.abs(numberComponent(point.value as number)) > 1.0e-9));
+}
+
 function componentLabel(name: string) {
   return name
     .split('_')
@@ -4924,6 +5100,7 @@ async function runBrowserForecast({
     options: {
       seasonLength,
       includeComponents: true,
+      includeHistoryComponents: true,
       ...browserAutoOptions,
       ...modelSpecificOptions,
     },
@@ -5303,6 +5480,16 @@ function actualRowsForFirstSeries(
 function firstSeriesForecastRows(response: ForecastResponse) {
   const firstSeries = response.forecast.records[0]?.series_id;
   return response.forecast.records.filter((row) => row.series_id === firstSeries);
+}
+
+function firstSeriesComponentRows(response: ForecastResponse) {
+  const firstSeries = response.forecast.records[0]?.series_id ?? response.components?.records[0]?.series_id;
+  return (response.components?.records ?? []).filter((row) => row.series_id === firstSeries);
+}
+
+function firstSeriesHistoryComponentRows(response: ForecastResponse) {
+  const firstSeries = response.forecast.records[0]?.series_id ?? response.historyComponents?.records[0]?.series_id;
+  return (response.historyComponents?.records ?? []).filter((row) => row.series_id === firstSeries);
 }
 
 function firstSeriesQuantileRows(response: ForecastResponse) {

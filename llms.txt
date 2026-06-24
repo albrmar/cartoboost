@@ -13,6 +13,9 @@ modeling.
 - Docs homepage component: ./src/pages/index.tsx
 - Modeling Lab page: ./src/pages/modeling-lab.tsx
 - Modeling Lab client: ./src/components/ModelingLabClient/index.tsx
+- Modeling Lab forecast debugger: browser-local WASM piecewise linear seasonal
+  forecasts request component and history-component payloads and render
+  Prophet-style trend, seasonality, fitted, trend-movement, and residual plots.
 - Modeling Lab samples: ./static/samples/yellow_taxi_2024-01-single-lane-5000.parquet
   and ./static/samples/yellow_taxi_2024-01-varied-routes-2500.parquet
 - Docs theme stylesheet: ./src/css/custom.css
@@ -30,9 +33,10 @@ modeling.
   `trend_adjustments_by_series` for external market-belief trend multipliers
   and `residual_shock_window`, `residual_shock_scale`, and
   `residual_shock_decay` for opt-in recent residual shock propagation. Use
-  `history_components()` / `history_components_json()` to inspect fitted
-  historical trend, trend movement, seasonality, event, regressor, and residual
-  values before rolling-origin holdouts.
+  `history_components()`, `history_components_frame()`, and
+  `history_components_json()` to inspect fitted historical trend, trend
+  movement, seasonality, event, regressor, and residual values before
+  rolling-origin holdouts.
 - AutoForecaster guide: ./docs/user-guide/forecasting-models/auto-forecaster.md
 - Piecewise linear seasonal guide: ./docs/user-guide/forecasting-models/piecewise-linear-seasonal.md
 - ARIMA and AutoARIMA guide: ./docs/user-guide/forecasting-models/arima.md

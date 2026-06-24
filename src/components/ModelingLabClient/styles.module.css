@@ -843,6 +843,47 @@ body:has(.shell) :global(.footer) {
   padding: 0.75rem;
 }
 
+.debuggerPanel {
+  background: var(--lab-panel);
+  border: 1px solid var(--lab-border);
+  border-radius: 8px;
+  display: grid;
+  gap: 0.65rem;
+  margin: 0;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0.75rem;
+}
+
+.debuggerMetrics {
+  display: grid;
+  gap: 0.55rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.debuggerMetrics p {
+  background: var(--lab-panel-tint);
+  border: 1px solid var(--lab-border-strong);
+  border-radius: 8px;
+  color: var(--lab-text);
+  font-size: 1rem;
+  font-weight: 850;
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  padding: 0.55rem 0.6rem;
+}
+
+.debuggerMetrics span {
+  color: var(--lab-muted);
+  display: block;
+  font-size: 0.7rem;
+  font-weight: 850;
+  margin-bottom: 0.18rem;
+  text-transform: uppercase;
+}
+
 .componentHeader {
   align-items: start;
   display: flex;

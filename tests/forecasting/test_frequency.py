@@ -14,12 +14,20 @@ from cartoboost.forecasting.frequency import (  # noqa: E402
 def test_normalize_frequency_uses_pandas_canonical_form():
     assert normalize_frequency("1D") == "D"
     assert normalize_frequency("2h") == "2h"
+    assert normalize_frequency("W") == "W"
+    assert normalize_frequency("W-SUN") == "W"
 
 
 def test_infer_frequency_accepts_unsorted_regular_timestamps():
     timestamps = pd.to_datetime(["2025-01-03", "2025-01-01", "2025-01-02"])
 
     assert infer_frequency(timestamps) == "D"
+
+
+def test_infer_frequency_maps_weekly_alias_to_native_frequency():
+    timestamps = pd.to_datetime(["2025-01-05", "2025-01-12", "2025-01-19"])
+
+    assert infer_frequency(timestamps) == "W"
 
 
 def test_validate_regular_frequency_rejects_irregular_timestamps():

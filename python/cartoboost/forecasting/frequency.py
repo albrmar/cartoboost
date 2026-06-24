@@ -26,9 +26,21 @@ def normalize_frequency(freq: str | None) -> str | None:
         raise ValueError("frequency must be a non-empty string")
     pd = require_pandas()
     try:
-        return pd.tseries.frequencies.to_offset(freq).freqstr
+        return _native_frequency_alias(pd.tseries.frequencies.to_offset(freq).freqstr)
     except (TypeError, ValueError) as exc:
         raise ValueError(f"invalid frequency {freq!r}") from exc
+
+
+def _native_frequency_alias(freq: str) -> str:
+    normalized = str(freq)
+    lower = normalized.lower()
+    if lower in {"h", "1h", "hour", "hourly"}:
+        return "H"
+    if lower in {"d", "1d", "day", "daily"}:
+        return "D"
+    if lower == "w" or lower == "1w" or lower.startswith("w-"):
+        return "W"
+    return normalized
 
 
 def infer_frequency(timestamps: Any) -> str | None:
@@ -45,7 +57,7 @@ def infer_frequency(timestamps: Any) -> str | None:
         if delta <= pd.Timedelta(0):
             return None
         try:
-            return pd.tseries.frequencies.to_offset(delta).freqstr
+            return _native_frequency_alias(pd.tseries.frequencies.to_offset(delta).freqstr)
         except ValueError:
             return None
     inferred = pd.infer_freq(values)

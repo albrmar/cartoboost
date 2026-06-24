@@ -82,17 +82,21 @@ model = PiecewiseLinearSeasonalForecaster(
 forecast = model.fit(frame).predict(24)
 components = model.components(24)
 history_components = model.history_components()
+history_frame = model.history_components_frame()
 ```
 
 Prophet-shaped holiday and changepoint inputs are accepted as configuration
 ergonomics over the same Rust-native model. The default automatic changepoint
-count is 25, matching Prophet's public default. Use `n_changepoints` for
-automatic changepoint placement, pass explicit dates through
-`changepoints=[...]` or `changepoint_timestamps=[...]`, and pass a Prophet-style
-`holidays` table with `holiday`, `ds`, optional `lower_window`, `upper_window`,
-and `prior_scale` columns. Holidays are normalized into native event windows,
-and prior scales are translated into per-event L2 penalties before fitting.
-Prophet-style
+count is 25, matching Prophet's public default. CartoBoost's default
+`changepoint_range` is 1.0 so lane-level nowcasts can place trend breaks across
+the full training window when recent demand is moving; set
+`changepoint_range=0.8` when you need Prophet's stricter default placement.
+Use `n_changepoints` for automatic changepoint placement, pass explicit dates
+through `changepoints=[...]` or `changepoint_timestamps=[...]`, and pass a
+Prophet-style `holidays` table with `holiday`, `ds`, optional `lower_window`,
+`upper_window`, and `prior_scale` columns. Holidays are normalized into native
+event windows, and prior scales are translated into per-event L2 penalties
+before fitting. Prophet-style
 `changepoint_prior_scale`, `seasonality_prior_scale`, `seasonality_mode`, and
 `holidays_mode` aliases map to the native changepoint penalty, seasonality
 penalty, component mode, and event mode fields.
@@ -172,8 +176,11 @@ recent residual carry-forward.
 ## Historical Component Diagnostics
 
 Use `history_components()` after fitting when rolling-origin backtests need to
-explain why a cutoff won or lost. The method returns one row for every training
-observation and is computed in Rust from the fitted coefficients and the
+explain why a cutoff won or lost. Use `history_components_frame()` when the
+same Rust-computed records should be flattened into plottable pandas columns
+such as `components.seasonal_total`, `components.weekly`, or
+`components.events.airport_surge`. The methods return one row for every
+training observation and are computed from the fitted coefficients and the
 original covariates. Each row includes:
 
 | Field | Meaning |
@@ -186,11 +193,24 @@ original covariates. Each row includes:
 | `fitted_movement` | Change in fitted total value versus the previous training row for that series. |
 | `components` | Named component contributions, including `seasonal_total`, `yearly`, `weekly`, `daily`, custom seasonalities, event totals, and regressor totals. |
 
+`history_components_frame()` keeps the top-level fields and expands nested
+components with dotted column names:
+
+| Column | Diagnostic use |
+| --- | --- |
+| `trend` | Plot the fitted level/trend path against `actual` to see whether the model is tracking the lane's current demand level. |
+| `trend_movement` | Compare week-over-week trend movement with the last observed week-over-week target movement. Near-zero movement during a rising lane usually means the trend is too stiff. |
+| `components.seasonal_total` | Check whether seasonality is doing most of the work or offsetting trend in the wrong direction. |
+| `components.yearly`, `components.weekly`, `components.daily` | Inspect built-in Fourier seasonal effects separately when the aggregate seasonal total looks plausible but one cadence is wrong. |
+| `components.events.*` | Verify that holiday or event windows explain known calendar shocks instead of forcing the trend to absorb them. |
+| `components.regressors.*` | Verify known future or historical regressor contribution and sign. |
+| `residual` | Identify whether the model is already biased immediately before the holdout. |
+
 For a weekly lane backtest with 12 cutoffs, run the model once per cutoff,
 holding out one additional week each time, then persist both the holdout
-predictions and `history_components()` from that cutoff fit. When Prophet beats
-CartoBoost with a negative bias, inspect the last several historical component
-rows before each cutoff:
+predictions and `history_components_frame()` from that cutoff fit. When Prophet
+beats CartoBoost with a negative bias, inspect the last several historical
+component rows before each cutoff:
 
 ```python
 diagnostics_by_cutoff = {}
@@ -199,13 +219,41 @@ for cutoff, train in weekly_cutoff_training_frames:
     model = PiecewiseLinearSeasonalForecaster(
         n_changepoints=25,
         weekly_fourier_order=3,
-        changepoint_range=0.8,
+        changepoint_range=1.0,
     ).fit(train)
     diagnostics_by_cutoff[str(cutoff)] = {
-        "history_components": model.history_components()["records"],
+        "history_components": model.history_components_frame(),
         "forecast_components": model.components(1)["records"],
         "forecast": model.predict(1).to_pandas(),
     }
+```
+
+To recreate a trend/seasonality comparison table, concatenate the stored
+history frames with the cutoff label:
+
+```python
+import pandas as pd
+
+history = pd.concat(
+    frame.assign(cutoff=cutoff)
+    for cutoff, frame in diagnostics_by_cutoff.items()
+)
+
+trend_columns = [
+    "cutoff",
+    "series_id",
+    "timestamp",
+    "actual",
+    "fitted",
+    "residual",
+    "trend",
+    "trend_movement",
+    "components.seasonal_total",
+]
+
+trend_table = history[trend_columns].sort_values(
+    ["cutoff", "series_id", "timestamp"]
+)
 ```
 
 If `trend_movement` is near zero while the last observed weeks are rising, the
@@ -216,3 +264,10 @@ under-predicting the lane before it ever reaches the holdout; consider fewer or
 better placed changepoints, explicit event/regressor inputs, or an opt-in
 residual shock rather than treating the holdout error as a pure forecast-horizon
 problem.
+
+CartoBoost defaults to `n_changepoints=25` and `changepoint_range=1.0`. This
+keeps the automatic changepoint count aligned with Prophet's public default but
+allows late trend breaks across the full training window, which matters for
+one-week-ahead lane nowcasts where the most recent movement carries the holdout.
+Use `changepoint_range=0.8` only when you intentionally want Prophet's stricter
+placement window for an apples-to-apples tuning probe.

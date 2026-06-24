@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from .._native_wrappers import NativeForecastWrapper, _native_class
+from ..frequency import require_pandas
 from .naive import _prediction_interval_levels
 
 EventSpec = Mapping[str, Any] | tuple[str, str] | tuple[str, str, int | None, int | None]
@@ -33,7 +34,7 @@ class PiecewiseLinearSeasonalForecaster(NativeForecastWrapper):
         holidays_mode: str | None = None,
         changepoints: int | Sequence[str] | None = 25,
         n_changepoints: int | None = None,
-        changepoint_range: float = 0.8,
+        changepoint_range: float = 1.0,
         changepoint_timestamps: Sequence[str] = (),
         yearly_fourier_order: int = 0,
         weekly_fourier_order: int = 3,
@@ -370,6 +371,19 @@ class PiecewiseLinearSeasonalForecaster(NativeForecastWrapper):
         """Return fitted historical trend, movement, and component diagnostics."""
         self._check_is_fitted()
         return dict(json.loads(self._native_model.history_components_json()))
+
+    def history_components_frame(self) -> Any:
+        """Return fitted historical component diagnostics as a pandas DataFrame."""
+        pd = require_pandas()
+        payload = self.history_components()
+        rows: list[dict[str, Any]] = []
+        for record in payload.get("records", []):
+            row = dict(record)
+            components = row.pop("components", {})
+            if isinstance(components, Mapping):
+                _flatten_component_columns(row, "components", components)
+            rows.append(row)
+        return pd.DataFrame(rows)
 
     def history_components_json(self) -> str:
         """Return fitted historical component diagnostics as a JSON string."""
@@ -836,6 +850,19 @@ def _trend_adjustment_values_by_series(
 
 def _float_mapping(values: Mapping[str, float] | None) -> dict[str, float]:
     return {str(name): float(value) for name, value in (values or {}).items()}
+
+
+def _flatten_component_columns(
+    row: dict[str, Any],
+    prefix: str,
+    values: Mapping[str, Any],
+) -> None:
+    for key, value in values.items():
+        column = f"{prefix}.{key}"
+        if isinstance(value, Mapping):
+            _flatten_component_columns(row, column, value)
+        else:
+            row[column] = value
 
 
 __all__ = ["PiecewiseLinearSeasonalForecaster"]
