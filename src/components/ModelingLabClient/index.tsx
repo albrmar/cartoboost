@@ -26,6 +26,10 @@ type ForecastComponentRecord = {
   horizon: number;
   prediction: number;
   trend: number;
+  adjusted_trend?: number;
+  trend_adjustment?: number;
+  trend_adjustment_multiplier?: number;
+  residual_shock?: number;
   linear_predictor: number;
   component_scale?: string;
   components: Record<string, number | Record<string, number>>;
@@ -39,6 +43,9 @@ type ForecastHistoryComponentRecord = {
   fitted: number;
   residual: number;
   trend: number;
+  adjusted_trend?: number;
+  trend_adjustment?: number;
+  trend_adjustment_multiplier?: number;
   trend_movement?: number | null;
   fitted_movement?: number | null;
   components: Record<string, number | Record<string, number>>;
@@ -4275,19 +4282,19 @@ function summarizeComponentRecord(record: ForecastComponentRecord) {
     .slice(0, 8);
 }
 
-function numberComponent(value: number | Record<string, number> | undefined) {
+function numberComponent(value: number | Record<string, number> | null | undefined) {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0;
 }
 
 function componentPointValue(record: ForecastComponentRecord | ForecastHistoryComponentRecord, name: string) {
-  return numberComponent(record.components[name]);
+  return numberComponent(flattenNumericComponents(record.components).get(name));
 }
 
 function forecastComponentChartSeries(records: ForecastComponentRecord[]): ChartSeries[] {
   if (records.length === 0) {
     return [];
   }
-  return [
+  const baseSeries: ChartSeries[] = [
     {
       label: 'Prediction',
       points: records.map((record) => ({index: record.horizon, value: record.prediction})),
@@ -4296,19 +4303,14 @@ function forecastComponentChartSeries(records: ForecastComponentRecord[]): Chart
       label: 'Trend',
       points: records.map((record) => ({index: record.horizon, value: record.trend})),
     },
-    {
-      label: 'Seasonality',
-      points: records.map((record) => ({index: record.horizon, value: componentPointValue(record, 'seasonal_total')})),
-    },
-    {
-      label: 'Events',
-      points: records.map((record) => ({index: record.horizon, value: componentPointValue(record, 'event_total')})),
-    },
-    {
-      label: 'Regressors',
-      points: records.map((record) => ({index: record.horizon, value: componentPointValue(record, 'regressor_total')})),
-    },
-  ].filter((series) => series.points.some((point) => Math.abs(numberComponent(point.value as number)) > 1.0e-9 || series.label === 'Prediction' || series.label === 'Trend'));
+    optionalRecordSeries('Adjusted trend', records, (record) => record.adjusted_trend, (record) => record.horizon),
+    optionalRecordSeries('Trend adjustment', records, (record) => record.trend_adjustment, (record) => record.horizon),
+    optionalRecordSeries('Residual shock', records, (record) => record.residual_shock, (record) => record.horizon),
+  ].filter((series): series is ChartSeries => series !== null);
+  return [
+    ...baseSeries,
+    ...componentChartSeries(records, (record) => record.horizon),
+  ].filter((series) => hasVisibleSeriesSignal(series) || series.label === 'Prediction' || series.label === 'Trend');
 }
 
 function historyTrendChartSeries(records: ForecastHistoryComponentRecord[]): ChartSeries[] {
@@ -4336,18 +4338,7 @@ function historySeasonalityChartSeries(records: ForecastHistoryComponentRecord[]
     return [];
   }
   return [
-    {
-      label: 'Seasonality',
-      points: records.map((record) => ({index: record.index, value: componentPointValue(record, 'seasonal_total')})),
-    },
-    {
-      label: 'Weekly',
-      points: records.map((record) => ({index: record.index, value: componentPointValue(record, 'weekly')})),
-    },
-    {
-      label: 'Yearly',
-      points: records.map((record) => ({index: record.index, value: componentPointValue(record, 'yearly')})),
-    },
+    ...componentChartSeries(records, (record) => record.index),
     {
       label: 'Residual',
       points: records.map((record) => ({index: record.index, value: record.residual})),
@@ -4356,7 +4347,95 @@ function historySeasonalityChartSeries(records: ForecastHistoryComponentRecord[]
       label: 'Trend movement',
       points: records.map((record) => ({index: record.index, value: record.trend_movement})),
     },
-  ].filter((series) => series.points.some((point) => Math.abs(numberComponent(point.value as number)) > 1.0e-9));
+    {
+      label: 'Fitted movement',
+      points: records.map((record) => ({index: record.index, value: record.fitted_movement})),
+    },
+  ].filter(hasVisibleSeriesSignal);
+}
+
+function optionalRecordSeries<T>(
+  label: string,
+  records: T[],
+  valueFor: (record: T) => number | null | undefined,
+  indexFor: (record: T) => number,
+): ChartSeries | null {
+  const points = records.map((record) => ({index: indexFor(record), value: valueFor(record)}));
+  return points.some((point) => point.value !== undefined && point.value !== null) ? {label, points} : null;
+}
+
+function componentChartSeries<T extends {components: Record<string, number | Record<string, number>>}>(
+  records: T[],
+  indexFor: (record: T) => number,
+): ChartSeries[] {
+  const keys = componentKeys(records);
+  return keys.map((key) => ({
+    label: componentSeriesLabel(key),
+    points: records.map((record) => ({
+      index: indexFor(record),
+      value: flattenNumericComponents(record.components).get(key),
+    })),
+  }));
+}
+
+function componentKeys<T extends {components: Record<string, number | Record<string, number>>}>(
+  records: T[],
+) {
+  const ignored = new Set(['trend_linear', 'changepoint_delta']);
+  const keys = new Set<string>();
+  for (const record of records) {
+    for (const key of flattenNumericComponents(record.components).keys()) {
+      if (!ignored.has(key)) {
+        keys.add(key);
+      }
+    }
+  }
+  return [...keys].sort(componentKeySort);
+}
+
+function flattenNumericComponents(
+  components: Record<string, number | Record<string, number>>,
+  prefix = '',
+): Map<string, number> {
+  const values = new Map<string, number>();
+  Object.entries(components).forEach(([key, value]) => {
+    const fullKey = prefix ? `${prefix}.${key}` : key;
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      values.set(fullKey, value);
+      return;
+    }
+    if (value && typeof value === 'object') {
+      flattenNumericComponents(value, fullKey).forEach((childValue, childKey) => {
+        values.set(childKey, childValue);
+      });
+    }
+  });
+  return values;
+}
+
+function componentKeySort(left: string, right: string) {
+  const rank = (key: string) => {
+    const order = [
+      'seasonal_total',
+      'weekly',
+      'yearly',
+      'daily',
+      'event_total',
+      'regressor_total',
+      'non_trend_total',
+    ];
+    const index = order.indexOf(key);
+    return index === -1 ? order.length : index;
+  };
+  return rank(left) - rank(right) || left.localeCompare(right);
+}
+
+function componentSeriesLabel(key: string) {
+  return key.split('.').map(componentLabel).join(': ');
+}
+
+function hasVisibleSeriesSignal(series: ChartSeries) {
+  return series.points.some((point) => Math.abs(numberComponent(point.value as number | null | undefined)) > 1.0e-9);
 }
 
 function componentLabel(name: string) {

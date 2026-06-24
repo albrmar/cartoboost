@@ -271,3 +271,10 @@ allows late trend breaks across the full training window, which matters for
 one-week-ahead lane nowcasts where the most recent movement carries the holdout.
 Use `changepoint_range=0.8` only when you intentionally want Prophet's stricter
 placement window for an apples-to-apples tuning probe.
+
+The browser Modeling Lab requests the same WASM `components` and
+`historyComponents` payloads for `piecewise_linear_seasonal` fits. Its
+Prophet-style debugger flattens every numeric component key emitted by Rust, so
+built-in seasonalities, custom seasonalities, event windows, regressors,
+aggregate non-trend totals, fitted movement, trend movement, and residuals are
+available without a separate Python plotting step.
