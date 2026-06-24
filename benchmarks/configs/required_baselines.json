@@ -1,0 +1,6 @@
+{
+  "tabular": ["cartoboost", "lightgbm", "xgboost", "hist_gradient_boosting", "random_forest", "extra_trees", "ridge", "mean", "deep_tabular_baseline"],
+  "spatial": ["cartoboost", "cartoboost_neural", "cartoboost_graph", "lightgbm", "xgboost", "hist_gradient_boosting", "random_forest", "extra_trees", "ridge", "mean"],
+  "graph": ["cartoboost", "cartoboost_graph", "node2vec_baseline", "graphsage_baseline", "tabularized_graph_baseline", "mean"],
+  "forecasting": ["cartoboost_lag", "statistical_forecaster", "global_forecaster"]
+}

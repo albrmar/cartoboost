@@ -1,0 +1,15 @@
+{
+  "metrics": [
+    {"id": "mase", "direction": "lower"},
+    {"id": "rmse", "direction": "lower"},
+    {"id": "mae", "direction": "lower"},
+    {"id": "wape", "direction": "lower"},
+    {"id": "smape", "direction": "lower"},
+    {"id": "crps", "direction": "lower"},
+    {"id": "interval_score_80", "direction": "lower"},
+    {"id": "coverage_80", "direction": "closer_to_nominal"},
+    {"id": "coverage_95", "direction": "closer_to_nominal"},
+    {"id": "horizon_rmse", "direction": "lower"}
+  ]
+}
+

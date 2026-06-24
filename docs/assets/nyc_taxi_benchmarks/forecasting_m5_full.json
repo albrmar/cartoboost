@@ -1,0 +1,149 @@
+{
+  "benchmark": "geotemporal_lane_demand_forecasting_libraries",
+  "cartoboost_version": "0.1.40",
+  "comparison_libraries": [
+    "functime",
+    "statsforecast",
+    "prophet",
+    "external_trees"
+  ],
+  "created_at": "2026-06-19T16:23:27.211170+00:00",
+  "dataset": {
+    "available_days": 1941,
+    "available_series": 30490,
+    "calendar_file": "data/forecasting_benchmarks/m5/datasets/calendar.csv",
+    "days": 90,
+    "domain": "M5 Forecasting Accuracy Walmart item-store unit sales",
+    "history_days": 90,
+    "horizon": 28,
+    "mirror_url": "https://github.com/Nixtla/m5-forecasts/raw/main/datasets/m5.zip",
+    "rows": 2744100,
+    "sales_file": "data/forecasting_benchmarks/m5/datasets/sales_train_evaluation.csv",
+    "season_length": 7,
+    "series": 30490,
+    "series_limit": 0,
+    "source": "m5_kaggle_local_files",
+    "source_url": "https://www.kaggle.com/competitions/m5-forecasting-accuracy/data",
+    "split_type": "last_28_days_from_training_or_evaluation_file",
+    "static_covariates": [
+      "pickup_zone",
+      "dropoff_zone",
+      "distance_miles",
+      "airport_lane",
+      "pickup_borough_code"
+    ]
+  },
+  "fixture_source": "m5",
+  "forecasting_library_models": {},
+  "metrics": {
+    "cartoboost_lag": {
+      "bias": 0.29031685652577616,
+      "mae": 1.3329974657214425,
+      "mase": 1.1058420347991056,
+      "rmse": 2.6348791799755635,
+      "smape": 1.4221210488380205,
+      "wape": 0.9238836306595337
+    }
+  },
+  "model_libraries": {
+    "cartoboost_lag": "cartoboost",
+    "functime_lightgbm": "functime",
+    "functime_ridge": "functime",
+    "functime_snaive": "functime",
+    "lightgbm_lag": "external_trees",
+    "prophet_additive": "prophet",
+    "statsforecast_autoarima": "statsforecast",
+    "statsforecast_autoces": "statsforecast",
+    "statsforecast_autoets": "statsforecast",
+    "statsforecast_autotbats": "statsforecast",
+    "statsforecast_autotheta": "statsforecast",
+    "statsforecast_dynamic_optimized_theta": "statsforecast",
+    "statsforecast_seasonal_naive": "statsforecast",
+    "xgboost_lag": "external_trees"
+  },
+  "model_roster": "cartoboost",
+  "model_settings": {
+    "cartoboost_lag": {
+      "auto_selector_policy": "auto uses the lag spine unless shared validation clears the source-specific gain and consistency guards; non-M inner validation skips raw auto and non-M outer scoring materializes raw auto only when selected; rolling-origin suites cache identical inner validation cutoffs by source, cutoff, and candidate roster",
+      "learning_rate": 0.06,
+      "max_depth": 3,
+      "min_samples_leaf": 20,
+      "n_estimators": 1,
+      "native_feature_policy": "season-aware lags, rolling means, lag deltas, and rolling trends capped to the shortest training series",
+      "native_target_mode_policy": "delta_from_last when season_length == 12, horizon == 13, or horizon >= 24; level otherwise",
+      "native_tree_regularization_policy": "use at least max_depth=5 and at most min_samples_leaf=6 when horizon >= 24 or season_length == 4; otherwise use configured values",
+      "splitters": [
+        "axis_histogram:128",
+        "periodic:7"
+      ]
+    }
+  },
+  "models": [
+    "cartoboost_lag"
+  ],
+  "plots": [
+    "docs/assets/nyc_taxi_benchmarks/forecasting_m5_plots/m5_tool_metric_comparison.png",
+    "docs/assets/nyc_taxi_benchmarks/forecasting_m5_plots/m5_horizon_rmse_by_tool.png",
+    "docs/assets/nyc_taxi_benchmarks/forecasting_m5_plots/m5_forecast_lines.png",
+    "docs/assets/nyc_taxi_benchmarks/forecasting_m5_plots/m5_actual_vs_predicted.png"
+  ],
+  "quality": {
+    "best_rmse": 2.6348791799755635,
+    "cartoboost_mae": 1.3329974657214425,
+    "cartoboost_rmse": 2.6348791799755635,
+    "cartoboost_wape": 0.9238836306595337,
+    "comparison_libraries": [],
+    "forecasting_library_models": {},
+    "mae_ranking": [
+      "cartoboost_lag"
+    ],
+    "model_libraries": {
+      "cartoboost_lag": "cartoboost",
+      "functime_lightgbm": "functime",
+      "functime_ridge": "functime",
+      "functime_snaive": "functime",
+      "lightgbm_lag": "external_trees",
+      "prophet_additive": "prophet",
+      "statsforecast_autoarima": "statsforecast",
+      "statsforecast_autoces": "statsforecast",
+      "statsforecast_autoets": "statsforecast",
+      "statsforecast_autotbats": "statsforecast",
+      "statsforecast_autotheta": "statsforecast",
+      "statsforecast_dynamic_optimized_theta": "statsforecast",
+      "statsforecast_seasonal_naive": "statsforecast",
+      "xgboost_lag": "external_trees"
+    },
+    "rmse_ranking": [
+      "cartoboost_lag"
+    ],
+    "tied_best_models": [
+      "cartoboost_lag"
+    ],
+    "wape_ranking": [
+      "cartoboost_lag"
+    ],
+    "winner": "cartoboost_lag"
+  },
+  "timing": {
+    "candidate_selection": {
+      "calibration_seconds": 0.0,
+      "disabled": true,
+      "inner_origin_count": 0.0,
+      "selected_candidates": {
+        "cartoboost_lag": "cartoboost_lag"
+      }
+    },
+    "load_seconds": 0.5415615829988383,
+    "models": {
+      "cartoboost_lag": {
+        "feature_count": 22.0,
+        "feature_seconds": 0.03638716699788347,
+        "fit_predict_seconds": 21.18029800002114,
+        "fit_seconds": 18.126723917011986,
+        "predict_seconds": 3.0535740830091527,
+        "total_seconds": 21.216685167019023
+      }
+    },
+    "total_seconds": 21.94141045899596
+  }
+}

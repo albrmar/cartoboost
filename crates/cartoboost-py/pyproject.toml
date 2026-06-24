@@ -1,0 +1,29 @@
+[build-system]
+requires = ["maturin>=1.7,<2"]
+build-backend = "maturin"
+
+[project]
+name = "cartoboost"
+version = "0.2.5"
+description = "Rust-backed spatial boosting for tabular modeling and forecasting."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Ryan Culligan" }]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Rust",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+[tool.maturin]
+manifest-path = "Cargo.toml"
+module-name = "cartoboost._native"
+python-source = "../../python"
+features = ["pyo3/extension-module"]
+bindings = "pyo3"
+strip = true

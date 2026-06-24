@@ -1,0 +1,46 @@
+{
+  "type": "FeatureCollection",
+  "name": "delivery_zones",
+  "features": [
+    {
+      "type": "Feature",
+      "id": "zone-a",
+      "properties": {
+        "priority": 1.25,
+        "service_level": "same_day"
+      },
+      "cartometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [0.0, 0.0],
+            [25.0, 0.0],
+            [25.0, 20.0],
+            [0.0, 20.0],
+            [0.0, 0.0]
+          ]
+        ]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "zone-b",
+      "properties": {
+        "priority": 0.85,
+        "service_level": "standard"
+      },
+      "cartometry": {
+        "type": "Polygon",
+        "coordinates": [
+          [
+            [0.0, 20.0],
+            [25.0, 20.0],
+            [25.0, 40.0],
+            [0.0, 40.0],
+            [0.0, 20.0]
+          ]
+        ]
+      }
+    }
+  ]
+}

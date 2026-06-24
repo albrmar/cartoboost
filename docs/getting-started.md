@@ -1,0 +1,250 @@
+# Getting Started
+
+import AgentLlmsCallout from '@site/src/components/AgentLlmsCallout';
+
+This guide starts with the modeling decisions that matter for CartoBoost:
+target, place/time structure, validation, and baselines. The code snippets show
+the mechanics after those choices are clear.
+
+<AgentLlmsCallout />
+
+## 1. Frame The Scientific Question
+
+CartoBoost is meant for regression and forecasting tasks where temporal or
+spatial structure is part of the hypothesis. In the NYC taxi domain, typical
+questions include:
+
+- Can pickup hour, weekday, pickup zone, dropoff zone, and trip distance explain
+  transformed trip duration under a leakage-aware split?
+- Does route direction, such as `PULocationID -> DOLocationID`, change fare or
+  duration estimates compared with treating the two zones as unordered IDs?
+- Can daily pickup-zone or pickup/dropoff-lane demand be forecast from lagged
+  demand, calendar features, airport-lane indicators, and borough context?
+- Do spatial splitters or sparse zone memberships recover signal that an
+  axis-only model misses?
+
+Define the target and evaluation split before selecting model features. For
+temporal-spatial data, random splits can overstate quality when near-duplicate
+times, zones, or route patterns appear in both train and validation data.
+
+## 2. Choose Features For Place And Time
+
+A first taxi regression table might include:
+
+- dense numeric columns: trip distance, pickup longitude/latitude, dropoff
+  longitude/latitude, pickup hour, weekday, passenger count;
+- periodic columns: hour-of-day with period `24`, day-of-week with period `7`;
+- sparse-set columns: taxi zones, route cells, or memberships derived from
+  `PULocationID` and `DOLocationID`;
+- graph context: directed pickup-to-dropoff flows when source and target roles
+  should remain distinct.
+
+Match splitters to the scientific structure you want to test:
+
+- use `axis` as the dense baseline splitter;
+- add `periodic:24` for hour-of-day effects;
+- add `diagonal_2d` or `gaussian_2d` when coordinates or projected zone
+  centroids are central to the question;
+- add `sparse_set` when rows carry list-valued zone or route memberships.
+
+## 3. Install
+
+```sh
+uv add cartoboost
+```
+
+Verify the install:
+
+```sh
+python -c "import cartoboost; print(cartoboost.__version__)"
+cartoboost --help
+```
+
+Optional packages are installed only when needed. For example, use
+`cartoboost[polars]` for Polars inputs, `cartoboost[optuna]` for Optuna tuning,
+or `cartoboost[onnx]` for the supported ONNX export subset.
+
+## 4. Fit A Taxi-Style Regression Model
+
+The snippet below assumes you have already built `X_train`, `X_validation`,
+`y_train`, and `y_validation` from a leakage-aware split, such as holding out
+the latest pickup dates.
+
+```python
+from cartoboost import CartoBoostRegressor
+
+model = CartoBoostRegressor(
+    n_estimators=200,
+    learning_rate=0.04,
+    max_depth=5,
+    min_samples_leaf=30,
+    splitters=["axis", "periodic:24", "diagonal_2d", "gaussian_2d"],
+)
+
+model.fit(X_train, y_train)
+predictions = model.predict(X_validation)
+```
+
+Start with a smaller splitter set if the study only needs dense numeric
+features. Add spatial, periodic, sparse, neural, or graph structure only when it
+matches the modeling question and passes the same validation split.
+
+## 5. Use Sparse Taxi-Zone Memberships
+
+Use sparse-set features when a trip belongs to multiple route or zone-derived
+sets and a wide one-hot matrix would be awkward or unstable.
+
+```python
+schema = {
+    "dense": [
+        {"name": "trip_distance", "kind": "numeric"},
+        {"name": "pickup_hour", "kind": "periodic", "period": 24},
+        {"name": "pickup_x", "kind": "numeric"},
+        {"name": "pickup_y", "kind": "numeric"},
+    ],
+    "sparse_sets": [
+        {"name": "taxi_zones", "kind": "sparse_set"},
+    ],
+}
+
+model = CartoBoostRegressor(
+    n_estimators=200,
+    learning_rate=0.04,
+    max_depth=5,
+    min_samples_leaf=30,
+    splitters=["axis", "periodic:24", "sparse_set"],
+)
+
+model.fit(
+    X_train_dense,
+    y_train,
+    sparse_sets={"taxi_zones": taxi_zones_train},
+    feature_schema=schema,
+)
+```
+
+See [Spatial Modeling](spatial_modeling.md) and
+[Sparse Features](sparse_features.md) for zone membership examples and blocked
+evaluation patterns.
+
+## 6. Forecast Taxi Demand
+
+Use `ForecastFrame` when the target is future demand, fare, duration, or another
+time-indexed quantity. Panel data should identify the series, such as
+pickup/dropoff lane or pickup zone.
+
+```python
+import pandas as pd
+
+from cartoboost.forecasting import ForecastFrame, ThetaForecaster
+
+daily_lanes = pd.DataFrame(
+    {
+        "lane_id": ["JFK->LGA"] * 10 + ["LGA->EWR"] * 10,
+        "date": list(pd.date_range("2026-01-01", periods=10, freq="D")) * 2,
+        "pickup_trips": [
+            20, 21, 24, 23, 25, 28, 29, 27, 30, 31,
+            35, 36, 38, 37, 40, 42, 43, 41, 45, 46,
+        ],
+    }
+)
+
+frame = ForecastFrame.from_pandas(
+    daily_lanes,
+    timestamp_col="date",
+    target_col="pickup_trips",
+    series_id_col="lane_id",
+    freq="D",
+)
+
+model = ThetaForecaster(season_length=7, prediction_interval_levels=[0.8, 0.95])
+model.fit(frame)
+forecast = model.predict(horizon=3).to_pandas()
+```
+
+Forecast tables are deterministic: `series_id`, `timestamp`, `horizon`,
+`model`, `mean`, and interval columns such as `lower_80` and `upper_80`.
+Use [Forecasting](forecasting.md) for rolling-origin backtesting, CartoBoost lag
+features, artifact persistence, CLI workflows, and model selection.
+
+## 7. Validate Against Real Baselines
+
+For temporal-spatial problems, hold out the latest rows before trusting model
+quality:
+
+```python
+from cartoboost import out_of_time_split
+
+train_idx, validation_idx = out_of_time_split(
+    pickup_times,
+    validation_fraction=0.2,
+)
+
+model.fit(X_all[train_idx], y_all[train_idx])
+predictions = model.predict(X_all[validation_idx])
+```
+
+Report the split design, target transform, feature set, RMSE, MAE, R2, training
+time, prediction time, and model settings. Compare against serious baselines on
+the same train/validation rows, such as LightGBM or XGBoost for tabular
+regression and appropriate local or external forecasting models for demand
+forecasting.
+
+For benchmark claims, document out-of-time, spatial-blocked, grouped, and
+leakage-aware validation details in the benchmark writeup.
+
+## 8. Add Neural Or Graph Structure When Justified
+
+Use learned embeddings when high-cardinality IDs carry stable signal that is not
+captured by dense features alone.
+
+```python
+from cartoboost import NeuralEmbeddingRegressor
+
+neural_model = NeuralEmbeddingRegressor(
+    dim=16,
+    base_model_kwargs={"n_estimators": 80, "splitters": ["axis"]},
+    final_model_kwargs={
+        "n_estimators": 120,
+        "splitters": ["axis", "periodic:24"],
+    },
+)
+
+neural_model.fit(X_train, y_train, ids=pickup_zone_ids_train)
+predictions = neural_model.predict(X_validation, ids=pickup_zone_ids_validation)
+```
+
+Use graph features or standalone graph models when the observed units are
+connected entities, such as directed pickup/dropoff lanes, borough-zone
+hierarchies, or repeated OD-pair flow patterns. See
+[Graph Models And Features](graph-features.md) and
+[Neural Embedding Models And Features](neural-features.md).
+
+## 9. Save Reproducible Artifacts
+
+```python
+model.save("taxi-duration.cartoboost.json")
+loaded = CartoBoostRegressor.load("taxi-duration.cartoboost.json")
+
+model.save_weights("taxi-duration.weights.json")
+weights_loaded = CartoBoostRegressor.load_weights("taxi-duration.weights.json")
+```
+
+Use `save` for CartoBoost JSON model artifacts and `save_weights` for portable
+prediction artifacts. ONNX export is available only for dense axis-tree
+constant-leaf models when the optional `onnx` dependency is installed.
+
+## 10. Source Checkout Checks
+
+For a source checkout, run the full local validation suite with:
+
+```sh
+just validate
+```
+
+For a faster Python-focused loop:
+
+```sh
+uv run --group dev pre-commit run --all-files
+uv run --group dev pytest
+```

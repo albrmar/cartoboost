@@ -1,0 +1,13 @@
+{
+  "search_spaces": [
+    {"model_family": "cartoboost", "budget": "standard", "parameters": ["n_estimators", "learning_rate", "max_depth", "min_samples_leaf", "splitters"]},
+    {"model_family": "lightgbm", "budget": "standard", "parameters": ["n_estimators", "learning_rate", "max_depth", "min_child_samples", "subsample"]},
+    {"model_family": "xgboost", "budget": "standard", "parameters": ["n_estimators", "learning_rate", "max_depth", "tree_method", "max_bin", "subsample", "colsample_bytree"]},
+    {"model_family": "hist_gradient_boosting", "budget": "standard", "parameters": ["max_iter", "learning_rate", "max_leaf_nodes"]},
+    {"model_family": "random_forest", "budget": "standard", "parameters": ["n_estimators", "max_depth", "min_samples_leaf"]},
+    {"model_family": "extra_trees", "budget": "standard", "parameters": ["n_estimators", "max_depth", "min_samples_leaf"]},
+    {"model_family": "ridge", "budget": "fixed", "parameters": ["alpha"]},
+    {"model_family": "mean", "budget": "fixed", "parameters": []},
+    {"model_family": "deep_tabular_baseline", "budget": "standard", "parameters": ["layers", "width", "dropout", "learning_rate", "weight_decay"]}
+  ]
+}

@@ -1,0 +1,5 @@
+{
+  "splits": [
+    {"id": "random_and_pickup_zone_holdout_3seed", "kind": "repeated_random_plus_pickup_zone_holdout", "outer_folds": 2, "seeds": "benchmark_seeds", "hpo_scope": "fixed_settings_no_hpo"}
+  ]
+}

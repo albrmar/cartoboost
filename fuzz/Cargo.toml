@@ -1,0 +1,43 @@
+[package]
+name = "cartoboost-fuzz"
+version = "0.0.0"
+edition = "2021"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[workspace]
+
+[dependencies]
+cartoboost-core = { path = "../crates/cartoboost-core" }
+libfuzzer-sys = "0.4"
+serde_json = "1"
+
+[[bin]]
+name = "deserialize_model"
+path = "fuzz_targets/deserialize_model.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "predict_one"
+path = "fuzz_targets/predict_one.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "train_small_dataset"
+path = "fuzz_targets/train_small_dataset.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "predict_dataset_mixed"
+path = "fuzz_targets/predict_dataset_row_mixed_dataset.rs"
+test = false
+doc = false
+bench = false

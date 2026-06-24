@@ -1,0 +1,3671 @@
+{
+  "benchmark": "geotemporal_lane_demand_forecasting_libraries",
+  "benchmark_integrity": {
+    "candidate_selection": true,
+    "model_roster": "cartoboost",
+    "no_hyperopt": true,
+    "seed": 42,
+    "threading": {
+      "omp_num_threads_env": null,
+      "python_hash_seed": null,
+      "rayon_num_threads_env": null
+    }
+  },
+  "cartoboost_version": "0.1.66",
+  "comparison_libraries": [
+    "functime",
+    "statsforecast",
+    "prophet",
+    "external_trees"
+  ],
+  "created_at": "2026-06-20T19:03:01.456015+00:00",
+  "dataset": {
+    "assets_file": "/Users/ryanculligan/Documents/GitHub/cartoboost/data/forecasting_benchmarks/m6/assets_m6.csv",
+    "available_series": 100,
+    "dataset_hash": "1b853601915c450255c3381502260bb7a47907888a9b54416600d549a6c9a7d9",
+    "days": 383,
+    "domain": "M6 financial competition assets daily return point-forecast proxy",
+    "horizon": 28,
+    "official_metric_note": "M6 official scoring used probability rank buckets, RPS, and investment return. This benchmark scores daily point return forecasts with the shared CartoBoost library RMSE/MAE/WAPE harness.",
+    "rows": 36687,
+    "season_length": 7,
+    "series": 96,
+    "series_limit": 96,
+    "source": "m6_methods_assets_csv",
+    "source_url": "https://raw.githubusercontent.com/Mcompetitions/M6-methods/main/assets_m6.csv",
+    "split_type": "last_28_calendar_days_from_daily_return_panel",
+    "static_covariates": [
+      "pickup_zone",
+      "dropoff_zone",
+      "distance_miles",
+      "airport_lane",
+      "pickup_borough_code"
+    ]
+  },
+  "dataset_hash": "1b853601915c450255c3381502260bb7a47907888a9b54416600d549a6c9a7d9",
+  "fixture_source": "m6",
+  "forecasting_library_models": {},
+  "git_commit": "3a628c0637b28d632b986cc35c9469b44eeb05e5",
+  "metrics": {
+    "cartoboost_auto_forecast": {
+      "bias": -0.00019374456159549066,
+      "mae": 0.007342135084199813,
+      "mase": 0.5313336189905667,
+      "r2": -0.00020789099929308108,
+      "rmse": 0.01343868627753036,
+      "smape": 2.0,
+      "wape": 1.0
+    },
+    "cartoboost_lag": {
+      "bias": 0.0029354830544510062,
+      "mae": 0.009290283053276786,
+      "mase": 0.6723166571488197,
+      "r2": -0.15484324691697937,
+      "rmse": 0.01444019961781569,
+      "smape": 1.6711871801561695,
+      "wape": 1.2653380722004643
+    }
+  },
+  "model_libraries": {
+    "cartoboost_auto_forecast": "cartoboost",
+    "cartoboost_lag": "cartoboost",
+    "functime_lightgbm": "functime",
+    "functime_ridge": "functime",
+    "functime_snaive": "functime",
+    "lightgbm_lag": "external_trees",
+    "prophet_additive": "prophet",
+    "statsforecast_autoarima": "statsforecast",
+    "statsforecast_autoces": "statsforecast",
+    "statsforecast_autoets": "statsforecast",
+    "statsforecast_autotbats": "statsforecast",
+    "statsforecast_autotheta": "statsforecast",
+    "statsforecast_dynamic_optimized_theta": "statsforecast",
+    "statsforecast_seasonal_naive": "statsforecast",
+    "xgboost_lag": "external_trees"
+  },
+  "model_roster": "cartoboost",
+  "model_settings": {
+    "cartoboost_lag": {
+      "auto_selector_policy": "auto uses the lag spine unless shared validation clears the source-specific gain and consistency guards; non-M inner validation skips raw auto and non-M outer scoring materializes raw auto only when selected; rolling-origin suites cache identical inner validation cutoffs by source, cutoff, and candidate roster",
+      "learning_rate": 0.06,
+      "max_depth": 4,
+      "min_samples_leaf": 8,
+      "n_estimators": 180,
+      "native_covariate_policy": "use route static covariates and covariate-calendar interactions only when enabled by the source-specific benchmark config",
+      "native_feature_policy": "season-aware lags, rolling means, lag deltas, and rolling trends capped to the shortest training series",
+      "native_target_mode_policy": "delta_from_last when season_length == 12, horizon == 13, or horizon >= 24; level otherwise",
+      "native_tree_regularization_policy": "use at least max_depth=5 and at most min_samples_leaf=6 when horizon >= 24 or season_length == 4; otherwise use configured values",
+      "splitters": [
+        "axis_histogram:128",
+        "periodic:7"
+      ]
+    }
+  },
+  "models": [
+    "cartoboost_lag",
+    "cartoboost_auto_forecast"
+  ],
+  "official_metrics": {
+    "m6": {
+      "models": {
+        "cartoboost_auto_forecast": {
+          "asset_count": 95,
+          "assets": [
+            {
+              "actual_return": 0.01263592661705637,
+              "observed_rank_bucket": 2,
+              "predicted_rank_bucket": 0,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.16346153846153846,
+                0.14316239316239315,
+                0.18376068376068375,
+                0.22435897435897434,
+                0.28525641025641024
+              ],
+              "rps": 0.11545424245744758,
+              "series_id": "ABBV"
+            },
+            {
+              "actual_return": -0.010015739143974356,
+              "observed_rank_bucket": 2,
+              "predicted_rank_bucket": 0,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.16346153846153846,
+                0.14316239316239315,
+                0.18376068376068375,
+                0.22435897435897434,
+                0.28525641025641024
+              ],
+              "rps": 0.11545424245744758,
+              "series_id": "ACN"
+            },
+            {
+              "actual_return": 0.013102600977338397,
+              "observed_rank_bucket": 3,
+              "predicted_rank_bucket": 0,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.16346153846153846,
+                0.14316239316239315,
+                0.18376068376068375,
+                0.22435897435897434,
+                0.28525641025641024
+              ],
+              "rps": 0.11064655014975529,
+              "series_id": "AEP"
+            },
+            {
+              "actual_return": 0.028317405730098,
+              "observed_rank_bucket": 3,
+              "predicted_rank_bucket": 0,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.16346153846153846,
+                0.14316239316239315,
+                0.18376068376068375,
+                0.22435897435897434,
+                0.28525641025641024
+              ],
+              "rps": 0.11064655014975529,
+              "series_id": "AIZ"
+            },
+            {
+              "actual_return": 0.06513916213921311,
+              "observed_rank_bucket": 4,
+              "predicted_rank_bucket": 0,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.16346153846153846,
+                0.14316239316239315,
+                0.18376068376068375,
+                0.22435897435897434,
+                0.28525641025641024
+              ],
+              "rps": 0.21801834502155018,
+              "series_id": "ALLE"
+            },
+            {
+              "actual_return": 0.05991442357771526,
+              "observed_rank_bucket": 4,
+              "predicted_rank_bucket": 0,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.16346153846153846,
+                0.14316239316239315,
+                0.18376068376068375,
+                0.22435897435897434,
+                0.28525641025641024
+              ],
+              "rps": 0.21801834502155018,
+              "series_id": "AMAT"
+            },
+            {
+              "actual_return": 0.058024066123019025,
+              "observed_rank_bucket": 4,
+              "predicted_rank_bucket": 0,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.16346153846153846,
+                0.14316239316239315,
+                0.18376068376068375,
+                0.22435897435897434,
+                0.28525641025641024
+              ],
+              "rps": 0.21801834502155018,
+              "series_id": "AMP"
+            },
+            {
+              "actual_return": 0.008553118630537981,
+              "observed_rank_bucket": 2,
+              "predicted_rank_bucket": 0,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.16346153846153846,
+                0.14316239316239315,
+                0.18376068376068375,
+                0.22435897435897434,
+                0.28525641025641024
+              ],
+              "rps": 0.11545424245744758,
+              "series_id": "AMZN"
+            },
+            {
+              "actual_return": 0.05313541862197391,
+              "observed_rank_bucket": 4,
+              "predicted_rank_bucket": 0,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.16346153846153846,
+                0.14316239316239315,
+                0.18376068376068375,
+                0.22435897435897434,
+                0.28525641025641024
+              ],
+              "rps": 0.21801834502155018,
+              "series_id": "AVB"
+            },
+            {
+              "actual_return": -0.039990725052292175,
+              "observed_rank_bucket": 0,
+              "predicted_rank_bucket": 0,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.16346153846153846,
+                0.14316239316239315,
+                0.18376068376068375,
+                0.22435897435897434,
+                0.28525641025641024
+              ],
+              "rps": 0.3804115074147126,
+              "series_id": "AVY"
+            },
+            {
+              "actual_return": 0.16303018139141756,
+              "observed_rank_bucket": 4,
+              "predicted_rank_bucket": 0,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.16346153846153846,
+                0.14316239316239315,
+                0.18376068376068375,
+                0.22435897435897434,
+                0.28525641025641024
+              ],
+              "rps": 0.21801834502155018,
+              "series_id": "AXP"
+            },
+            {
+              "actual_return": -0.03576345878324483,
+              "observed_rank_bucket": 0,
+              "predicted_rank_bucket": 0,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.16346153846153846,
+                0.14316239316239315,
+                0.18376068376068375,
+                0.22435897435897434,
+                0.28525641025641024
+              ],
+              "rps": 0.3804115074147126,
+              "series_id": "BDX"
+            },
+            {
+              "actual_return": -0.008196272091168133,
+              "observed_rank_bucket": 2,
+              "predicted_rank_bucket": 0,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.16346153846153846,
+                0.14316239316239315,
+                0.18376068376068375,
+                0.22435897435897434,
+                0.28525641025641024
+              ],
+              "rps": 0.11545424245744758,
+              "series_id": "BF-B"
+            },
+            {
+              "actual_return": -0.04004465129680146,
+              "observed_rank_bucket": 0,
+              "predicted_rank_bucket": 0,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.16346153846153846,
+                0.14316239316239315,
+                0.18376068376068375,
+                0.22435897435897434,
+                0.28525641025641024
+              ],
+              "rps": 0.3804115074147126,
+              "series_id": "BMY"
+            },
+            {
+              "actual_return": -0.014838408948797066,
+              "observed_rank_bucket": 1,
+              "predicted_rank_bucket": 0,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.16346153846153846,
+                0.14316239316239315,
+                0.18376068376068375,
+                0.22435897435897434,
+                0.28525641025641024
+              ],
+              "rps": 0.21214227664548177,
+              "series_id": "BR"
+            },
+            {
+              "actual_return": 0.06304235462847041,
+              "observed_rank_bucket": 4,
+              "predicted_rank_bucket": 0,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.16346153846153846,
+                0.14316239316239315,
+                0.18376068376068375,
+                0.22435897435897434,
+                0.28525641025641024
+              ],
+              "rps": 0.21801834502155018,
+              "series_id": "CARR"
+            },
+            {
+              "actual_return": 0.07530337407259635,
+              "observed_rank_bucket": 4,
+              "predicted_rank_bucket": 0,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.16346153846153846,
+                0.14316239316239315,
+                0.18376068376068375,
+                0.22435897435897434,
+                0.28525641025641024
+              ],
+              "rps": 0.21801834502155018,
+              "series_id": "CDW"
+            },
+            {
+              "actual_return": -0.014993494211788971,
+              "observed_rank_bucket": 1,
+              "predicted_rank_bucket": 0,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.16346153846153846,
+                0.14316239316239315,
+                0.18376068376068375,
+                0.22435897435897434,
+                0.28525641025641024
+              ],
+              "rps": 0.21214227664548177,
+              "series_id": "CE"
+            },
+            {
+              "actual_return": 0.0022131648120119474,
+              "observed_rank_bucket": 2,
+              "predicted_rank_bucket": 0,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.16346153846153846,
+                0.14316239316239315,
+                0.18376068376068375,
+                0.22435897435897434,
+                0.28525641025641024
+              ],
+              "rps": 0.11545424245744758,
+              "series_id": "CHTR"
+            },
+            {
+              "actual_return": -0.03523030000457694,
+              "observed_rank_bucket": 0,
+              "predicted_rank_bucket": 1,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.12286324786324786,
+                0.20405982905982906,
+                0.18376068376068375,
+                0.22435897435897434,
+                0.2649572649572649
+              ],
+              "rps": 0.3830085401599825,
+              "series_id": "CNC"
+            },
+            {
+              "actual_return": -0.022820899090628344,
+              "observed_rank_bucket": 1,
+              "predicted_rank_bucket": 1,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.12286324786324786,
+                0.20405982905982906,
+                0.18376068376068375,
+                0.22435897435897434,
+                0.2649572649572649
+              ],
+              "rps": 0.19444016409160644,
+              "series_id": "CNP"
+            },
+            {
+              "actual_return": -0.14491778903722663,
+              "observed_rank_bucket": 0,
+              "predicted_rank_bucket": 1,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.12286324786324786,
+                0.20405982905982906,
+                0.18376068376068375,
+                0.22435897435897434,
+                0.2649572649572649
+              ],
+              "rps": 0.3830085401599825,
+              "series_id": "COP"
+            },
+            {
+              "actual_return": 0.02037288589677344,
+              "observed_rank_bucket": 3,
+              "predicted_rank_bucket": 1,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.12286324786324786,
+                0.20405982905982906,
+                0.18376068376068375,
+                0.22435897435897434,
+                0.2649572649572649
+              ],
+              "rps": 0.1132435828950252,
+              "series_id": "CTAS"
+            },
+            {
+              "actual_return": 0.11106568079894763,
+              "observed_rank_bucket": 4,
+              "predicted_rank_bucket": 1,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.12286324786324786,
+                0.20405982905982906,
+                0.18376068376068375,
+                0.22435897435897434,
+                0.2649572649572649
+              ],
+              "rps": 0.23076495041639272,
+              "series_id": "CZR"
+            },
+            {
+              "actual_return": -0.011159475803249386,
+              "observed_rank_bucket": 1,
+              "predicted_rank_bucket": 1,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.12286324786324786,
+                0.20405982905982906,
+                0.18376068376068375,
+                0.22435897435897434,
+                0.2649572649572649
+              ],
+              "rps": 0.19444016409160644,
+              "series_id": "DG"
+            },
+            {
+              "actual_return": 0.028680240632860343,
+              "observed_rank_bucket": 3,
+              "predicted_rank_bucket": 1,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.12286324786324786,
+                0.20405982905982906,
+                0.18376068376068375,
+                0.22435897435897434,
+                0.2649572649572649
+              ],
+              "rps": 0.1132435828950252,
+              "series_id": "DPZ"
+            },
+            {
+              "actual_return": 0.01783265051285643,
+              "observed_rank_bucket": 3,
+              "predicted_rank_bucket": 1,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.12286324786324786,
+                0.20405982905982906,
+                0.18376068376068375,
+                0.22435897435897434,
+                0.2649572649572649
+              ],
+              "rps": 0.1132435828950252,
+              "series_id": "DXC"
+            },
+            {
+              "actual_return": -0.027870495424519248,
+              "observed_rank_bucket": 1,
+              "predicted_rank_bucket": 1,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.12286324786324786,
+                0.20405982905982906,
+                0.18376068376068375,
+                0.22435897435897434,
+                0.2649572649572649
+              ],
+              "rps": 0.19444016409160644,
+              "series_id": "EWA"
+            },
+            {
+              "actual_return": -0.0024510696540600563,
+              "observed_rank_bucket": 2,
+              "predicted_rank_bucket": 1,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.12286324786324786,
+                0.20405982905982906,
+                0.18376068376068375,
+                0.22435897435897434,
+                0.2649572649572649
+              ],
+              "rps": 0.10790170255314488,
+              "series_id": "EWC"
+            },
+            {
+              "actual_return": 0.014220467058294717,
+              "observed_rank_bucket": 3,
+              "predicted_rank_bucket": 1,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.12286324786324786,
+                0.20405982905982906,
+                0.18376068376068375,
+                0.22435897435897434,
+                0.2649572649572649
+              ],
+              "rps": 0.1132435828950252,
+              "series_id": "EWG"
+            },
+            {
+              "actual_return": -0.06211997629750676,
+              "observed_rank_bucket": 0,
+              "predicted_rank_bucket": 1,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.12286324786324786,
+                0.20405982905982906,
+                0.18376068376068375,
+                0.22435897435897434,
+                0.2649572649572649
+              ],
+              "rps": 0.3830085401599825,
+              "series_id": "EWH"
+            },
+            {
+              "actual_return": -0.013957133983016345,
+              "observed_rank_bucket": 1,
+              "predicted_rank_bucket": 1,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.12286324786324786,
+                0.20405982905982906,
+                0.18376068376068375,
+                0.22435897435897434,
+                0.2649572649572649
+              ],
+              "rps": 0.19444016409160644,
+              "series_id": "EWJ"
+            },
+            {
+              "actual_return": 7.1412215048694e-05,
+              "observed_rank_bucket": 2,
+              "predicted_rank_bucket": 1,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.12286324786324786,
+                0.20405982905982906,
+                0.18376068376068375,
+                0.22435897435897434,
+                0.2649572649572649
+              ],
+              "rps": 0.10790170255314488,
+              "series_id": "EWL"
+            },
+            {
+              "actual_return": 0.029146778231621817,
+              "observed_rank_bucket": 3,
+              "predicted_rank_bucket": 1,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.12286324786324786,
+                0.20405982905982906,
+                0.18376068376068375,
+                0.22435897435897434,
+                0.2649572649572649
+              ],
+              "rps": 0.1132435828950252,
+              "series_id": "EWQ"
+            },
+            {
+              "actual_return": 0.005597739391241419,
+              "observed_rank_bucket": 2,
+              "predicted_rank_bucket": 1,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.12286324786324786,
+                0.20405982905982906,
+                0.18376068376068375,
+                0.22435897435897434,
+                0.2649572649572649
+              ],
+              "rps": 0.10790170255314488,
+              "series_id": "EWT"
+            },
+            {
+              "actual_return": 0.001956223798887713,
+              "observed_rank_bucket": 2,
+              "predicted_rank_bucket": 1,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.12286324786324786,
+                0.20405982905982906,
+                0.18376068376068375,
+                0.22435897435897434,
+                0.2649572649572649
+              ],
+              "rps": 0.10790170255314488,
+              "series_id": "EWU"
+            },
+            {
+              "actual_return": -0.0355252458605535,
+              "observed_rank_bucket": 0,
+              "predicted_rank_bucket": 1,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.12286324786324786,
+                0.20405982905982906,
+                0.18376068376068375,
+                0.22435897435897434,
+                0.2649572649572649
+              ],
+              "rps": 0.3830085401599825,
+              "series_id": "EWY"
+            },
+            {
+              "actual_return": -0.014346266801921748,
+              "observed_rank_bucket": 1,
+              "predicted_rank_bucket": 1,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.12286324786324786,
+                0.20405982905982906,
+                0.18376068376068375,
+                0.22435897435897434,
+                0.2649572649572649
+              ],
+              "rps": 0.19444016409160644,
+              "series_id": "EWZ"
+            },
+            {
+              "actual_return": 0.06021914163351816,
+              "observed_rank_bucket": 4,
+              "predicted_rank_bucket": 2,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.12286324786324786,
+                0.22435897435897434,
+                0.28525641025641024,
+                0.22435897435897434,
+                0.14316239316239315
+              ],
+              "rps": 0.3174646385784206,
+              "series_id": "FTV"
+            },
+            {
+              "actual_return": -0.03798453498930576,
+              "observed_rank_bucket": 0,
+              "predicted_rank_bucket": 2,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.12286324786324786,
+                0.22435897435897434,
+                0.28525641025641024,
+                0.22435897435897434,
+                0.14316239316239315
+              ],
+              "rps": 0.33776378387756595,
+              "series_id": "GOOG"
+            },
+            {
+              "actual_return": 0.10884127296621304,
+              "observed_rank_bucket": 4,
+              "predicted_rank_bucket": 2,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.12286324786324786,
+                0.22435897435897434,
+                0.28525641025641024,
+                0.22435897435897434,
+                0.14316239316239315
+              ],
+              "rps": 0.3174646385784206,
+              "series_id": "GPC"
+            },
+            {
+              "actual_return": -0.0552399301681088,
+              "observed_rank_bucket": 0,
+              "predicted_rank_bucket": 2,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.12286324786324786,
+                0.22435897435897434,
+                0.28525641025641024,
+                0.22435897435897434,
+                0.14316239316239315
+              ],
+              "rps": 0.33776378387756595,
+              "series_id": "GSG"
+            },
+            {
+              "actual_return": 0.04558414372300279,
+              "observed_rank_bucket": 4,
+              "predicted_rank_bucket": 2,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.12286324786324786,
+                0.22435897435897434,
+                0.28525641025641024,
+                0.22435897435897434,
+                0.14316239316239315
+              ],
+              "rps": 0.3174646385784206,
+              "series_id": "HIG"
+            },
+            {
+              "actual_return": 0.005776815374296196,
+              "observed_rank_bucket": 2,
+              "predicted_rank_bucket": 2,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.12286324786324786,
+                0.22435897435897434,
+                0.28525641025641024,
+                0.22435897435897434,
+                0.14316239316239315
+              ],
+              "rps": 0.07280651892030097,
+              "series_id": "HIGH.L"
+            },
+            {
+              "actual_return": -0.035088408231497836,
+              "observed_rank_bucket": 1,
+              "predicted_rank_bucket": 2,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.12286324786324786,
+                0.22435897435897434,
+                0.28525641025641024,
+                0.22435897435897434,
+                0.14316239316239315
+              ],
+              "rps": 0.14919540780918988,
+              "series_id": "HST"
+            },
+            {
+              "actual_return": -0.0162096951479056,
+              "observed_rank_bucket": 1,
+              "predicted_rank_bucket": 2,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.12286324786324786,
+                0.22435897435897434,
+                0.28525641025641024,
+                0.22435897435897434,
+                0.14316239316239315
+              ],
+              "rps": 0.14919540780918988,
+              "series_id": "HYG"
+            },
+            {
+              "actual_return": -0.04451165677881219,
+              "observed_rank_bucket": 0,
+              "predicted_rank_bucket": 2,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.12286324786324786,
+                0.22435897435897434,
+                0.28525641025641024,
+                0.22435897435897434,
+                0.14316239316239315
+              ],
+              "rps": 0.33776378387756595,
+              "series_id": "IAU"
+            },
+            {
+              "actual_return": -0.046681489787425035,
+              "observed_rank_bucket": 0,
+              "predicted_rank_bucket": 2,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.12286324786324786,
+                0.22435897435897434,
+                0.28525641025641024,
+                0.22435897435897434,
+                0.14316239316239315
+              ],
+              "rps": 0.33776378387756595,
+              "series_id": "ICLN"
+            },
+            {
+              "actual_return": -0.0048613938970002435,
+              "observed_rank_bucket": 2,
+              "predicted_rank_bucket": 2,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.12286324786324786,
+                0.22435897435897434,
+                0.28525641025641024,
+                0.22435897435897434,
+                0.14316239316239315
+              ],
+              "rps": 0.07280651892030097,
+              "series_id": "IEAA.L"
+            },
+            {
+              "actual_return": -0.025857961076541258,
+              "observed_rank_bucket": 1,
+              "predicted_rank_bucket": 2,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.12286324786324786,
+                0.22435897435897434,
+                0.28525641025641024,
+                0.22435897435897434,
+                0.14316239316239315
+              ],
+              "rps": 0.14919540780918988,
+              "series_id": "IEF"
+            },
+            {
+              "actual_return": 0.03993910828916103,
+              "observed_rank_bucket": 3,
+              "predicted_rank_bucket": 2,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.12286324786324786,
+                0.22435897435897434,
+                0.28525641025641024,
+                0.22435897435897434,
+                0.14316239316239315
+              ],
+              "rps": 0.13904583515961721,
+              "series_id": "IEFM.L"
+            },
+            {
+              "actual_return": -0.04232044538042323,
+              "observed_rank_bucket": 0,
+              "predicted_rank_bucket": 2,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.12286324786324786,
+                0.22435897435897434,
+                0.28525641025641024,
+                0.22435897435897434,
+                0.14316239316239315
+              ],
+              "rps": 0.33776378387756595,
+              "series_id": "IEMG"
+            },
+            {
+              "actual_return": 0.01707773484734898,
+              "observed_rank_bucket": 3,
+              "predicted_rank_bucket": 2,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.12286324786324786,
+                0.22435897435897434,
+                0.28525641025641024,
+                0.22435897435897434,
+                0.14316239316239315
+              ],
+              "rps": 0.13904583515961721,
+              "series_id": "IEUS"
+            },
+            {
+              "actual_return": 0.041209270304636836,
+              "observed_rank_bucket": 3,
+              "predicted_rank_bucket": 2,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.12286324786324786,
+                0.22435897435897434,
+                0.28525641025641024,
+                0.22435897435897434,
+                0.14316239316239315
+              ],
+              "rps": 0.13904583515961721,
+              "series_id": "IEVL.L"
+            },
+            {
+              "actual_return": -0.017032943588857763,
+              "observed_rank_bucket": 1,
+              "predicted_rank_bucket": 2,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.12286324786324786,
+                0.22435897435897434,
+                0.28525641025641024,
+                0.22435897435897434,
+                0.14316239316239315
+              ],
+              "rps": 0.14919540780918988,
+              "series_id": "IGF"
+            },
+            {
+              "actual_return": -0.05601729229647168,
+              "observed_rank_bucket": 0,
+              "predicted_rank_bucket": 2,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.12286324786324786,
+                0.22435897435897434,
+                0.28525641025641024,
+                0.22435897435897434,
+                0.14316239316239315
+              ],
+              "rps": 0.33776378387756595,
+              "series_id": "INDA"
+            },
+            {
+              "actual_return": -0.009449096655561928,
+              "observed_rank_bucket": 2,
+              "predicted_rank_bucket": 2,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.12286324786324786,
+                0.22435897435897434,
+                0.28525641025641024,
+                0.22435897435897434,
+                0.14316239316239315
+              ],
+              "rps": 0.07280651892030097,
+              "series_id": "IUMO.L"
+            },
+            {
+              "actual_return": 0.0323005354596565,
+              "observed_rank_bucket": 3,
+              "predicted_rank_bucket": 3,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.2649572649572649,
+                0.20405982905982906,
+                0.18376068376068375,
+                0.18376068376068375,
+                0.16346153846153846
+              ],
+              "rps": 0.18575447211264515,
+              "series_id": "IUVL.L"
+            },
+            {
+              "actual_return": 0.029261936992109105,
+              "observed_rank_bucket": 3,
+              "predicted_rank_bucket": 3,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.2649572649572649,
+                0.20405982905982906,
+                0.18376068376068375,
+                0.18376068376068375,
+                0.16346153846153846
+              ],
+              "rps": 0.18575447211264515,
+              "series_id": "IVV"
+            },
+            {
+              "actual_return": 0.04415153498220048,
+              "observed_rank_bucket": 4,
+              "predicted_rank_bucket": 3,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.2649572649572649,
+                0.20405982905982906,
+                0.18376068376068375,
+                0.18376068376068375,
+                0.16346153846153846
+              ],
+              "rps": 0.3540237028818759,
+              "series_id": "IWM"
+            },
+            {
+              "actual_return": 0.05309825840941218,
+              "observed_rank_bucket": 4,
+              "predicted_rank_bucket": 3,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.2649572649572649,
+                0.20405982905982906,
+                0.18376068376068375,
+                0.18376068376068375,
+                0.16346153846153846
+              ],
+              "rps": 0.3540237028818759,
+              "series_id": "IXN"
+            },
+            {
+              "actual_return": -0.032147077512724165,
+              "observed_rank_bucket": 1,
+              "predicted_rank_bucket": 3,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.2649572649572649,
+                0.20405982905982906,
+                0.18376068376068375,
+                0.18376068376068375,
+                0.16346153846153846
+              ],
+              "rps": 0.12485703621520934,
+              "series_id": "JPEA.L"
+            },
+            {
+              "actual_return": 0.05246057896257361,
+              "observed_rank_bucket": 4,
+              "predicted_rank_bucket": 3,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.2649572649572649,
+                0.20405982905982906,
+                0.18376068376068375,
+                0.18376068376068375,
+                0.16346153846153846
+              ],
+              "rps": 0.3540237028818759,
+              "series_id": "JPM"
+            },
+            {
+              "actual_return": -0.003102405288504917,
+              "observed_rank_bucket": 2,
+              "predicted_rank_bucket": 3,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.2649572649572649,
+                0.20405982905982906,
+                0.18376068376068375,
+                0.18376068376068375,
+                0.16346153846153846
+              ],
+              "rps": 0.10936558322375631,
+              "series_id": "KR"
+            },
+            {
+              "actual_return": -0.02885057936883384,
+              "observed_rank_bucket": 1,
+              "predicted_rank_bucket": 3,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.2649572649572649,
+                0.20405982905982906,
+                0.18376068376068375,
+                0.18376068376068375,
+                0.16346153846153846
+              ],
+              "rps": 0.12485703621520934,
+              "series_id": "LQD"
+            },
+            {
+              "actual_return": -0.08188723685382204,
+              "observed_rank_bucket": 0,
+              "predicted_rank_bucket": 3,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.2649572649572649,
+                0.20405982905982906,
+                0.18376068376068375,
+                0.18376068376068375,
+                0.16346153846153846
+              ],
+              "rps": 0.24237840373657688,
+              "series_id": "MCHI"
+            },
+            {
+              "actual_return": 0.24468603424829038,
+              "observed_rank_bucket": 4,
+              "predicted_rank_bucket": 3,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.2649572649572649,
+                0.20405982905982906,
+                0.18376068376068375,
+                0.18376068376068375,
+                0.16346153846153846
+              ],
+              "rps": 0.3540237028818759,
+              "series_id": "META"
+            },
+            {
+              "actual_return": 0.01509332184486123,
+              "observed_rank_bucket": 3,
+              "predicted_rank_bucket": 3,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.2649572649572649,
+                0.20405982905982906,
+                0.18376068376068375,
+                0.18376068376068375,
+                0.16346153846153846
+              ],
+              "rps": 0.18575447211264515,
+              "series_id": "MVEU.L"
+            },
+            {
+              "actual_return": -0.17061701145409158,
+              "observed_rank_bucket": 0,
+              "predicted_rank_bucket": 3,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.2649572649572649,
+                0.20405982905982906,
+                0.18376068376068375,
+                0.18376068376068375,
+                0.16346153846153846
+              ],
+              "rps": 0.24237840373657688,
+              "series_id": "OGN"
+            },
+            {
+              "actual_return": -0.020056595470985816,
+              "observed_rank_bucket": 1,
+              "predicted_rank_bucket": 3,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.2649572649572649,
+                0.20405982905982906,
+                0.18376068376068375,
+                0.18376068376068375,
+                0.16346153846153846
+              ],
+              "rps": 0.12485703621520934,
+              "series_id": "PG"
+            },
+            {
+              "actual_return": -0.016557896482591095,
+              "observed_rank_bucket": 1,
+              "predicted_rank_bucket": 3,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.2649572649572649,
+                0.20405982905982906,
+                0.18376068376068375,
+                0.18376068376068375,
+                0.16346153846153846
+              ],
+              "rps": 0.12485703621520934,
+              "series_id": "PPL"
+            },
+            {
+              "actual_return": 0.030084653424047092,
+              "observed_rank_bucket": 3,
+              "predicted_rank_bucket": 3,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.2649572649572649,
+                0.20405982905982906,
+                0.18376068376068375,
+                0.18376068376068375,
+                0.16346153846153846
+              ],
+              "rps": 0.18575447211264515,
+              "series_id": "PRU"
+            },
+            {
+              "actual_return": -0.05190224888125028,
+              "observed_rank_bucket": 0,
+              "predicted_rank_bucket": 3,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.2649572649572649,
+                0.20405982905982906,
+                0.18376068376068375,
+                0.18376068376068375,
+                0.16346153846153846
+              ],
+              "rps": 0.24237840373657688,
+              "series_id": "PYPL"
+            },
+            {
+              "actual_return": 0.1380510984727613,
+              "observed_rank_bucket": 4,
+              "predicted_rank_bucket": 3,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.2649572649572649,
+                0.20405982905982906,
+                0.18376068376068375,
+                0.18376068376068375,
+                0.16346153846153846
+              ],
+              "rps": 0.3540237028818759,
+              "series_id": "RE"
+            },
+            {
+              "actual_return": 0.01575260514863952,
+              "observed_rank_bucket": 3,
+              "predicted_rank_bucket": 3,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.2649572649572649,
+                0.20405982905982906,
+                0.18376068376068375,
+                0.18376068376068375,
+                0.16346153846153846
+              ],
+              "rps": 0.18575447211264515,
+              "series_id": "REET"
+            },
+            {
+              "actual_return": 0.009507369730227255,
+              "observed_rank_bucket": 2,
+              "predicted_rank_bucket": 3,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.2649572649572649,
+                0.20405982905982906,
+                0.18376068376068375,
+                0.18376068376068375,
+                0.16346153846153846
+              ],
+              "rps": 0.10936558322375631,
+              "series_id": "ROL"
+            },
+            {
+              "actual_return": 0.00058319832856224,
+              "observed_rank_bucket": 2,
+              "predicted_rank_bucket": 4,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.3258547008547008,
+                0.22435897435897434,
+                0.16346153846153846,
+                0.14316239316239315,
+                0.14316239316239315
+              ],
+              "rps": 0.1278484321352911,
+              "series_id": "ROST"
+            },
+            {
+              "actual_return": -0.0032334915499312444,
+              "observed_rank_bucket": 2,
+              "predicted_rank_bucket": 4,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.3258547008547008,
+                0.22435897435897434,
+                0.16346153846153846,
+                0.14316239316239315,
+                0.14316239316239315
+              ],
+              "rps": 0.1278484321352911,
+              "series_id": "SEGA.L"
+            },
+            {
+              "actual_return": -0.0054848915131315845,
+              "observed_rank_bucket": 2,
+              "predicted_rank_bucket": 4,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.3258547008547008,
+                0.22435897435897434,
+                0.16346153846153846,
+                0.14316239316239315,
+                0.14316239316239315
+              ],
+              "rps": 0.1278484321352911,
+              "series_id": "SHY"
+            },
+            {
+              "actual_return": -0.09359726159749326,
+              "observed_rank_bucket": 0,
+              "predicted_rank_bucket": 4,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.3258547008547008,
+                0.22435897435897434,
+                0.16346153846153846,
+                0.14316239316239315,
+                0.14316239316239315
+              ],
+              "rps": 0.18981424410110315,
+              "series_id": "SLV"
+            },
+            {
+              "actual_return": 0.00024177778631795377,
+              "observed_rank_bucket": 2,
+              "predicted_rank_bucket": 4,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.3258547008547008,
+                0.22435897435897434,
+                0.16346153846153846,
+                0.14316239316239315,
+                0.14316239316239315
+              ],
+              "rps": 0.1278484321352911,
+              "series_id": "SPMV.L"
+            },
+            {
+              "actual_return": -0.03331182283567713,
+              "observed_rank_bucket": 1,
+              "predicted_rank_bucket": 4,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.3258547008547008,
+                0.22435897435897434,
+                0.16346153846153846,
+                0.14316239316239315,
+                0.14316239316239315
+              ],
+              "rps": 0.10274159452845355,
+              "series_id": "TLT"
+            },
+            {
+              "actual_return": 0.027680415263246827,
+              "observed_rank_bucket": 3,
+              "predicted_rank_bucket": 4,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.3258547008547008,
+                0.22435897435897434,
+                0.16346153846153846,
+                0.14316239316239315,
+                0.14316239316239315
+              ],
+              "rps": 0.23468603897289791,
+              "series_id": "UNH"
+            },
+            {
+              "actual_return": 0.19441077380351857,
+              "observed_rank_bucket": 4,
+              "predicted_rank_bucket": 4,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.3258547008547008,
+                0.22435897435897434,
+                0.16346153846153846,
+                0.14316239316239315,
+                0.14316239316239315
+              ],
+              "rps": 0.41310484239170125,
+              "series_id": "URI"
+            },
+            {
+              "actual_return": -0.0005857479418950318,
+              "observed_rank_bucket": 2,
+              "predicted_rank_bucket": 4,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.3258547008547008,
+                0.22435897435897434,
+                0.16346153846153846,
+                0.14316239316239315,
+                0.14316239316239315
+              ],
+              "rps": 0.1278484321352911,
+              "series_id": "V"
+            },
+            {
+              "actual_return": -0.02311085909491406,
+              "observed_rank_bucket": 1,
+              "predicted_rank_bucket": 4,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.3258547008547008,
+                0.22435897435897434,
+                0.16346153846153846,
+                0.14316239316239315,
+                0.14316239316239315
+              ],
+              "rps": 0.10274159452845355,
+              "series_id": "VRSK"
+            },
+            {
+              "actual_return": -0.034579071988820154,
+              "observed_rank_bucket": 1,
+              "predicted_rank_bucket": 4,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.3258547008547008,
+                0.22435897435897434,
+                0.16346153846153846,
+                0.14316239316239315,
+                0.14316239316239315
+              ],
+              "rps": 0.10274159452845355,
+              "series_id": "VXX"
+            },
+            {
+              "actual_return": -0.11103235539996237,
+              "observed_rank_bucket": 0,
+              "predicted_rank_bucket": 4,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.3258547008547008,
+                0.22435897435897434,
+                0.16346153846153846,
+                0.14316239316239315,
+                0.14316239316239315
+              ],
+              "rps": 0.18981424410110315,
+              "series_id": "WRK"
+            },
+            {
+              "actual_return": -0.017133343466470552,
+              "observed_rank_bucket": 1,
+              "predicted_rank_bucket": 4,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.3258547008547008,
+                0.22435897435897434,
+                0.16346153846153846,
+                0.14316239316239315,
+                0.14316239316239315
+              ],
+              "rps": 0.10274159452845355,
+              "series_id": "XLB"
+            },
+            {
+              "actual_return": 0.045638121610434235,
+              "observed_rank_bucket": 4,
+              "predicted_rank_bucket": 4,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.3258547008547008,
+                0.22435897435897434,
+                0.16346153846153846,
+                0.14316239316239315,
+                0.14316239316239315
+              ],
+              "rps": 0.41310484239170125,
+              "series_id": "XLC"
+            },
+            {
+              "actual_return": -0.06482500350315079,
+              "observed_rank_bucket": 0,
+              "predicted_rank_bucket": 4,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.3258547008547008,
+                0.22435897435897434,
+                0.16346153846153846,
+                0.14316239316239315,
+                0.14316239316239315
+              ],
+              "rps": 0.18981424410110315,
+              "series_id": "XLE"
+            },
+            {
+              "actual_return": 0.02949954134308519,
+              "observed_rank_bucket": 3,
+              "predicted_rank_bucket": 4,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.3258547008547008,
+                0.22435897435897434,
+                0.16346153846153846,
+                0.14316239316239315,
+                0.14316239316239315
+              ],
+              "rps": 0.23468603897289791,
+              "series_id": "XLF"
+            },
+            {
+              "actual_return": 0.04061109221596593,
+              "observed_rank_bucket": 3,
+              "predicted_rank_bucket": 4,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.3258547008547008,
+                0.22435897435897434,
+                0.16346153846153846,
+                0.14316239316239315,
+                0.14316239316239315
+              ],
+              "rps": 0.23468603897289791,
+              "series_id": "XLI"
+            },
+            {
+              "actual_return": 0.06479417496521755,
+              "observed_rank_bucket": 4,
+              "predicted_rank_bucket": 4,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.3258547008547008,
+                0.22435897435897434,
+                0.16346153846153846,
+                0.14316239316239315,
+                0.14316239316239315
+              ],
+              "rps": 0.41310484239170125,
+              "series_id": "XLK"
+            },
+            {
+              "actual_return": 0.014961897544207736,
+              "observed_rank_bucket": 3,
+              "predicted_rank_bucket": 4,
+              "predicted_return": 0.0,
+              "rank_probabilities": [
+                0.3258547008547008,
+                0.22435897435897434,
+                0.16346153846153846,
+                0.14316239316239315,
+                0.14316239316239315
+              ],
+              "rps": 0.23468603897289791,
+              "series_id": "XLP"
+            }
+          ],
+          "decision_return": -0.010711613258533453,
+          "decisions": [
+            {
+              "actual_return": 0.00058319832856224,
+              "predicted_return": 0.0,
+              "series_id": "ROST",
+              "side": "long",
+              "weight": 0.02631578947368421
+            },
+            {
+              "actual_return": -0.0032334915499312444,
+              "predicted_return": 0.0,
+              "series_id": "SEGA.L",
+              "side": "long",
+              "weight": 0.02631578947368421
+            },
+            {
+              "actual_return": -0.0054848915131315845,
+              "predicted_return": 0.0,
+              "series_id": "SHY",
+              "side": "long",
+              "weight": 0.02631578947368421
+            },
+            {
+              "actual_return": -0.09359726159749326,
+              "predicted_return": 0.0,
+              "series_id": "SLV",
+              "side": "long",
+              "weight": 0.02631578947368421
+            },
+            {
+              "actual_return": 0.00024177778631795377,
+              "predicted_return": 0.0,
+              "series_id": "SPMV.L",
+              "side": "long",
+              "weight": 0.02631578947368421
+            },
+            {
+              "actual_return": -0.03331182283567713,
+              "predicted_return": 0.0,
+              "series_id": "TLT",
+              "side": "long",
+              "weight": 0.02631578947368421
+            },
+            {
+              "actual_return": 0.027680415263246827,
+              "predicted_return": 0.0,
+              "series_id": "UNH",
+              "side": "long",
+              "weight": 0.02631578947368421
+            },
+            {
+              "actual_return": 0.19441077380351857,
+              "predicted_return": 0.0,
+              "series_id": "URI",
+              "side": "long",
+              "weight": 0.02631578947368421
+            },
+            {
+              "actual_return": -0.0005857479418950318,
+              "predicted_return": 0.0,
+              "series_id": "V",
+              "side": "long",
+              "weight": 0.02631578947368421
+            },
+            {
+              "actual_return": -0.02311085909491406,
+              "predicted_return": 0.0,
+              "series_id": "VRSK",
+              "side": "long",
+              "weight": 0.02631578947368421
+            },
+            {
+              "actual_return": -0.034579071988820154,
+              "predicted_return": 0.0,
+              "series_id": "VXX",
+              "side": "long",
+              "weight": 0.02631578947368421
+            },
+            {
+              "actual_return": -0.11103235539996237,
+              "predicted_return": 0.0,
+              "series_id": "WRK",
+              "side": "long",
+              "weight": 0.02631578947368421
+            },
+            {
+              "actual_return": -0.017133343466470552,
+              "predicted_return": 0.0,
+              "series_id": "XLB",
+              "side": "long",
+              "weight": 0.02631578947368421
+            },
+            {
+              "actual_return": 0.045638121610434235,
+              "predicted_return": 0.0,
+              "series_id": "XLC",
+              "side": "long",
+              "weight": 0.02631578947368421
+            },
+            {
+              "actual_return": -0.06482500350315079,
+              "predicted_return": 0.0,
+              "series_id": "XLE",
+              "side": "long",
+              "weight": 0.02631578947368421
+            },
+            {
+              "actual_return": 0.02949954134308519,
+              "predicted_return": 0.0,
+              "series_id": "XLF",
+              "side": "long",
+              "weight": 0.02631578947368421
+            },
+            {
+              "actual_return": 0.04061109221596593,
+              "predicted_return": 0.0,
+              "series_id": "XLI",
+              "side": "long",
+              "weight": 0.02631578947368421
+            },
+            {
+              "actual_return": 0.06479417496521755,
+              "predicted_return": 0.0,
+              "series_id": "XLK",
+              "side": "long",
+              "weight": 0.02631578947368421
+            },
+            {
+              "actual_return": 0.014961897544207736,
+              "predicted_return": 0.0,
+              "series_id": "XLP",
+              "side": "long",
+              "weight": 0.02631578947368421
+            },
+            {
+              "actual_return": 0.01263592661705637,
+              "predicted_return": 0.0,
+              "series_id": "ABBV",
+              "side": "short",
+              "weight": -0.02631578947368421
+            },
+            {
+              "actual_return": -0.010015739143974356,
+              "predicted_return": 0.0,
+              "series_id": "ACN",
+              "side": "short",
+              "weight": -0.02631578947368421
+            },
+            {
+              "actual_return": 0.013102600977338397,
+              "predicted_return": 0.0,
+              "series_id": "AEP",
+              "side": "short",
+              "weight": -0.02631578947368421
+            },
+            {
+              "actual_return": 0.028317405730098,
+              "predicted_return": 0.0,
+              "series_id": "AIZ",
+              "side": "short",
+              "weight": -0.02631578947368421
+            },
+            {
+              "actual_return": 0.06513916213921311,
+              "predicted_return": 0.0,
+              "series_id": "ALLE",
+              "side": "short",
+              "weight": -0.02631578947368421
+            },
+            {
+              "actual_return": 0.05991442357771526,
+              "predicted_return": 0.0,
+              "series_id": "AMAT",
+              "side": "short",
+              "weight": -0.02631578947368421
+            },
+            {
+              "actual_return": 0.058024066123019025,
+              "predicted_return": 0.0,
+              "series_id": "AMP",
+              "side": "short",
+              "weight": -0.02631578947368421
+            },
+            {
+              "actual_return": 0.008553118630537981,
+              "predicted_return": 0.0,
+              "series_id": "AMZN",
+              "side": "short",
+              "weight": -0.02631578947368421
+            },
+            {
+              "actual_return": 0.05313541862197391,
+              "predicted_return": 0.0,
+              "series_id": "AVB",
+              "side": "short",
+              "weight": -0.02631578947368421
+            },
+            {
+              "actual_return": -0.039990725052292175,
+              "predicted_return": 0.0,
+              "series_id": "AVY",
+              "side": "short",
+              "weight": -0.02631578947368421
+            },
+            {
+              "actual_return": 0.16303018139141756,
+              "predicted_return": 0.0,
+              "series_id": "AXP",
+              "side": "short",
+              "weight": -0.02631578947368421
+            },
+            {
+              "actual_return": -0.03576345878324483,
+              "predicted_return": 0.0,
+              "series_id": "BDX",
+              "side": "short",
+              "weight": -0.02631578947368421
+            },
+            {
+              "actual_return": -0.008196272091168133,
+              "predicted_return": 0.0,
+              "series_id": "BF-B",
+              "side": "short",
+              "weight": -0.02631578947368421
+            },
+            {
+              "actual_return": -0.04004465129680146,
+              "predicted_return": 0.0,
+              "series_id": "BMY",
+              "side": "short",
+              "weight": -0.02631578947368421
+            },
+            {
+              "actual_return": -0.014838408948797066,
+              "predicted_return": 0.0,
+              "series_id": "BR",
+              "side": "short",
+              "weight": -0.02631578947368421
+            },
+            {
+              "actual_return": 0.06304235462847041,
+              "predicted_return": 0.0,
+              "series_id": "CARR",
+              "side": "short",
+              "weight": -0.02631578947368421
+            },
+            {
+              "actual_return": 0.07530337407259635,
+              "predicted_return": 0.0,
+              "series_id": "CDW",
+              "side": "short",
+              "weight": -0.02631578947368421
+            },
+            {
+              "actual_return": -0.014993494211788971,
+              "predicted_return": 0.0,
+              "series_id": "CE",
+              "side": "short",
+              "weight": -0.02631578947368421
+            },
+            {
+              "actual_return": 0.0022131648120119474,
+              "predicted_return": 0.0,
+              "series_id": "CHTR",
+              "side": "short",
+              "weight": -0.02631578947368421
+            }
+          ],
+          "mean_rps": 0.2081710223537147,
+          "rank_probability_calibration": {
+            "bucket_count": 5,
+            "dirichlet_prior": 1.0,
+            "fallback": "none",
+            "method": "dirichlet_confusion_with_uniform_shrinkage",
+            "shrinkage_to_confusion": 0.48717948717948717,
+            "validation_support": 95
+          }
+        },
+        "cartoboost_lag": {
+          "asset_count": 95,
+          "assets": [
+            {
+              "actual_return": 0.01263592661705637,
+              "observed_rank_bucket": 2,
+              "predicted_rank_bucket": 0,
+              "predicted_return": 0.042910516678528444,
+              "rank_probabilities": [
+                0.28525641025641024,
+                0.20405982905982906,
+                0.18376068376068375,
+                0.16346153846153846,
+                0.16346153846153846
+              ],
+              "rps": 0.11359999360800643,
+              "series_id": "ABBV"
+            },
+            {
+              "actual_return": -0.010015739143974356,
+              "observed_rank_bucket": 2,
+              "predicted_rank_bucket": 2,
+              "predicted_return": 0.10537699902884475,
+              "rank_probabilities": [
+                0.14316239316239315,
+                0.24465811965811965,
+                0.24465811965811965,
+                0.18376068376068375,
+                0.18376068376068375
+              ],
+              "rps": 0.08493504136532982,
+              "series_id": "ACN"
+            },
+            {
+              "actual_return": 0.013102600977338397,
+              "observed_rank_bucket": 3,
+              "predicted_rank_bucket": 0,
+              "predicted_return": 0.036955009029292364,
+              "rank_probabilities": [
+                0.28525641025641024,
+                0.20405982905982906,
+                0.18376068376068375,
+                0.16346153846153846,
+                0.16346153846153846
+              ],
+              "rps": 0.20013845514646794,
+              "series_id": "AEP"
+            },
+            {
+              "actual_return": 0.028317405730098,
+              "observed_rank_bucket": 3,
+              "predicted_rank_bucket": 2,
+              "predicted_return": 0.10085466690353713,
+              "rank_probabilities": [
+                0.14316239316239315,
+                0.24465811965811965,
+                0.24465811965811965,
+                0.18376068376068375,
+                0.18376068376068375
+              ],
+              "rps": 0.15117435760464606,
+              "series_id": "AIZ"
+            },
+            {
+              "actual_return": 0.06513916213921311,
+              "observed_rank_bucket": 4,
+              "predicted_rank_bucket": 3,
+              "predicted_return": 0.1081992531183732,
+              "rank_probabilities": [
+                0.18376068376068375,
+                0.14316239316239315,
+                0.18376068376068375,
+                0.28525641025641024,
+                0.20405982905982906
+              ],
+              "rps": 0.25874133656585574,
+              "series_id": "ALLE"
+            },
+            {
+              "actual_return": 0.05991442357771526,
+              "observed_rank_bucket": 4,
+              "predicted_rank_bucket": 2,
+              "predicted_return": 0.10135211636366427,
+              "rank_probabilities": [
+                0.14316239316239315,
+                0.24465811965811965,
+                0.24465811965811965,
+                0.18376068376068375,
+                0.18376068376068375
+              ],
+              "rps": 0.30929401572430415,
+              "series_id": "AMAT"
+            },
+            {
+              "actual_return": 0.058024066123019025,
+              "observed_rank_bucket": 4,
+              "predicted_rank_bucket": 4,
+              "predicted_return": 0.13596356552556205,
+              "rank_probabilities": [
+                0.18376068376068375,
+                0.20405982905982906,
+                0.22435897435897434,
+                0.16346153846153846,
+                0.22435897435897434
+              ],
+              "rps": 0.29013886606034034,
+              "series_id": "AMP"
+            },
+            {
+              "actual_return": 0.008553118630537981,
+              "observed_rank_bucket": 2,
+              "predicted_rank_bucket": 3,
+              "predicted_return": 0.1177774291845219,
+              "rank_probabilities": [
+                0.18376068376068375,
+                0.14316239316239315,
+                0.18376068376068375,
+                0.28525641025641024,
+                0.20405982905982906
+              ],
+              "rps": 0.10542937075388997,
+              "series_id": "AMZN"
+            },
+            {
+              "actual_return": 0.05313541862197391,
+              "observed_rank_bucket": 4,
+              "predicted_rank_bucket": 3,
+              "predicted_return": 0.11702628920168984,
+              "rank_probabilities": [
+                0.18376068376068375,
+                0.14316239316239315,
+                0.18376068376068375,
+                0.28525641025641024,
+                0.20405982905982906
+              ],
+              "rps": 0.25874133656585574,
+              "series_id": "AVB"
+            },
+            {
+              "actual_return": -0.039990725052292175,
+              "observed_rank_bucket": 0,
+              "predicted_rank_bucket": 4,
+              "predicted_return": 0.13111031059660494,
+              "rank_probabilities": [
+                0.18376068376068375,
+                0.20405982905982906,
+                0.22435897435897434,
+                0.16346153846153846,
+                0.22435897435897434
+              ],
+              "rps": 0.3104380113594858,
+              "series_id": "AVY"
+            },
+            {
+              "actual_return": 0.16303018139141756,
+              "observed_rank_bucket": 4,
+              "predicted_rank_bucket": 1,
+              "predicted_return": 0.06727663722944256,
+              "rank_probabilities": [
+                0.20405982905982906,
+                0.20405982905982906,
+                0.16346153846153846,
+                0.20405982905982906,
+                0.22435897435897434
+              ],
+              "rps": 0.28413153353057197,
+              "series_id": "AXP"
+            },
+            {
+              "actual_return": -0.03576345878324483,
+              "observed_rank_bucket": 0,
+              "predicted_rank_bucket": 0,
+              "predicted_return": 0.044371398708881384,
+              "rank_probabilities": [
+                0.28525641025641024,
+                0.20405982905982906,
+                0.18376068376068375,
+                0.16346153846153846,
+                0.16346153846153846
+              ],
+              "rps": 0.22631366882168166,
+              "series_id": "BDX"
+            },
+            {
+              "actual_return": -0.008196272091168133,
+              "observed_rank_bucket": 2,
+              "predicted_rank_bucket": 0,
+              "predicted_return": 0.0434660703423719,
+              "rank_probabilities": [
+                0.28525641025641024,
+                0.20405982905982906,
+                0.18376068376068375,
+                0.16346153846153846,
+                0.16346153846153846
+              ],
+              "rps": 0.11359999360800643,
+              "series_id": "BF-B"
+            },
+            {
+              "actual_return": -0.04004465129680146,
+              "observed_rank_bucket": 0,
+              "predicted_rank_bucket": 2,
+              "predicted_return": 0.0718858079066605,
+              "rank_probabilities": [
+                0.14316239316239315,
+                0.24465811965811965,
+                0.24465811965811965,
+                0.18376068376068375,
+                0.18376068376068375
+              ],
+              "rps": 0.3194435883738769,
+              "series_id": "BMY"
+            },
+            {
+              "actual_return": -0.014838408948797066,
+              "observed_rank_bucket": 1,
+              "predicted_rank_bucket": 4,
+              "predicted_return": 0.13487013057177508,
+              "rank_probabilities": [
+                0.18376068376068375,
+                0.20405982905982906,
+                0.22435897435897434,
+                0.16346153846153846,
+                0.22435897435897434
+              ],
+              "rps": 0.15231835323982765,
+              "series_id": "BR"
+            },
+            {
+              "actual_return": 0.06304235462847041,
+              "observed_rank_bucket": 4,
+              "predicted_rank_bucket": 2,
+              "predicted_return": 0.09454439215923488,
+              "rank_probabilities": [
+                0.14316239316239315,
+                0.24465811965811965,
+                0.24465811965811965,
+                0.18376068376068375,
+                0.18376068376068375
+              ],
+              "rps": 0.30929401572430415,
+              "series_id": "CARR"
+            },
+            {
+              "actual_return": 0.07530337407259635,
+              "observed_rank_bucket": 4,
+              "predicted_rank_bucket": 3,
+              "predicted_return": 0.12300972553530878,
+              "rank_probabilities": [
+                0.18376068376068375,
+                0.14316239316239315,
+                0.18376068376068375,
+                0.28525641025641024,
+                0.20405982905982906
+              ],
+              "rps": 0.25874133656585574,
+              "series_id": "CDW"
+            },
+            {
+              "actual_return": -0.014993494211788971,
+              "observed_rank_bucket": 1,
+              "predicted_rank_bucket": 4,
+              "predicted_return": 0.12554144843593276,
+              "rank_probabilities": [
+                0.18376068376068375,
+                0.20405982905982906,
+                0.22435897435897434,
+                0.16346153846153846,
+                0.22435897435897434
+              ],
+              "rps": 0.15231835323982765,
+              "series_id": "CE"
+            },
+            {
+              "actual_return": 0.0022131648120119474,
+              "observed_rank_bucket": 2,
+              "predicted_rank_bucket": 4,
+              "predicted_return": 0.13389620080087453,
+              "rank_probabilities": [
+                0.18376068376068375,
+                0.20405982905982906,
+                0.22435897435897434,
+                0.16346153846153846,
+                0.22435897435897434
+              ],
+              "rps": 0.09622860965008402,
+              "series_id": "CHTR"
+            },
+            {
+              "actual_return": -0.03523030000457694,
+              "observed_rank_bucket": 0,
+              "predicted_rank_bucket": 1,
+              "predicted_return": 0.06364675736511893,
+              "rank_probabilities": [
+                0.20405982905982906,
+                0.20405982905982906,
+                0.16346153846153846,
+                0.20405982905982906,
+                0.22435897435897434
+              ],
+              "rps": 0.3044306788297173,
+              "series_id": "CNC"
+            },
+            {
+              "actual_return": -0.022820899090628344,
+              "observed_rank_bucket": 1,
+              "predicted_rank_bucket": 0,
+              "predicted_return": 0.035462335785540616,
+              "rank_probabilities": [
+                0.28525641025641024,
+                0.20405982905982906,
+                0.18376068376068375,
+                0.16346153846153846,
+                0.16346153846153846
+              ],
+              "rps": 0.11894187394988678,
+              "series_id": "CNP"
+            },
+            {
+              "actual_return": -0.14491778903722663,
+              "observed_rank_bucket": 0,
+              "predicted_rank_bucket": 3,
+              "predicted_return": 0.10761254478881155,
+              "rank_probabilities": [
+                0.18376068376068375,
+                0.14316239316239315,
+                0.18376068376068375,
+                0.28525641025641024,
+                0.20405982905982906
+              ],
+              "rps": 0.3500874904120097,
+              "series_id": "COP"
+            },
+            {
+              "actual_return": 0.02037288589677344,
+              "observed_rank_bucket": 3,
+              "predicted_rank_bucket": 0,
+              "predicted_return": 0.030425487824439983,
+              "rank_probabilities": [
+                0.28525641025641024,
+                0.20405982905982906,
+                0.18376068376068375,
+                0.16346153846153846,
+                0.16346153846153846
+              ],
+              "rps": 0.20013845514646794,
+              "series_id": "CTAS"
+            },
+            {
+              "actual_return": 0.11106568079894763,
+              "observed_rank_bucket": 4,
+              "predicted_rank_bucket": 4,
+              "predicted_return": 0.1407970197632245,
+              "rank_probabilities": [
+                0.18376068376068375,
+                0.20405982905982906,
+                0.22435897435897434,
+                0.16346153846153846,
+                0.22435897435897434
+              ],
+              "rps": 0.29013886606034034,
+              "series_id": "CZR"
+            },
+            {
+              "actual_return": -0.011159475803249386,
+              "observed_rank_bucket": 1,
+              "predicted_rank_bucket": 0,
+              "predicted_return": 0.040421169236263654,
+              "rank_probabilities": [
+                0.28525641025641024,
+                0.20405982905982906,
+                0.18376068376068375,
+                0.16346153846153846,
+                0.16346153846153846
+              ],
+              "rps": 0.11894187394988678,
+              "series_id": "DG"
+            },
+            {
+              "actual_return": 0.028680240632860343,
+              "observed_rank_bucket": 3,
+              "predicted_rank_bucket": 1,
+              "predicted_return": 0.06577715667814044,
+              "rank_probabilities": [
+                0.20405982905982906,
+                0.20405982905982906,
+                0.16346153846153846,
+                0.20405982905982906,
+                0.22435897435897434
+              ],
+              "rps": 0.1463110207100592,
+              "series_id": "DPZ"
+            },
+            {
+              "actual_return": 0.01783265051285643,
+              "observed_rank_bucket": 3,
+              "predicted_rank_bucket": 2,
+              "predicted_return": 0.10514248557567203,
+              "rank_probabilities": [
+                0.14316239316239315,
+                0.24465811965811965,
+                0.24465811965811965,
+                0.18376068376068375,
+                0.18376068376068375
+              ],
+              "rps": 0.15117435760464606,
+              "series_id": "DXC"
+            },
+            {
+              "actual_return": -0.027870495424519248,
+              "observed_rank_bucket": 1,
+              "predicted_rank_bucket": 4,
+              "predicted_return": 0.13240784836362177,
+              "rank_probabilities": [
+                0.18376068376068375,
+                0.20405982905982906,
+                0.22435897435897434,
+                0.16346153846153846,
+                0.22435897435897434
+              ],
+              "rps": 0.15231835323982765,
+              "series_id": "EWA"
+            },
+            {
+              "actual_return": -0.0024510696540600563,
+              "observed_rank_bucket": 2,
+              "predicted_rank_bucket": 3,
+              "predicted_return": 0.10830230228071665,
+              "rank_probabilities": [
+                0.18376068376068375,
+                0.14316239316239315,
+                0.18376068376068375,
+                0.28525641025641024,
+                0.20405982905982906
+              ],
+              "rps": 0.10542937075388997,
+              "series_id": "EWC"
+            },
+            {
+              "actual_return": 0.014220467058294717,
+              "observed_rank_bucket": 3,
+              "predicted_rank_bucket": 3,
+              "predicted_return": 0.12309998414357756,
+              "rank_probabilities": [
+                0.18376068376068375,
+                0.14316239316239315,
+                0.18376068376068375,
+                0.28525641025641024,
+                0.20405982905982906
+              ],
+              "rps": 0.11077125109577032,
+              "series_id": "EWG"
+            },
+            {
+              "actual_return": -0.06211997629750676,
+              "observed_rank_bucket": 0,
+              "predicted_rank_bucket": 4,
+              "predicted_return": 0.12383899865741878,
+              "rank_probabilities": [
+                0.18376068376068375,
+                0.20405982905982906,
+                0.22435897435897434,
+                0.16346153846153846,
+                0.22435897435897434
+              ],
+              "rps": 0.3104380113594858,
+              "series_id": "EWH"
+            },
+            {
+              "actual_return": -0.013957133983016345,
+              "observed_rank_bucket": 1,
+              "predicted_rank_bucket": 2,
+              "predicted_return": 0.09757617534478846,
+              "rank_probabilities": [
+                0.14316239316239315,
+                0.24465811965811965,
+                0.24465811965811965,
+                0.18376068376068375,
+                0.18376068376068375
+              ],
+              "rps": 0.14102478495507342,
+              "series_id": "EWJ"
+            },
+            {
+              "actual_return": 7.1412215048694e-05,
+              "observed_rank_bucket": 2,
+              "predicted_rank_bucket": 3,
+              "predicted_return": 0.11633271834473397,
+              "rank_probabilities": [
+                0.18376068376068375,
+                0.14316239316239315,
+                0.18376068376068375,
+                0.28525641025641024,
+                0.20405982905982906
+              ],
+              "rps": 0.10542937075388997,
+              "series_id": "EWL"
+            },
+            {
+              "actual_return": 0.029146778231621817,
+              "observed_rank_bucket": 3,
+              "predicted_rank_bucket": 4,
+              "predicted_return": 0.12623706258268766,
+              "rank_probabilities": [
+                0.18376068376068375,
+                0.20405982905982906,
+                0.22435897435897434,
+                0.16346153846153846,
+                0.22435897435897434
+              ],
+              "rps": 0.1523183532398276,
+              "series_id": "EWQ"
+            },
+            {
+              "actual_return": 0.005597739391241419,
+              "observed_rank_bucket": 2,
+              "predicted_rank_bucket": 3,
+              "predicted_return": 0.1080585345837428,
+              "rank_probabilities": [
+                0.18376068376068375,
+                0.14316239316239315,
+                0.18376068376068375,
+                0.28525641025641024,
+                0.20405982905982906
+              ],
+              "rps": 0.10542937075388997,
+              "series_id": "EWT"
+            },
+            {
+              "actual_return": 0.001956223798887713,
+              "observed_rank_bucket": 2,
+              "predicted_rank_bucket": 3,
+              "predicted_return": 0.11164074299787397,
+              "rank_probabilities": [
+                0.18376068376068375,
+                0.14316239316239315,
+                0.18376068376068375,
+                0.28525641025641024,
+                0.20405982905982906
+              ],
+              "rps": 0.10542937075388997,
+              "series_id": "EWU"
+            },
+            {
+              "actual_return": -0.0355252458605535,
+              "observed_rank_bucket": 0,
+              "predicted_rank_bucket": 3,
+              "predicted_return": 0.11683740354357303,
+              "rank_probabilities": [
+                0.18376068376068375,
+                0.14316239316239315,
+                0.18376068376068375,
+                0.28525641025641024,
+                0.20405982905982906
+              ],
+              "rps": 0.3500874904120097,
+              "series_id": "EWY"
+            },
+            {
+              "actual_return": -0.014346266801921748,
+              "observed_rank_bucket": 1,
+              "predicted_rank_bucket": 3,
+              "predicted_return": 0.11012018546679622,
+              "rank_probabilities": [
+                0.18376068376068375,
+                0.14316239316239315,
+                0.18376068376068375,
+                0.28525641025641024,
+                0.20405982905982906
+              ],
+              "rps": 0.19196783229235154,
+              "series_id": "EWZ"
+            },
+            {
+              "actual_return": 0.06021914163351816,
+              "observed_rank_bucket": 4,
+              "predicted_rank_bucket": 2,
+              "predicted_return": 0.07703464691096443,
+              "rank_probabilities": [
+                0.14316239316239315,
+                0.24465811965811965,
+                0.24465811965811965,
+                0.18376068376068375,
+                0.18376068376068375
+              ],
+              "rps": 0.30929401572430415,
+              "series_id": "FTV"
+            },
+            {
+              "actual_return": -0.03798453498930576,
+              "observed_rank_bucket": 0,
+              "predicted_rank_bucket": 2,
+              "predicted_return": 0.107460186553334,
+              "rank_probabilities": [
+                0.14316239316239315,
+                0.24465811965811965,
+                0.24465811965811965,
+                0.18376068376068375,
+                0.18376068376068375
+              ],
+              "rps": 0.3194435883738769,
+              "series_id": "GOOG"
+            },
+            {
+              "actual_return": 0.10884127296621304,
+              "observed_rank_bucket": 4,
+              "predicted_rank_bucket": 0,
+              "predicted_return": 0.02395631631905801,
+              "rank_probabilities": [
+                0.28525641025641024,
+                0.20405982905982906,
+                0.18376068376068375,
+                0.16346153846153846,
+                0.16346153846153846
+              ],
+              "rps": 0.36840768591569867,
+              "series_id": "GPC"
+            },
+            {
+              "actual_return": -0.0552399301681088,
+              "observed_rank_bucket": 0,
+              "predicted_rank_bucket": 0,
+              "predicted_return": 0.04893921702712797,
+              "rank_probabilities": [
+                0.28525641025641024,
+                0.20405982905982906,
+                0.18376068376068375,
+                0.16346153846153846,
+                0.16346153846153846
+              ],
+              "rps": 0.22631366882168166,
+              "series_id": "GSG"
+            },
+            {
+              "actual_return": 0.04558414372300279,
+              "observed_rank_bucket": 4,
+              "predicted_rank_bucket": 1,
+              "predicted_return": 0.05126096861830306,
+              "rank_probabilities": [
+                0.20405982905982906,
+                0.20405982905982906,
+                0.16346153846153846,
+                0.20405982905982906,
+                0.22435897435897434
+              ],
+              "rps": 0.28413153353057197,
+              "series_id": "HIG"
+            },
+            {
+              "actual_return": 0.005776815374296196,
+              "observed_rank_bucket": 2,
+              "predicted_rank_bucket": 1,
+              "predicted_return": 0.058530176618654235,
+              "rank_probabilities": [
+                0.20405982905982906,
+                0.20405982905982906,
+                0.16346153846153846,
+                0.20405982905982906,
+                0.22435897435897434
+              ],
+              "rps": 0.11052042241946089,
+              "series_id": "HIGH.L"
+            },
+            {
+              "actual_return": -0.035088408231497836,
+              "observed_rank_bucket": 1,
+              "predicted_rank_bucket": 3,
+              "predicted_return": 0.11826314192289655,
+              "rank_probabilities": [
+                0.18376068376068375,
+                0.14316239316239315,
+                0.18376068376068375,
+                0.28525641025641024,
+                0.20405982905982906
+              ],
+              "rps": 0.19196783229235154,
+              "series_id": "HST"
+            },
+            {
+              "actual_return": -0.0162096951479056,
+              "observed_rank_bucket": 1,
+              "predicted_rank_bucket": 1,
+              "predicted_return": 0.07096520587624325,
+              "rank_probabilities": [
+                0.20405982905982906,
+                0.20405982905982906,
+                0.16346153846153846,
+                0.20405982905982906,
+                0.22435897435897434
+              ],
+              "rps": 0.15646059335963183,
+              "series_id": "HYG"
+            },
+            {
+              "actual_return": -0.04451165677881219,
+              "observed_rank_bucket": 0,
+              "predicted_rank_bucket": 2,
+              "predicted_return": 0.1063600227938604,
+              "rank_probabilities": [
+                0.14316239316239315,
+                0.24465811965811965,
+                0.24465811965811965,
+                0.18376068376068375,
+                0.18376068376068375
+              ],
+              "rps": 0.3194435883738769,
+              "series_id": "IAU"
+            },
+            {
+              "actual_return": -0.046681489787425035,
+              "observed_rank_bucket": 0,
+              "predicted_rank_bucket": 0,
+              "predicted_return": 0.03354871176216466,
+              "rank_probabilities": [
+                0.28525641025641024,
+                0.20405982905982906,
+                0.18376068376068375,
+                0.16346153846153846,
+                0.16346153846153846
+              ],
+              "rps": 0.22631366882168166,
+              "series_id": "ICLN"
+            },
+            {
+              "actual_return": -0.0048613938970002435,
+              "observed_rank_bucket": 2,
+              "predicted_rank_bucket": 1,
+              "predicted_return": 0.0497105252237123,
+              "rank_probabilities": [
+                0.20405982905982906,
+                0.20405982905982906,
+                0.16346153846153846,
+                0.20405982905982906,
+                0.22435897435897434
+              ],
+              "rps": 0.11052042241946089,
+              "series_id": "IEAA.L"
+            },
+            {
+              "actual_return": -0.025857961076541258,
+              "observed_rank_bucket": 1,
+              "predicted_rank_bucket": 2,
+              "predicted_return": 0.07840270257192163,
+              "rank_probabilities": [
+                0.14316239316239315,
+                0.24465811965811965,
+                0.24465811965811965,
+                0.18376068376068375,
+                0.18376068376068375
+              ],
+              "rps": 0.14102478495507342,
+              "series_id": "IEF"
+            },
+            {
+              "actual_return": 0.03993910828916103,
+              "observed_rank_bucket": 3,
+              "predicted_rank_bucket": 2,
+              "predicted_return": 0.07650503445084056,
+              "rank_probabilities": [
+                0.14316239316239315,
+                0.24465811965811965,
+                0.24465811965811965,
+                0.18376068376068375,
+                0.18376068376068375
+              ],
+              "rps": 0.15117435760464606,
+              "series_id": "IEFM.L"
+            },
+            {
+              "actual_return": -0.04232044538042323,
+              "observed_rank_bucket": 0,
+              "predicted_rank_bucket": 4,
+              "predicted_return": 0.14027272464050647,
+              "rank_probabilities": [
+                0.18376068376068375,
+                0.20405982905982906,
+                0.22435897435897434,
+                0.16346153846153846,
+                0.22435897435897434
+              ],
+              "rps": 0.3104380113594858,
+              "series_id": "IEMG"
+            },
+            {
+              "actual_return": 0.01707773484734898,
+              "observed_rank_bucket": 3,
+              "predicted_rank_bucket": 3,
+              "predicted_return": 0.1158054708834622,
+              "rank_probabilities": [
+                0.18376068376068375,
+                0.14316239316239315,
+                0.18376068376068375,
+                0.28525641025641024,
+                0.20405982905982906
+              ],
+              "rps": 0.11077125109577032,
+              "series_id": "IEUS"
+            },
+            {
+              "actual_return": 0.041209270304636836,
+              "observed_rank_bucket": 3,
+              "predicted_rank_bucket": 4,
+              "predicted_return": 0.13085929308882502,
+              "rank_probabilities": [
+                0.18376068376068375,
+                0.20405982905982906,
+                0.22435897435897434,
+                0.16346153846153846,
+                0.22435897435897434
+              ],
+              "rps": 0.1523183532398276,
+              "series_id": "IEVL.L"
+            },
+            {
+              "actual_return": -0.017032943588857763,
+              "observed_rank_bucket": 1,
+              "predicted_rank_bucket": 2,
+              "predicted_return": 0.09645882993847216,
+              "rank_probabilities": [
+                0.14316239316239315,
+                0.24465811965811965,
+                0.24465811965811965,
+                0.18376068376068375,
+                0.18376068376068375
+              ],
+              "rps": 0.14102478495507342,
+              "series_id": "IGF"
+            },
+            {
+              "actual_return": -0.05601729229647168,
+              "observed_rank_bucket": 0,
+              "predicted_rank_bucket": 1,
+              "predicted_return": 0.06121658583060805,
+              "rank_probabilities": [
+                0.20405982905982906,
+                0.20405982905982906,
+                0.16346153846153846,
+                0.20405982905982906,
+                0.22435897435897434
+              ],
+              "rps": 0.3044306788297173,
+              "series_id": "INDA"
+            },
+            {
+              "actual_return": -0.009449096655561928,
+              "observed_rank_bucket": 2,
+              "predicted_rank_bucket": 0,
+              "predicted_return": 0.040106850530467746,
+              "rank_probabilities": [
+                0.28525641025641024,
+                0.20405982905982906,
+                0.18376068376068375,
+                0.16346153846153846,
+                0.16346153846153846
+              ],
+              "rps": 0.11359999360800643,
+              "series_id": "IUMO.L"
+            },
+            {
+              "actual_return": 0.0323005354596565,
+              "observed_rank_bucket": 3,
+              "predicted_rank_bucket": 1,
+              "predicted_return": 0.06389134854395577,
+              "rank_probabilities": [
+                0.20405982905982906,
+                0.20405982905982906,
+                0.16346153846153846,
+                0.20405982905982906,
+                0.22435897435897434
+              ],
+              "rps": 0.1463110207100592,
+              "series_id": "IUVL.L"
+            },
+            {
+              "actual_return": 0.029261936992109105,
+              "observed_rank_bucket": 3,
+              "predicted_rank_bucket": 2,
+              "predicted_return": 0.10501761248723923,
+              "rank_probabilities": [
+                0.14316239316239315,
+                0.24465811965811965,
+                0.24465811965811965,
+                0.18376068376068375,
+                0.18376068376068375
+              ],
+              "rps": 0.15117435760464606,
+              "series_id": "IVV"
+            },
+            {
+              "actual_return": 0.04415153498220048,
+              "observed_rank_bucket": 4,
+              "predicted_rank_bucket": 3,
+              "predicted_return": 0.11041115270243201,
+              "rank_probabilities": [
+                0.18376068376068375,
+                0.14316239316239315,
+                0.18376068376068375,
+                0.28525641025641024,
+                0.20405982905982906
+              ],
+              "rps": 0.25874133656585574,
+              "series_id": "IWM"
+            },
+            {
+              "actual_return": 0.05309825840941218,
+              "observed_rank_bucket": 4,
+              "predicted_rank_bucket": 4,
+              "predicted_return": 0.12901616328809434,
+              "rank_probabilities": [
+                0.18376068376068375,
+                0.20405982905982906,
+                0.22435897435897434,
+                0.16346153846153846,
+                0.22435897435897434
+              ],
+              "rps": 0.29013886606034034,
+              "series_id": "IXN"
+            },
+            {
+              "actual_return": -0.032147077512724165,
+              "observed_rank_bucket": 1,
+              "predicted_rank_bucket": 1,
+              "predicted_return": 0.06756296729532965,
+              "rank_probabilities": [
+                0.20405982905982906,
+                0.20405982905982906,
+                0.16346153846153846,
+                0.20405982905982906,
+                0.22435897435897434
+              ],
+              "rps": 0.15646059335963183,
+              "series_id": "JPEA.L"
+            },
+            {
+              "actual_return": 0.05246057896257361,
+              "observed_rank_bucket": 4,
+              "predicted_rank_bucket": 1,
+              "predicted_return": 0.06065520514965755,
+              "rank_probabilities": [
+                0.20405982905982906,
+                0.20405982905982906,
+                0.16346153846153846,
+                0.20405982905982906,
+                0.22435897435897434
+              ],
+              "rps": 0.28413153353057197,
+              "series_id": "JPM"
+            },
+            {
+              "actual_return": -0.003102405288504917,
+              "observed_rank_bucket": 2,
+              "predicted_rank_bucket": 0,
+              "predicted_return": 0.030589128906703927,
+              "rank_probabilities": [
+                0.28525641025641024,
+                0.20405982905982906,
+                0.18376068376068375,
+                0.16346153846153846,
+                0.16346153846153846
+              ],
+              "rps": 0.11359999360800643,
+              "series_id": "KR"
+            },
+            {
+              "actual_return": -0.02885057936883384,
+              "observed_rank_bucket": 1,
+              "predicted_rank_bucket": 2,
+              "predicted_return": 0.08586210066410459,
+              "rank_probabilities": [
+                0.14316239316239315,
+                0.24465811965811965,
+                0.24465811965811965,
+                0.18376068376068375,
+                0.18376068376068375
+              ],
+              "rps": 0.14102478495507342,
+              "series_id": "LQD"
+            },
+            {
+              "actual_return": -0.08188723685382204,
+              "observed_rank_bucket": 0,
+              "predicted_rank_bucket": 4,
+              "predicted_return": 0.13036776952543316,
+              "rank_probabilities": [
+                0.18376068376068375,
+                0.20405982905982906,
+                0.22435897435897434,
+                0.16346153846153846,
+                0.22435897435897434
+              ],
+              "rps": 0.3104380113594858,
+              "series_id": "MCHI"
+            },
+            {
+              "actual_return": 0.24468603424829038,
+              "observed_rank_bucket": 4,
+              "predicted_rank_bucket": 4,
+              "predicted_return": 0.12455158151007559,
+              "rank_probabilities": [
+                0.18376068376068375,
+                0.20405982905982906,
+                0.22435897435897434,
+                0.16346153846153846,
+                0.22435897435897434
+              ],
+              "rps": 0.29013886606034034,
+              "series_id": "META"
+            },
+            {
+              "actual_return": 0.01509332184486123,
+              "observed_rank_bucket": 3,
+              "predicted_rank_bucket": 1,
+              "predicted_return": 0.06870895069890838,
+              "rank_probabilities": [
+                0.20405982905982906,
+                0.20405982905982906,
+                0.16346153846153846,
+                0.20405982905982906,
+                0.22435897435897434
+              ],
+              "rps": 0.1463110207100592,
+              "series_id": "MVEU.L"
+            },
+            {
+              "actual_return": -0.17061701145409158,
+              "observed_rank_bucket": 0,
+              "predicted_rank_bucket": 3,
+              "predicted_return": 0.12092701741319209,
+              "rank_probabilities": [
+                0.18376068376068375,
+                0.14316239316239315,
+                0.18376068376068375,
+                0.28525641025641024,
+                0.20405982905982906
+              ],
+              "rps": 0.3500874904120097,
+              "series_id": "OGN"
+            },
+            {
+              "actual_return": -0.020056595470985816,
+              "observed_rank_bucket": 1,
+              "predicted_rank_bucket": 0,
+              "predicted_return": 0.028914337791117538,
+              "rank_probabilities": [
+                0.28525641025641024,
+                0.20405982905982906,
+                0.18376068376068375,
+                0.16346153846153846,
+                0.16346153846153846
+              ],
+              "rps": 0.11894187394988678,
+              "series_id": "PG"
+            },
+            {
+              "actual_return": -0.016557896482591095,
+              "observed_rank_bucket": 1,
+              "predicted_rank_bucket": 1,
+              "predicted_return": 0.06187495909177906,
+              "rank_probabilities": [
+                0.20405982905982906,
+                0.20405982905982906,
+                0.16346153846153846,
+                0.20405982905982906,
+                0.22435897435897434
+              ],
+              "rps": 0.15646059335963183,
+              "series_id": "PPL"
+            },
+            {
+              "actual_return": 0.030084653424047092,
+              "observed_rank_bucket": 3,
+              "predicted_rank_bucket": 1,
+              "predicted_return": 0.06832699141837012,
+              "rank_probabilities": [
+                0.20405982905982906,
+                0.20405982905982906,
+                0.16346153846153846,
+                0.20405982905982906,
+                0.22435897435897434
+              ],
+              "rps": 0.1463110207100592,
+              "series_id": "PRU"
+            },
+            {
+              "actual_return": -0.05190224888125028,
+              "observed_rank_bucket": 0,
+              "predicted_rank_bucket": 4,
+              "predicted_return": 0.13261321537367213,
+              "rank_probabilities": [
+                0.18376068376068375,
+                0.20405982905982906,
+                0.22435897435897434,
+                0.16346153846153846,
+                0.22435897435897434
+              ],
+              "rps": 0.3104380113594858,
+              "series_id": "PYPL"
+            },
+            {
+              "actual_return": 0.1380510984727613,
+              "observed_rank_bucket": 4,
+              "predicted_rank_bucket": 2,
+              "predicted_return": 0.07699277647027107,
+              "rank_probabilities": [
+                0.14316239316239315,
+                0.24465811965811965,
+                0.24465811965811965,
+                0.18376068376068375,
+                0.18376068376068375
+              ],
+              "rps": 0.30929401572430415,
+              "series_id": "RE"
+            },
+            {
+              "actual_return": 0.01575260514863952,
+              "observed_rank_bucket": 3,
+              "predicted_rank_bucket": 4,
+              "predicted_return": 0.12669827078371168,
+              "rank_probabilities": [
+                0.18376068376068375,
+                0.20405982905982906,
+                0.22435897435897434,
+                0.16346153846153846,
+                0.22435897435897434
+              ],
+              "rps": 0.1523183532398276,
+              "series_id": "REET"
+            },
+            {
+              "actual_return": 0.009507369730227255,
+              "observed_rank_bucket": 2,
+              "predicted_rank_bucket": 0,
+              "predicted_return": 0.026744983473833348,
+              "rank_probabilities": [
+                0.28525641025641024,
+                0.20405982905982906,
+                0.18376068376068375,
+                0.16346153846153846,
+                0.16346153846153846
+              ],
+              "rps": 0.11359999360800643,
+              "series_id": "ROL"
+            },
+            {
+              "actual_return": 0.00058319832856224,
+              "observed_rank_bucket": 2,
+              "predicted_rank_bucket": 1,
+              "predicted_return": 0.05682737847395973,
+              "rank_probabilities": [
+                0.20405982905982906,
+                0.20405982905982906,
+                0.16346153846153846,
+                0.20405982905982906,
+                0.22435897435897434
+              ],
+              "rps": 0.11052042241946089,
+              "series_id": "ROST"
+            },
+            {
+              "actual_return": -0.0032334915499312444,
+              "observed_rank_bucket": 2,
+              "predicted_rank_bucket": 0,
+              "predicted_return": 0.03412733134083584,
+              "rank_probabilities": [
+                0.28525641025641024,
+                0.20405982905982906,
+                0.18376068376068375,
+                0.16346153846153846,
+                0.16346153846153846
+              ],
+              "rps": 0.11359999360800643,
+              "series_id": "SEGA.L"
+            },
+            {
+              "actual_return": -0.0054848915131315845,
+              "observed_rank_bucket": 2,
+              "predicted_rank_bucket": 0,
+              "predicted_return": 0.03938250309576699,
+              "rank_probabilities": [
+                0.28525641025641024,
+                0.20405982905982906,
+                0.18376068376068375,
+                0.16346153846153846,
+                0.16346153846153846
+              ],
+              "rps": 0.11359999360800643,
+              "series_id": "SHY"
+            },
+            {
+              "actual_return": -0.09359726159749326,
+              "observed_rank_bucket": 0,
+              "predicted_rank_bucket": 0,
+              "predicted_return": 0.048784445309512696,
+              "rank_probabilities": [
+                0.28525641025641024,
+                0.20405982905982906,
+                0.18376068376068375,
+                0.16346153846153846,
+                0.16346153846153846
+              ],
+              "rps": 0.22631366882168166,
+              "series_id": "SLV"
+            },
+            {
+              "actual_return": 0.00024177778631795377,
+              "observed_rank_bucket": 2,
+              "predicted_rank_bucket": 0,
+              "predicted_return": 0.04241282141932363,
+              "rank_probabilities": [
+                0.28525641025641024,
+                0.20405982905982906,
+                0.18376068376068375,
+                0.16346153846153846,
+                0.16346153846153846
+              ],
+              "rps": 0.11359999360800643,
+              "series_id": "SPMV.L"
+            },
+            {
+              "actual_return": -0.03331182283567713,
+              "observed_rank_bucket": 1,
+              "predicted_rank_bucket": 4,
+              "predicted_return": 0.12390449330827097,
+              "rank_probabilities": [
+                0.18376068376068375,
+                0.20405982905982906,
+                0.22435897435897434,
+                0.16346153846153846,
+                0.22435897435897434
+              ],
+              "rps": 0.15231835323982765,
+              "series_id": "TLT"
+            },
+            {
+              "actual_return": 0.027680415263246827,
+              "observed_rank_bucket": 3,
+              "predicted_rank_bucket": 0,
+              "predicted_return": 0.031408637726193955,
+              "rank_probabilities": [
+                0.28525641025641024,
+                0.20405982905982906,
+                0.18376068376068375,
+                0.16346153846153846,
+                0.16346153846153846
+              ],
+              "rps": 0.20013845514646794,
+              "series_id": "UNH"
+            },
+            {
+              "actual_return": 0.19441077380351857,
+              "observed_rank_bucket": 4,
+              "predicted_rank_bucket": 2,
+              "predicted_return": 0.10732410949159052,
+              "rank_probabilities": [
+                0.14316239316239315,
+                0.24465811965811965,
+                0.24465811965811965,
+                0.18376068376068375,
+                0.18376068376068375
+              ],
+              "rps": 0.30929401572430415,
+              "series_id": "URI"
+            },
+            {
+              "actual_return": -0.0005857479418950318,
+              "observed_rank_bucket": 2,
+              "predicted_rank_bucket": 3,
+              "predicted_return": 0.10895911391880558,
+              "rank_probabilities": [
+                0.18376068376068375,
+                0.14316239316239315,
+                0.18376068376068375,
+                0.28525641025641024,
+                0.20405982905982906
+              ],
+              "rps": 0.10542937075388997,
+              "series_id": "V"
+            },
+            {
+              "actual_return": -0.02311085909491406,
+              "observed_rank_bucket": 1,
+              "predicted_rank_bucket": 1,
+              "predicted_return": 0.052632115582031895,
+              "rank_probabilities": [
+                0.20405982905982906,
+                0.20405982905982906,
+                0.16346153846153846,
+                0.20405982905982906,
+                0.22435897435897434
+              ],
+              "rps": 0.15646059335963183,
+              "series_id": "VRSK"
+            },
+            {
+              "actual_return": -0.034579071988820154,
+              "observed_rank_bucket": 1,
+              "predicted_rank_bucket": 1,
+              "predicted_return": 0.06584498877572446,
+              "rank_probabilities": [
+                0.20405982905982906,
+                0.20405982905982906,
+                0.16346153846153846,
+                0.20405982905982906,
+                0.22435897435897434
+              ],
+              "rps": 0.15646059335963183,
+              "series_id": "VXX"
+            },
+            {
+              "actual_return": -0.11103235539996237,
+              "observed_rank_bucket": 0,
+              "predicted_rank_bucket": 4,
+              "predicted_return": 0.1296599569259353,
+              "rank_probabilities": [
+                0.18376068376068375,
+                0.20405982905982906,
+                0.22435897435897434,
+                0.16346153846153846,
+                0.22435897435897434
+              ],
+              "rps": 0.3104380113594858,
+              "series_id": "WRK"
+            },
+            {
+              "actual_return": -0.017133343466470552,
+              "observed_rank_bucket": 1,
+              "predicted_rank_bucket": 3,
+              "predicted_return": 0.1209286559350601,
+              "rank_probabilities": [
+                0.18376068376068375,
+                0.14316239316239315,
+                0.18376068376068375,
+                0.28525641025641024,
+                0.20405982905982906
+              ],
+              "rps": 0.19196783229235154,
+              "series_id": "XLB"
+            },
+            {
+              "actual_return": 0.045638121610434235,
+              "observed_rank_bucket": 4,
+              "predicted_rank_bucket": 4,
+              "predicted_return": 0.1314226229820223,
+              "rank_probabilities": [
+                0.18376068376068375,
+                0.20405982905982906,
+                0.22435897435897434,
+                0.16346153846153846,
+                0.22435897435897434
+              ],
+              "rps": 0.29013886606034034,
+              "series_id": "XLC"
+            },
+            {
+              "actual_return": -0.06482500350315079,
+              "observed_rank_bucket": 0,
+              "predicted_rank_bucket": 2,
+              "predicted_return": 0.10514627981360677,
+              "rank_probabilities": [
+                0.14316239316239315,
+                0.24465811965811965,
+                0.24465811965811965,
+                0.18376068376068375,
+                0.18376068376068375
+              ],
+              "rps": 0.3194435883738769,
+              "series_id": "XLE"
+            },
+            {
+              "actual_return": 0.02949954134308519,
+              "observed_rank_bucket": 3,
+              "predicted_rank_bucket": 2,
+              "predicted_return": 0.09816096540274252,
+              "rank_probabilities": [
+                0.14316239316239315,
+                0.24465811965811965,
+                0.24465811965811965,
+                0.18376068376068375,
+                0.18376068376068375
+              ],
+              "rps": 0.15117435760464606,
+              "series_id": "XLF"
+            },
+            {
+              "actual_return": 0.04061109221596593,
+              "observed_rank_bucket": 3,
+              "predicted_rank_bucket": 1,
+              "predicted_return": 0.0549796288849803,
+              "rank_probabilities": [
+                0.20405982905982906,
+                0.20405982905982906,
+                0.16346153846153846,
+                0.20405982905982906,
+                0.22435897435897434
+              ],
+              "rps": 0.1463110207100592,
+              "series_id": "XLI"
+            },
+            {
+              "actual_return": 0.06479417496521755,
+              "observed_rank_bucket": 4,
+              "predicted_rank_bucket": 3,
+              "predicted_return": 0.11565862610931817,
+              "rank_probabilities": [
+                0.18376068376068375,
+                0.14316239316239315,
+                0.18376068376068375,
+                0.28525641025641024,
+                0.20405982905982906
+              ],
+              "rps": 0.25874133656585574,
+              "series_id": "XLK"
+            },
+            {
+              "actual_return": 0.014961897544207736,
+              "observed_rank_bucket": 3,
+              "predicted_rank_bucket": 1,
+              "predicted_return": 0.050672759390853014,
+              "rank_probabilities": [
+                0.20405982905982906,
+                0.20405982905982906,
+                0.16346153846153846,
+                0.20405982905982906,
+                0.22435897435897434
+              ],
+              "rps": 0.1463110207100592,
+              "series_id": "XLP"
+            }
+          ],
+          "decision_return": 0.006393941814821954,
+          "decisions": [
+            {
+              "actual_return": 0.058024066123019025,
+              "predicted_return": 0.13596356552556205,
+              "series_id": "AMP",
+              "side": "long",
+              "weight": 0.02631578947368421
+            },
+            {
+              "actual_return": -0.039990725052292175,
+              "predicted_return": 0.13111031059660494,
+              "series_id": "AVY",
+              "side": "long",
+              "weight": 0.02631578947368421
+            },
+            {
+              "actual_return": -0.014838408948797066,
+              "predicted_return": 0.13487013057177508,
+              "series_id": "BR",
+              "side": "long",
+              "weight": 0.02631578947368421
+            },
+            {
+              "actual_return": -0.014993494211788971,
+              "predicted_return": 0.12554144843593276,
+              "series_id": "CE",
+              "side": "long",
+              "weight": 0.02631578947368421
+            },
+            {
+              "actual_return": 0.0022131648120119474,
+              "predicted_return": 0.13389620080087453,
+              "series_id": "CHTR",
+              "side": "long",
+              "weight": 0.02631578947368421
+            },
+            {
+              "actual_return": 0.11106568079894763,
+              "predicted_return": 0.1407970197632245,
+              "series_id": "CZR",
+              "side": "long",
+              "weight": 0.02631578947368421
+            },
+            {
+              "actual_return": -0.027870495424519248,
+              "predicted_return": 0.13240784836362177,
+              "series_id": "EWA",
+              "side": "long",
+              "weight": 0.02631578947368421
+            },
+            {
+              "actual_return": -0.06211997629750676,
+              "predicted_return": 0.12383899865741878,
+              "series_id": "EWH",
+              "side": "long",
+              "weight": 0.02631578947368421
+            },
+            {
+              "actual_return": 0.029146778231621817,
+              "predicted_return": 0.12623706258268766,
+              "series_id": "EWQ",
+              "side": "long",
+              "weight": 0.02631578947368421
+            },
+            {
+              "actual_return": -0.04232044538042323,
+              "predicted_return": 0.14027272464050647,
+              "series_id": "IEMG",
+              "side": "long",
+              "weight": 0.02631578947368421
+            },
+            {
+              "actual_return": 0.041209270304636836,
+              "predicted_return": 0.13085929308882502,
+              "series_id": "IEVL.L",
+              "side": "long",
+              "weight": 0.02631578947368421
+            },
+            {
+              "actual_return": 0.05309825840941218,
+              "predicted_return": 0.12901616328809434,
+              "series_id": "IXN",
+              "side": "long",
+              "weight": 0.02631578947368421
+            },
+            {
+              "actual_return": -0.08188723685382204,
+              "predicted_return": 0.13036776952543316,
+              "series_id": "MCHI",
+              "side": "long",
+              "weight": 0.02631578947368421
+            },
+            {
+              "actual_return": 0.24468603424829038,
+              "predicted_return": 0.12455158151007559,
+              "series_id": "META",
+              "side": "long",
+              "weight": 0.02631578947368421
+            },
+            {
+              "actual_return": -0.05190224888125028,
+              "predicted_return": 0.13261321537367213,
+              "series_id": "PYPL",
+              "side": "long",
+              "weight": 0.02631578947368421
+            },
+            {
+              "actual_return": 0.01575260514863952,
+              "predicted_return": 0.12669827078371168,
+              "series_id": "REET",
+              "side": "long",
+              "weight": 0.02631578947368421
+            },
+            {
+              "actual_return": -0.03331182283567713,
+              "predicted_return": 0.12390449330827097,
+              "series_id": "TLT",
+              "side": "long",
+              "weight": 0.02631578947368421
+            },
+            {
+              "actual_return": -0.11103235539996237,
+              "predicted_return": 0.1296599569259353,
+              "series_id": "WRK",
+              "side": "long",
+              "weight": 0.02631578947368421
+            },
+            {
+              "actual_return": 0.045638121610434235,
+              "predicted_return": 0.1314226229820223,
+              "series_id": "XLC",
+              "side": "long",
+              "weight": 0.02631578947368421
+            },
+            {
+              "actual_return": 0.01263592661705637,
+              "predicted_return": 0.042910516678528444,
+              "series_id": "ABBV",
+              "side": "short",
+              "weight": -0.02631578947368421
+            },
+            {
+              "actual_return": 0.013102600977338397,
+              "predicted_return": 0.036955009029292364,
+              "series_id": "AEP",
+              "side": "short",
+              "weight": -0.02631578947368421
+            },
+            {
+              "actual_return": -0.03576345878324483,
+              "predicted_return": 0.044371398708881384,
+              "series_id": "BDX",
+              "side": "short",
+              "weight": -0.02631578947368421
+            },
+            {
+              "actual_return": -0.008196272091168133,
+              "predicted_return": 0.0434660703423719,
+              "series_id": "BF-B",
+              "side": "short",
+              "weight": -0.02631578947368421
+            },
+            {
+              "actual_return": -0.022820899090628344,
+              "predicted_return": 0.035462335785540616,
+              "series_id": "CNP",
+              "side": "short",
+              "weight": -0.02631578947368421
+            },
+            {
+              "actual_return": 0.02037288589677344,
+              "predicted_return": 0.030425487824439983,
+              "series_id": "CTAS",
+              "side": "short",
+              "weight": -0.02631578947368421
+            },
+            {
+              "actual_return": -0.011159475803249386,
+              "predicted_return": 0.040421169236263654,
+              "series_id": "DG",
+              "side": "short",
+              "weight": -0.02631578947368421
+            },
+            {
+              "actual_return": 0.10884127296621304,
+              "predicted_return": 0.02395631631905801,
+              "series_id": "GPC",
+              "side": "short",
+              "weight": -0.02631578947368421
+            },
+            {
+              "actual_return": -0.0552399301681088,
+              "predicted_return": 0.04893921702712797,
+              "series_id": "GSG",
+              "side": "short",
+              "weight": -0.02631578947368421
+            },
+            {
+              "actual_return": -0.046681489787425035,
+              "predicted_return": 0.03354871176216466,
+              "series_id": "ICLN",
+              "side": "short",
+              "weight": -0.02631578947368421
+            },
+            {
+              "actual_return": -0.009449096655561928,
+              "predicted_return": 0.040106850530467746,
+              "series_id": "IUMO.L",
+              "side": "short",
+              "weight": -0.02631578947368421
+            },
+            {
+              "actual_return": -0.003102405288504917,
+              "predicted_return": 0.030589128906703927,
+              "series_id": "KR",
+              "side": "short",
+              "weight": -0.02631578947368421
+            },
+            {
+              "actual_return": -0.020056595470985816,
+              "predicted_return": 0.028914337791117538,
+              "series_id": "PG",
+              "side": "short",
+              "weight": -0.02631578947368421
+            },
+            {
+              "actual_return": 0.009507369730227255,
+              "predicted_return": 0.026744983473833348,
+              "series_id": "ROL",
+              "side": "short",
+              "weight": -0.02631578947368421
+            },
+            {
+              "actual_return": -0.0032334915499312444,
+              "predicted_return": 0.03412733134083584,
+              "series_id": "SEGA.L",
+              "side": "short",
+              "weight": -0.02631578947368421
+            },
+            {
+              "actual_return": -0.0054848915131315845,
+              "predicted_return": 0.03938250309576699,
+              "series_id": "SHY",
+              "side": "short",
+              "weight": -0.02631578947368421
+            },
+            {
+              "actual_return": -0.09359726159749326,
+              "predicted_return": 0.048784445309512696,
+              "series_id": "SLV",
+              "side": "short",
+              "weight": -0.02631578947368421
+            },
+            {
+              "actual_return": 0.00024177778631795377,
+              "predicted_return": 0.04241282141932363,
+              "series_id": "SPMV.L",
+              "side": "short",
+              "weight": -0.02631578947368421
+            },
+            {
+              "actual_return": 0.027680415263246827,
+              "predicted_return": 0.031408637726193955,
+              "series_id": "UNH",
+              "side": "short",
+              "weight": -0.02631578947368421
+            }
+          ],
+          "mean_rps": 0.20075379867046528,
+          "rank_probability_calibration": {
+            "bucket_count": 5,
+            "dirichlet_prior": 1.0,
+            "fallback": "none",
+            "method": "dirichlet_confusion_with_uniform_shrinkage",
+            "shrinkage_to_confusion": 0.48717948717948717,
+            "validation_support": 95
+          }
+        }
+      },
+      "notes": [
+        "Rank probabilities are deterministic five-bucket distributions derived from predicted cumulative holdout returns.",
+        "Decision rows are deterministic long/short selections for auditability; they are not an official M6 submission file."
+      ],
+      "rank_bucket_count": 5,
+      "ranking": [
+        "cartoboost_lag",
+        "cartoboost_auto_forecast"
+      ],
+      "primary_ranking": [
+        "cartoboost_lag",
+        "cartoboost_auto_forecast"
+      ],
+      "rps_ranking": [
+        "cartoboost_lag",
+        "cartoboost_auto_forecast"
+      ],
+      "investment_ranking": [
+        "cartoboost_lag",
+        "cartoboost_auto_forecast"
+      ]
+    },
+    "objective": "M6-style rank-probability scoring plus deterministic decisions",
+    "primary_metric": "rank_probability_score"
+  },
+  "plots": [],
+  "quality": {
+    "best_cartoboost_model": "cartoboost_auto_forecast",
+    "best_rmse": 0.01343868627753036,
+    "cartoboost_mae": 0.007342135084199813,
+    "cartoboost_rmse": 0.01343868627753036,
+    "cartoboost_wape": 1.0,
+    "comparison_libraries": [],
+    "forecasting_library_models": {},
+    "mae_ranking": [
+      "cartoboost_auto_forecast",
+      "cartoboost_lag"
+    ],
+    "model_libraries": {
+      "cartoboost_auto_forecast": "cartoboost",
+      "cartoboost_lag": "cartoboost",
+      "functime_lightgbm": "functime",
+      "functime_ridge": "functime",
+      "functime_snaive": "functime",
+      "lightgbm_lag": "external_trees",
+      "prophet_additive": "prophet",
+      "statsforecast_autoarima": "statsforecast",
+      "statsforecast_autoces": "statsforecast",
+      "statsforecast_autoets": "statsforecast",
+      "statsforecast_autotbats": "statsforecast",
+      "statsforecast_autotheta": "statsforecast",
+      "statsforecast_dynamic_optimized_theta": "statsforecast",
+      "statsforecast_seasonal_naive": "statsforecast",
+      "xgboost_lag": "external_trees"
+    },
+    "rmse_ranking": [
+      "cartoboost_auto_forecast",
+      "cartoboost_lag"
+    ],
+    "tied_best_models": [
+      "cartoboost_auto_forecast"
+    ],
+    "wape_ranking": [
+      "cartoboost_auto_forecast",
+      "cartoboost_lag"
+    ],
+    "winner": "cartoboost_auto_forecast"
+  },
+  "resource_usage": {
+    "peak_rss_mb": 373.625,
+    "process_cpu_seconds": 269.683783
+  },
+  "source_file_hashes": {
+    "assets_file": "48c67aa0976ae63de3a6d7a42228ef374d39221734a433c9391572d01e85b20a"
+  },
+  "timing": {
+    "candidate_selection": {
+      "calibration_seconds": 17.932277083018562,
+      "inner_candidate_losses": {
+        "cartoboost_auto_forecast": {
+          "cartoboost_lag": 0.012619785924070944,
+          "shared_calendar_dom": 0.013229083579348978,
+          "shared_calendar_phase14": 0.01277702441117782,
+          "shared_drift": 0.02080828555934019,
+          "shared_half_drift": 0.017015459199982378,
+          "shared_m6_market_neutral_zero": 0.011955548123604021,
+          "shared_m6_phase14_rank_blend": 0.012739747549076369,
+          "shared_seasonal_base": 0.01624456983110332,
+          "shared_seasonal_cycle_drift_050": 0.03486335879179945,
+          "shared_seasonal_cycle_drift_075": 0.09066464330843915,
+          "shared_seasonal_drift": 0.014157547013283311
+        },
+        "cartoboost_lag": {
+          "cartoboost_lag": 0.012619785924070944
+        }
+      },
+      "inner_losses": {
+        "cartoboost_auto_forecast": {
+          "raw": null,
+          "selected": 0.011955548123604021
+        },
+        "cartoboost_lag": {
+          "raw": 0.012619785924070944,
+          "selected": 0.012619785924070944
+        }
+      },
+      "inner_origin_count": 1.0,
+      "inner_rmse": {
+        "cartoboost_auto_forecast": {
+          "raw": null,
+          "selected": 0.011955548123604021
+        },
+        "cartoboost_lag": {
+          "raw": 0.012619785924070944,
+          "selected": 0.012619785924070944
+        }
+      },
+      "objective": "rmse",
+      "selected_candidates": {
+        "cartoboost_auto_forecast": "shared_m6_market_neutral_zero",
+        "cartoboost_lag": "cartoboost_lag"
+      }
+    },
+    "load_seconds": 0.15048470799229108,
+    "models": {
+      "cartoboost_auto_forecast": {
+        "fit_predict_seconds": 0.0,
+        "fit_seconds": 0.0,
+        "predict_seconds": 0.0,
+        "selector_mode": "m6_outer_skips_raw_auto_candidate",
+        "total_seconds": 0.0
+      },
+      "cartoboost_lag": {
+        "feature_count": 22.0,
+        "feature_seconds": 0.00201254099374637,
+        "fit_predict_seconds": 4.2231216660293285,
+        "fit_seconds": 4.184585208015051,
+        "predict_seconds": 0.03853645801427774,
+        "total_seconds": 4.225134207023075
+      }
+    },
+    "total_seconds": 22.31646833301056
+  }
+}

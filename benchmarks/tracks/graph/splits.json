@@ -1,0 +1,6 @@
+{
+  "splits": [
+    {"id": "ogb_official_split", "kind": "public_fixed_split", "outer_folds": 1, "seeds": "benchmark_seeds", "hpo_scope": "train_validation_only"}
+  ]
+}
+

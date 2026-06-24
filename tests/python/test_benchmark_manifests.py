@@ -1,0 +1,483 @@
+from __future__ import annotations
+
+import ast
+import importlib
+import json
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(ROOT))
+
+aggregate_module = importlib.import_module("benchmarks.runners.aggregate_results")
+manifest_module = importlib.import_module("benchmarks.runners.manifest")
+model_suite_module = importlib.import_module("scripts.run_model_benchmark_suite")
+significance_module = importlib.import_module("benchmarks.runners.significance")
+
+aggregate = aggregate_module.aggregate
+read_jsonl = aggregate_module.read_jsonl
+load_all_tracks = manifest_module.load_all_tracks
+load_config = manifest_module.load_config
+validate_configs = manifest_module.validate_configs
+failed_validation_search_reason = model_suite_module.failed_validation_search_reason
+repeated_external_comparison_summary = model_suite_module.repeated_external_comparison_summary
+average_ranks = significance_module.average_ranks
+paired_bootstrap_ci = significance_module.paired_bootstrap_ci
+
+
+def test_public_benchmark_manifests_are_valid() -> None:
+    validate_configs()
+    specs = load_all_tracks()
+
+    assert {spec.name for spec in specs} == {"forecasting", "graph", "spatial", "tabular"}
+
+
+def test_sklearn_dependency_is_optional_extra() -> None:
+    text = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    dependencies_block = re.search(r"dependencies = \[(.*?)\]", text, re.S)
+    assert dependencies_block is not None
+    assert "scikit-learn" not in dependencies_block.group(1)
+    assert re.search(
+        r"\[project\.optional-dependencies\]\s+sklearn = \[\s+\"scikit-learn>=1\.2\",\s+\]",
+        text,
+    )
+
+
+def test_non_forecast_required_baselines_are_concrete() -> None:
+    baselines = load_config("required_baselines")
+
+    assert baselines["tabular"] == [
+        "cartoboost",
+        "lightgbm",
+        "xgboost",
+        "hist_gradient_boosting",
+        "random_forest",
+        "extra_trees",
+        "ridge",
+        "mean",
+        "deep_tabular_baseline",
+    ]
+    assert baselines["spatial"] == [
+        "cartoboost",
+        "cartoboost_neural",
+        "cartoboost_graph",
+        "lightgbm",
+        "xgboost",
+        "hist_gradient_boosting",
+        "random_forest",
+        "extra_trees",
+        "ridge",
+        "mean",
+    ]
+    assert baselines["graph"] == [
+        "cartoboost",
+        "cartoboost_graph",
+        "node2vec_baseline",
+        "graphsage_baseline",
+        "tabularized_graph_baseline",
+        "mean",
+    ]
+
+
+def test_non_forecast_dataset_identities_are_frozen() -> None:
+    specs = {spec.name: spec for spec in load_all_tracks()}
+    for track in ["tabular", "spatial", "graph"]:
+        for dataset in specs[track].datasets["datasets"]:
+            assert dataset["hash"].startswith("sha256:")
+            assert dataset["hash"] != "to_be_frozen"
+            assert dataset["source_url"]
+            assert dataset["source_identity"]
+
+    assert specs["tabular"].datasets["datasets"][0]["id"] == "sklearn_diabetes_regression_v1"
+    assert (
+        specs["tabular"].datasets["datasets"][1]["id"]
+        == "sklearn_california_housing_regression_seed42_5000_v1"
+    )
+    assert specs["graph"].datasets["datasets"][0]["id"] == "zachary_karate_club_78_edge_v1"
+
+
+def test_benchmark_navigation_links_resolve() -> None:
+    docs = [
+        ROOT / "docs" / "README.md",
+        ROOT / "docs" / "llms.txt",
+        ROOT / "llms.txt",
+    ]
+    benchmark_links = set()
+    for doc in docs:
+        text = doc.read_text(encoding="utf-8")
+        benchmark_links.update(re.findall(r"\((?:\./)?(docs/benchmarks/[^)]+\.md)\)", text))
+        benchmark_links.update(re.findall(r": \./(docs/benchmarks/[^\s]+\.md)", text))
+        benchmark_links.update(re.findall(r"\((benchmarks/[^)]+\.md)\)", text))
+
+    resolved = []
+    for link in benchmark_links:
+        path = ROOT / "docs" / link if link.startswith("benchmarks/") else ROOT / link
+        resolved.append(path)
+        assert path.exists(), f"missing benchmark navigation target: {link}"
+
+    assert ROOT / "docs" / "benchmarks" / "model-suite.md" in resolved
+    assert ROOT / "docs" / "benchmarks" / "nyc-taxi.md" in resolved
+
+
+def test_benchmark_docs_asset_paths_exist() -> None:
+    docs = [
+        ROOT / "docs" / "benchmarks" / "index.md",
+        ROOT / "docs" / "benchmarks" / "model-suite.md",
+        ROOT / "docs" / "benchmarks" / "nyc-taxi.md",
+        ROOT / "docs" / "benchmarks" / "taxi-zone.md",
+    ]
+    for doc in docs:
+        text = doc.read_text(encoding="utf-8")
+        for asset in sorted(set(re.findall(r"`(docs/assets/[^`]+)`", text))):
+            path = ROOT / asset
+            assert path.exists(), f"{doc.relative_to(ROOT)} references missing asset: {asset}"
+
+
+def test_benchmark_index_lists_maintained_regression_artifacts() -> None:
+    text = (ROOT / "docs" / "benchmarks" / "index.md").read_text(encoding="utf-8")
+    expected_paths = [
+        "docs/assets/nyc_taxi_benchmarks/results.json",
+        "docs/assets/nyc_taxi_benchmarks/results.jsonl",
+        "docs/assets/nyc_taxi_benchmarks/results.md",
+        "docs/assets/nyc_taxi_benchmarks/repeated_results.json",
+        "docs/assets/nyc_taxi_benchmarks/repeated_results.md",
+        "docs/assets/model_benchmarks_public/results.json",
+        "docs/assets/model_benchmarks_public/results.jsonl",
+        "docs/assets/model_benchmarks_public/results_aggregate.json",
+        "docs/assets/model_benchmarks_public/results.md",
+    ]
+    for path in expected_paths:
+        assert f"`{path}`" in text
+        assert (ROOT / path).exists()
+
+
+def test_v02_modeling_benchmark_runner_is_documented() -> None:
+    script = ROOT / "scripts" / "run_v02_modeling_benchmarks.py"
+    methodology = (ROOT / "docs" / "benchmarks" / "methodology.md").read_text(encoding="utf-8")
+    index = (ROOT / "docs" / "benchmarks" / "index.md").read_text(encoding="utf-8")
+    script_text = script.read_text(encoding="utf-8")
+
+    assert script.exists()
+    assert "scripts/run_v02_modeling_benchmarks.py" in methodology
+    assert "scripts/run_v02_modeling_benchmarks.py" in index
+    for gate in [
+        "binary_spatial_classification",
+        "grouped_ranking",
+        "categorical_native_vs_one_hot",
+        "spatial_leakage_random_vs_buffered",
+        "regression_speed_guard",
+        "unsupported_export_fails_loudly",
+    ]:
+        assert gate in script_text
+    assert "--regression-baseline-json" in script_text
+    assert "external_baseline_comparison" in script_text
+    assert "current_code_repeatability" in methodology
+    assert "cartoboost_pr_auc" in script_text
+    assert "cartoboost_ece" in script_text
+    assert "spatial_cv_gap(random_rmse, buffered_rmse)" in script_text
+    assert "rmse_gap_buffered_minus_random" in script_text
+    assert "category_count" in script_text
+    assert "encoding_strategy" in script_text
+    assert "unknown_category_rate" in script_text
+    assert script_text.count("roundtrip_max_abs_diff") >= 3
+    assert "save/load probability drift" in methodology
+    assert "save/load score drift" in methodology
+    assert "unknown-category rate" in methodology
+
+
+def test_v02_public_python_apis_have_docstring_examples() -> None:
+    public_modules = [
+        ROOT / "python" / "cartoboost" / "classifier.py",
+        ROOT / "python" / "cartoboost" / "ranker.py",
+        ROOT / "python" / "cartoboost" / "evaluation.py",
+        ROOT / "python" / "cartoboost" / "metrics.py",
+    ]
+    documented_classes = {"CartoBoostClassifier", "CartoBoostRanker"}
+    missing = []
+
+    for path in public_modules:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in tree.body:
+            if isinstance(node, ast.ClassDef) and node.name in documented_classes:
+                doc = ast.get_docstring(node) or ""
+                if "Example:" not in doc:
+                    missing.append(f"{path.relative_to(ROOT)}:{node.name}")
+                for item in node.body:
+                    if isinstance(item, ast.FunctionDef) and not item.name.startswith("_"):
+                        item_doc = ast.get_docstring(item) or ""
+                        if "Example:" not in item_doc:
+                            missing.append(f"{path.relative_to(ROOT)}:{node.name}.{item.name}")
+            elif isinstance(node, ast.FunctionDef) and not node.name.startswith("_"):
+                doc = ast.get_docstring(node) or ""
+                if "Example:" not in doc:
+                    missing.append(f"{path.relative_to(ROOT)}:{node.name}")
+
+    assert missing == []
+
+
+def test_non_forecast_benchmark_docs_use_public_evidence_language() -> None:
+    docs = [
+        ROOT / "docs" / "benchmarks" / "index.md",
+        ROOT / "docs" / "benchmarks" / "lane-level.md",
+        ROOT / "docs" / "benchmarks" / "model-suite.md",
+        ROOT / "docs" / "benchmarks" / "nyc-taxi.md",
+        ROOT / "docs" / "benchmarks" / "taxi-zone.md",
+    ]
+    combined = "\n".join(path.read_text(encoding="utf-8") for path in docs)
+    assert "tail wins" not in combined
+    assert "committed acceptance artifacts" not in combined
+    assert "maintained acceptance artifacts" in combined
+
+
+def test_non_forecast_public_artifacts_exist() -> None:
+    paths = [
+        ROOT / "docs" / "assets" / "model_benchmarks_public" / "results.json",
+        ROOT / "docs" / "assets" / "model_benchmarks_public" / "results.jsonl",
+        ROOT / "docs" / "assets" / "model_benchmarks_public" / "results_aggregate.json",
+        ROOT / "docs" / "assets" / "model_benchmarks_public" / "results.md",
+    ]
+    for path in paths:
+        assert path.exists(), f"missing maintained public model benchmark artifact: {path}"
+
+    report = paths[3].read_text(encoding="utf-8")
+    assert "deterministic public tabular workloads and embedded graph diagnostics" in report
+    assert "deterministic synthetic workloads" not in report
+
+    payload = json.loads(paths[0].read_text(encoding="utf-8"))
+    model_suite_doc = (ROOT / "docs" / "benchmarks" / "model-suite.md").read_text(encoding="utf-8")
+    assert set(payload["workloads"]) == {"diabetes", "california_housing", "karate"}
+    assert payload["datasets_requested"] == ["diabetes", "california_housing", "karate"]
+    assert payload["benchmark_integrity"]["hpo"] == "inner_train_validation_search"
+    assert payload["selection_mode"] == "validation_search"
+    assert payload["repeat_seeds"] == [42, 43, 44]
+    assert len(payload["repeated_external_baseline_comparison"]) == 4
+    assert "catboost" in payload["models_requested"]
+    assert payload["resource_usage"]["python"]
+    assert payload["baseline_environment"]["xgboost"]["required_class_available"] is True
+    assert payload["baseline_environment"]["lightgbm"]["required_class_available"] is False
+    assert payload["baseline_environment"]["catboost"]["module_importable"] is False
+    assert payload["output_artifacts"]["results.json"]["size_bytes"] > 0
+    assert (
+        "test labels"
+        in payload["benchmark_integrity"]["selection_policy"]["global_hyperparameters"]
+    )
+    assert "group_holdout" in payload["split_definitions"]
+    for workload_name, split_name, model_name in [
+        ("california_housing", "random", "cartoboost"),
+        ("karate", "group_holdout", "xgboost"),
+    ]:
+        result = payload["workloads"][workload_name]["splits"][split_name]["models"][model_name]
+        metrics = result["metrics"]
+        timing = result["timing"]
+        expected_row = (
+            f"| {model_name} | {metrics['rmse']:.4f} | {metrics['mae']:.4f} | "
+            f"{metrics['r2']:.4f} | {metrics['wape']:.4f} | "
+            f"{timing['train_seconds']:.4f} | "
+            f"{timing['predict_rows_per_second']:,.0f} |"
+        )
+        assert expected_row in model_suite_doc
+    for workload in payload["workloads"].values():
+        assert workload["source"]
+        assert len(workload["fingerprint_sha256"]) == 64
+        for split in workload["splits"].values():
+            assert len(split["train_index_sha256"]) == 64
+            assert len(split["test_index_sha256"]) == 64
+
+    aggregate = json.loads(paths[2].read_text(encoding="utf-8"))
+    keys = {
+        (row["track"], row["task_id"], row["split_id"], row["model_family"], row["metric"])
+        for row in aggregate["metrics"]
+    }
+    assert ("tabular", "diabetes", "random", "cartoboost", "rmse") in keys
+    assert ("tabular", "california_housing", "random", "cartoboost", "rmse") in keys
+    assert ("graph", "karate", "random", "cartoboost", "rmse") in keys
+    california_rmse = [
+        row
+        for row in aggregate["metrics"]
+        if row.get("track") == "tabular"
+        and row["task_id"] == "california_housing"
+        and row["split_id"] == "random"
+        and row["model_family"] == "cartoboost"
+        and row["metric"] == "rmse"
+    ][0]
+    assert california_rmse["n"] == 3
+
+
+def test_model_suite_validation_search_uses_inner_validation(tmp_path: Path) -> None:
+    output_dir = tmp_path / "model_suite_validation_search"
+    script = ROOT / "scripts" / "run_model_benchmark_suite.py"
+
+    subprocess.run(
+        [
+            sys.executable,
+            str(script),
+            "--output-dir",
+            str(output_dir),
+            "--datasets",
+            "diabetes",
+            "--models",
+            "mean,cartoboost,ridge",
+            "--n-estimators",
+            "4",
+            "--selection-mode",
+            "validation_search",
+            "--validation-trials",
+            "2",
+            "--no-plots",
+        ],
+        check=True,
+        cwd=ROOT,
+    )
+
+    payload = json.loads((output_dir / "results.json").read_text(encoding="utf-8"))
+
+    assert payload["benchmark_integrity"]["hpo"] == "inner_train_validation_search"
+    assert payload["benchmark_integrity"]["validation_trials"] == 2
+    assert payload["resource_usage"]["python"]
+    assert payload["baseline_environment"]["sklearn"]["module_importable"] is True
+    assert payload["output_artifacts"]["results.md"]["size_bytes"] > 0
+    workload = payload["workloads"]["diabetes"]
+    assert workload["source"] == "sklearn.datasets.load_diabetes bundled public regression dataset."
+    assert len(workload["fingerprint_sha256"]) == 64
+    assert len(workload["splits"]["random"]["train_index_sha256"]) == 64
+    assert len(workload["splits"]["random"]["test_index_sha256"]) == 64
+    cartoboost = payload["workloads"]["diabetes"]["splits"]["random"]["models"]["cartoboost"]
+    assert cartoboost["selection"]["mode"] == "validation_search"
+    assert cartoboost["selection"]["inner_train_rows"] > 0
+    assert cartoboost["selection"]["inner_validation_rows"] > 0
+    assert len(cartoboost["selection"]["validation_rows"]) == 2
+    assert cartoboost["selection"]["selected_config"]
+
+
+def test_model_suite_validation_search_skip_reason_preserves_dependency_error() -> None:
+    reason = failed_validation_search_reason(
+        [
+            {"status": "skipped", "reason": "lightgbm is not installed"},
+            {"status": "skipped", "reason": "lightgbm is not installed"},
+        ]
+    )
+
+    assert reason == "all validation-search candidates failed: lightgbm is not installed"
+
+
+def test_model_suite_repeated_summary_reports_delta_intervals() -> None:
+    payloads = [
+        {
+            "seed": 11,
+            "external_baseline_comparison": [
+                {
+                    "workload": "california_housing",
+                    "split": "random",
+                    "cartoboost_wape": 0.22,
+                    "best_external_baseline": "xgboost",
+                    "best_external_wape": 0.20,
+                    "rmse_delta_vs_external": 0.03,
+                    "r2_delta_vs_external": -0.02,
+                }
+            ],
+        },
+        {
+            "seed": 29,
+            "external_baseline_comparison": [
+                {
+                    "workload": "california_housing",
+                    "split": "random",
+                    "cartoboost_wape": 0.21,
+                    "best_external_baseline": "hist_gradient_boosting",
+                    "best_external_wape": 0.19,
+                    "rmse_delta_vs_external": 0.01,
+                    "r2_delta_vs_external": -0.01,
+                }
+            ],
+        },
+    ]
+
+    summary = repeated_external_comparison_summary(payloads)
+
+    assert summary[0]["runs"] == 2
+    assert summary[0]["seeds"] == [11, 29]
+    assert summary[0]["best_external_baseline_counts"] == {
+        "hist_gradient_boosting": 1,
+        "xgboost": 1,
+    }
+    assert summary[0]["rmse_delta_mean"] == pytest.approx(0.02)
+    assert summary[0]["result"] == "external_lower_rmse"
+
+
+def test_aggregate_results_reports_confidence_intervals(tmp_path: Path) -> None:
+    rows = [
+        {"task_id": "fare", "model_family": "cartoboost", "metric": "rmse", "value": 1.0},
+        {"task_id": "fare", "model_family": "cartoboost", "metric": "rmse", "value": 2.0},
+        {"task_id": "fare", "model_family": "gbdt", "metric": "rmse", "value": 3.0},
+    ]
+    path = tmp_path / "results.jsonl"
+    path.write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
+
+    summary = aggregate(read_jsonl(path))
+
+    cartoboost = [
+        row
+        for row in summary["metrics"]
+        if row["task_id"] == "fare" and row["model_family"] == "cartoboost"
+    ][0]
+    assert cartoboost["n"] == 2
+    assert cartoboost["mean"] == 1.5
+    assert cartoboost["ci95_low"] < cartoboost["mean"] < cartoboost["ci95_high"]
+
+
+def test_aggregate_results_preserves_track_and_split_identity(tmp_path: Path) -> None:
+    rows = [
+        {
+            "track": "spatial",
+            "task_id": "fare",
+            "split_id": "random",
+            "model_family": "cartoboost",
+            "metric": "rmse",
+            "value": 1.0,
+        },
+        {
+            "track": "spatial",
+            "task_id": "fare",
+            "split_id": "spatial_holdout",
+            "model_family": "cartoboost",
+            "metric": "rmse",
+            "value": 2.0,
+        },
+    ]
+    path = tmp_path / "results.jsonl"
+    path.write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
+
+    summary = aggregate(read_jsonl(path))
+
+    grouped = {(row["track"], row["split_id"]): row for row in summary["metrics"]}
+    assert grouped[("spatial", "random")]["mean"] == 1.0
+    assert grouped[("spatial", "spatial_holdout")]["mean"] == 2.0
+
+
+def test_paired_bootstrap_ci_uses_paired_deltas() -> None:
+    observed, low, high = paired_bootstrap_ci(
+        [1.0, 2.0, 3.0],
+        [2.0, 3.0, 4.0],
+        iterations=100,
+        seed=11,
+    )
+
+    assert observed == -1.0
+    assert low == -1.0
+    assert high == -1.0
+
+
+def test_average_ranks_respects_metric_direction() -> None:
+    ranks = average_ranks(
+        [
+            {"cartoboost": 1.0, "gbdt": 2.0},
+            {"cartoboost": 3.0, "gbdt": 2.0},
+        ],
+        lower_is_better=True,
+    )
+
+    assert ranks == {"cartoboost": 1.5, "gbdt": 1.5}

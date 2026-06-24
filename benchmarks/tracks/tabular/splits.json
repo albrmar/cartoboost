@@ -1,0 +1,18 @@
+{
+  "splits": [
+    {
+      "id": "iid_5fold_3seed",
+      "kind": "repeated_outer_cv",
+      "outer_folds": 5,
+      "seeds": "benchmark_seeds",
+      "hpo_scope": "train_validation_only"
+    },
+    {
+      "id": "seeded_80_20_holdout",
+      "kind": "seeded_row_shuffle_holdout",
+      "train_fraction": 0.8,
+      "seeds": [42],
+      "hpo_scope": "inner_train_validation_only"
+    }
+  ]
+}

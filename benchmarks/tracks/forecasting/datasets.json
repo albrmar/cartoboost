@@ -1,0 +1,19 @@
+{
+  "datasets": [
+    {
+      "id": "monash_transport_and_m4_v1",
+      "source": "Monash forecasting repository, selected full public subsets",
+      "hash": "to_be_frozen",
+      "datasheet": "benchmarks/reports/dataset_card_template.md",
+      "notes": "Full selected groups only; smoke samples must not support release claims."
+    },
+    {
+      "id": "nyc_taxi_lane_demand_q1_2024_v1",
+      "source": "NYC TLC lane demand panel derived from public trip records",
+      "hash": "to_be_frozen",
+      "datasheet": "benchmarks/reports/dataset_card_template.md",
+      "notes": "Pickup/dropoff lane demand with fixed frequency, filters, and rolling cutoffs."
+    }
+  ]
+}
+

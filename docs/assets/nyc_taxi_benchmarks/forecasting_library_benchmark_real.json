@@ -1,0 +1,257 @@
+{
+  "benchmark": "geotemporal_lane_demand_forecasting_libraries",
+  "benchmark_integrity": {
+    "candidate_selection": true,
+    "model_roster": "cartoboost",
+    "no_hyperopt": true,
+    "seed": 42,
+    "threading": {
+      "omp_num_threads_env": null,
+      "python_hash_seed": null,
+      "rayon_num_threads_env": null
+    }
+  },
+  "cartoboost_version": "0.1.67",
+  "comparison_libraries": [
+    "functime",
+    "statsforecast",
+    "prophet",
+    "external_trees"
+  ],
+  "created_at": "2026-06-21T02:38:08.519554+00:00",
+  "dataset": {
+    "aggregated_rows": 744,
+    "clean_rows": 2827685,
+    "dataset_hash": "2099de6b3e8dc1f625e96472c4d8b3828f23d070d841e1ec33bacfbe59534452",
+    "days": 31,
+    "domain": "real daily NYC TLC yellow taxi pickup/dropoff lane demand",
+    "horizon": 7,
+    "months": [
+      1
+    ],
+    "raw_rows": 2964624,
+    "season_length": 7,
+    "series": 24,
+    "source": "nyc_tlc_trip_records",
+    "source_url": "https://www.nyc.gov/site/tlc/about/tlc-trip-record-data.page",
+    "static_covariates": [
+      "pickup_zone",
+      "dropoff_zone",
+      "distance_miles",
+      "airport_lane",
+      "pickup_borough_code"
+    ],
+    "taxi_type": "yellow",
+    "year": 2024
+  },
+  "dataset_hash": "2099de6b3e8dc1f625e96472c4d8b3828f23d070d841e1ec33bacfbe59534452",
+  "fixture_source": "nyc-taxi",
+  "forecasting_library_models": {},
+  "git_commit": "5cc35e209c9cf9012027bab18553a99f9f486073",
+  "metrics": {
+    "cartoboost_auto_forecast": {
+      "bias": 10.779761904761905,
+      "mae": 29.172619047619047,
+      "mase": 0.4634180256746835,
+      "r2": 0.9460442821716558,
+      "rmse": 39.0339443244442,
+      "smape": 0.10187111022463727,
+      "wape": 0.09374163191920737
+    },
+    "cartoboost_lag": {
+      "bias": 42.011572632583366,
+      "mae": 85.68503554016935,
+      "mase": 1.3611390165234813,
+      "r2": 0.4300861797963885,
+      "rmse": 126.86104813280062,
+      "smape": 0.24210888431311273,
+      "wape": 0.2753354112457146
+    }
+  },
+  "model_libraries": {
+    "cartoboost_auto_forecast": "cartoboost",
+    "cartoboost_lag": "cartoboost",
+    "functime_lightgbm": "functime",
+    "functime_ridge": "functime",
+    "functime_snaive": "functime",
+    "lightgbm_lag": "external_trees",
+    "prophet_additive": "prophet",
+    "statsforecast_autoarima": "statsforecast",
+    "statsforecast_autoces": "statsforecast",
+    "statsforecast_autoets": "statsforecast",
+    "statsforecast_autotbats": "statsforecast",
+    "statsforecast_autotheta": "statsforecast",
+    "statsforecast_dynamic_optimized_theta": "statsforecast",
+    "statsforecast_seasonal_naive": "statsforecast",
+    "xgboost_lag": "external_trees"
+  },
+  "model_roster": "cartoboost",
+  "model_settings": {
+    "cartoboost_auto_forecast": {
+      "auto_n_estimators": null,
+      "auto_n_estimators_policy": "quality floor: max(--cartoboost-n-estimators, 360)",
+      "auto_selector_policy": "auto uses the lag spine unless shared validation clears the source-specific gain and consistency guards; non-M inner validation skips raw auto and non-M outer scoring materializes raw auto only when selected; non-M inner validation stops after one origin when lag beats every finite candidate by at least 15%; rolling-origin suites cache identical inner validation cutoffs by source, cutoff, and candidate roster",
+      "learning_rate": 0.06,
+      "max_depth": 4,
+      "min_samples_leaf": 8,
+      "n_estimators": 180,
+      "native_covariate_policy": "use route static covariates, training-gated low-cardinality integer-coded covariate indicators, and covariate-calendar interactions including event-flag interactions only when enabled by the source-specific benchmark config",
+      "native_ewm_feature_policy": "EWM target features are available but disabled by default after validation showed route-mix regression without candidate gating",
+      "native_feature_policy": "season-aware lags, complete rolling means, optional MLForecast-style partial rolling means, lag deltas, and rolling trends capped to the shortest training series",
+      "native_target_mode_policy": "delta_from_last when season_length == 12, horizon == 13, or horizon >= 24; level otherwise",
+      "native_tree_regularization_policy": "use at least max_depth=5 and at most min_samples_leaf=6 when horizon >= 24 or season_length == 4; otherwise use configured values",
+      "splitters": [
+        "axis_histogram:128",
+        "periodic:7"
+      ]
+    },
+    "cartoboost_lag": {
+      "auto_n_estimators": null,
+      "auto_selector_policy": "auto uses the lag spine unless shared validation clears the source-specific gain and consistency guards; non-M inner validation skips raw auto and non-M outer scoring materializes raw auto only when selected; non-M inner validation stops after one origin when lag beats every finite candidate by at least 15%; rolling-origin suites cache identical inner validation cutoffs by source, cutoff, and candidate roster",
+      "learning_rate": 0.06,
+      "max_depth": 4,
+      "min_samples_leaf": 8,
+      "n_estimators": 180,
+      "native_covariate_policy": "use route static covariates, training-gated low-cardinality integer-coded covariate indicators, and covariate-calendar interactions including event-flag interactions only when enabled by the source-specific benchmark config",
+      "native_ewm_feature_policy": "EWM target features are available but disabled by default after validation showed route-mix regression without candidate gating",
+      "native_feature_policy": "season-aware lags, complete rolling means, optional MLForecast-style partial rolling means, lag deltas, and rolling trends capped to the shortest training series",
+      "native_target_mode_policy": "delta_from_last when season_length == 12, horizon == 13, or horizon >= 24; level otherwise",
+      "native_tree_regularization_policy": "use at least max_depth=5 and at most min_samples_leaf=6 when horizon >= 24 or season_length == 4; otherwise use configured values",
+      "splitters": [
+        "axis_histogram:128",
+        "periodic:7"
+      ]
+    }
+  },
+  "models": [
+    "cartoboost_lag",
+    "cartoboost_auto_forecast"
+  ],
+  "official_metrics": {},
+  "plots": [
+    "docs/assets/nyc_taxi_benchmarks/forecasting_plots/nyc-taxi_tool_metric_comparison.png",
+    "docs/assets/nyc_taxi_benchmarks/forecasting_plots/nyc-taxi_horizon_rmse_by_tool.png",
+    "docs/assets/nyc_taxi_benchmarks/forecasting_plots/nyc-taxi_forecast_lines.png",
+    "docs/assets/nyc_taxi_benchmarks/forecasting_plots/nyc-taxi_actual_vs_predicted.png"
+  ],
+  "quality": {
+    "best_cartoboost_model": "cartoboost_auto_forecast",
+    "best_rmse": 39.0339443244442,
+    "cartoboost_mae": 29.172619047619047,
+    "cartoboost_rmse": 39.0339443244442,
+    "cartoboost_wape": 0.09374163191920737,
+    "comparison_libraries": [],
+    "forecasting_library_models": {},
+    "mae_ranking": [
+      "cartoboost_auto_forecast",
+      "cartoboost_lag"
+    ],
+    "model_libraries": {
+      "cartoboost_auto_forecast": "cartoboost",
+      "cartoboost_lag": "cartoboost",
+      "functime_lightgbm": "functime",
+      "functime_ridge": "functime",
+      "functime_snaive": "functime",
+      "lightgbm_lag": "external_trees",
+      "prophet_additive": "prophet",
+      "statsforecast_autoarima": "statsforecast",
+      "statsforecast_autoces": "statsforecast",
+      "statsforecast_autoets": "statsforecast",
+      "statsforecast_autotbats": "statsforecast",
+      "statsforecast_autotheta": "statsforecast",
+      "statsforecast_dynamic_optimized_theta": "statsforecast",
+      "statsforecast_seasonal_naive": "statsforecast",
+      "xgboost_lag": "external_trees"
+    },
+    "rmse_ranking": [
+      "cartoboost_auto_forecast",
+      "cartoboost_lag"
+    ],
+    "tied_best_models": [
+      "cartoboost_auto_forecast"
+    ],
+    "wape_ranking": [
+      "cartoboost_auto_forecast",
+      "cartoboost_lag"
+    ],
+    "winner": "cartoboost_auto_forecast"
+  },
+  "resource_usage": {
+    "peak_rss_mb": 2586.1875,
+    "process_cpu_seconds": 5.244336
+  },
+  "source_file_hashes": {},
+  "timing": {
+    "candidate_selection": {
+      "calibration_seconds": 0.31092870800057426,
+      "inner_candidate_losses": {
+        "cartoboost_auto_forecast": {
+          "cartoboost_auto_forecast": 366.70671588640215,
+          "cartoboost_lag": 133.36766370859107,
+          "shared_calendar_dom": 69.47871376663983,
+          "shared_calendar_phase14": 84.7987463406882,
+          "shared_drift": 428.3204658739305,
+          "shared_half_drift": 210.8378619093381,
+          "shared_seasonal_base": 69.47871376663983,
+          "shared_seasonal_cycle_drift_050": 81.75241984869677,
+          "shared_seasonal_cycle_drift_075": 88.8546727180068,
+          "shared_seasonal_drift": 68.59883694129857
+        },
+        "cartoboost_lag": {
+          "cartoboost_lag": 133.36766370859107
+        }
+      },
+      "inner_losses": {
+        "cartoboost_auto_forecast": {
+          "raw": 366.70671588640215,
+          "selected": 69.47871376663983
+        },
+        "cartoboost_lag": {
+          "raw": 133.36766370859107,
+          "selected": 133.36766370859107
+        }
+      },
+      "inner_origin_count": 1.0,
+      "inner_rmse": {
+        "cartoboost_auto_forecast": {
+          "raw": 366.70671588640215,
+          "selected": 69.47871376663983
+        },
+        "cartoboost_lag": {
+          "raw": 133.36766370859107,
+          "selected": 133.36766370859107
+        }
+      },
+      "low_support_guarded": {},
+      "native_auto_raw_keep": false,
+      "objective": "rmse",
+      "origin_consistency_guarded": {},
+      "raw_auto_override_guarded": {},
+      "selected_candidates": {
+        "cartoboost_auto_forecast": "shared_seasonal_base",
+        "cartoboost_lag": "cartoboost_lag"
+      },
+      "validation_cache_hits": 0.0,
+      "validation_cache_misses": 0.0
+    },
+    "load_seconds": 1.2034803749993443,
+    "models": {
+      "cartoboost_auto_forecast": {
+        "fit_predict_seconds": 0.0,
+        "fit_seconds": 0.0,
+        "predict_seconds": 0.0,
+        "selector_mode": "non_m_outer_lazy_raw_auto_candidate",
+        "total_seconds": 0.0
+      },
+      "cartoboost_lag": {
+        "feature_count": 115.0,
+        "feature_seconds": 0.0011038329976145178,
+        "fit_predict_seconds": 0.23024404200259596,
+        "fit_seconds": 0.22832324999035336,
+        "predict_seconds": 0.0019207920122426003,
+        "total_seconds": 0.23134787500021048
+      }
+    },
+    "total_seconds": 1.7504543339891825
+  }
+}

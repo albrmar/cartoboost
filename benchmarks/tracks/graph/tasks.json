@@ -1,0 +1,11 @@
+{
+  "tasks": [
+    {
+      "id": "karate_club_edge_faction_agreement",
+      "dataset_id": "zachary_karate_club_78_edge_v1",
+      "split_id": "ogb_official_split",
+      "primary_metric": "rmse",
+      "required_model_families": ["cartoboost", "cartoboost_graph", "node2vec_baseline", "graphsage_baseline", "tabularized_graph_baseline", "mean"]
+    }
+  ]
+}

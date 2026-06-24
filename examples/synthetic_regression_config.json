@@ -1,0 +1,9 @@
+{
+  "kind": "regression",
+  "rows": 1000,
+  "features": 12,
+  "seed": 1337,
+  "noise": 0.15,
+  "missing_rate": 0.02,
+  "output": "examples/data/regression.csv"
+}

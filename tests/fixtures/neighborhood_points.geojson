@@ -1,0 +1,48 @@
+{
+  "type": "FeatureCollection",
+  "name": "neighborhood_points",
+  "features": [
+    {
+      "type": "Feature",
+      "id": "site-alpha",
+      "properties": {
+        "kind": "synthetic_site",
+        "base_score": 1.0,
+        "traffic_index": 0.82,
+        "population_index": 0.74
+      },
+      "cartometry": {
+        "type": "Point",
+        "coordinates": [10.0, 10.0]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "site-bravo",
+      "properties": {
+        "kind": "synthetic_site",
+        "base_score": 0.7,
+        "traffic_index": 0.55,
+        "population_index": 0.91
+      },
+      "cartometry": {
+        "type": "Point",
+        "coordinates": [20.0, 10.0]
+      }
+    },
+    {
+      "type": "Feature",
+      "id": "site-charlie",
+      "properties": {
+        "kind": "synthetic_site",
+        "base_score": 0.4,
+        "traffic_index": 0.22,
+        "population_index": 0.36
+      },
+      "cartometry": {
+        "type": "Point",
+        "coordinates": [10.0, 30.0]
+      }
+    }
+  ]
+}

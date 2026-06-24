@@ -1,0 +1,20 @@
+{
+  "required_metadata": [
+    "cpu",
+    "gpu",
+    "threads",
+    "memory_gb",
+    "os",
+    "python",
+    "rustc",
+    "cartoboost",
+    "fit_wallclock_seconds",
+    "predict_wallclock_seconds",
+    "peak_memory_mb"
+  ],
+  "normalization": {
+    "timing": "report raw wall-clock plus hardware metadata",
+    "energy": "optional estimate from runtime, memory, processor type, and region"
+  }
+}
+

@@ -1,0 +1,8 @@
+{
+  "budgets": [
+    {"id": "smoke", "max_trials": 2, "max_wallclock_minutes": 5, "early_stop_rounds": 10},
+    {"id": "standard", "max_trials": 50, "max_wallclock_minutes": 120, "early_stop_rounds": 50},
+    {"id": "full", "max_trials": 100, "max_wallclock_minutes": 360, "early_stop_rounds": 100}
+  ]
+}
+
