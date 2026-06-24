@@ -317,6 +317,8 @@ dev = [
     { name = "pyarrow" },
     { name = "pytest" },
     { name = "ruff" },
+    { name = "scikit-learn", version = "1.7.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "scikit-learn", version = "1.9.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
     { name = "ty" },
 ]
 
@@ -362,6 +364,7 @@ dev = [
     { name = "pyarrow", specifier = ">=14.0" },
     { name = "pytest", specifier = ">=8" },
     { name = "ruff", specifier = ">=0.6" },
+    { name = "scikit-learn", specifier = ">=1.2" },
     { name = "ty", specifier = ">=0.0.50" },
 ]
 

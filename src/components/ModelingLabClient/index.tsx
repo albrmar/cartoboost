@@ -3749,14 +3749,13 @@ function buildTargetingProfile(
   const hasGraph = graphColumnReadiness(table.columns);
   const intermittent = summary ? summary.zeroShare > 0.18 : false;
   const skewed = summary ? summary.p90 > summary.median * 1.65 : false;
-  const hasPiecewiseSeasonal = modelOptions.some((option) => option.value === 'piecewise_linear_seasonal');
   const forecastModelValue =
     intermittent && modelOptions.some((option) => option.value === 'intermittent_demand')
       ? 'intermittent_demand'
-      : hasPeriodic && hasPiecewiseSeasonal
-        ? 'piecewise_linear_seasonal'
       : modelOptions.some((option) => option.value === 'auto_forecast')
         ? 'auto_forecast'
+      : modelOptions.some((option) => option.value === 'cartoboost_lag')
+        ? 'cartoboost_lag'
         : modelOptions[0]?.value ?? 'auto_forecast';
   const forecastModel = modelOptions.find((option) => option.value === forecastModelValue)?.label ?? forecastModelValue;
   const splitterModeValue = hasSpatial && hasPeriodic ? 'full' : hasSpatial ? 'spatial' : hasPeriodic ? 'periodic' : 'auto';
@@ -4163,7 +4162,7 @@ function scoreOpportunitySegments(
 
 function segmentKeysForRow(row: Record<string, string>, columns: string[]) {
   if (columns.length === 1) {
-    const value = row[columns[0]]?.trim() ?? '';
+    const value = textValue(row[columns[0]]).trim();
     if (!value) {
       return [];
     }
@@ -4172,7 +4171,7 @@ function segmentKeysForRow(row: Record<string, string>, columns: string[]) {
     }
     return [value];
   }
-  const values = columns.map((column) => row[column]?.trim() ?? '');
+  const values = columns.map((column) => textValue(row[column]).trim());
   return values.every(Boolean) ? [values.join(' -> ')] : [];
 }
 
@@ -4534,16 +4533,16 @@ function componentKeySort(left: string, right: string) {
   return rank(left) - rank(right) || left.localeCompare(right);
 }
 
-function componentSeriesLabel(key: string) {
-  return key.split('.').map(componentLabel).join(': ');
+function componentSeriesLabel(key: unknown) {
+  return textValue(key).split('.').map(componentLabel).join(': ');
 }
 
 function hasVisibleSeriesSignal(series: ChartSeries) {
   return series.points.some((point) => Math.abs(numberComponent(point.value as number | null | undefined)) > 1.0e-9);
 }
 
-function componentLabel(name: string) {
-  return name
+function componentLabel(name: unknown) {
+  return textValue(name)
     .split('_')
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
@@ -4601,11 +4600,11 @@ function h3Summary(table: ParsedTable, column: string) {
   const counts = new Map<string, number>();
   const acceptNamedH3Values = column.toLowerCase().includes('h3');
   for (const row of table.rows) {
-    const cells = row[column]
-      ?.split(/[|;,\s]+/)
+    const cells = textValue(row[column])
+      .split(/[|;,\s]+/)
       .map((cell) => cell.trim())
       .filter((cell) => cell !== '' && (acceptNamedH3Values || isH3Like(cell)));
-    for (const cell of cells ?? []) {
+    for (const cell of cells) {
       counts.set(cell, (counts.get(cell) ?? 0) + 1);
     }
   }
@@ -4681,15 +4680,15 @@ function looksSparseSetColumn(table: ParsedTable, column: string) {
     normalized.endsWith('_set') ||
     normalized.endsWith('_ids');
   return table.rows.some((row) => {
-    const value = row[column]?.trim() ?? '';
+    const value = textValue(row[column]).trim();
     return value !== '' && (namedLikeSparse || /[|;,\s]/.test(value) || isH3Like(value)) && parseSparseSet(value).length > 0;
   });
 }
 
-function parseSparseSet(value: string) {
+function parseSparseSet(value: unknown) {
   return Array.from(
     new Set(
-      value
+      textValue(value)
         .split(/[|;,\s]+/)
         .map((item) => item.trim())
         .filter(Boolean)
@@ -4705,9 +4704,13 @@ function parseSparseSet(value: string) {
   );
 }
 
-function isH3Like(value: string) {
-  const normalized = value.trim().toLowerCase().replace(/^0x/, '');
+function isH3Like(value: unknown) {
+  const normalized = textValue(value).trim().toLowerCase().replace(/^0x/, '');
   return /^[0-9a-f]{15,16}$/.test(normalized);
+}
+
+function textValue(value: unknown) {
+  return typeof value === 'string' ? value : value == null ? '' : String(value);
 }
 
 function inferFeatureKind(column: string) {

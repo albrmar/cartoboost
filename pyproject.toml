@@ -88,6 +88,7 @@ dev = [
     "pyarrow>=14.0",
     "pytest>=8",
     "ruff>=0.6",
+    "scikit-learn>=1.2",
     "ty>=0.0.50",
 ]
 [project.urls]
