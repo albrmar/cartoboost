@@ -103,6 +103,7 @@ struct BrowserForecastOptions {
     kriging_range: Option<f64>,
     kriging_nugget: Option<f64>,
     changepoints: Option<usize>,
+    n_changepoints: Option<usize>,
     changepoint_range: Option<f64>,
     changepoint_timestamps: Option<Vec<String>>,
     yearly_fourier_order: Option<usize>,
@@ -114,16 +115,21 @@ struct BrowserForecastOptions {
     custom_seasonalities: Option<Vec<BrowserForecastSeasonality>>,
     changepoint_l2_regularization: Option<f64>,
     changepoint_l1_regularization: Option<f64>,
+    changepoint_prior_scale: Option<f64>,
     seasonality_l2_regularization: Option<f64>,
+    seasonality_prior_scale: Option<f64>,
     yearly_l2_regularization: Option<f64>,
     weekly_l2_regularization: Option<f64>,
     daily_l2_regularization: Option<f64>,
     event_l2_regularization: Option<f64>,
+    holidays_prior_scale: Option<f64>,
     regressor_l2_regularization: Option<f64>,
     event_l2_regularization_by_name: Option<BTreeMap<String, f64>>,
     regressor_l2_regularization_by_name: Option<BTreeMap<String, f64>>,
     events: Option<Vec<BrowserForecastEvent>>,
+    holidays: Option<Vec<BrowserForecastHoliday>>,
     event_mode: Option<String>,
+    holidays_mode: Option<String>,
     extra_regressors: Option<Vec<String>>,
     regressor_modes: Option<BTreeMap<String, String>>,
     extra_regressor_monotonic_constraints: Option<BTreeMap<String, i8>>,
@@ -136,14 +142,17 @@ struct BrowserForecastOptions {
     residual_shock_scale: Option<f64>,
     residual_shock_decay: Option<f64>,
     interval_levels: Option<Vec<f64>>,
+    interval_width: Option<f64>,
     quantile_levels: Option<Vec<f64>>,
     uncertainty_samples: Option<usize>,
+    mcmc_samples: Option<usize>,
     trend_uncertainty_policy: Option<String>,
     trend_uncertainty_scale: Option<f64>,
     coefficient_uncertainty_scale: Option<f64>,
     uncertainty_seed: Option<u64>,
     growth: Option<String>,
     component_mode: Option<String>,
+    seasonality_mode: Option<String>,
     fit_loss: Option<String>,
     huber_delta: Option<f64>,
     irls_iterations: Option<usize>,
@@ -162,6 +171,19 @@ struct BrowserForecastEvent {
     lower_window: Option<i32>,
     #[serde(default)]
     upper_window: Option<i32>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct BrowserForecastHoliday {
+    holiday: String,
+    ds: String,
+    #[serde(default)]
+    lower_window: Option<i32>,
+    #[serde(default)]
+    upper_window: Option<i32>,
+    #[serde(default)]
+    prior_scale: Option<f64>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -3158,6 +3180,11 @@ fn piecewise_linear_seasonal_config(
     options: &BrowserForecastOptions,
 ) -> Result<PiecewiseLinearSeasonalConfig> {
     let mut config = PiecewiseLinearSeasonalConfig::default();
+    if options.mcmc_samples.unwrap_or(0) > 0 {
+        return Err(CartoBoostError::InvalidInput(
+            "mcmc_samples are not supported by the Rust-native piecewise seasonal model; use uncertainty_samples for deterministic native intervals".to_string(),
+        ));
+    }
     if let Some(growth) = options.growth.as_deref() {
         config.growth = match growth.trim().to_ascii_lowercase().as_str() {
             "" | "linear" => PiecewiseLinearGrowth::Linear,
@@ -3170,7 +3197,11 @@ fn piecewise_linear_seasonal_config(
             }
         };
     }
-    if let Some(mode) = options.component_mode.as_deref() {
+    if let Some(mode) = options
+        .seasonality_mode
+        .as_deref()
+        .or(options.component_mode.as_deref())
+    {
         config.component_mode = piecewise_component_mode(mode)?;
     }
     if let Some(loss) = options.fit_loss.as_deref() {
@@ -3182,7 +3213,7 @@ fn piecewise_linear_seasonal_config(
     if let Some(iterations) = options.irls_iterations {
         config.irls_iterations = iterations;
     }
-    if let Some(changepoints) = options.changepoints {
+    if let Some(changepoints) = options.n_changepoints.or(options.changepoints) {
         config.changepoints = changepoints;
     }
     if let Some(changepoint_range) = options.changepoint_range {
@@ -3237,8 +3268,14 @@ fn piecewise_linear_seasonal_config(
     if let Some(value) = options.changepoint_l1_regularization {
         config.changepoint_l1_regularization = value;
     }
+    if let Some(value) = options.changepoint_prior_scale {
+        config.changepoint_l1_regularization = piecewise_prior_scale_to_l1(value)?;
+    }
     if let Some(value) = options.seasonality_l2_regularization {
         config.seasonality_l2_regularization = value;
+    }
+    if let Some(value) = options.seasonality_prior_scale {
+        config.seasonality_l2_regularization = piecewise_prior_scale_to_l2(value)?;
     }
     if let Some(value) = options.yearly_l2_regularization {
         config.yearly_l2_regularization = Some(value);
@@ -3251,6 +3288,9 @@ fn piecewise_linear_seasonal_config(
     }
     if let Some(value) = options.event_l2_regularization {
         config.event_l2_regularization = value;
+    }
+    if let Some(value) = options.holidays_prior_scale {
+        config.event_l2_regularization = piecewise_prior_scale_to_l2(value)?;
     }
     if let Some(value) = options.regressor_l2_regularization {
         config.regressor_l2_regularization = value;
@@ -3276,7 +3316,29 @@ fn piecewise_linear_seasonal_config(
             })
             .collect::<Result<Vec<_>>>()?;
     }
-    if let Some(mode) = options.event_mode.as_deref() {
+    if let Some(holidays) = &options.holidays {
+        let mut holiday_events = Vec::with_capacity(holidays.len());
+        for holiday in holidays {
+            let timestamp = cartoboost_core::forecasting::parse_forecast_timestamp(&holiday.ds)?;
+            holiday_events.push(PiecewiseLinearEvent {
+                name: holiday.holiday.clone(),
+                timestamp,
+                lower_window: holiday.lower_window.unwrap_or(0),
+                upper_window: holiday.upper_window.unwrap_or(0),
+            });
+            if let Some(scale) = holiday.prior_scale {
+                config
+                    .event_l2_regularization_by_name
+                    .insert(holiday.holiday.clone(), piecewise_prior_scale_to_l2(scale)?);
+            }
+        }
+        config.events.extend(holiday_events);
+    }
+    if let Some(mode) = options
+        .holidays_mode
+        .as_deref()
+        .or(options.event_mode.as_deref())
+    {
         config.event_mode = Some(piecewise_component_mode(mode)?);
     }
     if let Some(regressors) = &options.extra_regressors {
@@ -3317,6 +3379,14 @@ fn piecewise_linear_seasonal_config(
     }
     if let Some(levels) = &options.interval_levels {
         config.interval_levels = levels.clone();
+    }
+    if let Some(width) = options.interval_width {
+        if !(0.0..=1.0).contains(&width) || width == 0.0 {
+            return Err(CartoBoostError::InvalidInput(
+                "interval_width must be in (0, 1]".to_string(),
+            ));
+        }
+        config.interval_levels = vec![width];
     }
     if let Some(levels) = &options.quantile_levels {
         config.quantile_levels = levels.clone();
@@ -3369,6 +3439,24 @@ fn piecewise_fit_loss(value: &str) -> Result<PiecewiseLinearFitLoss> {
             "unsupported piecewise seasonal fit loss {other:?}"
         ))),
     }
+}
+
+fn piecewise_prior_scale_to_l2(value: f64) -> Result<f64> {
+    if !value.is_finite() || value <= 0.0 {
+        return Err(CartoBoostError::InvalidInput(
+            "prior scale values must be positive finite numbers".to_string(),
+        ));
+    }
+    Ok(1.0 / (value * value))
+}
+
+fn piecewise_prior_scale_to_l1(value: f64) -> Result<f64> {
+    if !value.is_finite() || value <= 0.0 {
+        return Err(CartoBoostError::InvalidInput(
+            "prior scale values must be positive finite numbers".to_string(),
+        ));
+    }
+    Ok(1.0 / value)
 }
 
 fn piecewise_regressor_standardization(
@@ -3657,6 +3745,94 @@ mod tests {
             response.metadata["modelMetadata"]["coefficient_uncertainty_scale"].as_f64(),
             Some(1.5)
         );
+    }
+
+    #[test]
+    fn browser_piecewise_linear_accepts_prophet_modeling_aliases() {
+        let response = run_forecast_request(BrowserForecastRequest {
+            rows: sample_panel_rows(),
+            frequency: "daily".to_string(),
+            horizon: 2,
+            model: "piecewise_linear_seasonal".to_string(),
+            options: BrowserForecastOptions {
+                n_changepoints: Some(4),
+                changepoint_prior_scale: Some(0.2),
+                seasonality_prior_scale: Some(5.0),
+                holidays_prior_scale: Some(10.0),
+                seasonality_mode: Some("multiplicative".to_string()),
+                holidays_mode: Some("additive".to_string()),
+                holidays: Some(vec![BrowserForecastHoliday {
+                    holiday: "airport_queue_surge".to_string(),
+                    ds: "2026-01-03T00:00:00".to_string(),
+                    lower_window: Some(-1),
+                    upper_window: Some(1),
+                    prior_scale: Some(2.0),
+                }]),
+                interval_width: Some(0.8),
+                uncertainty_samples: Some(8),
+                include_components: Some(true),
+                ..BrowserForecastOptions::default()
+            },
+            metadata: BrowserForecastMetadata::default(),
+        })
+        .expect("piecewise prophet aliases forecast");
+
+        assert_eq!(
+            response.metadata["modelMetadata"]["changepoints"].as_u64(),
+            Some(4)
+        );
+        assert_eq!(
+            response.metadata["modelMetadata"]["changepoint_l1_regularization"].as_f64(),
+            Some(5.0)
+        );
+        assert_eq!(
+            response.metadata["modelMetadata"]["seasonality_l2_regularization"].as_f64(),
+            Some(0.04)
+        );
+        assert_eq!(
+            response.metadata["modelMetadata"]["event_l2_regularization"].as_f64(),
+            Some(0.01)
+        );
+        assert_eq!(
+            response.metadata["modelMetadata"]["event_l2_regularization_by_name"]
+                ["airport_queue_surge"]
+                .as_f64(),
+            Some(0.25)
+        );
+        assert_eq!(
+            response.metadata["modelMetadata"]["component_mode"].as_str(),
+            Some("multiplicative")
+        );
+        assert_eq!(
+            response.metadata["modelMetadata"]["event_mode"].as_str(),
+            Some("additive")
+        );
+        assert_eq!(
+            response.metadata["modelMetadata"]["interval_levels"][0].as_f64(),
+            Some(0.8)
+        );
+        assert_eq!(
+            response.metadata["modelMetadata"]["events"][0]["name"].as_str(),
+            Some("airport_queue_surge")
+        );
+    }
+
+    #[test]
+    fn browser_piecewise_linear_rejects_unsupported_prophet_mcmc_alias() {
+        let err = run_forecast_request(BrowserForecastRequest {
+            rows: sample_panel_rows(),
+            frequency: "daily".to_string(),
+            horizon: 2,
+            model: "piecewise_linear_seasonal".to_string(),
+            options: BrowserForecastOptions {
+                mcmc_samples: Some(100),
+                ..BrowserForecastOptions::default()
+            },
+            metadata: BrowserForecastMetadata::default(),
+        })
+        .expect_err("mcmc alias should fail clearly");
+
+        assert!(err.to_string().contains("mcmc_samples"));
     }
 
     #[test]

@@ -100,6 +100,11 @@ before fitting. Prophet-style
 `changepoint_prior_scale`, `seasonality_prior_scale`, `seasonality_mode`, and
 `holidays_mode` aliases map to the native changepoint penalty, seasonality
 penalty, component mode, and event mode fields.
+The WebAssembly forecast API accepts the same modeling aliases in camelCase:
+`nChangepoints`, `changepointPriorScale`, `seasonalityPriorScale`,
+`holidaysPriorScale`, `seasonalityMode`, `holidaysMode`, `intervalWidth`, and
+Prophet-shaped `holidays` rows with `holiday`, `ds`, `lowerWindow`,
+`upperWindow`, and `priorScale`.
 
 Built-in country holiday calendars are available before fitting through
 `model.add_country_holidays("US")` or the constructor argument
@@ -272,9 +277,9 @@ one-week-ahead lane nowcasts where the most recent movement carries the holdout.
 Use `changepoint_range=0.8` only when you intentionally want Prophet's stricter
 placement window for an apples-to-apples tuning probe.
 
-The browser Modeling Lab requests the same WASM `components` and
-`historyComponents` payloads for `piecewise_linear_seasonal` fits. Its
-Prophet-style debugger flattens every numeric component key emitted by Rust, so
-built-in seasonalities, custom seasonalities, event windows, regressors,
-aggregate non-trend totals, fitted movement, trend movement, and residuals are
-available without a separate Python plotting step.
+The browser Modeling Lab uses the same WASM modeling aliases for
+`piecewise_linear_seasonal` fits and requests the same `components` and
+`historyComponents` payloads. Its Prophet-style debugger flattens every numeric
+component key emitted by Rust, so built-in seasonalities, custom seasonalities,
+event windows, regressors, aggregate non-trend totals, fitted movement, trend
+movement, and residuals are available without a separate Python plotting step.

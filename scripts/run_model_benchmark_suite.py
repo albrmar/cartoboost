@@ -20,7 +20,6 @@ from typing import Any
 
 import matplotlib.pyplot as plt
 import numpy as np
-from sklearn.metrics import mean_absolute_error, r2_score
 
 ROOT = Path(__file__).resolve().parents[1]
 PYTHON_SOURCE = ROOT / "python"
@@ -695,17 +694,25 @@ def rustc_version() -> str | None:
 
 def metric_summary(actual: np.ndarray, predicted: np.ndarray) -> dict[str, float]:
     residual = actual - predicted
+    absolute_residual = np.abs(residual)
     rmse = float(np.sqrt(np.mean(residual**2)))
+    total_sum_of_squares = float(np.sum((actual - float(np.mean(actual))) ** 2))
+    residual_sum_of_squares = float(np.sum(residual**2))
+    r2 = (
+        1.0 - residual_sum_of_squares / total_sum_of_squares
+        if total_sum_of_squares > 0.0
+        else float("nan")
+    )
     absolute_actual_sum = float(np.sum(np.abs(actual)))
     wape = (
-        float(np.sum(np.abs(residual)) / absolute_actual_sum)
+        float(np.sum(absolute_residual) / absolute_actual_sum)
         if absolute_actual_sum > 0.0
         else float("nan")
     )
     return {
-        "mae": float(mean_absolute_error(actual, predicted)),
+        "mae": float(np.mean(absolute_residual)),
         "rmse": rmse,
-        "r2": float(r2_score(actual, predicted)),
+        "r2": float(r2),
         "wape": wape,
     }
 

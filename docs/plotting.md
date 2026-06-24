@@ -27,14 +27,18 @@ diagnostics for CartoBoost benchmark evidence:
 The [Modeling Lab](../modeling-lab) is separate from `cartoboost.plotting`: it
 runs the Rust WebAssembly forecasting, regression, and neural modeling surfaces
 in the browser, then asks for opt-in diagnostics from that same fit. For
-`piecewise_linear_seasonal`, the forecast request includes component and
-historical component payloads and renders a Prophet-style debugger with
-forecast trend plus every numeric seasonal, event, regressor, and custom
-component emitted by the WASM payload. The same panel renders historical actual,
-fitted, trend, seasonality, trend-movement, fitted-movement, and residual plots
-from `historyComponents`. For regression and neural surfaces, the visualizer
-renders a splitter atlas, boosted-tree blueprints, split-kind mix, top splitter
-rules, depth profile, and largest holdout residuals.
+`piecewise_linear_seasonal`, the browser request uses Prophet-style modeling
+aliases such as `nChangepoints`, `changepointPriorScale`,
+`seasonalityPriorScale`, `holidaysPriorScale`, `seasonalityMode`,
+`holidaysMode`, `intervalWidth`, and Prophet-shaped `holidays` rows. The
+request also includes component and historical component payloads and renders a
+Prophet-style debugger with forecast trend plus every numeric seasonal, event,
+regressor, and custom component emitted by the WASM payload. The same panel
+renders historical actual, fitted, trend, seasonality, trend-movement,
+fitted-movement, and residual plots from `historyComponents`. For regression and
+neural surfaces, the visualizer renders a splitter atlas, boosted-tree
+blueprints, split-kind mix, top splitter rules, depth profile, and largest
+holdout residuals.
 
 Use the built-in taxi buttons to load either bundled browser sample. The
 5,000-row single-lane yellow taxi demand sample is shaped for forecasting demos:

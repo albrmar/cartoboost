@@ -4921,6 +4921,10 @@ function piecewiseForecastOptions(
   horizon: number,
 ) {
   return {
+    nChangepoints: 25,
+    changepointRange: 1.0,
+    seasonalityMode: 'additive',
+    holidaysMode: 'additive',
     extraRegressors: covariateColumns,
     extraRegressorMonotonicConstraints: Object.fromEntries(
       covariateColumns
@@ -4934,6 +4938,7 @@ function piecewiseForecastOptions(
       horizon,
       seriesCol,
     ),
+    intervalWidth: 0.8,
     quantileLevels: [0.1, 0.5, 0.9],
     uncertaintySamples: 128,
     includeSamples: false,

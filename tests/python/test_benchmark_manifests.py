@@ -308,6 +308,7 @@ def test_non_forecast_public_artifacts_exist() -> None:
 
 
 def test_model_suite_validation_search_uses_inner_validation(tmp_path: Path) -> None:
+    pytest.importorskip("sklearn.datasets")
     output_dir = tmp_path / "model_suite_validation_search"
     script = ROOT / "scripts" / "run_model_benchmark_suite.py"
 
