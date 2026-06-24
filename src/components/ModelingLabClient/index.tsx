@@ -1,4 +1,5 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import type {PointerEvent as ReactPointerEvent} from 'react';
 import useBaseUrl from '@docusaurus/useBaseUrl';
 import {contourDensity, geoGraticule, geoMercator, geoPath, interpolateTurbo, scaleSequential} from 'd3';
 import 'maplibre-gl/dist/maplibre-gl.css';
@@ -2443,6 +2444,8 @@ function LineChart({caption, series, showForecastBoundary = true}: {caption: str
   const [hoverPoint, setHoverPoint] = useState<ActiveChartPoint | null>(null);
   const [pinnedPoint, setPinnedPoint] = useState<ActiveChartPoint | null>(null);
   const [zoom, setZoom] = useState(1);
+  const [selectedRange, setSelectedRange] = useState<{min: number; max: number} | null>(null);
+  const [brush, setBrush] = useState<{startX: number; currentX: number; pointerId: number} | null>(null);
   const drawable = series.filter((item) => item.points.length > 0);
   if (drawable.length === 0) {
     return null;
@@ -2460,8 +2463,11 @@ function LineChart({caption, series, showForecastBoundary = true}: {caption: str
   const maxIndex = Math.max(...indexes, minIndex + 1);
   const indexSpan = maxIndex - minIndex || 1;
   const visibleSpan = indexSpan / zoom;
-  const visibleMinIndex = zoom === 1 ? minIndex : Math.max(minIndex, maxIndex - visibleSpan);
-  const visibleMaxIndex = maxIndex;
+  const rangeMinIndex = selectedRange === null ? null : Math.max(minIndex, Math.min(selectedRange.min, maxIndex));
+  const rangeMaxIndex = selectedRange === null ? null : Math.max(minIndex, Math.min(selectedRange.max, maxIndex));
+  const hasSelectedRange = rangeMinIndex !== null && rangeMaxIndex !== null && rangeMaxIndex - rangeMinIndex > 1;
+  const visibleMinIndex = hasSelectedRange ? rangeMinIndex : zoom === 1 ? minIndex : Math.max(minIndex, maxIndex - visibleSpan);
+  const visibleMaxIndex = hasSelectedRange ? rangeMaxIndex : maxIndex;
   const visibleIndexSpan = visibleMaxIndex - visibleMinIndex || 1;
   const values = drawable
     .flatMap((item) =>
@@ -2512,12 +2518,47 @@ function LineChart({caption, series, showForecastBoundary = true}: {caption: str
   const forecastBoundaryX = actualMaxIndex === null
     ? null
     : leftPadding + ((actualMaxIndex - visibleMinIndex) / visibleIndexSpan) * plotWidth;
-  const markerLimit = zoom >= 8 ? 72 : zoom >= 4 ? 42 : zoom >= 2 ? 26 : 14;
-  const hoverLimit = zoom >= 8 ? 140 : zoom >= 4 ? 96 : zoom >= 2 ? 64 : 36;
+  const markerLimit = zoom >= 8 ? 42 : zoom >= 4 ? 28 : zoom >= 2 ? 16 : 0;
   const pointStrideFor = (pointCount: number, limit: number) =>
     Math.max(1, Math.ceil(pointCount / limit));
   const shouldSamplePoint = (index: number, pointCount: number, limit: number) =>
     index === 0 || index === pointCount - 1 || index % pointStrideFor(pointCount, limit) === 0;
+  const shouldShowMarker = (index: number, pointCount: number) =>
+    pointCount <= 80 || (markerLimit > 0 && shouldSamplePoint(index, pointCount, markerLimit));
+  const pointerLocation = (event: ReactPointerEvent<SVGRectElement>) => {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    if (bounds.width <= 0 || bounds.height <= 0) {
+      return null;
+    }
+    const pointerX = leftPadding + ((event.clientX - bounds.left) / bounds.width) * plotWidth;
+    const pointerY = topPadding + ((event.clientY - bounds.top) / bounds.height) * plotHeight;
+    const x = Math.max(leftPadding, Math.min(leftPadding + plotWidth, pointerX));
+    const y = Math.max(topPadding, Math.min(topPadding + plotHeight, pointerY));
+    const index = visibleMinIndex + ((x - leftPadding) / plotWidth) * visibleIndexSpan;
+    return {
+      x,
+      y,
+      index: Math.max(minIndex, Math.min(maxIndex, index)),
+    };
+  };
+  const nearestPointFromPointer = (event: ReactPointerEvent<SVGRectElement>): ActiveChartPoint | null => {
+    const pointer = pointerLocation(event);
+    if (pointer === null) {
+      return null;
+    }
+    let nearest: ActiveChartPoint | null = null;
+    let nearestDistance = Number.POSITIVE_INFINITY;
+    plotSeries.forEach((item) => {
+      item.points.forEach((point) => {
+        const distance = Math.abs(point.x - pointer.x) * 3 + Math.abs(point.y - pointer.y);
+        if (distance < nearestDistance) {
+          nearestDistance = distance;
+          nearest = {series: item.label, index: point.index, value: point.value, x: point.x, y: point.y};
+        }
+      });
+    });
+    return nearest;
+  };
   const outcomeRows = plotSeries
     .filter((item) => item.points.length > 0)
     .map((item) => {
@@ -2528,22 +2569,29 @@ function LineChart({caption, series, showForecastBoundary = true}: {caption: str
     });
   const zoomOptions = [1, 2, 4, 8];
   const activePoint = pinnedPoint ?? hoverPoint;
+  const brushMinX = brush === null ? null : Math.min(brush.startX, brush.currentX);
+  const brushWidth = brush === null ? null : Math.abs(brush.currentX - brush.startX);
+  const rangeLabel = hasSelectedRange
+    ? `${Math.round(visibleMinIndex).toLocaleString()}-${Math.round(visibleMaxIndex).toLocaleString()}`
+    : zoom === 1 ? 'Full range' : `Last ${formatFixed(100 / zoom, 0)}% of steps`;
 
   return (
     <figure className={styles.chart}>
       <div className={styles.chartToolbar}>
         <div>
           <strong>{caption}</strong>
-          <span>{zoom === 1 ? 'Full range' : `Last ${formatFixed(100 / zoom, 0)}% of steps`}</span>
+          <span>{rangeLabel}</span>
         </div>
         <div className={styles.chartZoomControls} aria-label="Chart zoom">
           {zoomOptions.map((option) => (
             <button
-              className={zoom === option ? styles.chartZoomActive : undefined}
+              className={!hasSelectedRange && zoom === option ? styles.chartZoomActive : undefined}
               type="button"
               onClick={() => {
                 setHoverPoint(null);
                 setPinnedPoint(null);
+                setSelectedRange(null);
+                setBrush(null);
                 setZoom(option);
               }}
               key={option}
@@ -2597,7 +2645,7 @@ function LineChart({caption, series, showForecastBoundary = true}: {caption: str
           );
         })}
         {plotSeries.flatMap((item, seriesIndex) =>
-          item.points.filter((point, index, points) => shouldSamplePoint(index, points.length, markerLimit)).map((point, index) => (
+          item.points.filter((point, index, points) => shouldShowMarker(index, points.length)).map((point, index) => (
             <circle
               className={seriesIndex === 0 ? styles.actualPointMarker : styles.forecastPointMarker}
               cx={point.x}
@@ -2608,27 +2656,94 @@ function LineChart({caption, series, showForecastBoundary = true}: {caption: str
             />
           )),
         )}
-        {plotSeries.flatMap((item, seriesIndex) =>
-          item.points.filter((point, index, points) => shouldSamplePoint(index, points.length, hoverLimit)).map((point) => (
-            <circle
-              className={styles.interactivePoint}
-              cx={point.x}
-              cy={point.y}
-              r="6"
-              tabIndex={0}
-              role="button"
-              aria-label={`${item.label} step ${point.index}: ${formatMetric(point.value)}`}
-              onBlur={() => setHoverPoint(null)}
-              onClick={() => setPinnedPoint({series: item.label, index: point.index, value: point.value, x: point.x, y: point.y})}
-              onFocus={() => setHoverPoint({series: item.label, index: point.index, value: point.value, x: point.x, y: point.y})}
-              onMouseEnter={() => setHoverPoint({series: item.label, index: point.index, value: point.value, x: point.x, y: point.y})}
-              onMouseLeave={() => setHoverPoint(null)}
-              onPointerDown={() => setPinnedPoint({series: item.label, index: point.index, value: point.value, x: point.x, y: point.y})}
-              style={{stroke: item.color}}
-              key={`${item.label}-${point.index}-${point.value}`}
-            />
-          )),
+        {brushMinX !== null && brushWidth !== null && brushWidth > 0 && (
+          <rect
+            className={styles.chartBrushSelection}
+            x={brushMinX}
+            y={topPadding}
+            width={brushWidth}
+            height={plotHeight}
+          />
         )}
+        <rect
+          className={styles.chartHitLayer}
+          x={leftPadding}
+          y={topPadding}
+          width={plotWidth}
+          height={plotHeight}
+          tabIndex={0}
+          role="button"
+          aria-label={`Inspect ${caption}`}
+          onBlur={() => setHoverPoint(null)}
+          onDoubleClick={() => {
+            setHoverPoint(null);
+            setPinnedPoint(null);
+            setSelectedRange(null);
+            setBrush(null);
+            setZoom(1);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape') {
+              setHoverPoint(null);
+              setPinnedPoint(null);
+              setSelectedRange(null);
+              setBrush(null);
+              setZoom(1);
+            }
+          }}
+          onPointerDown={(event) => {
+            if (event.button !== 0) {
+              return;
+            }
+            const pointer = pointerLocation(event);
+            if (pointer === null) {
+              return;
+            }
+            event.currentTarget.setPointerCapture(event.pointerId);
+            setPinnedPoint(null);
+            setBrush({startX: pointer.x, currentX: pointer.x, pointerId: event.pointerId});
+            setHoverPoint(nearestPointFromPointer(event));
+          }}
+          onPointerLeave={() => setHoverPoint(null)}
+          onPointerMove={(event) => {
+            if (brush !== null && brush.pointerId === event.pointerId) {
+              const pointer = pointerLocation(event);
+              if (pointer !== null) {
+                setBrush({...brush, currentX: pointer.x});
+                setHoverPoint(nearestPointFromPointer(event));
+              }
+              return;
+            }
+            if (pinnedPoint === null) {
+              setHoverPoint(nearestPointFromPointer(event));
+            }
+          }}
+          onPointerUp={(event) => {
+            if (brush === null || brush.pointerId !== event.pointerId) {
+              return;
+            }
+            const pointer = pointerLocation(event);
+            event.currentTarget.releasePointerCapture(event.pointerId);
+            setBrush(null);
+            if (pointer === null) {
+              return;
+            }
+            const dragWidth = Math.abs(pointer.x - brush.startX);
+            if (dragWidth >= 10) {
+              const startIndex = visibleMinIndex + ((brush.startX - leftPadding) / plotWidth) * visibleIndexSpan;
+              const minSelected = Math.max(minIndex, Math.min(startIndex, pointer.index));
+              const maxSelected = Math.min(maxIndex, Math.max(startIndex, pointer.index));
+              if (maxSelected - minSelected > 1) {
+                setSelectedRange({min: minSelected, max: maxSelected});
+                setZoom(1);
+                setHoverPoint(null);
+                setPinnedPoint(null);
+              }
+              return;
+            }
+            setPinnedPoint(nearestPointFromPointer(event));
+          }}
+        />
         {activePoint && (
           <g className={styles.chartActivePoint}>
             <line x1={activePoint.x} y1={topPadding} x2={activePoint.x} y2={topPadding + plotHeight} />
