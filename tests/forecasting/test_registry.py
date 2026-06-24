@@ -327,6 +327,7 @@ def test_piecewise_linear_seasonal_wrapper_normalizes_native_overrides(install_f
         future_regressors={"airport_queue": [1, 0]},
         trend_adjustments={2: 1.1},
     )
+    model.history_components()
     model.samples(
         2,
         future_regressors_by_series={"PULocationID=132": {"airport_queue": [1, 1]}},
@@ -412,11 +413,16 @@ def test_piecewise_linear_seasonal_wrapper_normalizes_native_overrides(install_f
         {},
     )
     assert native.calls[4] == (
+        "history_components_json",
+        (),
+        {},
+    )
+    assert native.calls[5] == (
         "samples_json",
         (2, None, {"PULocationID=132": {"airport_queue": [1.0, 1.0]}}, 4, None, None),
         {},
     )
-    assert native.calls[5] == (
+    assert native.calls[6] == (
         "quantiles_json",
         (2, (0.1, 0.9), {"airport_queue": [0.0, 0.0]}, None, None, None, None),
         {},

@@ -81,15 +81,18 @@ model = PiecewiseLinearSeasonalForecaster(
 
 forecast = model.fit(frame).predict(24)
 components = model.components(24)
+history_components = model.history_components()
 ```
 
 Prophet-shaped holiday and changepoint inputs are accepted as configuration
-ergonomics over the same Rust-native model. Use `n_changepoints` for automatic
-changepoint placement, pass explicit dates through `changepoints=[...]` or
-`changepoint_timestamps=[...]`, and pass a Prophet-style `holidays` table with
-`holiday`, `ds`, optional `lower_window`, `upper_window`, and `prior_scale`
-columns. Holidays are normalized into native event windows, and prior scales
-are translated into per-event L2 penalties before fitting. Prophet-style
+ergonomics over the same Rust-native model. The default automatic changepoint
+count is 25, matching Prophet's public default. Use `n_changepoints` for
+automatic changepoint placement, pass explicit dates through
+`changepoints=[...]` or `changepoint_timestamps=[...]`, and pass a Prophet-style
+`holidays` table with `holiday`, `ds`, optional `lower_window`, `upper_window`,
+and `prior_scale` columns. Holidays are normalized into native event windows,
+and prior scales are translated into per-event L2 penalties before fitting.
+Prophet-style
 `changepoint_prior_scale`, `seasonality_prior_scale`, `seasonality_mode`, and
 `holidays_mode` aliases map to the native changepoint penalty, seasonality
 penalty, component mode, and event mode fields.
@@ -165,3 +168,51 @@ Component records include `trend`, `adjusted_trend`,
 `trend_adjustment_multiplier`, `trend_adjustment`, and `residual_shock` so a
 taxi demand report can separate fitted trend, external market belief, and
 recent residual carry-forward.
+
+## Historical Component Diagnostics
+
+Use `history_components()` after fitting when rolling-origin backtests need to
+explain why a cutoff won or lost. The method returns one row for every training
+observation and is computed in Rust from the fitted coefficients and the
+original covariates. Each row includes:
+
+| Field | Meaning |
+| --- | --- |
+| `actual` | Observed target for the training timestamp. |
+| `fitted` | In-sample fitted value from the same component equation used for prediction. |
+| `residual` | `actual - fitted`, useful for diagnosing systematic under- or over-fit before a holdout. |
+| `trend` | Fitted trend path before forecast-time external trend adjustments. |
+| `trend_movement` | Change in fitted trend versus the previous training row for that series. |
+| `fitted_movement` | Change in fitted total value versus the previous training row for that series. |
+| `components` | Named component contributions, including `seasonal_total`, `yearly`, `weekly`, `daily`, custom seasonalities, event totals, and regressor totals. |
+
+For a weekly lane backtest with 12 cutoffs, run the model once per cutoff,
+holding out one additional week each time, then persist both the holdout
+predictions and `history_components()` from that cutoff fit. When Prophet beats
+CartoBoost with a negative bias, inspect the last several historical component
+rows before each cutoff:
+
+```python
+diagnostics_by_cutoff = {}
+
+for cutoff, train in weekly_cutoff_training_frames:
+    model = PiecewiseLinearSeasonalForecaster(
+        n_changepoints=25,
+        weekly_fourier_order=3,
+        changepoint_range=0.8,
+    ).fit(train)
+    diagnostics_by_cutoff[str(cutoff)] = {
+        "history_components": model.history_components()["records"],
+        "forecast_components": model.components(1)["records"],
+        "forecast": model.predict(1).to_pandas(),
+    }
+```
+
+If `trend_movement` is near zero while the last observed weeks are rising, the
+trend is too stiff for the lane. If `seasonal_total` is large and offsetting the
+trend in the wrong direction, inspect the cadence and Fourier order. If recent
+residuals are consistently positive before the cutoff, the model is
+under-predicting the lane before it ever reaches the holdout; consider fewer or
+better placed changepoints, explicit event/regressor inputs, or an opt-in
+residual shock rather than treating the holdout error as a pure forecast-horizon
+problem.

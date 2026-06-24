@@ -502,7 +502,7 @@ impl Default for PiecewiseLinearSeasonalConfig {
             fit_loss: PiecewiseLinearFitLoss::Squared,
             huber_delta: 1.345,
             irls_iterations: 5,
-            changepoints: 12,
+            changepoints: 25,
             changepoint_range: 0.8,
             changepoint_timestamps: Vec::new(),
             yearly_fourier_order: 0,
@@ -663,6 +663,61 @@ impl PiecewiseLinearSeasonalForecaster {
             ],
             "records": records,
         }))
+    }
+
+    pub fn history_components_json_value(&self) -> Result<Value> {
+        let fitted = self.fitted.as_ref().ok_or_else(not_fitted)?;
+        let mut history_by_series: BTreeMap<String, Vec<&ForecastRow>> = BTreeMap::new();
+        for row in fitted.frame.rows() {
+            history_by_series
+                .entry(row.series_id.clone())
+                .or_default()
+                .push(row);
+        }
+        let records = history_by_series
+            .iter()
+            .collect::<Vec<_>>()
+            .into_par_iter()
+            .map(|(series_id, history)| {
+                let series = fitted.series.get(series_id).ok_or_else(|| {
+                    CartoBoostError::InvalidInput(format!(
+                        "missing fitted piecewise linear seasonal state for series {series_id:?}"
+                    ))
+                })?;
+                series.history_component_records(series_id, history, &self.config)
+            })
+            .collect::<Result<Vec<_>>>()?
+            .into_iter()
+            .flatten()
+            .collect::<Vec<_>>();
+        Ok(json!({
+            "model": self.model_name(),
+            "columns": [
+                "series_id",
+                "timestamp",
+                "index",
+                "actual",
+                "fitted",
+                "residual",
+                "trend",
+                "adjusted_trend",
+                "trend_adjustment_multiplier",
+                "trend_adjustment",
+                "trend_movement",
+                "fitted_movement",
+                "linear_predictor",
+                "components",
+            ],
+            "records": records,
+        }))
+    }
+
+    pub fn history_components_json_string(&self) -> Result<String> {
+        serde_json::to_string(&self.history_components_json_value()?).map_err(|err| {
+            CartoBoostError::InvalidInput(format!(
+                "failed to serialize piecewise linear seasonal history components: {err}"
+            ))
+        })
     }
 
     pub fn predict_components_json_string(&self, horizon: usize) -> Result<String> {
@@ -3165,6 +3220,96 @@ impl FittedPiecewiseLinearSeasonalSeries {
             "trend_adjustment_multiplier": trend_adjustment_multiplier,
             "trend_adjustment": trend_adjustment,
             "residual_shock": residual_shock,
+            "linear_predictor": linear_predictor,
+            "trend_linear": trend_linear,
+            "component_scale": if config.growth == PiecewiseLinearGrowth::Logistic {
+                "logistic_linear_predictor"
+            } else {
+                "prediction"
+            },
+            "components": components,
+        }))
+    }
+
+    fn history_component_records(
+        &self,
+        series_id: &str,
+        history: &[&ForecastRow],
+        config: &PiecewiseLinearSeasonalConfig,
+    ) -> Result<Vec<Value>> {
+        let mut records = Vec::with_capacity(history.len());
+        let mut previous_trend = None;
+        let mut previous_fitted = None;
+        for (idx, row) in history.iter().enumerate() {
+            let record = self.history_component_record(
+                series_id,
+                row,
+                idx,
+                previous_trend,
+                previous_fitted,
+                config,
+            )?;
+            previous_trend = record["trend"].as_f64();
+            previous_fitted = record["fitted"].as_f64();
+            records.push(record);
+        }
+        Ok(records)
+    }
+
+    fn history_component_record(
+        &self,
+        series_id: &str,
+        row: &ForecastRow,
+        idx: usize,
+        previous_trend: Option<f64>,
+        previous_fitted: Option<f64>,
+        config: &PiecewiseLinearSeasonalConfig,
+    ) -> Result<Value> {
+        debug_assert_eq!(self.feature_count, self.coefficients.len());
+        let elapsed = elapsed_days(self.start_timestamp, row.timestamp);
+        let bounds = piecewise_bounds(None, Some(&row.covariates), None, config)?;
+        let component_multiplier = self.component_multiplier(elapsed, bounds, config);
+        let context = PiecewiseLinearFeatureContext {
+            series_id: Some(series_id),
+            timestamp: row.timestamp,
+            covariates: Some(&row.covariates),
+            horizon_step: None,
+            component_multiplier,
+            changepoints: &self.changepoints,
+            config,
+            regressor_stats: Some(&self.regressor_stats),
+        };
+        let mut features =
+            vec![0.0; piecewise_linear_seasonal_feature_count(config, self.changepoints.len())];
+        fill_piecewise_linear_seasonal_features(&mut features, elapsed, &context)?;
+        let linear_predictor = features
+            .iter()
+            .zip(self.coefficients.iter())
+            .map(|(feature, coefficient)| feature * coefficient)
+            .sum::<f64>();
+        let trend_linear =
+            piecewise_trend_value(elapsed, &self.coefficients, &self.changepoints, config);
+        let trend = inverse_piecewise_target(trend_linear, bounds, config);
+        let fitted = inverse_piecewise_target(linear_predictor, bounds, config);
+        let components = piecewise_component_contributions(
+            &features,
+            &self.coefficients,
+            self.changepoints.len(),
+            config,
+        )?;
+        Ok(json!({
+            "series_id": series_id,
+            "timestamp": row.timestamp.format("%Y-%m-%dT%H:%M:%S").to_string(),
+            "index": idx,
+            "actual": row.target,
+            "fitted": fitted,
+            "residual": row.target - fitted,
+            "trend": trend,
+            "adjusted_trend": trend,
+            "trend_adjustment_multiplier": 1.0,
+            "trend_adjustment": 0.0,
+            "trend_movement": previous_trend.map(|previous| trend - previous),
+            "fitted_movement": previous_fitted.map(|previous| fitted - previous),
             "linear_predictor": linear_predictor,
             "trend_linear": trend_linear,
             "component_scale": if config.growth == PiecewiseLinearGrowth::Logistic {
@@ -7034,9 +7179,16 @@ mod tests {
         let components = model
             .predict_components_json_value(3)
             .expect("component forecast");
+        let history_components = model
+            .history_components_json_value()
+            .expect("history components");
         let records = components["records"].as_array().expect("records");
+        let history_records = history_components["records"]
+            .as_array()
+            .expect("history records");
 
         assert_eq!(records.len(), 3);
+        assert_eq!(history_records.len(), 35);
         assert_eq!(
             records[0]["prediction"]
                 .as_f64()
@@ -7044,6 +7196,20 @@ mod tests {
             forecast.predictions()[0].mean
         );
         assert!(records[0]["components"]["weekly"].as_f64().is_some());
+        assert!(history_records[0]["components"]["weekly"]
+            .as_f64()
+            .is_some());
+        assert!(history_records[1]["trend_movement"].as_f64().is_some());
+        let reconstructed_residual = history_records[0]["actual"]
+            .as_f64()
+            .expect("history actual")
+            - history_records[0]["fitted"]
+                .as_f64()
+                .expect("history fitted");
+        let emitted_residual = history_records[0]["residual"]
+            .as_f64()
+            .expect("history residual");
+        assert!((reconstructed_residual - emitted_residual).abs() < 1.0e-9);
         assert!(
             records[0]["components"]["regressors"]["airport_queue"]
                 .as_f64()

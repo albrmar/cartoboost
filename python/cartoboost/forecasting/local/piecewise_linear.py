@@ -31,7 +31,7 @@ class PiecewiseLinearSeasonalForecaster(NativeForecastWrapper):
         component_mode: str = "additive",
         seasonality_mode: str | None = None,
         holidays_mode: str | None = None,
-        changepoints: int | Sequence[str] | None = 12,
+        changepoints: int | Sequence[str] | None = 25,
         n_changepoints: int | None = None,
         changepoint_range: float = 0.8,
         changepoint_timestamps: Sequence[str] = (),
@@ -365,6 +365,16 @@ class PiecewiseLinearSeasonalForecaster(NativeForecastWrapper):
                 else None,
             )
         )
+
+    def history_components(self) -> dict[str, Any]:
+        """Return fitted historical trend, movement, and component diagnostics."""
+        self._check_is_fitted()
+        return dict(json.loads(self._native_model.history_components_json()))
+
+    def history_components_json(self) -> str:
+        """Return fitted historical component diagnostics as a JSON string."""
+        self._check_is_fitted()
+        return str(self._native_model.history_components_json())
 
     def samples(
         self,

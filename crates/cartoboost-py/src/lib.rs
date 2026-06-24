@@ -1685,7 +1685,7 @@ impl NativePiecewiseLinearSeasonalForecaster {
     #[pyo3(signature = (
         growth="linear",
         component_mode="additive",
-        changepoints=12,
+        changepoints=25,
         changepoint_range=0.8,
         changepoint_timestamps=None,
         yearly_fourier_order=0,
@@ -1911,6 +1911,11 @@ impl NativePiecewiseLinearSeasonalForecaster {
             trend_adjustments_by_series,
         )?;
         py.allow_threads(|| model.predict_components_json_string(horizon))
+            .map_err(to_py_value_error)
+    }
+
+    fn history_components_json(&self, py: Python<'_>) -> PyResult<String> {
+        py.allow_threads(|| self.model.history_components_json_string())
             .map_err(to_py_value_error)
     }
 

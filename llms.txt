@@ -29,7 +29,10 @@ modeling.
   payloads. Use `trend_adjustments` /
   `trend_adjustments_by_series` for external market-belief trend multipliers
   and `residual_shock_window`, `residual_shock_scale`, and
-  `residual_shock_decay` for opt-in recent residual shock propagation.
+  `residual_shock_decay` for opt-in recent residual shock propagation. Use
+  `history_components()` / `history_components_json()` to inspect fitted
+  historical trend, trend movement, seasonality, event, regressor, and residual
+  values before rolling-origin holdouts.
 - AutoForecaster guide: ./docs/user-guide/forecasting-models/auto-forecaster.md
 - Piecewise linear seasonal guide: ./docs/user-guide/forecasting-models/piecewise-linear-seasonal.md
 - ARIMA and AutoARIMA guide: ./docs/user-guide/forecasting-models/arima.md

@@ -82,6 +82,7 @@ struct BrowserForecastOptions {
     max_direct_horizon: Option<usize>,
     max_auto_candidate_count: Option<usize>,
     include_components: Option<bool>,
+    include_history_components: Option<bool>,
     include_samples: Option<bool>,
     include_quantiles: Option<bool>,
     n_estimators: Option<usize>,
@@ -187,6 +188,8 @@ struct BrowserForecastMetadata {
 struct BrowserForecastArtifactPredictOptions {
     #[serde(default = "default_true")]
     include_components: bool,
+    #[serde(default)]
+    include_history_components: bool,
     #[serde(default = "default_true")]
     include_samples: bool,
     #[serde(default = "default_true")]
@@ -204,6 +207,7 @@ impl Default for BrowserForecastArtifactPredictOptions {
     fn default() -> Self {
         Self {
             include_components: true,
+            include_history_components: false,
             include_samples: true,
             include_quantiles: true,
             future_regressors: None,
@@ -392,6 +396,8 @@ struct BrowserForecastResponse {
     forecast: Value,
     #[serde(skip_serializing_if = "Option::is_none")]
     components: Option<Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    history_components: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     samples: Option<Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -978,6 +984,7 @@ fn run_forecast_request(request: BrowserForecastRequest) -> Result<BrowserForeca
     if is_piecewise_linear_seasonal_model(&model) {
         let mut config = piecewise_linear_seasonal_config(&options)?;
         let include_components = options.include_components.unwrap_or(false);
+        let include_history_components = options.include_history_components.unwrap_or(false);
         let include_samples =
             options.include_samples.unwrap_or(false) && config.uncertainty_samples > 0;
         let include_quantiles =
@@ -994,6 +1001,13 @@ fn run_forecast_request(request: BrowserForecastRequest) -> Result<BrowserForeca
         let components = if include_components {
             Some(js_safe_json_value(
                 forecaster.predict_components_json_value(request.horizon)?,
+            ))
+        } else {
+            None
+        };
+        let history_components = if include_history_components {
+            Some(js_safe_json_value(
+                forecaster.history_components_json_value()?,
             ))
         } else {
             None
@@ -1020,6 +1034,7 @@ fn run_forecast_request(request: BrowserForecastRequest) -> Result<BrowserForeca
             })),
             forecast: forecast.to_json_value(),
             components,
+            history_components,
             samples,
             quantiles,
         });
@@ -1059,6 +1074,7 @@ fn forecast_response(
         metadata: js_safe_json_value(metadata),
         forecast: forecast.to_json_value(),
         components: None,
+        history_components: None,
         samples: None,
         quantiles: None,
     }
@@ -1104,6 +1120,13 @@ fn predict_piecewise_linear_seasonal_artifact_request(
     } else {
         None
     };
+    let history_components = if options.include_history_components {
+        Some(js_safe_json_value(
+            forecaster.history_components_json_value()?,
+        ))
+    } else {
+        None
+    };
     let metadata = forecaster.metadata();
     let samples =
         if options.include_samples && metadata["uncertainty_samples"].as_u64().unwrap_or(0) > 0 {
@@ -1131,6 +1154,7 @@ fn predict_piecewise_linear_seasonal_artifact_request(
         })),
         forecast: forecast.to_json_value(),
         components,
+        history_components,
         samples,
         quantiles,
     })
@@ -3547,6 +3571,7 @@ mod tests {
                 huber_delta: Some(1.25),
                 irls_iterations: Some(4),
                 include_components: Some(true),
+                include_history_components: Some(true),
                 include_samples: Some(true),
                 include_quantiles: Some(true),
                 uncertainty_samples: Some(4),
@@ -3568,6 +3593,12 @@ mod tests {
             .and_then(|components| components.get("records"))
             .and_then(Value::as_array)
             .expect("component records");
+        let history_component_records = response
+            .history_components
+            .as_ref()
+            .and_then(|components| components.get("records"))
+            .and_then(Value::as_array)
+            .expect("history component records");
         let sample_records = response
             .samples
             .as_ref()
@@ -3583,9 +3614,13 @@ mod tests {
 
         assert_eq!(records.len(), 9);
         assert_eq!(component_records.len(), 9);
+        assert_eq!(history_component_records.len(), sample_panel_rows().len());
         assert_eq!(sample_records.len(), 36);
         assert_eq!(quantile_records.len(), 27);
         assert!(component_records[0]["components"]["weekly"]
+            .as_f64()
+            .is_some());
+        assert!(history_component_records[1]["trend_movement"]
             .as_f64()
             .is_some());
         assert!(sample_records[0]["prediction"].as_f64().is_some());
