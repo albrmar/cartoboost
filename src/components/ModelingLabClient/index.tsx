@@ -2635,9 +2635,15 @@ function LineChart({caption, series, showForecastBoundary = true}: {caption: str
           const points = item.points
             .map((point) => `${point.x},${point.y}`)
             .join(' ');
+          const normalizedLabel = item.label.toLowerCase();
+          const lineClassName = seriesIndex === 0
+            ? styles.actualLine
+            : normalizedLabel.includes('trend')
+              ? styles.trendLine
+              : styles.fittedLine;
           return (
             <polyline
-              className={seriesIndex === 0 ? styles.actualLine : styles.forecastLine}
+              className={lineClassName}
               points={points}
               style={{stroke: item.color}}
               key={item.label}
